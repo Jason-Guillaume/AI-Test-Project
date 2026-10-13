@@ -67,11 +67,17 @@ class DebugService:
                 path = path.replace(f"{{{k}}}", str(v))
         url = f"{base}{gateway}{path}"
 
+        # 端口非法（非数字 / 越界）时 urlsplit().port 抛 ValueError。这里必须显式接住：
+        # 它发生在下面的 try 之外、且早于出站白名单校验，不接住就是 500 而非 4xx。
         parsed = urlsplit(url)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise bad_request(f"调试目标地址端口非法：{url}") from exc
         scheme = (parsed.scheme or "http").lower()
         host = (parsed.hostname or "").lower()
         # 显式端口用之；http 默认 80，https 默认 443。
-        port = parsed.port or (443 if scheme == "https" else 80)
+        port = port or (443 if scheme == "https" else 80)
 
         # 出站白名单校验。
         target = (
@@ -159,7 +165,10 @@ class DebugService:
                 try:
                     return {"json": _json.loads(raw)}
                 except (ValueError, TypeError):
-                    return {"content": raw, "headers": {}}
+                    # 不能带 "headers" 键：调用点已用 headers= 关键字传入，重复即
+                    # TypeError: got multiple values for keyword argument 'headers'，
+                    # 且该 TypeError 不在下面的 except 列表里 → 直接 500。
+                    return {"content": raw}
             if isinstance(body_obj.schema_json, dict) and "example" in body_obj.schema_json:
                 return {"json": body_obj.schema_json["example"]}
             return {}

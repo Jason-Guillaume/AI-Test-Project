@@ -272,6 +272,11 @@ class ApiService:
         name = (body.name or "").strip()
         if not name:
             raise bad_request("模块名不能为空")
+        if name == DEFAULT_MODULE_NAME:
+            # 「未分类」由 ensure_default_module 独占维护（按 is_default=True 查找，不看名字）。
+            # 这里若允许手工建同名模块，后续 ensure_default_module 再插入 is_default 行就会撞
+            # uq_api_module_project_name 唯一约束 → 500，且整个项目从此无法再建接口。
+            raise bad_request(f"「{DEFAULT_MODULE_NAME}」是系统保留模块名，不能手工创建")
         _ensure_unique_module_name(db, project_id, name)
         parent = self._resolve_parent_for_create(db, project, body.parent_id)
         mod = ApiModule(
@@ -621,7 +626,7 @@ class ApiService:
     def create_relation(
         self, db: Session, api_id: int, body: ApiRelationCreate, *, actor: User
     ) -> ApiRelationResponse:
-        iface = self._get_writable_interface_or_404(db, api_id, user)
+        iface = self._get_writable_interface_or_404(db, api_id, actor)
         if body.source_api_id != iface.id and body.target_api_id != iface.id:
             raise bad_request("关联必须涉及当前接口")
         source = db.get(ApiInterface, body.source_api_id)
