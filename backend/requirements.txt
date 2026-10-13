@@ -1,0 +1,24 @@
+# 运行时依赖（版本与旧项目实测可运行版本线对齐，Python >= 3.11）
+fastapi==0.141.1
+# FastAPI 0.141.1 需要 Starlette 0.49/0.50 线，锁定避免拉到不兼容主线
+starlette>=0.49,<0.51
+uvicorn[standard]==0.53.0
+sqlalchemy>=2.0,<2.1
+alembic==1.20.0
+psycopg[binary]>=3.3,<4
+pydantic>=2.10,<3
+pydantic-settings>=2.9,<3
+python-dotenv>=1.0
+python-multipart>=0.0.9
+PyJWT>=2.9,<3
+bcrypt>=4.2,<5
+cryptography>=43,<51
+# 图形验证码图片渲染依赖 Pillow（含 C 扩展，PyPI 有 wheel，Python 3.11+ 全平台可用）
+Pillow>=10,<13
+# 接口管理：OpenAPI/Swagger YAML 解析（safe_load，不执行任意对象）
+PyYAML>=6,<7
+# 接口管理：调试执行器发真实出站请求（runtime 用；测试也复用）
+httpx>=0.27,<1
+
+# 测试
+pytest>=8.0,<10

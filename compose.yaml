@@ -1,0 +1,25 @@
+# 本地 PostgreSQL（仅平台主库）。被测目标数据库不在此文件管理。
+#
+# ⚠️ 下面的用户/密码是**单机开发默认值**（127.0.0.1 + 卷只存在本机）。
+#    只要端口 5432 会暴露给局域网或共享机器，就必须先改这里并同步 backend/.env。
+#    生产环境不用这份 compose，凭据一律走密钥管理。
+services:
+  postgres:
+    image: postgres:16
+    container_name: testplatform-postgres
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: fangzhou123
+      POSTGRES_DB: testplatform_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d testplatform_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  postgres-data:
