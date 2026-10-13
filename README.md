@@ -288,3 +288,4 @@ AI 智能体编排 · 用例自动生成 · API 用例执行 · UI 自动化执�
 5. **`/healthz` 不带版本前缀**，是部署探活用的；`/readyz`、`/status`、`/ping` 都不存在。
    API 文档在 `/docs`、`/redoc`、`/openapi.json`。
 # AI-Test-Project
+# AI-Test-Project
