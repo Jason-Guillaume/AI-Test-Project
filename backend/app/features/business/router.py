@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.features.business.schemas import (
+    ActionExecutionResponse,
     BusinessActionCreate,
     BusinessActionReorder,
     BusinessActionResponse,
@@ -54,10 +55,14 @@ from app.features.business.schemas import (
     BusinessVariableRefCreate,
     BusinessVariableRefResponse,
     BusinessVariableUpdate,
+    FlowExecutionActionListResponse,
+    FlowExecutionRequest,
+    FlowExecutionResponse,
 )
 from app.features.business.services.binding_service import BindingService
 from app.features.business.services.config_service import ConfigService
 from app.features.business.services.domain_service import DomainService
+from app.features.business.services.execution_service import ExecutionService
 from app.features.business.services.flow_service import FlowService
 from app.features.business.services.ref_service import RefService
 from app.features.business.services.rule_service import RuleService
@@ -75,6 +80,7 @@ _CONFIG = ConfigService()
 _BINDING = BindingService()
 _REF = RefService()
 _RULE = RuleService()
+_EXECUTION = ExecutionService()
 
 
 # --------------------------------------------------------------------------- 业务域
@@ -620,3 +626,39 @@ def update_rule(
 def delete_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _RULE.delete_rule(db, rule_id, actor=user)
     return None
+
+
+# --------------------------------------------------------------------------- 执行引擎
+
+
+@router.post(
+    "/business-flows/{flow_id}/execute",
+    response_model=FlowExecutionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="执行业务流程",
+)
+def execute_flow_endpoint(
+    flow_id: int,
+    body: FlowExecutionRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return _EXECUTION.execute_flow(db, flow_id, body, actor=user)
+
+
+@router.get(
+    "/business-executions/{execution_id}",
+    response_model=FlowExecutionResponse,
+    summary="执行记录详情",
+)
+def get_execution(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _EXECUTION.get_execution(db, execution_id, user)
+
+
+@router.get(
+    "/business-executions/{execution_id}/actions",
+    response_model=FlowExecutionActionListResponse,
+    summary="执行记录的步骤执行列表",
+)
+def list_execution_actions(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _EXECUTION.list_execution_actions(db, execution_id, user)

@@ -2,6 +2,7 @@
 // 仅放纯静态选项，不放业务逻辑。
 
 import type {
+  BusinessActionType,
   BusinessApiLocation,
   BusinessDomainStatus,
   BusinessFlowStatus,
@@ -23,9 +24,11 @@ export const FLOW_STATUS_OPTIONS = [
 ];
 
 export const ACTION_TYPE_OPTIONS = [
-  { value: 'API', label: 'API 通道' },
-  { value: 'WEB', label: 'Web 通道（预留）' },
-  { value: 'MOBILE', label: '移动端通道（预留）' },
+  { value: 'NORMAL' as BusinessActionType, label: '常规动作' },
+  { value: 'SYSTEM' as BusinessActionType, label: '系统动作' },
+  { value: 'MANUAL' as BusinessActionType, label: '人工动作' },
+  { value: 'WAIT' as BusinessActionType, label: '等待动作' },
+  { value: 'DECISION' as BusinessActionType, label: '决策动作' },
 ];
 
 export const PRECONDITION_TYPE_OPTIONS = [
@@ -40,6 +43,8 @@ export const PRECONDITION_OPERATOR_OPTIONS = [
   { value: 'NE' as BusinessPreconditionOperator, label: '不等于 (NE)' },
   { value: 'IN' as BusinessPreconditionOperator, label: '包含 (IN)' },
   { value: 'CONTAINS' as BusinessPreconditionOperator, label: '包含文本 (CONTAINS)' },
+  { value: 'EXISTS' as BusinessPreconditionOperator, label: '存在 (EXISTS)' },
+  { value: 'NOT_EXISTS' as BusinessPreconditionOperator, label: '不存在 (NOT_EXISTS)' },
 ];
 
 export const VARIABLE_DIRECTION_OPTIONS = [

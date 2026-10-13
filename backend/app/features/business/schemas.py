@@ -26,8 +26,8 @@ BusinessDomainStatus = Literal["ACTIVE", "INACTIVE"]
 BUSINESS_FLOW_STATUSES = ("DRAFT", "ACTIVE", "DEPRECATED")
 BusinessFlowStatus = Literal["DRAFT", "ACTIVE", "DEPRECATED"]
 
-BUSINESS_ACTION_TYPES = ("API", "WEB", "MOBILE")
-BusinessActionType = Literal["API", "WEB", "MOBILE"]
+BUSINESS_ACTION_TYPES = ("NORMAL", "SYSTEM", "MANUAL", "WAIT", "DECISION")
+BusinessActionType = Literal["NORMAL", "SYSTEM", "MANUAL", "WAIT", "DECISION"]
 
 BUSINESS_BINDING_TYPES = ("API", "WEB", "MOBILE")
 BusinessBindingType = Literal["API", "WEB", "MOBILE"]
@@ -35,8 +35,8 @@ BusinessBindingType = Literal["API", "WEB", "MOBILE"]
 BUSINESS_PRECONDITION_TYPES = ("VARIABLE", "STATE", "BUSINESS", "TEXT")
 BusinessPreconditionType = Literal["VARIABLE", "STATE", "BUSINESS", "TEXT"]
 
-BUSINESS_PRECONDITION_OPERATORS = ("EQ", "NE", "IN", "CONTAINS")
-BusinessPreconditionOperator = Literal["EQ", "NE", "IN", "CONTAINS"]
+BUSINESS_PRECONDITION_OPERATORS = ("EQ", "NE", "IN", "CONTAINS", "EXISTS", "NOT_EXISTS")
+BusinessPreconditionOperator = Literal["EQ", "NE", "IN", "CONTAINS", "EXISTS", "NOT_EXISTS"]
 
 BUSINESS_VARIABLE_DIRECTIONS = ("INPUT", "OUTPUT")
 BusinessVariableDirection = Literal["INPUT", "OUTPUT"]
@@ -130,6 +130,7 @@ class BusinessFlowUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=1000)
     status: BusinessFlowStatus | None = None
+    revision: int | None = Field(None, ge=1, description="乐观锁版本号（防并发冲突）")
 
 
 class BusinessFlowResponse(BaseModel):
@@ -142,6 +143,7 @@ class BusinessFlowResponse(BaseModel):
     description: str | None = None
     status: str
     version: int
+    revision: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -171,7 +173,7 @@ class BusinessActionBase(BaseModel):
     )
     sort: int = Field(default=0, ge=0, description="步骤顺序，越小越靠前")
     action_type: BusinessActionType = Field(
-        default="API", description="动作预期绑定通道：API/WEB/MOBILE",
+        default="NORMAL", description="动作类型：NORMAL/SYSTEM/MANUAL/WAIT/DECISION",
     )
 
 
@@ -187,6 +189,7 @@ class BusinessActionUpdate(BaseModel):
     action_key: str | None = Field(None, min_length=1, max_length=100)
     sort: int | None = Field(None, ge=0)
     action_type: BusinessActionType | None = None
+    revision: int | None = Field(None, ge=1, description="乐观锁版本号")
 
 
 class BusinessActionResponse(BaseModel):
@@ -199,6 +202,7 @@ class BusinessActionResponse(BaseModel):
     action_key: str
     sort: int
     action_type: str
+    revision: int = 1
     created_at: datetime
     updated_at: datetime
 
@@ -352,12 +356,14 @@ class BusinessStateResponse(BaseModel):
 
 
 class BusinessVariableRefCreate(BaseModel):
-    """新增变量引用入参（flow_id 由路径提供）：一个动作的输出变量作为另一动作输入变量的来源。"""
+    """新增变量引用入参（flow_id 由路径提供）。"""
 
     source_action_id: int = Field(..., gt=0, description="来源动作ID（输出方）")
     source_variable: str = Field(..., min_length=1, max_length=100, description="来源动作输出变量名")
+    source_variable_id: int | None = Field(None, gt=0, description="来源变量ID（FK → business_variable）")
     target_action_id: int = Field(..., gt=0, description="目标动作ID（输入方）")
     target_variable: str = Field(..., min_length=1, max_length=100, description="目标动作输入变量名")
+    target_variable_id: int | None = Field(None, gt=0, description="目标变量ID（FK → business_variable）")
 
 
 class BusinessVariableRefResponse(BaseModel):
@@ -367,8 +373,10 @@ class BusinessVariableRefResponse(BaseModel):
     flow_id: int
     source_action_id: int
     source_variable: str
+    source_variable_id: int | None = None
     target_action_id: int
     target_variable: str
+    target_variable_id: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -379,10 +387,13 @@ class BusinessVariableRefResponse(BaseModel):
 
 
 class BusinessBindingCreate(BaseModel):
-    """新增业务绑定入参（action_id 由路径提供）。第一阶段 binding_type 固定 API，预留 WEB/MOBILE。"""
+    """新增业务绑定入参（action_id 由路径提供）。"""
 
     binding_type: BusinessBindingType = Field(default="API", description="绑定通道：API/WEB/MOBILE")
     api_id: int | None = Field(None, gt=0, description="绑定的接口ID（api_catalog.ApiInterface）")
+    name: str | None = Field(None, max_length=200, description="绑定名称（如 API v1）")
+    is_default: bool = Field(default=True, description="是否为默认绑定（执行时使用）")
+    sort: int = Field(default=0, ge=0, description="绑定排序值")
     config_json: dict[str, Any] | None = Field(None, description="通道相关配置")
     enabled: bool = Field(default=True, description="是否启用该绑定")
 
@@ -392,6 +403,9 @@ class BusinessBindingUpdate(BaseModel):
 
     binding_type: BusinessBindingType | None = None
     api_id: int | None = Field(None, gt=0)
+    name: str | None = Field(None, max_length=200)
+    is_default: bool | None = None
+    sort: int | None = Field(None, ge=0)
     config_json: dict[str, Any] | None = None
     enabled: bool | None = None
 
@@ -403,6 +417,9 @@ class BusinessBindingResponse(BaseModel):
     action_id: int
     binding_type: str
     api_id: int | None = None
+    name: str | None = None
+    is_default: bool = True
+    sort: int = 0
     config_json: dict[str, Any] | None = None
     enabled: bool
     created_at: datetime
@@ -553,6 +570,76 @@ class BusinessFlowDetailResponse(BusinessFlowResponse):
     rules: list[BusinessRuleResponse] = Field(default_factory=list)
 
 
+# --------------------------------------------------------------------------- 执行引擎
+
+FLOW_EXECUTION_STATUSES = ("PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELLED")
+FlowExecutionStatus = Literal["PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELLED"]
+
+ACTION_EXECUTION_STATUSES = ("PENDING", "RUNNING", "SUCCESS", "FAILED", "SKIPPED")
+ActionExecutionStatus = Literal["PENDING", "RUNNING", "SUCCESS", "FAILED", "SKIPPED"]
+
+
+class FlowExecutionRequest(BaseModel):
+    """执行业务流程请求。"""
+
+    environment_id: int = Field(..., gt=0, description="执行环境ID")
+    variables: dict[str, Any] = Field(default_factory=dict, description="初始运行时变量")
+
+
+class FlowExecutionResponse(BaseModel):
+    """执行记录响应。"""
+
+    id: int
+    project_id: int
+    flow_id: int
+    environment_id: int | None = None
+    status: str
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    context_json: dict[str, Any] | None = None
+    error_message: str | None = None
+    error_code: str | None = None
+    created_by: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ActionExecutionResponse(BaseModel):
+    """步骤执行记录响应。"""
+
+    id: int
+    flow_execution_id: int
+    action_id: int | None = None
+    binding_id: int | None = None
+    sequence: int
+    status: str
+    request_snapshot: dict[str, Any] | None = None
+    response_snapshot: dict[str, Any] | None = None
+    input_context: dict[str, Any] | None = None
+    output_context: dict[str, Any] | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    duration_ms: int | None = None
+    error_message: str | None = None
+    error_code: str | None = None
+    unverified_preconditions: list[dict[str, Any]] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FlowExecutionActionListResponse(BaseModel):
+    """执行记录的步骤列表响应。"""
+
+    items: list[ActionExecutionResponse]
+    total: int
+    page: int = 1
+    page_size: int = 100
+
+
 __all__ = [
     # 枚举常量
     "BUSINESS_ACTION_TYPES",
@@ -566,6 +653,8 @@ __all__ = [
     "BUSINESS_RULE_TYPES",
     "BUSINESS_VARIABLE_DATA_TYPES",
     "BUSINESS_VARIABLE_DIRECTIONS",
+    "FLOW_EXECUTION_STATUSES",
+    "ACTION_EXECUTION_STATUSES",
     # 业务域
     "BusinessDomainBase",
     "BusinessDomainCreate",
@@ -619,6 +708,13 @@ __all__ = [
     "BusinessRuleListResponse",
     "BusinessRuleResponse",
     "BusinessRuleUpdate",
+    # 执行引擎
+    "FlowExecutionRequest",
+    "FlowExecutionResponse",
+    "FlowExecutionStatus",
+    "ActionExecutionResponse",
+    "ActionExecutionStatus",
+    "FlowExecutionActionListResponse",
     # Literal 类型
     "BusinessActionType",
     "BusinessApiLocation",

@@ -26,22 +26,51 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:
-    """正向迁移：按 ORM 元数据一次性建出第一阶段的全部表。"""
-    # 集中导入所有 ORM 模型，确保 Base.metadata 完整。
-    import app.models  # noqa: F401
+# 第一阶段基线 9 张表（feature-local 表由 0002+ 显式 op.create_table 建立）。
+_BASELINE_TABLES = (
+    "user",
+    "organization",
+    "organization_member",
+    "project",
+    "project_member",
+    "project_outbound_target",
+    "model_configuration",
+    "environment",
+    "notification",
+)
+
+
+def _baseline_tables() -> list:
+    """按名从 Base.metadata 筛出基线 9 张表。
+
+    取值用 ``Base.metadata.tables.items()``（字典，**不触发全表拓扑排序**）。
+    测试收集期可能把 feature-local 模型（如 business_binding，其 api_id 外键指向
+    api_interface）注册进 Base.metadata；若对这些「外键目标表尚未注册」的表一并
+    ``create_all`` / ``drop_all``，会在 ``sort_tables_and_constraints`` 里访问
+    ``fkc.referred_table`` 时抛 ``NoReferencedTableError``。这里显式按名筛出基线表，
+    只对它们建/删，feature-local 表完全不受 0001 影响（由 0002+ 显式 op 迁移建立）。
+    """
+    import app.models  # noqa: F401  触发核心模型注册进 Base.metadata
     from app.shared.database import Base
 
-    bind = op.get_bind()
-    # create_all 只建「尚不存在的表」，不修改已存在的表结构——
-    # 因此本基线迁移必须在空库上执行，后续变更改走 0002+ 的显式 op 迁移。
-    Base.metadata.create_all(bind=bind)
+    return [t for name, t in Base.metadata.tables.items() if name in _BASELINE_TABLES]
+
+
+def upgrade() -> None:
+    """正向迁移：按 ORM 元数据一次性建出第一阶段的全部基线表。"""
+    # create_all(tables=...) 只建指定的基线表（checkfirst=True 幂等），不触碰
+    # 测试收集期可能注册进 metadata 的 feature-local 表，避免未解析外键报错。
+    # feature-local 表由 0002+ 的显式 op.create_table 建立。
+    import app.models  # noqa: F401  触发核心模型注册进 Base.metadata
+    from app.shared.database import Base
+
+    Base.metadata.create_all(bind=op.get_bind(), tables=_baseline_tables())
 
 
 def downgrade() -> None:
     """反向迁移：删除基线建出的全部表（等价于回到初始空库）。"""
+    # drop_all(tables=...) 同样按名限定，避免对 feature-local 表排序引发外键错误。
     import app.models  # noqa: F401
     from app.shared.database import Base
 
-    # drop_all 会连带删除表内所有数据，仅在需要彻底重置时使用。
-    Base.metadata.drop_all(bind=op.get_bind())
+    Base.metadata.drop_all(bind=op.get_bind(), tables=_baseline_tables())

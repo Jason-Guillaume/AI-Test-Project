@@ -34,6 +34,7 @@ from app.features.model_configuration.router import router as model_configs_rout
 from app.features.notifications.router import router as notifications_router
 from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
+from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
 from app.features.users.auth import router as auth_router
 from app.shared.config import settings
@@ -170,6 +171,7 @@ def create_app() -> FastAPI:
     application.include_router(defects_router, prefix=API_PREFIX)
     application.include_router(api_catalog_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)
+    application.include_router(test_management_router, prefix=API_PREFIX)
     application.include_router(notifications_router, prefix=API_PREFIX)
     application.include_router(model_configs_router, prefix=API_PREFIX)
     application.include_router(environments_router, prefix=API_PREFIX)

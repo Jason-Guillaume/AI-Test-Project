@@ -22,10 +22,8 @@ class BusinessBinding(Base):
 
     __tablename__ = "business_binding"
     __table_args__ = (
-        UniqueConstraint("action_id", "binding_type", name="uq_business_binding_action_type"),
         {"comment": "业务绑定：业务动作与具体执行接口的关系"},
     )
-    # 唯一约束 (action_id, binding_type)：同一动作对同一通道（API/WEB/MOBILE）最多一个绑定。
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     action_id = Column(
@@ -35,10 +33,21 @@ class BusinessBinding(Base):
         index=True,
         comment="所属业务动作ID",
     )
-    # action_id 带 ondelete=CASCADE：动作被删除时绑定一并清理。
     binding_type = Column(
         String(20), nullable=False, default="API", server_default=text("'API'"),
-        comment="绑定通道：API/WEB/MOBILE（第一阶段仅 API 真正可用）",
+        comment="绑定通道：API/WEB/MOBILE",
+    )
+    name = Column(
+        String(200), nullable=True,
+        comment="绑定名称（如 API v1 / API v2）",
+    )
+    is_default = Column(
+        Boolean, nullable=False, default=True, server_default=text("true"),
+        comment="是否为默认绑定（执行时使用）",
+    )
+    sort = Column(
+        Integer, nullable=False, default=0, server_default=text("0"),
+        comment="绑定排序值",
     )
     api_id = Column(
         Integer,
@@ -47,12 +56,9 @@ class BusinessBinding(Base):
         index=True,
         comment="绑定的接口ID（api_catalog.ApiInterface）；接口删除后置空，由服务层标记失效",
     )
-    # api_id 用 ondelete=SET NULL（**非** CASCADE）：接口被删除时绑定保留、api_id 置空，
-    # 服务层据此渲染「绑定接口已失效」。CASCADE 会静默删绑定、隐藏断裂，违背失效可见要求。
-    # 跨 feature 引用接口管理表：仅外键 + 按需联查，不复制接口 Schema。
     config_json = Column(
         JSON, nullable=True,
-        comment="通道相关配置（如超时、请求头覆盖等），第一阶段主要为预留",
+        comment="通道相关配置（如超时、请求头覆盖等）",
     )
     enabled = Column(
         Boolean, nullable=False, default=True, server_default=text("true"), comment="是否启用该绑定",

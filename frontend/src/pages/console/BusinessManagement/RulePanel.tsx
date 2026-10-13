@@ -164,6 +164,7 @@ export function RulePanel({
       <RuleFormModal
         open={addOpen || editRule != null}
         title={editRule ? '编辑规则' : '新增规则'}
+        isEdit={editRule != null}
         onClose={() => {
           setAddOpen(false);
           setEditRule(null);
@@ -187,6 +188,7 @@ export function RulePanel({
 function RuleFormModal({
   open,
   title,
+  isEdit,
   onClose,
   onSubmit,
   form,
@@ -195,6 +197,7 @@ function RuleFormModal({
 }: {
   open: boolean;
   title: string;
+  isEdit: boolean;
   onClose: () => void;
   onSubmit: () => Promise<void>;
   form: ReturnType<typeof Form.useForm<BusinessRuleCreate>>[0];
@@ -211,12 +214,13 @@ function RuleFormModal({
           <Form.Item name="rule_type" label="类型" style={{ flex: 1, margin: 0 }}>
             <Select options={RULE_TYPE_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="action_id" label="关联步骤" style={{ flex: 1, margin: 0 }} tooltip="留空表示流程级规则">
+          <Form.Item name="action_id" label="关联步骤" style={{ flex: 1, margin: 0 }} tooltip={isEdit ? '编辑模式下关联步骤不可修改' : '留空表示流程级规则'}>
             <Select
               allowClear
               placeholder="流程级（不关联具体步骤）"
               options={actions.map((a) => ({ value: a.id, label: a.name }))}
               style={{ width: '100%' }}
+              disabled={isEdit}
             />
           </Form.Item>
         </Space>

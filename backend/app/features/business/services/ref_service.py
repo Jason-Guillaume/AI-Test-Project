@@ -12,6 +12,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.features.business.models.business_action import BusinessAction
+from app.features.business.models.business_variable import BusinessVariable
 from app.features.business.models.business_variable_ref import BusinessVariableRef
 from app.features.business.schemas import (
     BusinessVariableRefCreate,
@@ -58,12 +59,30 @@ class RefService:
             raise bad_request("目标动作不存在或不属于当前流程")
         if body.source_action_id == body.target_action_id:
             raise bad_request("不能引用动作自身的变量")
+        # 校验变量在对应动作中存在（source → OUTPUT 变量，target → INPUT 变量），
+        # 同时获取变量 ID 用于 FK 填充。
+        source_var = db.query(BusinessVariable).filter(
+            BusinessVariable.action_id == body.source_action_id,
+            BusinessVariable.direction == "OUTPUT",
+            BusinessVariable.name == body.source_variable,
+        ).first()
+        if source_var is None:
+            raise bad_request("来源动作不存在该输出变量")
+        target_var = db.query(BusinessVariable).filter(
+            BusinessVariable.action_id == body.target_action_id,
+            BusinessVariable.direction == "INPUT",
+            BusinessVariable.name == body.target_variable,
+        ).first()
+        if target_var is None:
+            raise bad_request("目标动作不存在该输入变量")
         ref = BusinessVariableRef(
             flow_id=flow_id,
             source_action_id=body.source_action_id,
             source_variable=body.source_variable,
+            source_variable_id=source_var.id,
             target_action_id=body.target_action_id,
             target_variable=body.target_variable,
+            target_variable_id=target_var.id,
         )
         db.add(ref)
         db.flush()

@@ -146,22 +146,28 @@ class BindingService:
         self, db: Session, action_id: int, body: BusinessBindingCreate, *, actor: User
     ) -> BusinessBindingDetailResponse:
         project = require_writable_project(db, resolve_action_project_id(db, action_id), actor)
-        # 唯一约束 (action_id, binding_type)：同通道重复 → 冲突。
-        existing = (
-            db.query(BusinessBinding)
-            .filter(
-                BusinessBinding.action_id == action_id,
-                BusinessBinding.binding_type == body.binding_type,
-            )
-            .first()
-        )
-        if existing is not None:
-            raise conflict("该动作已存在此通道的绑定")
         _ensure_api_in_project(db, body.api_id, project.id)
+        # 多绑定支持：同一动作允许多个同通道绑定，但 is_default 唯一（部分唯一索引保障）。
+        # 若新建 is_default=True，先将同 action+binding_type 的旧默认取消。
+        if body.is_default:
+            old_defaults = (
+                db.query(BusinessBinding)
+                .filter(
+                    BusinessBinding.action_id == action_id,
+                    BusinessBinding.binding_type == body.binding_type,
+                    BusinessBinding.is_default.is_(True),
+                )
+                .all()
+            )
+            for old in old_defaults:
+                old.is_default = False
         binding = BusinessBinding(
             action_id=action_id,
             binding_type=body.binding_type,
             api_id=body.api_id,
+            name=body.name,
+            is_default=body.is_default,
+            sort=body.sort,
             config_json=body.config_json,
             enabled=body.enabled,
         )
@@ -193,6 +199,20 @@ class BindingService:
         if "api_id" in data:
             # api_id 变更时重新校验接口归属；None 表示解绑（允许）。
             _ensure_api_in_project(db, data["api_id"], resolve_binding_project_id(db, binding_id))
+        # is_default 切换：若设为 True，先将同 action+binding_type 的旧默认取消。
+        if data.get("is_default") is True and not binding.is_default:
+            old_defaults = (
+                db.query(BusinessBinding)
+                .filter(
+                    BusinessBinding.action_id == binding.action_id,
+                    BusinessBinding.binding_type == binding.binding_type,
+                    BusinessBinding.is_default.is_(True),
+                    BusinessBinding.id != binding.id,
+                )
+                .all()
+            )
+            for old in old_defaults:
+                old.is_default = False
         for field, value in data.items():
             setattr(binding, field, value)
         db.flush()

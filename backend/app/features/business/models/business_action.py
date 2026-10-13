@@ -44,10 +44,10 @@ class BusinessAction(Base):
         Integer, nullable=False, default=0, server_default=text("0"), comment="步骤顺序，越小越靠前",
     )
     action_type = Column(
-        String(30), nullable=False, default="API", server_default=text("'API'"),
-        comment="动作预期绑定通道：API/WEB/MOBILE（第一阶段仅 API 真正可用）",
+        String(30), nullable=False, default="NORMAL", server_default=text("'NORMAL'"),
+        comment="动作类型：NORMAL/SYSTEM/MANUAL/WAIT/DECISION（通道类型由 Binding 承载）",
     )
-    # action_type 预留多通道扩展；第一阶段只支持 API 绑定，WEB/MOBILE 仅为占位。
+    revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
     updated_at = Column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间",

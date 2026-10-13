@@ -52,6 +52,7 @@ class BusinessFlow(Base):
     version = Column(
         Integer, nullable=False, default=1, server_default=text("1"), comment="流程版本号",
     )
+    revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
     updated_at = Column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间",

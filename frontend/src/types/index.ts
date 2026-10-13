@@ -674,10 +674,10 @@ export interface ApiDebugResult {
 
 export type BusinessDomainStatus = 'ACTIVE' | 'INACTIVE';
 export type BusinessFlowStatus = 'DRAFT' | 'ACTIVE' | 'DEPRECATED';
-export type BusinessActionType = 'API' | 'WEB' | 'MOBILE';
+export type BusinessActionType = 'NORMAL' | 'SYSTEM' | 'MANUAL' | 'WAIT' | 'DECISION';
 export type BusinessBindingType = 'API' | 'WEB' | 'MOBILE';
 export type BusinessPreconditionType = 'VARIABLE' | 'STATE' | 'BUSINESS' | 'TEXT';
-export type BusinessPreconditionOperator = 'EQ' | 'NE' | 'IN' | 'CONTAINS';
+export type BusinessPreconditionOperator = 'EQ' | 'NE' | 'IN' | 'CONTAINS' | 'EXISTS' | 'NOT_EXISTS';
 export type BusinessVariableDirection = 'INPUT' | 'OUTPUT';
 export type BusinessVariableDataType =
   | 'STRING' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'OBJECT' | 'ARRAY';
@@ -719,6 +719,7 @@ export interface BusinessFlow {
   description: string | null;
   status: string;
   version: number;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -732,6 +733,7 @@ export interface BusinessFlowUpdate {
   name?: string;
   description?: string | null;
   status?: BusinessFlowStatus;
+  revision?: number;
 }
 export type BusinessFlowListResponse = Paginated<BusinessFlow>;
 
@@ -744,6 +746,7 @@ export interface BusinessAction {
   action_key: string;
   sort: number;
   action_type: BusinessActionType;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -760,6 +763,7 @@ export interface BusinessActionUpdate {
   action_key?: string;
   sort?: number;
   action_type?: BusinessActionType;
+  revision?: number;
 }
 export interface BusinessActionReorderItem {
   action_id: number;
@@ -856,8 +860,10 @@ export interface BusinessVariableRef {
   flow_id: number;
   source_action_id: number;
   source_variable: string;
+  source_variable_id: number | null;
   target_action_id: number;
   target_variable: string;
+  target_variable_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -874,6 +880,9 @@ export interface BusinessBinding {
   action_id: number;
   binding_type: BusinessBindingType;
   api_id: number | null;
+  name: string | null;
+  is_default: boolean;
+  sort: number;
   config_json: Record<string, unknown> | null;
   enabled: boolean;
   created_at: string;
@@ -882,12 +891,18 @@ export interface BusinessBinding {
 export interface BusinessBindingCreate {
   binding_type?: BusinessBindingType;
   api_id?: number | null;
+  name?: string | null;
+  is_default?: boolean;
+  sort?: number;
   config_json?: Record<string, unknown> | null;
   enabled?: boolean;
 }
 export interface BusinessBindingUpdate {
   binding_type?: BusinessBindingType;
   api_id?: number | null;
+  name?: string | null;
+  is_default?: boolean;
+  sort?: number;
   config_json?: Record<string, unknown> | null;
   enabled?: boolean;
 }
@@ -975,3 +990,51 @@ export interface BusinessFlowDetail extends BusinessFlow {
   variable_refs: BusinessVariableRef[];
   rules: BusinessRule[];
 }
+
+// ---- 执行引擎 ----
+export type FlowExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+export type ActionExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+
+export interface FlowExecutionRequest {
+  environment_id: number;
+  variables?: Record<string, unknown>;
+}
+
+export interface FlowExecution {
+  id: number;
+  project_id: number;
+  flow_id: number;
+  environment_id: number | null;
+  status: FlowExecutionStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  context_json: Record<string, unknown> | null;
+  error_message: string | null;
+  error_code: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActionExecution {
+  id: number;
+  flow_execution_id: number;
+  action_id: number | null;
+  binding_id: number | null;
+  sequence: number;
+  status: ActionExecutionStatus;
+  request_snapshot: Record<string, unknown> | null;
+  response_snapshot: Record<string, unknown> | null;
+  input_context: Record<string, unknown> | null;
+  output_context: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_message: string | null;
+  error_code: string | null;
+  unverified_preconditions: Array<Record<string, unknown>> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FlowExecutionActionListResponse = Paginated<ActionExecution>;
