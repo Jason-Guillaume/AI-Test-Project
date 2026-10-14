@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
+from app.features.agent.router import router as agent_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.business.router import router as business_router
 from app.features.captcha.router import router as captcha_router
@@ -172,6 +173,7 @@ def create_app() -> FastAPI:
     application.include_router(api_catalog_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)
     application.include_router(test_management_router, prefix=API_PREFIX)
+    application.include_router(agent_router, prefix=API_PREFIX)
     application.include_router(notifications_router, prefix=API_PREFIX)
     application.include_router(model_configs_router, prefix=API_PREFIX)
     application.include_router(environments_router, prefix=API_PREFIX)

@@ -18,6 +18,7 @@ import {
   BugOutlined,
   ExperimentOutlined,
   FileTextOutlined,
+  RobotOutlined,
   HistoryOutlined,
   LogoutOutlined,
   PartitionOutlined,
@@ -71,6 +72,7 @@ const MENU_ITEMS: MenuItem[] = [
       { key: '/console/execution-history', icon: <HistoryOutlined />, label: '执行历史' },
     ],
   },
+  { key: '/console/agent', icon: <RobotOutlined />, label: '接口测试 Agent' }, // 接口测试 Agent
   { key: '/console/notifications', icon: <BellOutlined />, label: '通知中心' }, // 通知中心
   { key: '/console/profile', icon: <UserOutlined />, label: '个人中心' }, // 个人中心
 ];
@@ -97,6 +99,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/test-plans': '测试计划', // 测试计划
   '/console/execution-center': '执行中心', // 执行中心
   '/console/execution-history': '执行历史', // 执行历史
+  '/console/agent': '接口测试 Agent', // 接口测试 Agent
   '/console/notifications': '通知中心', // 通知中心
   '/console/profile': '个人中心', // 个人中心
 };

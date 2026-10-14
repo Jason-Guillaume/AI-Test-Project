@@ -70,8 +70,13 @@ class TestCase(Base):
     revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
     source_type = Column(
         String(20), nullable=False, default="MANUAL", server_default=text("'MANUAL'"),
-        comment="来源：MANUAL/AI（预留）",
+        comment="来源：MANUAL/AI",
     )
+    agent_session_id = Column(
+        Integer, ForeignKey("agent_session.id", ondelete="SET NULL"), nullable=True,
+        comment="生成该用例的 Agent 会话ID（追溯用，MANUAL 来源为空）",
+    )
+    generation_version = Column(Integer, nullable=True, comment="Agent 生成版本号（追溯用）")
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True, comment="创建人")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
     updated_at = Column(

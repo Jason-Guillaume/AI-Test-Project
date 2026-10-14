@@ -95,7 +95,8 @@ class PointService:
             priority=body.priority, target_type=body.target_type,
             strategy_id=body.strategy_id, api_id=body.api_id,
             business_flow_id=body.business_flow_id, business_action_id=body.business_action_id,
-            status=body.status,
+            status=body.status, source_type=body.source_type,
+            agent_session_id=body.agent_session_id, generation_version=body.generation_version,
         )
         db.add(point)
         db.flush()

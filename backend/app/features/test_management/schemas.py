@@ -155,6 +155,10 @@ class TestPointBase(BaseModel):
 class TestPointCreate(TestPointBase):
     """新增测试点入参（project_id 由路径提供）。"""
 
+    source_type: TestSourceType = Field(default="MANUAL", description="来源：MANUAL/AI")
+    agent_session_id: int | None = Field(None, gt=0, description="生成该测试点的 Agent 会话ID（AI 来源追溯，MANUAL 为空）")
+    generation_version: int | None = Field(None, ge=1, description="Agent 生成版本号（追溯用）")
+
 
 class TestPointUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
@@ -214,6 +218,10 @@ class TestCaseBase(BaseModel):
 
 class TestCaseCreate(TestCaseBase):
     """新增测试用例入参（project_id 由路径提供）。"""
+
+    source_type: TestSourceType = Field(default="MANUAL", description="来源：MANUAL/AI")
+    agent_session_id: int | None = Field(None, gt=0, description="生成该用例的 Agent 会话ID（AI 来源追溯，MANUAL 为空）")
+    generation_version: int | None = Field(None, ge=1, description="Agent 生成版本号（追溯用）")
 
 
 class TestCaseUpdate(BaseModel):
@@ -403,7 +411,7 @@ class TestAssertionBase(BaseModel):
     operator: TestOperator = Field(default="EQ", description="操作符")
     expected_value: str | None = Field(None, description="期望值")
     required: bool = Field(default=True, description="是否必需（软断言=False）")
-    step_id: int | None = Field(None, gt=0, description="关联步骤ID")
+    step_id: int | None = Field(None, ge=0, description="关联步骤ID")
     sort: int = Field(default=0, ge=0, description="排序")
 
 
@@ -418,7 +426,7 @@ class TestAssertionUpdate(BaseModel):
     operator: TestOperator | None = None
     expected_value: str | None = None
     required: bool | None = None
-    step_id: int | None = Field(None, gt=0)
+    step_id: int | None = Field(None, ge=0)
     sort: int | None = Field(None, ge=0)
 
 

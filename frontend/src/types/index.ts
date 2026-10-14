@@ -1455,3 +1455,93 @@ export interface CaseExecution {
 }
 // list_case_executions 返回分页信封（后端 CaseExecutionListResponse）。
 export type CaseExecutionListResponse = Paginated<CaseExecution>;
+
+// ---- 接口测试 Agent ----
+
+export type AgentStage =
+  | 'UNDERSTANDING'
+  | 'CONTEXT_LOADING'
+  | 'PLANNING'
+  | 'TEST_POINT_REVIEW'
+  | 'TEST_POINT_GENERATED'
+  | 'TEST_CASE_REVIEW'
+  | 'READY_TO_EXECUTE'
+  | 'EXECUTING'
+  | 'ANALYZING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CLARIFY';
+
+export type AgentAction =
+  | 'confirm_points'
+  | 'confirm_cases'
+  | 'execute'
+  | 'analyze'
+  | 'regenerate_points'
+  | 'regenerate_cases'
+  | 'query'
+  | 'continue';
+
+export type AgentMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
+
+export type AgentMessageType =
+  | 'TEXT'
+  | 'TEST_PLAN'
+  | 'TEST_POINTS'
+  | 'TEST_CASES'
+  | 'EXECUTION'
+  | 'RESULT'
+  | 'CLARIFY';
+
+export interface AgentSession {
+  id: number;
+  project_id: number;
+  user_id: number | null;
+  title: string | null;
+  status: string;
+  current_stage: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentMessage {
+  id: number;
+  session_id: number;
+  role: AgentMessageRole;
+  message_type: AgentMessageType;
+  content: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AgentSessionDetail {
+  session: AgentSession;
+  messages: AgentMessage[];
+}
+
+export interface SendMessageRequest {
+  content?: string | null;
+  action?: AgentAction | null;
+  point_ids?: number[] | null;
+  case_ids?: number[] | null;
+  environment_id?: number | null;
+}
+
+export interface AgentWorkspace {
+  stage: AgentStage;
+  intent: string | null;
+  test_plan: Record<string, unknown> | null;
+  test_points: Array<Record<string, unknown>>;
+  test_cases: Array<Record<string, unknown>>;
+  test_run_id: number | null;
+  execution_result: Record<string, unknown> | null;
+  analysis: Record<string, unknown> | null;
+  error: Record<string, unknown> | null;
+  suggested_actions: string[];
+}
+
+export interface AgentTurnResponse {
+  session: AgentSession;
+  messages: AgentMessage[];
+  workspace: AgentWorkspace;
+}

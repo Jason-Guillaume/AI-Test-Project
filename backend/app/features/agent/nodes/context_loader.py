@@ -1,0 +1,104 @@
+"""ContextLoaderNode：按目标反查**最小**上下文（§6/§7/§8）。
+
+原则：**只拉当前 target 相关**的数据，禁止整库灌入（控制 token）。
+- API：接口详情 + 所属业务动作 / 流程（若有绑定）
+- BUSINESS_FLOW：单次往返拿完整流程树（actions + 子配置 + 规则）
+- BUSINESS_ACTION：动作 → 流程详情 + 规则
+
+所有上下文经 `sanitizer.sanitize_context()` 脱敏后入 prompt（§34）。
+"""
+
+from __future__ import annotations
+
+from fastapi import HTTPException
+
+from app.features.agent.nodes._context import NodeContext
+from app.features.agent.providers.sanitizer import sanitize_context
+from app.features.agent.state import AgentState, set_error
+from app.features.agent.tools import api_catalog_tool, business_tool, test_asset_tool
+
+
+def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
+    project_id = state["project_id"]
+    target_type = state.get("target_type")
+    target_ids = state.get("target_ids") or []
+
+    if not target_ids:
+        return {
+            "intent": "CLARIFY",
+            "clarify_question": "请指定要测试的接口或业务流程",
+            "current_stage": "CLARIFY",
+        }
+    target_id = target_ids[0]
+
+    try:
+        api_context = None
+        business_context = None
+
+        if target_type == "API":
+            api_context = api_catalog_tool.get_api(
+                ctx.db, target_id, ctx.user, project_id=project_id,
+            )
+            action = business_tool.get_action_by_api(
+                ctx.db, target_id, ctx.user, project_id=project_id,
+            )
+            if action is not None:
+                flow_detail = business_tool.get_flow_detail(
+                    ctx.db, action["flow_id"], ctx.user, project_id=project_id,
+                )
+                business_context = {
+                    "action": action,
+                    "flow": flow_detail,
+                    "rules": business_tool.get_rules(
+                        ctx.db, project_id, ctx.user, flow_id=action["flow_id"],
+                    ),
+                }
+        elif target_type == "BUSINESS_FLOW":
+            flow_detail = business_tool.get_flow_detail(
+                ctx.db, target_id, ctx.user, project_id=project_id,
+            )
+            business_context = {
+                "flow": flow_detail,
+                "rules": business_tool.get_rules(
+                    ctx.db, project_id, ctx.user, flow_id=target_id,
+                ),
+            }
+        elif target_type == "BUSINESS_ACTION":
+            action_info = business_tool.get_action(
+                ctx.db, target_id, ctx.user, project_id=project_id,
+            )
+            flow_detail = business_tool.get_flow_detail(
+                ctx.db, action_info["flow_id"], ctx.user, project_id=project_id,
+            )
+            business_context = {
+                "action": action_info,
+                "flow": flow_detail,
+                "rules": business_tool.get_rules(
+                    ctx.db, project_id, ctx.user, action_id=target_id,
+                ),
+            }
+        else:
+            return set_error(state, "TARGET_NOT_FOUND", f"不支持的被测对象类型：{target_type}")
+
+        strategies = test_asset_tool.get_strategies(ctx.db, project_id, ctx.user)
+        existing_test_context = {
+            "points": test_asset_tool.get_existing_points(
+                ctx.db, project_id, ctx.user, target_type=target_type, target_id=target_id,
+            ),
+            "cases": test_asset_tool.get_existing_cases(
+                ctx.db, project_id, ctx.user, target_type=target_type, target_id=target_id,
+            ),
+        }
+
+        return {
+            "api_context": sanitize_context(api_context),
+            "business_context": sanitize_context(business_context),
+            "strategy_context": sanitize_context(strategies.get("items", [])),
+            "existing_test_context": sanitize_context(existing_test_context),
+            "current_stage": "PLANNING",
+        }
+    except HTTPException as exc:
+        code = "TARGET_NOT_FOUND" if exc.status_code == 404 else "CONTEXT_LOAD_FAILED"
+        return set_error(state, code, str(exc.detail))
+    except Exception as exc:  # noqa: BLE001
+        return set_error(state, "CONTEXT_LOAD_FAILED", f"上下文加载失败：{exc}")

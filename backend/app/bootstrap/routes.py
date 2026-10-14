@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.features.captcha.router import router as captcha_router
+from app.features.agent.router import router as agent_router
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
@@ -40,3 +41,5 @@ router.include_router(environment_router)
 # 通知与看板：只读当前用户收件箱 / 当前用户可见范围，放在最后不影响其它业务路由
 router.include_router(notifications_router)
 router.include_router(dashboard_router)
+# Agent：接口测试 Agent，依赖 test_management + api_catalog + business，放在最后
+router.include_router(agent_router)

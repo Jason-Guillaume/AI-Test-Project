@@ -85,6 +85,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries({ queryKey: ['api-catalog'] });
     // 业务管理同样按项目作用域过滤，切换项目后整棵 ['business'] 缓存失效。
     queryClient.invalidateQueries({ queryKey: ['business'] });
+    // Agent 会话按项目隔离，切换项目后整棵 ['agent'] 缓存失效。
+    queryClient.invalidateQueries({ queryKey: ['agent'] });
   }, [queryClient]);
 
   // 清空作用域：复用 setOrgId / setProjectId，保证持久化与缓存失效逻辑一致。

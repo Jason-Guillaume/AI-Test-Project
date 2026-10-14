@@ -124,7 +124,8 @@ class CaseService:
             priority=body.priority, case_type=body.case_type, target_type=body.target_type,
             test_point_id=body.test_point_id, api_id=body.api_id,
             business_flow_id=body.business_flow_id, business_action_id=body.business_action_id,
-            status=body.status, enabled=body.enabled,
+            status=body.status, enabled=body.enabled, source_type=body.source_type,
+            agent_session_id=body.agent_session_id, generation_version=body.generation_version,
         )
         db.add(case)
         db.flush()

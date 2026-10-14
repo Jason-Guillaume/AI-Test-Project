@@ -40,6 +40,7 @@ import {
   ConsoleExecutionCenterPage,
   ConsoleExecutionHistoryPage,
 } from '@/pages/console/TestManagement';
+import { ConsoleAgentPage } from '@/pages/console/Agent';
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -158,6 +159,7 @@ function AppRoutes() {
         <Route path="test-plans" element={<ConsoleTestPlansPage />} />
         <Route path="execution-center" element={<ConsoleExecutionCenterPage />} />
         <Route path="execution-history" element={<ConsoleExecutionHistoryPage />} />
+        <Route path="agent" element={<ConsoleAgentPage />} />
         <Route path="notifications" element={<ConsoleNotificationsPage />} />
         <Route path="profile" element={<ConsoleProfilePage />} />
       </Route>
