@@ -15,7 +15,6 @@ import {
   Select,
   Skeleton,
   Space,
-  Spin,
   Steps,
   Tabs,
   Tag,
@@ -428,7 +427,7 @@ export function FlowDetail({ flowId, projectId }: { flowId: number; projectId: n
                       <Descriptions.Item label="未验证的前置条件">
                         {a.unverified_preconditions.map((pc, j) => (
                           <div key={j} style={{ fontSize: 11, color: '#fa8c16' }}>
-                            [{pc.type}] {pc.target} - {pc.reason}
+                            [{String(pc.type)}] {String(pc.target)} - {String(pc.reason)}
                           </div>
                         ))}
                       </Descriptions.Item>
