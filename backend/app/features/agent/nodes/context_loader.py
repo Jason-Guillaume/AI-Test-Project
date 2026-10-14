@@ -29,6 +29,12 @@ def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
             "clarify_question": "请指定要测试的接口或业务流程",
             "current_stage": "CLARIFY",
         }
+    # 第一阶段仅支持单目标：多目标显式拦截，避免静默丢弃
+    if len(target_ids) > 1:
+        return set_error(
+            state, "TARGET_NOT_FOUND",
+            "当前仅支持单个测试目标，请一次指定一个接口或业务流程",
+        )
     target_id = target_ids[0]
 
     try:
@@ -78,7 +84,8 @@ def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
                 ),
             }
         else:
-            return set_error(state, "TARGET_NOT_FOUND", f"不支持的被测对象类型：{target_type}")
+            msg = "无法确定被测对象类型，请指定接口或业务流程" if target_type is None else f"不支持的被测对象类型：{target_type}"
+            return set_error(state, "TARGET_NOT_FOUND", msg)
 
         strategies = test_asset_tool.get_strategies(ctx.db, project_id, ctx.user)
         existing_test_context = {

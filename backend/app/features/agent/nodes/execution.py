@@ -31,7 +31,7 @@ def execution_node(ctx: NodeContext, state: AgentState) -> dict:
 
     if not case_ids:
         return set_error(
-            state, "NO_ENVIRONMENT",
+            state, "NO_CASES_SELECTED",
             "未选择要执行的测试用例（请在用例 review 中选择用例后执行）",
         )
     if not env_id:
@@ -53,7 +53,10 @@ def execution_node(ctx: NodeContext, state: AgentState) -> dict:
             "current_stage": "ANALYZING",
         }
     except HTTPException as exc:
-        code = "PERMISSION_DENIED" if exc.status_code == 403 else "EXECUTION_FAILED"
+        code = (
+            "PERMISSION_DENIED" if exc.status_code == 403
+            else ("TARGET_NOT_FOUND" if exc.status_code == 404 else "EXECUTION_FAILED")
+        )
         return set_error(state, code, str(exc.detail))
     except Exception as exc:  # noqa: BLE001
         return set_error(state, "EXECUTION_FAILED", f"执行失败：{exc}")

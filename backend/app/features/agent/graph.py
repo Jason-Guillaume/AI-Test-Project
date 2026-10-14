@@ -203,6 +203,9 @@ def run_agent(
 
     ctx = NodeContext(db=db, user=user, provider=provider)
     graph = build_graph(ctx)
-    final: AgentState = graph.invoke(initial)  # 跑到 interrupt_before 或 END 返回
+    try:
+        final: AgentState = graph.invoke(initial)  # 跑到 interrupt_before 或 END 返回
+    except Exception as exc:  # noqa: BLE001 — langgraph 框架级异常兜底
+        final = {**initial, "current_stage": "FAILED", "error": {"code": "INTERNAL_ERROR", "message": f"Agent 处理异常：{exc}"}}
     emitted = session_service.persist_turn(db, session, initial=initial, final=final)
     return final, emitted

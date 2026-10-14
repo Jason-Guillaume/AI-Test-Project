@@ -110,7 +110,10 @@ def next_generation_version(db: Session, session_id: int, *, message_type: str) 
     """本轮生成版本号 = 该类型历史消息条数 + 1。
 
     写入 test_point/test_case.generation_version 用于追溯「第几轮生成」（§11）。
+    使用 with_for_update 加行锁防止并发请求返回重复版本号。
     """
+    # 对 session 行加行锁，确保同一 session 同时只有一个请求执行
+    db.query(AgentSession).filter(AgentSession.id == session_id).with_for_update().one_or_none()
     count = (
         db.query(AgentMessage)
         .filter(AgentMessage.session_id == session_id, AgentMessage.message_type == message_type)
@@ -142,6 +145,11 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
         state["intent"] = plan_meta.get("intent")
         state["target_type"] = plan_meta.get("target_type")
         state["target_ids"] = plan_meta.get("target_ids", [])
+        # 跨轮次恢复被测上下文（confirm_points / regenerate_* 时复用）
+        state["api_context"] = plan_meta.get("api_context")
+        state["business_context"] = plan_meta.get("business_context")
+        state["strategy_context"] = plan_meta.get("strategy_context") or []
+        state["existing_test_context"] = plan_meta.get("existing_test_context")
 
     pts_meta = latest("TEST_POINTS")
     if pts_meta:
@@ -202,6 +210,11 @@ def persist_turn(
                     "intent": final.get("intent"),
                     "target_type": final.get("target_type"),
                     "target_ids": final.get("target_ids", []),
+                    # 持久化上下文（已脱敏），供 load_state 跨轮次重建（§6/§7/§8）
+                    "api_context": final.get("api_context"),
+                    "business_context": final.get("business_context"),
+                    "strategy_context": final.get("strategy_context"),
+                    "existing_test_context": final.get("existing_test_context"),
                 },
             )
         )

@@ -36,11 +36,10 @@ def test_case_generator_node(ctx: NodeContext, state: AgentState) -> dict:
         else [p for p in points if p.get("id")]
     )
     if not confirmed_points:
-        return {
-            "generated_test_cases": [],
-            "confirmed_case_ids": [],
-            "current_stage": "TEST_CASE_REVIEW",
-        }
+        return set_error(
+            state, "NO_TEST_POINTS_CONFIRMED",
+            "没有已确认的测试点，请先确认测试点或重新生成",
+        )
 
     try:
         user_content = (

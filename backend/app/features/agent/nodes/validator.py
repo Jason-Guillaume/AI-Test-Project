@@ -35,7 +35,10 @@ def _dump(obj) -> str:
 def _validate(drafts: list[TestCaseDraft], state: AgentState) -> list[dict]:
     """返回校验错误清单（空表示通过）。"""
     errors: list[dict] = []
-    confirmed_ids = {p.get("id") for p in (state.get("generated_test_points") or []) if p.get("id")}
+    # 优先用已确认测试点 ID；为空但生成点非空时回退全量（与 test_case_generator 口径一致）
+    confirmed_ids = set(state.get("confirmed_point_ids") or [])
+    if not confirmed_ids:
+        confirmed_ids = {p.get("id") for p in (state.get("generated_test_points") or []) if p.get("id")}
     existing_case_keys = {
         c.get("semantic_key", "")
         for c in (state.get("existing_test_context") or {}).get("cases", [])

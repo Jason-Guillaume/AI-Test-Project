@@ -59,13 +59,18 @@ def intent_node(ctx: NodeContext, state: AgentState) -> dict:
                 "current_stage": "CLARIFY",
             }
 
+        # EXECUTE_EXISTING_CASES 直接路由到 test_case_review 暂停点，
+        # 需提前把 stage 设为 TEST_CASE_REVIEW，否则 intent_node 会覆写为 CONTEXT_LOADING
+        # 导致前端无按钮、无 UI 出口。
+        stage = "TEST_CASE_REVIEW" if intent_result.intent == "EXECUTE_EXISTING_CASES" else "CONTEXT_LOADING"
+
         return {
             "intent": intent_result.intent,
             "target_type": intent_result.target_type,
             "target_ids": intent_result.target_ids,
             "target_description": intent_result.target_description,
             "clarify_question": intent_result.clarify_question,
-            "current_stage": "CONTEXT_LOADING",
+            "current_stage": stage,
         }
     except LLMError as exc:
         return set_error(state, exc.code, str(exc))

@@ -50,6 +50,7 @@ def route_after_intent(ctx: NodeContext, state: AgentState) -> str:
     """intent 节点之后的条件边：按识别出的意图选择下一节点。
 
     - 生成类意图 → context_loader（开始生成链）
+    - 生成用例（已有测试点） → test_case_generator（跳过 context_loader，复用已确认点）
     - 执行已有用例 → test_case_review（暂停点，人工选用例 + 环境）
     - 分析结果 → result_analyzer（直接分析最近一次执行）
     - 查询资产 → query（只读查询后结束）
@@ -58,6 +59,8 @@ def route_after_intent(ctx: NodeContext, state: AgentState) -> str:
     intent = state.get("intent")
     if intent in ("GENERATE_TEST_POINTS", "GENERATE_AND_EXECUTE"):
         return "context_loader"
+    if intent == "GENERATE_TEST_CASES":
+        return "test_case_generator"
     if intent == "EXECUTE_EXISTING_CASES":
         return "test_case_review"
     if intent == "ANALYZE_RESULT":

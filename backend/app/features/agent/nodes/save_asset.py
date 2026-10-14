@@ -27,7 +27,10 @@ def save_asset_node(ctx: NodeContext, state: AgentState) -> dict:
     session_id = state["session_id"]
     drafts_data = state.get("generated_test_cases") or []
     if not drafts_data:
-        return {"generated_test_cases": [], "confirmed_case_ids": [], "current_stage": "TEST_CASE_REVIEW"}
+        return set_error(
+            state, "TEST_CASE_VALIDATION_FAILED",
+            "没有可保存的测试用例，请重新生成",
+        )
 
     try:
         drafts = [TestCaseDraft.model_validate(d) for d in drafts_data]

@@ -63,11 +63,10 @@ def test_point_generator_node(ctx: NodeContext, state: AgentState) -> dict:
             existing_keys.add(key)
 
         if not unique:
-            return {
-                "generated_test_points": [],
-                "confirmed_point_ids": [],
-                "current_stage": "TEST_POINT_REVIEW",
-            }
+            return set_error(
+                state, "TEST_POINT_VALIDATION_FAILED",
+                "所有生成的测试点与已有测试点重复，请调整测试策略或更换目标",
+            )
 
         gen_version = next_generation_version(ctx.db, session_id, message_type="TEST_POINTS")
         saved = test_asset_tool.save_points(
