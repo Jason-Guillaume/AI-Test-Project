@@ -272,6 +272,10 @@ def persist_turn(
             )
         )
 
+    # 首条消息后补会话标题（便于列表展示）。
+    if not session.title and initial.get("user_message"):
+        session.title = initial["user_message"].strip()[:50]
+
     stage = final.get("current_stage") or session.current_stage
     session.current_stage = stage
     if stage == "COMPLETED":

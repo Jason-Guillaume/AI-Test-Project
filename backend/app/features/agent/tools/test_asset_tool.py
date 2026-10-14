@@ -18,6 +18,9 @@ import re
 from sqlalchemy.orm import Session
 
 from app.features.agent.schemas import TestCaseDraft, TestPointDraft
+from app.features.api_catalog.models.api_interface import ApiInterface
+from app.features.business.models.business_action import BusinessAction
+from app.features.business.models.business_flow import BusinessFlow
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_point import TestPoint
 from app.features.test_management.schemas import TestCaseCreate, TestPointCreate
@@ -26,6 +29,7 @@ from app.features.test_management.services.case_service import CaseService
 from app.features.test_management.services.point_service import PointService
 from app.features.test_management.services.strategy_service import StrategyService
 from app.models.identity import User
+from app.shared.errors import not_found
 
 
 _STRATEGY = StrategyService()
@@ -41,6 +45,58 @@ _TARGET_COLUMN_BY_TYPE = {
 
 # 归一化用：把分隔符 / 标点 / 空白压掉，比较「同一件事的不同写法」。
 _NAME_NORMALIZE = re.compile(r"[\s_\-–—\[\]【】()（）{}<>《》:：,，.。/\\|\"'’‘!?？！;；]+")
+
+
+def _validate_resource_ids(
+    db: Session,
+    project_id: int,
+    api_id: int | None,
+    business_flow_id: int | None,
+    business_action_id: int | None,
+) -> None:
+    """校验 LLM 生成的资源 ID 属于本项目（§33 跨项目 404）。
+
+    LLM 可能幻觉出其他项目的资源 ID，若不校验则测试资产会引用跨项目资源。
+    跨项目统一 404（不暴露资源存在性）。
+    """
+    if api_id is not None:
+        api = db.get(ApiInterface, api_id)
+        if api is None or api.project_id != project_id:
+            raise not_found("引用的 API 不存在")
+    if business_flow_id is not None:
+        flow = db.get(BusinessFlow, business_flow_id)
+        if flow is None or flow.project_id != project_id:
+            raise not_found("引用的业务流程不存在")
+    if business_action_id is not None:
+        action = db.get(BusinessAction, business_action_id)
+        if action is None:
+            raise not_found("引用的业务动作不存在")
+        flow = db.get(BusinessFlow, action.flow_id)
+        if flow is None or flow.project_id != project_id:
+            raise not_found("引用的业务动作不存在")
+
+
+def _validate_step_target_id(db: Session, project_id: int, target_id: int) -> None:
+    """校验 TestStep.target_id 属于本项目（§33 跨项目 404）。
+
+    target_id 可能是 API / BusinessFlow / BusinessAction 的 ID，逐一尝试匹配。
+    跨项目统一 404。
+    """
+    # 尝试 API
+    api = db.get(ApiInterface, target_id)
+    if api is not None and api.project_id == project_id:
+        return
+    # 尝试 BusinessFlow
+    flow = db.get(BusinessFlow, target_id)
+    if flow is not None and flow.project_id == project_id:
+        return
+    # 尝试 BusinessAction（通过 flow 间接校验项目归属）
+    action = db.get(BusinessAction, target_id)
+    if action is not None:
+        flow = db.get(BusinessFlow, action.flow_id)
+        if flow is not None and flow.project_id == project_id:
+            return
+    raise not_found("测试步骤引用的目标不存在")
 
 
 def semantic_key(name: str | None) -> str:
@@ -152,6 +208,9 @@ def save_points(
     """
     results: list[dict] = []
     for d in drafts:
+        _validate_resource_ids(
+            db, project_id, d.api_id, d.business_flow_id, d.business_action_id,
+        )
         body = TestPointCreate(
             name=d.name,
             description=d.description,
@@ -202,6 +261,9 @@ def save_cases(
     """
     results: list[dict] = []
     for d in drafts:
+        _validate_resource_ids(
+            db, project_id, d.api_id, d.business_flow_id, d.business_action_id,
+        )
         body = TestCaseCreate(
             name=d.name,
             description=d.description,
@@ -224,6 +286,8 @@ def save_cases(
             _CASE.create_data(db, case_id, data, actor=actor)
         step_ids: list[int] = []
         for step in d.steps:
+            if step.target_id is not None:
+                _validate_step_target_id(db, project_id, step.target_id)
             step_resp = _CASE.create_step(db, case_id, step, actor=actor)
             step_ids.append(step_resp.id)
         for asn in _rebase_assertion_steps(d.assertions, step_ids):

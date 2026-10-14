@@ -151,11 +151,6 @@ def send_message(
         environment_id=body.environment_id,
     )
 
-    # 首条消息后补会话标题（便于列表展示）。
-    if not session.title and body.content:
-        session.title = body.content.strip()[:50]
-        db.commit()
-
     return {
         "session": AgentSessionResponse.model_validate(session),
         "messages": emitted,

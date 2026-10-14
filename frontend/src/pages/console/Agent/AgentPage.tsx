@@ -255,10 +255,14 @@ export function AgentPage() {
   });
 
   // ---- 工作区快照（发消息后优先用 response.workspace，否则用 query）----
-  const workspace: AgentWorkspace | null = useMemo(
-    () => sendMutation.data?.workspace ?? workspaceQuery.data ?? null,
-    [sendMutation.data, workspaceQuery.data],
-  );
+  // 仅当 sendMutation 的结果属于当前选中的会话时才使用，否则回退到 query 数据。
+  const workspace: AgentWorkspace | null = useMemo(() => {
+    const sendData = sendMutation.data;
+    if (sendData?.session?.id === selectedSessionId) {
+      return sendData.workspace ?? null;
+    }
+    return workspaceQuery.data ?? null;
+  }, [sendMutation.data, workspaceQuery.data, selectedSessionId]);
 
   // ---- 发送自然语言消息 ----
   const handleSend = useCallback(() => {

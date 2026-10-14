@@ -31,13 +31,32 @@ def sanitize_context(context: Any) -> Any:
     return SensitiveDataMasker.mask_body(context)
 
 
+# 自由文本中 key=value / key:value 模式的敏感值掩码（补充 SensitiveDataMasker.mask_text
+# 仅覆盖 = 分隔符且关键词不全的缺陷）。
+_SENSITIVE_TEXT_PATTERN = re.compile(
+    r"(authorization|token|access_token|refresh_token|id_token|auth_token|"
+    r"cookie|set_cookie|password|passwd|secret|secret_key|api_key|apikey|"
+    r"access_key|private_key|signature|client_secret|sessionid|session_id|jsessionid)"
+    r"([=:])\s*([^\s,;\"']+)",
+    re.IGNORECASE,
+)
+_TEXT_MASKED = "******"
+
+
 def sanitize_text(text: str | None) -> str | None:
-    """对自由文本做敏感值占位化（如消息正文里粘了真实 token）。"""
+    """对自由文本做敏感值占位化（§34）。
+
+    覆盖两层：
+    1. Authorization 头（Bearer/Basic 格式）→ 占位符
+    2. key=value / key:value 模式的敏感值（password/token/cookie/secret/...）→ 掩码
+    """
     if not text:
         return text
-    masked = SensitiveDataMasker.mask_body  # noqa: F841 — 仅文档意图，实际用下面的文本替换
-    # 把 "Authorization: Bearer xxxx" 这类折叠为占位，避免真实凭证进 prompt。
-    return _AUTHORIZATION_PATTERN.sub(_AUTH_PLACEHOLDER, text)
+    # 先把 "Authorization: Bearer xxxx" 折叠为占位。
+    text = _AUTHORIZATION_PATTERN.sub(_AUTH_PLACEHOLDER, text)
+    # 再处理 key=value / key:value 格式的敏感值。
+    text = _SENSITIVE_TEXT_PATTERN.sub(r"\1\2" + _TEXT_MASKED, text)
+    return text
 
 
 def build_chat_messages(

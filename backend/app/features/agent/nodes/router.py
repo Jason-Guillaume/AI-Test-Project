@@ -24,7 +24,8 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
 
     快捷操作（action）对应前端按钮：
     - confirm_points：确认测试点 → 进入用例生成
-    - confirm_cases / execute：确认用例 / 执行 → 进入执行
+    - confirm_cases：确认用例 → 推进到 READY_TO_EXECUTE（不执行）
+    - execute：执行 → 进入执行
     - analyze：分析结果
     - regenerate_points / regenerate_cases：重新生成
     无 action（或 action=continue/query）= 新的自然语言消息，走 intent。
@@ -32,7 +33,9 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
     action = state.get("action")
     if action == "confirm_points":
         return "test_case_generator"
-    if action in ("confirm_cases", "execute"):
+    if action == "confirm_cases":
+        return "confirm_cases"
+    if action == "execute":
         return "execution"
     if action == "analyze":
         return "result_analyzer"
@@ -62,6 +65,15 @@ def route_after_intent(ctx: NodeContext, state: AgentState) -> str:
     if intent == "QUERY_TEST_ASSET":
         return "query"
     return "clarify_end"
+
+
+def confirm_cases_node(ctx: NodeContext, state: AgentState) -> dict:
+    """确认测试用例：仅推进阶段到 READY_TO_EXECUTE，不执行。
+
+    confirmed_case_ids 已在 run_agent 中写入 state（缺省全选）。
+    用户后续通过 execute action 选择环境后才会触发实际执行。
+    """
+    return {"current_stage": "READY_TO_EXECUTE"}
 
 
 def test_point_review_node(ctx: NodeContext, state: AgentState) -> dict:

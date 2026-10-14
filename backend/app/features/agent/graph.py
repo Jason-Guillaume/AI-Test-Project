@@ -31,6 +31,7 @@ from app.features.agent.nodes.intent import intent_node
 from app.features.agent.nodes.query import query_node
 from app.features.agent.nodes.result_analyzer import result_analyzer_node
 from app.features.agent.nodes.router import (
+    confirm_cases_node,
     route_after_intent,
     route_entry,
     router_node,
@@ -73,6 +74,7 @@ def build_graph(ctx: NodeContext):
     graph.add_node("validator", partial(validator_node, ctx))
     graph.add_node("save_asset", partial(save_asset_node, ctx))
     graph.add_node("test_case_review", partial(test_case_review_node, ctx))
+    graph.add_node("confirm_cases", partial(confirm_cases_node, ctx))
     graph.add_node("execution", partial(execution_node, ctx))
     graph.add_node("result_analyzer", partial(result_analyzer_node, ctx))
     graph.add_node("query", partial(query_node, ctx))
@@ -83,6 +85,7 @@ def build_graph(ctx: NodeContext):
     graph.add_conditional_edges("router", partial(route_entry, ctx), {
         "intent": "intent",
         "test_case_generator": "test_case_generator",
+        "confirm_cases": "confirm_cases",
         "execution": "execution",
         "result_analyzer": "result_analyzer",
         "test_point_generator": "test_point_generator",
@@ -125,6 +128,7 @@ def build_graph(ctx: NodeContext):
         {"test_case_review": "test_case_review", "end": END},
     )
     graph.add_edge("test_case_review", END)
+    graph.add_edge("confirm_cases", END)
 
     # 执行链：执行 → 分析 → END
     graph.add_conditional_edges(
