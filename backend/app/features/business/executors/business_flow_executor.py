@@ -51,6 +51,7 @@ from app.features.business.models.business_variable_ref import BusinessVariableR
 from app.features.business.models.execution import ActionExecution, FlowExecution
 from app.models.configuration import Environment
 from app.models.identity import User
+from app.shared.errors import not_found
 
 _EXECUTOR = ApiRequestExecutor()
 
@@ -86,13 +87,15 @@ def execute_flow(
         FlowExecution: 执行记录（状态已更新）。
     """
     # 1. 加载环境与流程。
+    # 资源不存在统一返 404（AppError 体系）：裸 ValueError 会被全局 handler
+    # 归为 500「服务器内部错误」，用户看不到可读提示。
     environment = db.get(Environment, environment_id)
     if environment is None or not environment.is_active:
-        raise ValueError("环境不存在或已停用")
+        raise not_found("环境不存在或已停用")
 
     flow = db.get(_FlowModel, flow_id)
     if flow is None:
-        raise ValueError("业务流程不存在")
+        raise not_found("业务流程不存在")
 
     # 2. 创建执行记录。
     execution = FlowExecution(
@@ -118,9 +121,12 @@ def execute_flow(
     )
 
     # 4. 顺序执行每个动作。
+    # seq 从 0 开始，直接作为 ActionExecution.sequence：该列
+    # server_default 为 0，注释为「执行序号（从 0 开始）」，故无需 +1。
     for seq, action in enumerate(actions):
         action_exec = _execute_action(
             db, execution, action, environment, ctx, project_id=flow.project_id,
+            sequence=seq,
         )
         if action_exec.status == "FAILED":
             execution.status = "FAILED"

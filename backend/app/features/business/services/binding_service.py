@@ -15,6 +15,7 @@ service、不复制接口 Schema（遵循「通过 api_id 建立关系」约定�
 
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.features.api_catalog.models.api_interface import ApiInterface
@@ -172,18 +173,25 @@ class BindingService:
             enabled=body.enabled,
         )
         db.add(binding)
-        db.flush()
-        notify(
-            db,
-            user_id=actor.id,
-            event_type="business.binding.created",
-            title="你已为业务动作绑定接口",
-            project_id=project.id,
-            actor_id=actor.id,
-            actor_username=actor.username,
-            detail={"binding_id": binding.id, "action_id": action_id, "api_id": body.api_id},
-        )
-        db.commit()
+        try:
+            db.flush()
+            notify(
+                db,
+                user_id=actor.id,
+                event_type="business.binding.created",
+                title="你已为业务动作绑定接口",
+                project_id=project.id,
+                actor_id=actor.id,
+                actor_username=actor.username,
+                detail={"binding_id": binding.id, "action_id": action_id, "api_id": body.api_id},
+            )
+            db.commit()
+        except IntegrityError:
+            # 部分唯一索引 ix_business_binding_action_default 拦下了重复默认绑定
+            # （并发创建、或库中残留了未被服务层查到的旧默认行）。
+            # 必须先 rollback：IntegrityError 之后 session 处于失效状态，直接复用会抛 PendingRollbackError。
+            db.rollback()
+            raise conflict("同一动作的同一绑定通道下已存在默认绑定，请取消另一条绑定的默认标记后再试")
         db.refresh(binding)
         return _binding_detail(db, binding)
 
@@ -215,8 +223,14 @@ class BindingService:
                 old.is_default = False
         for field, value in data.items():
             setattr(binding, field, value)
-        db.flush()
-        db.commit()
+        try:
+            db.flush()
+            db.commit()
+        except IntegrityError:
+            # 同上：部分唯一索引兜底。取消旧默认与本条更新在同一事务内，
+            # 正常路径不会触发；残留脏数据（旧库里已有多条默认绑定）或并发切换时命中。
+            db.rollback()
+            raise conflict("同一动作的同一绑定通道下已存在默认绑定，请取消另一条绑定的默认标记后再试")
         db.refresh(binding)
         return _binding_detail(db, binding)
 

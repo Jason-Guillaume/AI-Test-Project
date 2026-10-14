@@ -96,7 +96,7 @@ class ApiRequestExecutor:
             json_body: JSON 请求体。
             form_body: Form 表单请求体（multipart/form-data）。
             raw_body: 原始请求体。
-            timeout: 超时秒数（connect/write/read 各一份）。
+            timeout: 超时秒数，同时也是整次请求的总时长上限。
 
         Returns:
             ApiRequestResult: 执行结果。
@@ -117,9 +117,10 @@ class ApiRequestExecutor:
         elif raw_body is not None:
             send_kwargs["content"] = raw_body
 
-        # 3. 超时策略：connect/write/read 各一份，避免单阶段拖死。
+        # 3. 超时策略：connect/write/read/pool 分开设。注意 read 是「单次读」粒度，
+        # 服务端慢慢挤数据就能绕过它，所以第 5 步还要用墙钟 deadline 兜总时长。
         timeout_config = httpx.Timeout(
-            connect=timeout,
+            connect=min(timeout, 10),
             write=timeout,
             read=timeout,
             pool=timeout,
@@ -127,39 +128,57 @@ class ApiRequestExecutor:
 
         result = ApiRequestResult()
         started = time.perf_counter()
+        deadline = started + timeout
+        status_code = 0
+        request_url = url
+        resp_headers: dict[str, str] = {}
+        chunks: list[bytes] = []
+        truncated = False
         try:
             with httpx.Client(
                 timeout=timeout_config,
                 follow_redirects=False,
                 trust_env=False,
             ) as client:
-                resp = client.request(
+                with client.stream(
                     method.upper(),
                     url,
                     headers=headers,
                     params=query,
                     cookies=cookies,
                     **send_kwargs,
-                )
+                ) as resp:
+                    # 状态码与响应头在流开始时就已可读，先取出再进 body 循环。
+                    status_code = resp.status_code
+                    request_url = str(resp.request.url)
+                    resp_headers = {str(k): str(v) for k, v in resp.headers.items()}
+                    size = 0
+                    for chunk in resp.iter_bytes(chunk_size=65_536):
+                        chunks.append(chunk)
+                        size += len(chunk)
+                        # 超出截断上限或超过总时长上限即停止拉取。
+                        if size > _MAX_RESPONSE_BODY or time.perf_counter() >= deadline:
+                            truncated = True
+                            break
         except httpx.ConnectError as exc:
             result.error_message = f"连接失败：{exc}"
             return result
         except httpx.TimeoutException:
-            result.error_message = f"请求超时（connect/write/read 各 {timeout}s）"
+            result.error_message = f"请求超时（总时长上限 {timeout}s)"
             return result
         except httpx.HTTPError as exc:
             result.error_message = f"请求失败：{exc}"
             return result
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-        result.status_code = resp.status_code
+        result.status_code = status_code
         result.response_time_ms = elapsed_ms
-        result.request_url = str(resp.request.url)
-        result.response_headers = {str(k): str(v) for k, v in resp.headers.items()}
+        result.request_url = request_url
+        result.response_headers = resp_headers
 
-        # 4. 流式截断：避免超大响应撑爆内存。
-        body = resp.text or ""
-        if len(body) > _MAX_RESPONSE_BODY:
+        # 4. 边读边截断：不整包落内存，超出 _MAX_RESPONSE_BODY 即停止拉取。
+        body = "".join(chunk.decode("utf-8", errors="replace") for chunk in chunks)
+        if truncated:
             body = body[:_MAX_RESPONSE_BODY] + "\n...[已截断]"
         result.response_body = body
 

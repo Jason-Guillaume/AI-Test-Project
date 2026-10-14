@@ -231,6 +231,21 @@ def downgrade() -> None:
     conn.execute(sa.text("ALTER TABLE business_binding DROP COLUMN IF EXISTS is_default"))
     conn.execute(sa.text("ALTER TABLE business_binding DROP COLUMN IF EXISTS sort"))
 
+    # 0004 建的 (action_id, binding_type) 唯一约束由本迁移移除，回退必须补回，
+    # 否则降级后 binding 表就完全没有唯一性约束了。
+    uq_names = [c["name"] for c in inspector.get_unique_constraints("business_binding")]
+    if "uq_business_binding_action_type" not in uq_names:
+        # 0005 允许同一 action + binding_type 挂多条绑定，直接补建约束会因重复行
+        # 冲突而失败；先删掉每组多余的行（保留 id 最小的一条）再建。
+        conn.execute(sa.text(
+            "DELETE FROM business_binding WHERE id NOT IN ("
+            "SELECT MIN(id) FROM business_binding GROUP BY action_id, binding_type)"
+        ))
+        conn.execute(sa.text(
+            "ALTER TABLE business_binding ADD CONSTRAINT uq_business_binding_action_type "
+            "UNIQUE (action_id, binding_type)"
+        ))
+
     # 1. action_type 默认值回退
     conn.execute(sa.text("UPDATE business_action SET action_type = 'API' WHERE action_type = 'NORMAL'"))
     op.alter_column(

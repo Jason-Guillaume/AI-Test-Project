@@ -19,6 +19,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from app.features.business.executors.api_executor import ApiRequestExecutor, _is_private_ip
 from app.features.business.executors.business_flow_executor import (
@@ -195,11 +196,15 @@ class TestErrorCodes:
     """错误代码标准化。"""
 
     def test_flow_not_found(self):
-        """不存在的 flow → ValueError「业务流程不存在」。
+        """不存在的 flow → 404「业务流程不存在」。
 
         用 MagicMock db：Environment 命中返回 is_active 替身、BusinessFlow 命中返回 None，
         以此覆盖 execute_flow 的「flow is None」分支。该分支位于 db.add/flush/query 之前，
         无需真实 DB 即可触发。
+
+        execute_flow 直接抛 AppError 体系的 HTTPException（不经过路由层），
+        故这里断言 status_code 与 detail 文案，而非裸 ValueError——后者会被全局
+        handler 变成 500「服务器内部错误」。
         """
         from app.features.business.executors.business_flow_executor import execute_flow
         from app.features.business.models.business_flow import BusinessFlow
@@ -214,8 +219,11 @@ class TestErrorCodes:
 
         db.get.side_effect = fake_get
 
-        with pytest.raises(ValueError, match="业务流程不存在"):
+        with pytest.raises(HTTPException) as excinfo:
             execute_flow(db, flow_id=999999, environment_id=1, actor=MagicMock())
+
+        assert excinfo.value.status_code == 404
+        assert "业务流程不存在" in excinfo.value.detail
 
     def test_api_not_found_code(self):
         """API 不存在 → API_NOT_FOUND。"""

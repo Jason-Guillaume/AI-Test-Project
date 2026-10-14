@@ -117,12 +117,41 @@ class DebugService:
         send_kwargs = self._build_send_kwargs(body_obj, body)
 
         method = iface.method.upper()
+        # 超时策略：connect 收紧到 10s 内，connect/write/read/pool 分开设。
+        # 只给 httpx 一个标量 timeout 不够——read 超时是「单次读」粒度，服务端每
+        # 零点几秒挤一点数据就能绕过它，让连接无限期挂着。所以下面改用 client.stream()
+        # 边读边按 _MAX_RESPONSE_BODY 截断，再用墙钟 deadline 兜住总时长。
+        timeout_config = httpx.Timeout(
+            connect=min(body.timeout, 10.0),
+            write=body.timeout,
+            read=body.timeout,
+            pool=body.timeout,
+        )
         started = time.perf_counter()
+        deadline = started + body.timeout
+        resp_headers: dict[str, str] = {}
+        resp_url = url
+        status_code = 0
+        chunks: list[bytes] = []
+        truncated = False
         try:
             # trust_env=False：调试请求直连白名单目标，不沿用环境代理（HTTP_PROXY/ALL_PROXY）。
             # 白名单已控制目的地；经环境代理转发既不安全也会引入 SOCKS 等可选依赖问题。
-            with httpx.Client(timeout=body.timeout, follow_redirects=False, trust_env=False) as client:
-                resp = client.request(method, url, headers=headers, params=query, **send_kwargs)
+            with httpx.Client(timeout=timeout_config, follow_redirects=False, trust_env=False) as client:
+                with client.stream(method, url, headers=headers, params=query, **send_kwargs) as resp:
+                    # 状态码与响应头在流开始时就已可读，先取出来再进入 body 循环。
+                    status_code = resp.status_code
+                    resp_headers = {str(k): str(v) for k, v in resp.headers.items()}
+                    resp_url = str(resp.request.url)
+                    size = 0
+                    for chunk in resp.iter_bytes(chunk_size=65_536):
+                        chunks.append(chunk)
+                        size += len(chunk)
+                        # 超出截断上限或超过总时长上限即停止拉取；剩余部分由服务端
+                        # 断连，对大响应而言这是预期行为。
+                        if size > _MAX_RESPONSE_BODY or time.perf_counter() >= deadline:
+                            truncated = True
+                            break
         except httpx.ConnectError as exc:
             raise bad_request(f"连接失败：{exc}")
         except httpx.TimeoutException:
@@ -134,17 +163,17 @@ class DebugService:
             raise bad_request(f"请求依赖缺失：{exc}")
         elapsed_ms = int((time.perf_counter() - started) * 1000)
 
-        resp_body = resp.text or ""
-        if len(resp_body) > _MAX_RESPONSE_BODY:
+        # 边读边截断，不整包落内存；截断后按字符上限再切一次，保证返回体不超过约定。
+        resp_body = "".join(chunk.decode("utf-8", errors="replace") for chunk in chunks)
+        if truncated:
             resp_body = resp_body[:_MAX_RESPONSE_BODY] + "\n...[已截断]"
-        resp_headers = {str(k): str(v) for k, v in resp.headers.items()}
 
         return ApiDebugResponse(
-            status_code=resp.status_code,
+            status_code=status_code,
             response_body=resp_body,
             response_headers=resp_headers,
             response_time_ms=elapsed_ms,
-            request_url=str(resp.request.url),
+            request_url=resp_url,
             outbound_target_id=target.id,
         )
 

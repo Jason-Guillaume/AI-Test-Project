@@ -22,6 +22,15 @@ class BusinessBinding(Base):
 
     __tablename__ = "business_binding"
     __table_args__ = (
+        # 部分唯一索引：同一 action + binding_type 最多一个默认绑定（is_default=True）。
+        # 与迁移 0005 里的 CREATE UNIQUE INDEX IF NOT EXISTS 同名同义——必须在 ORM 声明，
+        # 否则走 AUTO_CREATE_SCHEMA（Base.metadata.create_all、不跑 Alembic）建出的库缺这条约束。
+        Index(
+            "ix_business_binding_action_default",
+            "action_id", "binding_type",
+            unique=True,
+            postgresql_where=text("is_default = true"),
+        ),
         {"comment": "业务绑定：业务动作与具体执行接口的关系"},
     )
 

@@ -4,26 +4,39 @@
 统一使用 SensitiveDataMasker 对所有 request_snapshot / response_snapshot 脱敏。
 
 识别的敏感字段（不区分大小写）：
-authorization, token, access_token, refresh_token, cookie,
-password, passwd, secret, api_key, apikey, private_key
+authorization, token, access_token, refresh_token, id_token, auth_token, cookie,
+password, passwd, secret, secret_key, api_key, apikey, access_key, private_key,
+signature, client_secret, sessionid, session_id, jsessionid
 """
 
 from __future__ import annotations
 
-# 敏感字段名集合（小写，不区分大小写匹配）。
+# 敏感字段名集合（小写，精确匹配）。刻意不做「含 session / 含 token 就命中」的
+# 子串匹配：session_count、token_type 这类非秘密字段会被一起掩掉。需要新凭证名时
+# 显式加到集合里，行为可预期、可 review。
 _SENSITIVE_KEYS = frozenset({
     "authorization",
     "token",
     "access_token",
     "refresh_token",
+    "id_token",
+    "auth_token",
     "cookie",
+    "set_cookie",
     "password",
     "passwd",
     "secret",
+    "secret_key",
     "api_key",
     "apikey",
+    "access_key",
+    "accesskey",
     "private_key",
-    "set-cookie",
+    "signature",
+    "client_secret",
+    "sessionid",
+    "session_id",
+    "jsessionid",
 })
 
 # 脱敏后的占位值。
@@ -31,8 +44,20 @@ _MASKED = "******"
 
 
 def is_sensitive_key(key: str) -> bool:
-    """判断字段名是否为敏感字段。"""
-    return key.lower() in _SENSITIVE_KEYS
+    """判断字段名是否为敏感字段。
+
+    归一化：大小写不敏感，并把 '-'/' ' 视作 '_'——HTTP 头习惯用连字符
+    （x-api-key、set-cookie），JSON 字段习惯用下划线（access_key），
+    两者指同一类凭证，必须先归一否则变体名会漏脱敏。
+    """
+    normalized = (key or "").lower().replace("-", "_").replace(" ", "_")
+    if normalized in _SENSITIVE_KEYS:
+        return True
+    # HTTP 头的 x- 前缀变体：x-api-key / x-auth-token / x-access-key / x-secret。
+    # 去掉前缀后再比对一次，否则这类自定义认证头会全部漏脱敏。
+    if normalized.startswith("x_"):
+        return normalized[2:] in _SENSITIVE_KEYS
+    return False
 
 
 def mask_headers(headers: dict[str, str] | None) -> dict[str, str]:
@@ -123,7 +148,10 @@ class SensitiveDataMasker:
             "method": method.upper(),
             "url": masked_url,
             "headers": masked_headers,
-            "query": {str(k): str(v) for k, v in (query or {}).items()},
+            "query": {
+                str(k): (_MASKED if is_sensitive_key(k) else str(v))
+                for k, v in (query or {}).items()
+            },
             "body": masked_body,
             "body_type": body_type,
         }

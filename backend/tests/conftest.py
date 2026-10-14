@@ -1,8 +1,9 @@
 """测试夹具：隔离测试数据库 + Alembic 迁移 + 共享 TestClient + API 助手。
 
 约定：
-- 每个测试会话使用独立数据库（默认 ``testplatform_test``），与开发库隔离，
-  绝不复用 ``testplatform_dev``，也不对生产库执行任何写操作。
+- 每个测试会话使用独立数据库（默认 ``testplatform_test-p<pid>``），与开发库隔离，
+  绝不复用 ``testplatform_dev``，也不对生产库执行任何写操作；pid 后缀保证两个
+  pytest 进程并发跑时互不删库。
 - 表结构一律由 Alembic 从 base 迁移到 head 生成，测试不依赖应用启动期建表。
 - 密钥与速率限制通过环境变量固定/放宽，避免测试之间相互影响。
 - 本模块被 tests/ 下所有测试文件隐式复用：pytest 自动发现 fixture，测试函数
@@ -27,8 +28,16 @@ TEST_DB_HOST = os.environ.get("TEST_POSTGRES_HOST", "127.0.0.1")
 TEST_DB_PORT = os.environ.get("TEST_POSTGRES_PORT", "5432")
 TEST_DB_USER = os.environ.get("TEST_POSTGRES_USER", "root")
 TEST_DB_PASSWORD = os.environ.get("TEST_POSTGRES_PASSWORD", "fangzhou123")
-# 测试库名固定为 testplatform_test：与开发库、生产库物理分离。
-TEST_DATABASE_NAME = os.environ.get("TEST_DATABASE_NAME", "testplatform_test")
+# 测试库名在物理上仍与开发库、生产库分离，但按进程加唯一后缀：两个 pytest 进程
+# 并发跑（本地一份 + CI 一份，或两个人各起一份）时各用各的库，后启动的会话不再
+# DROP 掉前者仍在用的库、也不再 terminate 掉其连接——否则两边会批量报
+# connection already closed / database does not exist，看起来像产品缺陷。
+# 这里定义一次即为单一事实源：test_01 / test_07 都靠 TEST_DSN 里的库名派生自己
+# 的目标库，不需要各自重复拼后缀。PostgreSQL 标识符上限 63 字符，
+# "testplatform_test-p12345678" 远未越界。
+TEST_DATABASE_NAME = (
+    os.environ.get("TEST_DATABASE_NAME") or f"testplatform_test-p{os.getpid()}"
+)
 
 # 应用侧 DSN 用 SQLAlchemy 方言 psycopg。
 TEST_DSN = (
@@ -42,6 +51,9 @@ ADMIN_DSN = (
 )
 
 # 必须在导入 app 之前设置，Settings 在导入时即读取环境变量。
+# 库名回写环境变量：test_07 等文件直接从 os.environ 读库名，与 TEST_DSN 里的
+# 库名不一致时 TEST_DSN.replace 会留下 "-p<pid>" 尾巴，探测库名整个错掉。
+os.environ["TEST_DATABASE_NAME"] = TEST_DATABASE_NAME
 os.environ["DATABASE_URL"] = TEST_DSN
 os.environ["AUTO_CREATE_SCHEMA"] = "false"
 os.environ["SECRET_KEY"] = os.environ.get(
@@ -122,21 +134,27 @@ def _run_migrations() -> str:
 
 @pytest.fixture(scope="session")
 def test_database():
-    """准备隔离测试数据库并执行迁移；会话结束时保留数据便于排查。
+    """准备隔离测试数据库并执行迁移；会话结束后删除自己派生的库。
 
     隔离手法：会话开始就 DROP + CREATE 一个全新库，因此绝不继承上一次
     运行残留的行；表结构只由 Alembic 生成，不依赖应用 create_all。
 
+    库名带 pid 后缀（见 TEST_DATABASE_NAME），两个 pytest 进程并发跑时各建各的
+    库，不会互相 DROP。teardown 只删自己的库名，因此两个后缀一起才安全：pid
+    复用后可能撞上上一次会话留下的同名旧库，靠 teardown 让残留变得无关紧要。
+
     Yields:
         str: 本次会话使用的测试库名。
     """
+    # CREATE / DROP DATABASE 不能在事务里执行，必须 autocommit + 走维护库。
     with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT 1 FROM pg_database WHERE datname=%s", (TEST_DATABASE_NAME,)
             )
             if cursor.fetchone():
-                # 库里已有残留连接时先全部断开，否则 DROP 会被拒绝。
+                # 库里已有残留连接时先全部断开，否则 DROP 会被拒绝。残留通常来自
+                # 上一次会话没走到 teardown，或 pid 被复用撞上旧库。
                 _terminate_connections(TEST_DATABASE_NAME)
                 cursor.execute(f'DROP DATABASE "{TEST_DATABASE_NAME}"')
             cursor.execute(f'CREATE DATABASE "{TEST_DATABASE_NAME}"')
@@ -144,7 +162,12 @@ def test_database():
     _run_migrations()
     yield TEST_DATABASE_NAME
 
-    # 测试库保留，便于复现排查；下次会话开始前会强制重建。
+    # 只删除本会话派生的库名：pid 后缀保证了这个库名唯一属于本进程。要先断开
+    # 残留连接（SQLAlchemy engine 池在会话结束时并不会自动 dispose）。
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
+        with connection.cursor() as cursor:
+            _terminate_connections(TEST_DATABASE_NAME)
+            cursor.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE_NAME}"')
 
 
 @pytest.fixture(scope="session")
