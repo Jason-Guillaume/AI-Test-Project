@@ -28,10 +28,15 @@ description: "在本项目（ai-test-project）中做开发任务时使用：启
 - §7.4 前端常见坑
 - §8 API 速查
 - §11 故障排查
+- §12 Git 分支与提交流程（每次动手前按它开分支，完工按它提交推送）
 
 **3. 另外必须读 [docs/coding-conventions.md](../../../docs/coding-conventions.md)**
 
 里面是中文注释强制要求、架构不变量、17 条红线、变更流程。本文只写日常操作；规则性/结构性内容一律指向 `coding-conventions.md`。
+
+**4. Git 开发必须走功能分支（详见 §12）**
+
+当前主线是 **`develop`**。每个功能 / 任务：**先 `git checkout develop && git pull --ff-only origin develop` 同步最新主线，再按当前功能拉一个 `feature/<功能名>` 新分支开发；开发完毕后在该分支提交并推送。** 禁止直接在 `develop` / `main` 上改代码、直接 commit。
 
 ---
 
@@ -52,16 +57,17 @@ backend/
     models/                      # user, organization, project, bug (+ Base 只做再导出)
     features/                    # 每个 feature 一个目录：users, organizations, projects,
                                  #   model_configuration, environment_configuration, dashboard,
-                                 #   notifications, captcha, defects
+                                 #   notifications, captcha, defects, api_catalog, business
     scripts/                     # ⚠️ legacy，勿新增
   scripts/                       # 顶层脚本（seed_admin.py、e2e_smoke.sh）
-  alembic/                       # 迁移（当前 head = 0002）
+  alembic/                       # 迁移（当前 head = 0004）
   tests/                         # pytest 套件
 frontend/
   src/
-    api/                         # 12 个 client（auth/captcha/users/orgs/projects/modelConfigs/
-                                 #   envs/dashboard/notifications/defects/client）
-    pages/{console,admin,auth}/  # 6 admin + 6 console + 2 auth
+    api/                         # 13 个文件：client（axios 底座）+ auth/captcha/users/orgs/
+                                 #   projects/modelConfigs/environments/dashboard/notifications/
+                                 #   defects/apiCatalog/business
+    pages/{console,admin,auth}/  # 6 admin + 8 console + 2 auth（ApiCatalog、BusinessManagement 为目录）
     components/ hooks/ layouts/ types/
 ```
 
@@ -131,7 +137,7 @@ cd backend
 
 - 测试**不依赖生产数据**，用独立的 `testplatform_test` 数据库
 - `conftest.py` 里 `ApiClient.register()` 会自动 seed 验证码（`_STORAGE[cid] = ...`），业务代码不用管
-- 断言 Alembic head：`assert head == "0002"`
+- 断言 Alembic head：`assert head == "0004"`（新增迁移后同步改）
 
 ---
 
@@ -139,16 +145,22 @@ cd backend
 
 ### 6.1 加一个 feature
 
-标准 4 文件：`app/features/<name>/{__init__,schemas,service,router}.py`
+目录结构——小 feature 4 文件，大 feature 分三层子目录：
+
+- 小：`app/features/<name>/{__init__,schemas,service,router}.py`（如 users、defects）
+- 大：`app/features/<name>/{schemas,router}.py` + `models/` + `services/` +（需要时）`parsers/`（如 api_catalog、business）
 
 - **schemas.py**：Pydantic v2，字段全 snake_case
 - **service.py**：`class XxxService:` 类方法，**service 层负责 commit**（router 不 commit）
 - **router.py**：`@router.get("/xxx", response_model=...)`，不写库事务
 
-**新增后必须做的三件事**（漏一个 = 迁移/路由静默失败）：
-1. 在 `app/models/__init__.py` 加 `from app.models.<name> import Model`（否则 Alembic 看不到）
+**新增后必须做的四件事**（漏一个 = 迁移/路由静默失败）：
+1. 建 feature-local 表：`app/features/<name>/models/`，由 `alembic/versions/000X_*.py` 显式 `op.create_table` 建。**不要**把新模型加进 `app/models/__init__.py`（原因见下）
 2. 在 `app/main.py` `create_app()` 里 `include_router(..., prefix=API_PREFIX)`（`API_PREFIX = "/api/v1"`）
 3. 在 `app/bootstrap/routes.py` 同步登记（虽未被运行期引用，但 docstring 声明是装配点，保持同步）
+4. 新迁移的 `down_revision` 接当前 head，并同步 `backend/tests` 里断言的 `alembic head`
+
+**❌ 绝对不要**把新表 import 进 `app/models/__init__.py`：0001 的 `Base.metadata.create_all` 会认识这张表，与 0002+ 的 `op.create_table` 建表冲突。当前设计是"0001 用 create_all 建基线表，0002+ 用显式 `op.create_table`"（见 [docs/coding-conventions.md](../../../docs/coding-conventions.md) §17 红线 17 与 FAQ）。
 
 ### 6.2 数据库迁移
 
@@ -165,7 +177,7 @@ cd backend
 .venv/bin/python -m alembic upgrade head
 ```
 
-- head 当前是 `0002`（bug 表）；改测试断言记得跟着改
+- head 当前是 `0004`（0001 基线 → 0002 bug → 0003 接口管理 8 表 → 0004 业务表）；新增迁移记得同步 `backend/tests` 的 head 断言
 - `--database-url` 可覆盖 `settings.DATABASE_URL`，别硬编码
 - 空库必须先 `stamp base` 再 `upgrade head`，否则 Alembic 认不出库
 
@@ -183,7 +195,8 @@ bash scripts/e2e_smoke.sh
 ### 6.4 必须遵守的红线（详见 coding-conventions.md §2.4）
 
 - **只有 `app/shared/database.py` 里定义 `Base = declarative_base()`**，`app/models/base.py` 只做再导出——加新模型时 `from app.models.base import Base` 即可
-- **Alembic `env.py` 必须 import `app.models`**，否则 Alembic 看不到表
+- **Alembic `env.py` 必须 import `app.models`**，否则 Alembic 看不到基线表
+- **新表不加进 `app/models/__init__.py`**：feature-local 模型靠显式 `000X` 迁移建表；进了 `__init__.py` 会让 `create_all` 也建一遍，与 `op.create_table` 冲突
 - **`SessionLocal` 三个参数不能改**：`autocommit=False, autoflush=False, expire_on_commit=False`
 - **`notify()` 是 no-throw**，内部 swallow 失败不阻塞主流程
 - **跨资源越权统一返 404**（不返 403，避免暴露资源存在性）
@@ -330,11 +343,58 @@ Base URL：`/api/v1/*`（相对前端代理路径；完整 URL `http://localhost
 | Environments | `GET/POST /environments` · `GET/PATCH/DELETE /environments/{name}`（**按 name 定位，不是 id**）· `POST /environments/{name}/set-default`（**没有** upsert 语义；删除默认环境会 400 拒绝）· **没有** `/headers` 子路由（headers 走 create/update schema）|
 | Dashboard | `GET /dashboard/overview`（**不是 `/summary`**）· `GET /dashboard/projects` · `GET /dashboard/ready`（**唯一 readiness 端点**，需登录）· `GET /dashboard/platform`（仅平台管理员）|
 | Captcha | `GET /captcha` |
+| ApiCatalog（接口管理，23 个端点）| 见 **8.1** |
+| Business（业务场景，47 个端点，含未提交的阶段二执行引擎）| 见 **8.2** |
 | Health | `GET /healthz`（**根路径，不带 `/api/v1` 前缀**）· `GET /health`（同样根路径）· 均返回 `{"status":"ok"}` |
 
 **路径参数命名约定**：全项目 `{xxx_id}` 后缀（`bug_id` / `project_id` / `member_id` / `target_id` / `organization_id` / `config_id` / `user_id`），**不是** `{id}`。
 
 ---
+
+### 8.1 接口管理 ApiCatalog（23 端点，全部在 `/api/v1` 下）
+
+**模块树（5）**
+- `GET /projects/{project_id}/api-modules` · `POST /projects/{project_id}/api-modules`
+- `PATCH /api-modules/{module_id}` · `PATCH /api-modules/{module_id}/move` · `DELETE /api-modules/{module_id}`
+
+**接口（6）**
+- `GET /projects/{project_id}/apis` · `POST /projects/{project_id}/apis`
+- `GET /apis/{api_id}` · `PATCH /apis/{api_id}` · `DELETE /apis/{api_id}` · `PATCH /apis/{api_id}/move`
+
+**请求 / 响应（4）**
+- `GET /apis/{api_id}/request` · `PUT /apis/{api_id}/request`（**整体替换**参数+body）
+- `GET /apis/{api_id}/responses` · `PUT /apis/{api_id}/responses`（**整体替换**）
+
+**关联（3）**
+- `GET /apis/{api_id}/relations` · `POST /apis/{api_id}/relations` · `DELETE /api-relations/{relation_id}`
+
+**历史 / 导入 / 调试（5）**
+- `GET /apis/{api_id}/history`（变更记录）
+- `POST /projects/{project_id}/apis/import/preview` · `POST /projects/{project_id}/apis/import/confirm` · `GET /projects/{project_id}/api-import-records`
+- `POST /apis/{api_id}/debug` —— **仅平台管理员**，且强制校验项目出站目标白名单（scheme/host/port 命中才放行）；默认项目没配 outbound target 时 admin 也会被拒
+
+**注意**：`/apis/{api_id}`、`/api-modules/{module_id}`、`/api-relations/{relation_id}` **不带项目路径前缀**，靠 id 定位后在服务层校验项目可见性。权限：读 viewer+、写 member+、调试 platform admin；不可见项目统一 404 隐藏存在性。
+
+### 8.2 业务场景 Business（47 端点，含未提交的阶段二执行引擎）
+
+**业务域（5）**：`GET|POST /projects/{project_id}/business-domains` · `GET|PATCH|DELETE /business-domains/{domain_id}`
+
+**业务流程（6）**：`GET|POST /projects/{project_id}/business-flows` · `GET /business-flows/{flow_id}` · `GET /business-flows/{flow_id}/detail` · `PATCH|DELETE /business-flows/{flow_id}`
+
+**流程内动作（5）**：`GET|POST /business-flows/{flow_id}/actions` · `PATCH|DELETE /business-actions/{action_id}` · `PATCH /business-flows/{flow_id}/actions/reorder`
+
+**动作子资源（17）**
+- 前置条件：`GET|POST /business-actions/{action_id}/preconditions` · `PATCH|DELETE /business-preconditions/{precondition_id}`
+- 变量：`GET|POST /business-actions/{action_id}/variables` · `PATCH|DELETE /business-variables/{variable_id}`
+- 状态：`GET|POST /business-actions/{action_id}/states` · `PATCH|DELETE /business-states/{state_id}`
+- 接口绑定：`GET|POST /business-actions/{action_id}/bindings` · `GET|PATCH|DELETE /business-bindings/{binding_id}`
+- 绑定映射：`GET|POST /business-bindings/{binding_id}/mappings` · `PATCH|DELETE /business-api-mappings/{mapping_id}`
+
+**流程变量引用（3）**：`GET|POST /business-flows/{flow_id}/variable-refs` · `DELETE /business-variable-refs/{ref_id}`
+
+**规则（4）**：`GET|POST /projects/{project_id}/business-rules` · `PATCH|DELETE /business-rules/{rule_id}`
+
+**执行（3，阶段二新增、尚未提交）**：`POST /business-flows/{flow_id}/execute` · `GET /business-executions/{execution_id}` · `GET /business-executions/{execution_id}/actions`
 
 ## 9. 配置速查
 
@@ -425,19 +485,99 @@ cd frontend && npm run preview       # 预览 dist 产物
 
 ---
 
-## 12. 提交前自检清单
+## 12. Git 分支与提交流程
+
+### 12.1 分支模型
+
+| 分支 | 角色 | 改法 |
+|---|---|---|
+| `develop` | **日常开发主线**。所有功能都从它拉分支，所有完成的功能都并回它 | 只接收合并，**禁止在其上直接提交代码** |
+| `main` | 发布分支，从 `develop` 合并，保持可部署 | 只有明确要发布时才动 |
+
+远程 `origin` = `https://github.com/Jason-Guillaume/AI-Test-Project.git`。`.git/config` 里**只存干净 URL，不要把 token 写进去**（需要凭据时走 §12.3 的内联 URL）。
+
+### 12.2 开始一个新功能：先同步 develop，再拉功能分支
+
+```bash
+git checkout develop
+git pull --ff-only origin develop          # 拿到"最新的 develop"，不做 merge commit
+git checkout -b feature/<功能短名>          # 按当前功能拉一个全新分支
+```
+
+分支命名 `feature/<短横线英文短名>`——见功能，不见人名、不见日期：
+
+- `feature/api-catalog` · `feature/business-executor` · `feature/regression-suite`
+- 修 bug 用 `fix/<短名>`；纯技术债用 `chore/<短名>`
+- **不要**用 `dev` / `test` / `xxx` / `111` / 人名 / 日期
+
+**一个分支只装一个功能。** 手上还有无关未提交改动时，先提交或 `git stash`，别混着拉分支——否则后面 `git status` 分不清哪些文件属于这次提交。
+
+### 12.3 开发完毕：提交 → 推送
+
+```bash
+git status --porcelain                  # 逐行核对：只应有本次功能的改动
+git add <本次功能的文件>                  # 不要 git add . 一把梭
+git commit -F .git/COMMIT_MSG.txt        # 消息写成文件再 -F（见下）
+git push -u origin feature/<功能短名>     # -u 建立上游关联
+```
+
+commit message：中文描述变更意图（对齐 coding-conventions §1.1.1），**结尾必须保留署名行**：
+
+```
+feat: 接口管理（API Catalog）模块 + 框架首次入库
+
+<body：做了什么、为什么、怎么验证>
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+```
+
+`git commit -m "中文长消息"` 容易在参数传递上出问题（超时 / 被拦），**统一写成文件用 `-F`**：先把消息写到 `.git/COMMIT_MSG.txt`（在 `.git` 内，不会被提交），提交后删掉。
+
+推送被拒或需要凭据时，用**内联 URL**（不落 config、不落 keychain）：
+
+```bash
+git push https://github.com/Jason-Guillaume:<token>@github.com/Jason-Guillaume/AI-Test-Project.git feature/<功能短名>
+```
+
+要推的 token 需要 **Contents: Read and write**（classic 即勾 `repo`）。只读 token 的典型症状：`git-upload-pack` 返回 200（能拉）但 `git-receive-pack` 返回 403（推不了）——那是权限不够，**不是**网络 / 代理问题；若连 `GET /user` 都 401，则是 token 无效或已撤销。
+
+### 12.4 合回 develop
+
+```bash
+git checkout develop
+git pull --ff-only origin develop
+git merge --no-ff feature/<功能短名>      # 保留功能分支历史
+git push origin develop
+```
+
+合并前先 `git pull --rebase origin develop` 把功能分支追平主线，避免落后导致冲突堆积。
+
+### 12.5 分支红线
+
+- **禁止**在 `develop` / `main` 上直接写代码或直接 commit
+- **禁止** `git push --force` 到 `develop` / `main`；被拒时先 rebase 再推
+- **禁止** `git add .` / `git add -A` 一把梭——本仓库工作树里常年有其他未提交改动，一把梭会把别人的功能一起提交
+- **禁止**把 token / 密码 / `.env` / `.claude/settings.local.json` 写进提交或 `.git/config`
+- `.env`、`tmp*.txt`、`.venv/`、`node_modules/`、`dist/` 必须始终保持未跟踪（`.gitignore` 已覆盖）
+- 迁移文件与功能**同一个 commit**：`alembic/versions/000X_*.py` + 对应模型 + 测试一起走，不要拆成「先代码后迁移」
+- 提交前确认 `backend/tests` 里断言的 `alembic head` 与 `alembic/versions/` 最新 revision 一致（改 head 要同步改断言）
+
+## 13. 提交前自检清单
 
 跑一遍这几个才算「改完」：
 
+- [ ] 当前在 `feature/*` / `fix/*` / `chore/*` 功能分支上，**不是** `develop` / `main`（§12）
+- [ ] `git status --porcelain` 逐行看过，只包含本次功能的文件（迁移 + 模型 + 测试在同一批）
 - [ ] `cd backend && .venv/bin/python -m pytest tests/ -q` 全绿
 - [ ] `cd frontend && npm run typecheck && npm run build` 全绿
-- [ ] 新增 feature 三件套（`models/__init__.py` + `main.py` + `bootstrap/routes.py`）都同步了
+- [ ] 新增 feature 三件套都同步了：`main.py` 注册路由 + `bootstrap/routes.py` + `000X` 迁移（`down_revision` 接当前 head）与 `backend/tests` 的 head 断言；新表**没有**加进 `app/models/__init__.py`
 - [ ] 新增页面三件套（`types/index.ts` + `App.tsx` 路由 + `ConsoleLayout.tsx` 菜单）都同步了
 - [ ] 所有新文件顶部有模块级中文 docstring；每个函数 / 关键节点都有中文注释（见 [coding-conventions.md](../../../docs/coding-conventions.md) §1.2）
 - [ ] 没有触碰 coding-conventions §2.4 里的 17 条红线
-- [ ] commit message 用中文描述变更意图（对齐 §1.1.1）
+- [ ] commit message 用中文描述变更意图（对齐 §1.1.1），并带 `Co-Authored-By: Claude Code <noreply@anthropic.com>` 署名行
+- [ ] 已 `git push -u origin <功能分支>`；功能完成并已并回 `develop` 且推送（§12.4）
 
-## 13. 交叉引用
+## 14. 交叉引用
 
 - [docs/coding-conventions.md](../../../docs/coding-conventions.md) — 中文注释规则、架构不变量、17 条红线、变更流程（**必读**）
 - [docs/development.md](../../../docs/development.md) — 本轮开发日志：交付了什么、验证了什么、什么还没做
@@ -445,7 +585,18 @@ cd frontend && npm run preview       # 预览 dist 产物
 - [docs/migration-plan.md](../../../docs/migration-plan.md) — 从旧项目迁移的路径
 - [docs/current-system-analysis.md](../../../docs/current-system-analysis.md) — 现状分析
 
-**版本**：v1.2（2026-10-12）——与 Alembic head `0002` 对齐。Alembic head 变更后同步更新本 skill 的 §5.2 与 §6.2。
+**版本**：v1.3（2026-10-13）——新增 §12「Git 分支与提交流程」，§13 自检清单加入分支 / 推送项，原 §12、§13 顺移为 §13、§14。Alembic head 现为 `0004`（`0003` 接口管理 8 表、`0004` 业务表已入库；`0005` 属未提交的业务阶段二）。Alembic head 变更后同步更新本 skill 的 §5、§6.2 与 `backend/tests` 里的 head 断言。
+
+**v1.2 → v1.3 变更**：
+
+- 必读规则新增第 4 条：git 开发必须走功能分支
+- 新增 §12：`develop` 为主线、`feature/<功能名>` 分支模型、同步 develop → 拉分支 → 提交推送 → 合回四步流程、分支红线
+- §13 自检清单新增：当前分支检查、`git status --porcelain` 逐行核对、署名行、推送与合并回 `develop`
+- 版本说明里的 head 从 `0002` 更正为 `0004`；原「§5.2」更正为「§5」（§5 无子节）
+- 新增 §8.1 / §8.2：ApiCatalog 23 个端点、Business 47 个端点全量清单（§8 原本只覆盖到 Defects/Projects 等 11 个模块，两个新模块没有端点表）
+- §6.1 修正「新增表注册」错误：原文要求把新模型加进 `app/models/__init__.py`，与 coding-conventions 红线 17 / FAQ 直接冲突（会让 `create_all` 与 `op.create_table` 建表冲突）；改为 feature-local 表 + 显式 `000X` 迁移，并把「新迁移接 head + 同步测试断言」补为第四条
+- §6.4 补同款红线；§6.1 补大 feature 的 `models/` + `services/` + `parsers/` 分层结构
+- §2 目录速览补 `api_catalog`、`business`；api/ 「12 个 client」更正为 13 个文件；console 页面「6」更正为 8
 
 **v1.0 → v1.1 修正**（Ultracode 验证发现的原稿错误，均已改正）：
 
