@@ -10,8 +10,14 @@
                           （先按点路径走嵌套 dict，再按整体扁平键回退）
     faker.<generator>     白名单生成器，每次调用产新值（不缓存，保证 CASE 间不同）
     env.<key>             Environment 属性与 default_headers（键名单只此一份）
-    runtime.<key>         ExecutionContext.variables 顶层键（也接受已带前缀的业务变量）
+    runtime.<key>         ExecutionContext.variables 顶层键（也接受已带前缀的业务变量）；
+                          额外 runtime.request_id / runtime.timestamp 由 ResolveScope 显式提供
+                          （Mock Response Template 用，§十二）
     data.<name>           已解析的 test_case_data（先整体精确键，再点路径）
+    request.<section>.<field>  Mock Response Template 专用（§十二）：section ∈ path/query/
+                          header/body；header 大小写不敏感，body 支持点路径下钻
+                          （${request.body.order_id} / ${request.header.X-User-Id}）。
+                          仅当 ResolveScope.request 非 None 时生效，未提供时按缺失处理。
 
 求值顺序（§11.4）：Fixture 输出已注入的 runtime > 本条 test_case_data > Environment >
 Provider 配置里的字面量。本解析器只做「模板 → 值」，不决定优先级；优先级由调用方把
@@ -175,6 +181,33 @@ _MISSING = object()
 
 
 @dataclass
+class RequestContext:
+    """Mock Response Template 的请求上下文（§十二：${request.*}）。
+
+    只放纯数据；header 查找大小写不敏感（HTTP 头习惯用连字符 / 大小写不一）。
+    body 可以是 dict / list / 标量，walk_path 按点路径下钻。
+    """
+
+    path_params: dict[str, Any] = field(default_factory=dict)
+    query: dict[str, Any] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    body: Any = None
+
+    def header(self, name: str) -> object:
+        """大小写、连字符 / 下划线不敏感地取请求头值。"""
+        target = _normalize_header_name(name)
+        for key, value in self.headers.items():
+            if _normalize_header_name(key) == target:
+                return value
+        return _MISSING
+
+
+def _normalize_header_name(name: str) -> str:
+    """归一化头名：小写并把 '-' / ' ' 视作 '_'，与 SensitiveDataMasker 口径一致。"""
+    return (name or "").lower().replace("-", "_").replace(" ", "_")
+
+
+@dataclass
 class ResolveScope:
     """一次模板求值可见的来源。只放纯数据，不放 Session（解析器不做 I/O）。
 
@@ -185,6 +218,9 @@ class ResolveScope:
         environment: Environment 实体（`${env.key}`）。
         locale: FAKER locale，仅 zh_CN / en_US。
         faker: 可选的 Faker 实例；不传时按 locale 新建。
+        request: Mock Response Template 的请求上下文（`${request.*}`），非 Mock 场景为 None。
+        runtime_request_id: `${runtime.request_id}` 的值（Mock Runtime 注入）。
+        runtime_timestamp: `${runtime.timestamp}` 的值（Mock Runtime 注入）。
     """
 
     variables: dict[str, Any] | None = None
@@ -192,6 +228,9 @@ class ResolveScope:
     environment: Any = None
     locale: str = "zh_CN"
     faker: Any = field(default=None)
+    request: "RequestContext | None" = None
+    runtime_request_id: str = ""
+    runtime_timestamp: Any = None
 
     def get_variable(self, path: str) -> object:
         """按点路径在 variables 里取值：先走嵌套 dict，再回退整体扁平键。"""
@@ -254,6 +293,13 @@ def _lookup(namespace: str, path: str | None, scope: ResolveScope, *, required: 
         flat = vars_.get(full, _MISSING)
         if flat is not _MISSING:
             return True, flat
+        # runtime.request_id / runtime.timestamp：Mock Runtime 显式注入（§十二）。
+        # 变量里没有时回退到 ResolveScope 的运行时字段，不覆盖既有 runtime.<key> 语义。
+        if ns == "runtime":
+            if key == "request_id" and scope.runtime_request_id:
+                return True, scope.runtime_request_id
+            if key == "timestamp" and scope.runtime_timestamp is not None:
+                return True, scope.runtime_timestamp
         if required:
             raise AppError(
                 f"模板变量 {namespace}.{path} 缺失且为必需：无法解析 {key}",
@@ -261,6 +307,47 @@ def _lookup(namespace: str, path: str | None, scope: ResolveScope, *, required: 
                 code=CODE_VARIABLE_RESOLVE_FAILED,
             )
         return False, ""
+
+    if ns == "request":
+        # ${request.path.x} / ${request.query.x} / ${request.header.x} / ${request.body.x}（§十二）。
+        # 仅 Mock Response Template 注入 ResolveScope.request；其它场景为 None → 缺失。
+        req = scope.request
+        if req is None:
+            if required:
+                raise AppError(
+                    f"模板变量 {namespace}.{path} 缺失且为必需：无请求上下文",
+                    status_code=400,
+                    code=CODE_VARIABLE_RESOLVE_FAILED,
+                )
+            return False, ""
+        section, _, rest = (path or "").partition(".")
+        if section == "path":
+            value = req.path_params.get(rest, _MISSING)
+        elif section == "query":
+            value = req.query.get(rest, _MISSING)
+        elif section == "header":
+            value = req.header(rest) if rest else _MISSING
+        elif section == "body":
+            if not rest:
+                return True, req.body
+            value = walk_path(req.body, rest)
+        else:
+            if required:
+                raise AppError(
+                    f"不支持的 request 段：{section}（仅 path/query/header/body）",
+                    status_code=400,
+                    code=CODE_VARIABLE_RESOLVE_FAILED,
+                )
+            return False, ""
+        if value is _MISSING:
+            if required:
+                raise AppError(
+                    f"模板变量 {namespace}.{path} 缺失且为必需",
+                    status_code=400,
+                    code=CODE_VARIABLE_RESOLVE_FAILED,
+                )
+            return False, ""
+        return True, value
 
     if ns == "data":
         value = scope.get_data_value(key)
@@ -276,7 +363,7 @@ def _lookup(namespace: str, path: str | None, scope: ResolveScope, *, required: 
 
     if required:
         raise AppError(
-            f"未知的模板命名空间：{namespace}（仅支持 fixture/faker/env/runtime/data）",
+            f"未知的模板命名空间：{namespace}（仅支持 fixture/faker/env/runtime/data/request）",
             status_code=400,
             code=CODE_VARIABLE_RESOLVE_FAILED,
         )
@@ -338,6 +425,7 @@ __all__ = [
     "FAKER_GENERATORS",
     "FAKER_LOCALES",
     "MAX_NESTED_DEPTH",
+    "RequestContext",
     "ResolveScope",
     "generate_faker_value",
     "is_valid_identifier",

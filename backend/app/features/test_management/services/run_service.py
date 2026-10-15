@@ -25,6 +25,7 @@ from app.features.business.executors.context import ExecutionContext
 from app.features.test_data.models.case_fixture import TestCaseFixture
 from app.features.test_data.models.fixture import Fixture
 from app.features.test_data.runtime.lifecycle import CleanupOutcome, LifecycleManager
+from app.features.mock_management.runtime.lifecycle import MockLifecycle
 from app.features.test_management.executors import test_case_executor
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
@@ -63,6 +64,7 @@ class RunService:
 
     def __init__(self) -> None:
         self._lifecycle = LifecycleManager()
+        self._mock = MockLifecycle()
 
     def create_and_execute_run(
         self, db: Session, plan_id: int, body: TestRunCreateRequest, *, actor: User,
@@ -132,6 +134,16 @@ class RunService:
             db.add(ce)
             db.flush()
 
+            # Mock 执行作用域激活（§二十三）：用例声明了 required_mocks 才创建 Context；
+            # 提交后才对 Mock Runtime 的独立会话可见。无声明时 mock_context_id 为 None，零影响。
+            mock_context_id = self._mock.activate_for_case(
+                db, project_id=project_id, test_run_id=run.id,
+                case_execution_id=ce.id, case_id=case.id,
+            )
+            if mock_context_id:
+                db.commit()
+                db.refresh(ce)
+
             if prep_failed is not None:
                 self._fail_case(ce, prep_failed)
                 self._bump_counter(run, ce.status)
@@ -156,6 +168,7 @@ class RunService:
                             db, case_execution_id=ce.id, project_id=project_id, actor=actor,
                         ),
                     )
+                    self._mock.deactivate(db, mock_context_id)
                     db.commit()
                     continue
 
@@ -191,6 +204,8 @@ class RunService:
                         db, case_execution_id=ce.id, project_id=project_id, actor=actor,
                     ),
                 )
+            # Mock 执行作用域关闭（§二十七：finally 必须关闭）；prep_failed 与正常路径都走这里。
+            self._mock.deactivate(db, mock_context_id)
             db.commit()
             db.refresh(ce)
 

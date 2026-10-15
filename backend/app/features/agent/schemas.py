@@ -229,6 +229,21 @@ class TestPointDraftList(BaseModel):
 # Fixture 引用键：与 fixture.fixture_key 同规则（^[A-Z][A-Z0-9_]{0,99}$）。
 FixtureKey = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[A-Z][A-Z0-9_]{0,99}$")]
 
+# Mock 场景作用域：与 mock_management 的 MockScope 同取值。
+MockScope = Literal["SETUP", "EXECUTION", "BOTH"]
+
+
+class MockScenarioRef(BaseModel):
+    """required_mocks 单项：只能引用提示词 available_mocks 里列出的 scenario_id。"""
+
+    mock_scenario_id: int = Field(
+        ..., gt=0, description="提示词 available_mocks 里的 mock_scenario_id",
+    )
+    scope: MockScope = Field(
+        "EXECUTION",
+        description="SETUP/EXECUTION/BOTH：该 Mock 在哪些阶段生效（默认 EXECUTION）",
+    )
+
 
 class TestCaseDraft(BaseModel):
     """TestCaseGeneratorNode 单条产出：用例 + 子实体。子实体复用 test_management Create 模型。"""
@@ -252,6 +267,11 @@ class TestCaseDraft(BaseModel):
     required_fixtures: list[FixtureKey] = Field(
         default_factory=list, max_length=20,
         description="所需 Fixture 的 fixture_key（仅可引用已注册且 ACTIVE 的）",
+    )
+    # 所需 Mock：只填提示词 available_mocks 里列出的 scenario_id，需要模拟依赖行为时才有。
+    required_mocks: list[MockScenarioRef] = Field(
+        default_factory=list, max_length=20,
+        description="所需 Mock 场景的 mock_scenario_id（仅可引用本项目已配置的）",
     )
     rationale: str | None = None
 

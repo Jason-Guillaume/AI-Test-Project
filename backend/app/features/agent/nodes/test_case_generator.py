@@ -49,6 +49,8 @@ def test_case_generator_node(ctx: NodeContext, state: AgentState) -> dict:
             + "## 业务上下文\n" + _dump(state.get("business_context")) + "\n\n"
             + "## 可用 Fixture（required_fixtures 只能引用这里的 fixture_key）\n"
             + _dump(state.get("available_fixtures") or [])
+            + "\n\n## 可用 Mock 场景（required_mocks 只能引用这里的 mock_scenario_id）\n"
+            + _dump(state.get("available_mocks") or [])
             + "\n\n## 已有测试用例（请勿重复生成同名项）\n"
             + _dump((state.get("existing_test_context") or {}).get("cases", []))
         )

@@ -20,6 +20,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.features.agent.providers.sanitizer import sanitize_context, sanitize_text
+from app.features.mock_management.models import MockExecution, MockScenario, MockService
 from app.features.reports.models.report import TestReport
 from app.features.reports.schemas import (
     CaseExecutionSummary,
@@ -117,6 +118,8 @@ class ReportService:
         rows = self._rows_for_run(db, test_run_id)
         try:
             stats, summary, duration_ms, risk = self._analyze(rows)
+            # Mock Summary（§六十二）：与统计同步写入 summary JSON，不可变。
+            summary["mock_summary"] = self._mock_summary(db, test_run_id)
             report.total_cases = stats["total"]
             report.passed_cases = stats["passed"]
             report.failed_cases = stats["failed"]
@@ -282,6 +285,68 @@ class ReportService:
             .all()
         )
 
+    def _mock_summary(self, db: Session, test_run_id: int | None) -> dict[str, Any]:
+        """Mock Summary（§六十二）：本次执行期间的 Mock 调用汇总，纯统计口径。
+
+        服务数 / 场景数 / 调用数 / 失败调用数（未命中或 5xx）+ 按 service_key / scenario_key
+        的明细。只给计数与键名，**不复制任何请求 / 响应快照** —— 快照已脱敏落库在
+        mock_execution，报告明细走实时读取，不在此二次搬运（§四 同一约束）。
+        """
+        empty = {
+            "involved": False,
+            "services": 0,
+            "scenarios": 0,
+            "calls": 0,
+            "failed_calls": 0,
+            "services_used": [],
+            "scenarios_used": [],
+        }
+        if test_run_id is None:
+            return empty
+        rows = (
+            db.query(MockExecution)
+            .filter(MockExecution.test_run_id == test_run_id)
+            .order_by(MockExecution.id.asc())
+            .all()
+        )
+        if not rows:
+            return empty
+
+        service_ids = sorted({r.mock_service_id for r in rows if r.mock_service_id is not None})
+        scenario_ids = sorted({r.mock_scenario_id for r in rows if r.mock_scenario_id is not None})
+        failed = sum(
+            1 for r in rows if (not r.matched) or (r.response_status or 0) >= 500
+        )
+
+        keys: dict[int, str] = {}
+        if service_ids:
+            keys.update({
+                row.id: row.service_key
+                for row in db.query(MockService.id, MockService.service_key)
+                .filter(MockService.id.in_(service_ids)).all()
+            })
+        scenario_keys: dict[int, str] = {}
+        if scenario_ids:
+            scenario_keys = {
+                row.id: row.scenario_key
+                for row in db.query(MockScenario.id, MockScenario.scenario_key)
+                .filter(MockScenario.id.in_(scenario_ids)).all()
+            }
+
+        return {
+            "involved": True,
+            "services": len(service_ids),
+            "scenarios": len(scenario_ids),
+            "calls": len(rows),
+            "failed_calls": failed,
+            "services_used": [
+                {"service_id": sid, "service_key": keys.get(sid)} for sid in service_ids
+            ],
+            "scenarios_used": [
+                {"scenario_id": sid, "scenario_key": scenario_keys.get(sid)} for sid in scenario_ids
+            ],
+        }
+
     def _analyze(
         self, rows: list[tuple[CaseExecution, TestCase | None]],
     ) -> tuple[dict[str, Any], dict[str, Any], int, str]:
@@ -439,6 +504,8 @@ class ReportService:
             "duration_ms": report.duration_ms,
             "risk_level": report.risk_level,
             "failure_clusters": (report.summary or {}).get("failure_clusters", []) or [],
+            # Mock Summary 只有计数与 service_key / scenario_key，无快照，可安全进 LLM。
+            "mock_summary": (report.summary or {}).get("mock_summary") or {},
             "failed_cases": failed_cases,
         }
         # 进 LLM 前整体脱敏（§三一、§敏感数据）。
