@@ -1,7 +1,20 @@
-// 接口关联 Tab：维护当前接口对其他接口的关联（前置条件 / 输出→输入 / 后续步骤）。
+// 接口关联 Tab：维护当前接口参与的关联（前置条件 / 输出→输入 / 后续步骤）。
+// 列表同时返回「当前接口是 source（发出）」与「当前接口是 target（被依赖）」两个方向，
+// 故用「方向」列区分，「对端接口」按方向取另一侧名称；新增固定以当前接口为 source。
 // 新增：选目标接口 + 关联类型 + 可选变量名/提取路径；删除：行内按钮。
 import { useState } from 'react';
-import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCatalogApi } from '@/api/apiCatalog';
@@ -33,7 +46,7 @@ interface FormValues {
 /**
  * 接口关联 Tab。
  *
- * 查询：当前接口的关联列表 + 项目内全部接口（page_size=200，供目标下拉）。
+ * 查询：当前接口参与的关联列表（发出 + 被依赖两个方向）+ 项目内全部接口（page_size=200，供目标下拉）。
  * 新增/删除走 mutation，成功后失效 ['api-catalog']。
  */
 export function RelationTab({
@@ -112,11 +125,23 @@ export function RelationTab({
             ),
           },
           {
-            title: '目标接口',
-            dataIndex: 'target_api_name',
-            render: (v: string | null, row: ApiRelation) => (
+            title: '方向',
+            key: 'direction',
+            width: 90,
+            render: (_: unknown, row: ApiRelation) =>
+              row.source_api_id === api.id ? (
+                <Tag>发出</Tag>
+              ) : (
+                <Tag color="purple">被依赖</Tag>
+              ),
+          },
+          {
+            title: '对端接口',
+            render: (_: unknown, row: ApiRelation) => (
               <Typography.Text>
-                {v ?? `#${row.target_api_id}`}
+                {row.source_api_id === api.id
+                  ? row.target_api_name ?? `#${row.target_api_id}`
+                  : row.source_api_name ?? `#${row.source_api_id}`}
               </Typography.Text>
             ),
           },
@@ -130,9 +155,17 @@ export function RelationTab({
             title: '提取路径',
             dataIndex: 'extract_path',
             width: 200,
-            render: (v: string | null) =>
+            render: (v: string | null, row: ApiRelation) =>
               v ? (
-                <Typography.Text code>{v}</Typography.Text>
+                <Tooltip
+                  title={
+                    row.source_api_id === api.id
+                      ? '从本接口（source）响应中提取'
+                      : '从对端接口（target）响应中提取'
+                  }
+                >
+                  <Typography.Text code>{v}</Typography.Text>
+                </Tooltip>
               ) : (
                 '-'
               ),

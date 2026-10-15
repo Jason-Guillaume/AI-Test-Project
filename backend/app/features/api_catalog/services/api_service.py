@@ -27,6 +27,7 @@ from app.features.api_catalog.models.api_relation import ApiRelation
 from app.features.api_catalog.models.api_request_body import ApiRequestBody
 from app.features.api_catalog.models.api_response import ApiResponse
 from app.features.api_catalog.schemas import (
+    API_STATUSES,
     HTTP_METHODS,
     ApiBodyIn,
     ApiChangeLogResponse,
@@ -272,6 +273,11 @@ class ApiService:
         name = (body.name or "").strip()
         if not name:
             raise bad_request("模块名不能为空")
+        if name == DEFAULT_MODULE_NAME:
+            # 「未分类」由 ensure_default_module 独占维护（按 is_default=True 查找，不看名字）。
+            # 这里若允许手工建同名模块，后续 ensure_default_module 再插入 is_default 行就会撞
+            # uq_api_module_project_name 唯一约束 → 500，且整个项目从此无法再建接口。
+            raise bad_request(f"「{DEFAULT_MODULE_NAME}」是系统保留模块名，不能手工创建")
         _ensure_unique_module_name(db, project_id, name)
         parent = self._resolve_parent_for_create(db, project, body.parent_id)
         mod = ApiModule(
@@ -315,6 +321,16 @@ class ApiService:
         mod = self._get_writable_module_or_404(db, module_id, actor)
         if mod.is_default:
             raise bad_request("未分类模块不可移动")
+        # 模块最多两级：带子模块的模块再挂到别的父下会产生第三级。
+        if body.parent_id is not None:
+            has_children = (
+                db.query(ApiModule.id)
+                .filter(ApiModule.parent_id == mod.id)
+                .first()
+                is not None
+            )
+            if has_children:
+                raise bad_request("该模块有子模块，不能移动到另一个模块下；请先移动或删除子模块，或挂回根（parent_id=null）")
         parent = self._resolve_parent_for_create(db, db.get(Project, mod.project_id), body.parent_id)
         # 不能把自己挂到自己（或后代）下。
         new_parent_id = parent.id if parent else None
@@ -401,6 +417,12 @@ class ApiService:
         if module_id is not None:
             query = query.filter(ApiInterface.module_id == module_id)
         if status:
+            # 与上面的 method 过滤同一写法：先归一大写再校验。前端枚举值是大写，
+            # 归一化兜住手输小写的直连调用；校验而非静默返回空集，否则拼错状态码
+            # 会得到「0 条」这种看不出原因的假阴性。
+            status = status.upper()
+            if status not in API_STATUSES:
+                raise bad_request("接口状态取值非法")
             query = query.filter(ApiInterface.status == status)
         total = int(query.count())
         items = (
@@ -621,7 +643,7 @@ class ApiService:
     def create_relation(
         self, db: Session, api_id: int, body: ApiRelationCreate, *, actor: User
     ) -> ApiRelationResponse:
-        iface = self._get_writable_interface_or_404(db, api_id, user)
+        iface = self._get_writable_interface_or_404(db, api_id, actor)
         if body.source_api_id != iface.id and body.target_api_id != iface.id:
             raise bad_request("关联必须涉及当前接口")
         source = db.get(ApiInterface, body.source_api_id)

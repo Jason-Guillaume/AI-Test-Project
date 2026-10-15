@@ -126,7 +126,12 @@ export function OverviewTab({
               loading={updateMutation.isPending}
               onClick={async () => {
                 const values = await form.validateFields();
-                await updateMutation.mutateAsync(values);
+                await updateMutation.mutateAsync({
+                  ...values,
+                  // 清空「所属模块」时 validateFields 返回 undefined，JSON 序列化会丢弃该键，
+                  // 后端 exclude_unset 看不到字段就跳过 -> 接口永远回不了「未分类」。兜底成显式 null。
+                  module_id: values.module_id ?? null,
+                });
               }}
             >
               保存

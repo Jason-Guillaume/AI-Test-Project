@@ -69,6 +69,8 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries({ queryKey: ['bugs'] });
     // 业务管理按项目作用域过滤，组织切换后项目集合可能变化。
     queryClient.invalidateQueries({ queryKey: ['business'] });
+    // 测试数据中心按项目作用域过滤，组织切换后项目集合可能变化，整棵失效。
+    queryClient.invalidateQueries({ queryKey: ['test-data'] });
   }, [queryClient]);
 
   // 切换项目：项目级数据全部以 ['project', id, ...] 为 key，整体失效即可。
@@ -85,6 +87,10 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     queryClient.invalidateQueries({ queryKey: ['api-catalog'] });
     // 业务管理同样按项目作用域过滤，切换项目后整棵 ['business'] 缓存失效。
     queryClient.invalidateQueries({ queryKey: ['business'] });
+    // Agent 会话按项目隔离，切换项目后整棵 ['agent'] 缓存失效。
+    queryClient.invalidateQueries({ queryKey: ['agent'] });
+    // 测试数据中心按项目隔离，切换项目后整棵 ['test-data'] 缓存失效。
+    queryClient.invalidateQueries({ queryKey: ['test-data'] });
   }, [queryClient]);
 
   // 清空作用域：复用 setOrgId / setProjectId，保证持久化与缓存失效逻辑一致。

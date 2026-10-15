@@ -15,9 +15,11 @@ import { BindingEditor } from './BindingEditor';
 import type { BusinessActionDetail, BusinessActionUpdate } from '@/types';
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
-  API: 'API',
-  WEB: 'Web（预留）',
-  MOBILE: '移动端（预留）',
+  NORMAL: '常规动作',
+  SYSTEM: '系统动作',
+  MANUAL: '人工动作',
+  WAIT: '等待动作',
+  DECISION: '决策动作',
 };
 
 export function ActionDrawer({
@@ -127,7 +129,7 @@ export function ActionDrawer({
           <Form.Item name="action_key" label="业务标识" rules={[{ required: true, message: '请输入业务标识' }]} style={{ flex: 1, margin: 0 }}>
             <Input maxLength={100} />
           </Form.Item>
-          <Form.Item name="action_type" label="通道类型" style={{ flex: 1, margin: 0 }}>
+          <Form.Item name="action_type" label="动作类型" style={{ flex: 1, margin: 0 }}>
             <Select options={ACTION_TYPE_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
         </Space>

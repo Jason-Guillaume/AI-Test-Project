@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
+from app.features.agent.router import router as agent_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.business.router import router as business_router
 from app.features.captcha.router import router as captcha_router
@@ -32,8 +33,12 @@ from app.features.defects.router import router as defects_router
 from app.features.environment_configuration.router import router as environments_router
 from app.features.model_configuration.router import router as model_configs_router
 from app.features.notifications.router import router as notifications_router
+from app.features.notifications.channel_router import router as notification_channel_router
 from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
+from app.features.reports.router import router as reports_router
+from app.features.test_data.router import router as test_data_router
+from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
 from app.features.users.auth import router as auth_router
 from app.shared.config import settings
@@ -170,10 +175,17 @@ def create_app() -> FastAPI:
     application.include_router(defects_router, prefix=API_PREFIX)
     application.include_router(api_catalog_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)
+    application.include_router(test_management_router, prefix=API_PREFIX)
+    # 报告依赖 test_management（TestRun / CaseExecution），紧随其后装配。
+    application.include_router(reports_router, prefix=API_PREFIX)
+    application.include_router(agent_router, prefix=API_PREFIX)
     application.include_router(notifications_router, prefix=API_PREFIX)
+    # 通知渠道（飞书 Webhook 配置/测试/触发/审计），挂在通知之后便于故障隔离。
+    application.include_router(notification_channel_router, prefix=API_PREFIX)
     application.include_router(model_configs_router, prefix=API_PREFIX)
     application.include_router(environments_router, prefix=API_PREFIX)
     application.include_router(dashboard_router, prefix=API_PREFIX)
+    application.include_router(test_data_router, prefix=API_PREFIX)
     return application
 
 

@@ -14,13 +14,22 @@ import {
   ApiOutlined,
   AppstoreOutlined,
   BellOutlined,
+  BlockOutlined,
   BugOutlined,
+  DatabaseOutlined,
+  ExperimentOutlined,
+  FileTextOutlined,
+  RobotOutlined,
+  HistoryOutlined,
   LogoutOutlined,
   PartitionOutlined,
   ProjectOutlined,
+  ScheduleOutlined,
+  SendOutlined,
+  ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,27 +40,74 @@ import { projectsApi } from '@/api/projects';
 // antd Layout 子部件解构：侧边栏、头部、内容区。
 const { Header, Sider, Content } = Layout;
 
-/**
- * 控制台左侧导航项：key 与 App.tsx 的路由 path 保持一致，
- * 用于 selectedKeys 高亮以及跳转目标。
- */
-const MENU_ITEMS = [
+// 控制台左侧导航项：key 与 App.tsx 的路由 path 保持一致，
+// 用于 selectedKeys 高亮以及跳转目标。
+// 测试管理为分组（SubMenu）：父节点 key 无对应路由，仅展开；叶子项才包 Link 跳转。
+interface MenuLeaf {
+  key: string;
+  icon: ReactNode;
+  label: string;
+}
+interface MenuGroup {
+  key: string;
+  icon: ReactNode;
+  label: string;
+  children: MenuLeaf[];
+}
+type MenuItem = MenuLeaf | MenuGroup;
+
+const MENU_ITEMS: MenuItem[] = [
   { key: '/console', icon: <AppstoreOutlined />, label: '工作台' }, // 工作台
   { key: '/console/projects', icon: <ProjectOutlined />, label: '我的项目' }, // 我的项目
   { key: '/console/defects', icon: <BugOutlined />, label: '缺陷管理' }, // 缺陷管理
   { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' }, // 接口管理
   { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' }, // 业务管理
+  {
+    key: '/console/test-management', // 测试管理（分组）
+    icon: <ExperimentOutlined />,
+    label: '测试管理',
+    children: [
+      { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
+      { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
+      { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
+      { key: '/console/execution-center', icon: <ThunderboltOutlined />, label: '执行中心' },
+      { key: '/console/execution-history', icon: <HistoryOutlined />, label: '执行历史' },
+      { key: '/console/test-reports', icon: <FileTextOutlined />, label: '测试报告' },
+      { key: '/console/notification-channels', icon: <SendOutlined />, label: '飞书通知' },
+      { key: '/console/test-data', icon: <DatabaseOutlined />, label: '测试数据' },
+    ],
+  },
+  { key: '/console/agent', icon: <RobotOutlined />, label: '接口测试 Agent' }, // 接口测试 Agent
   { key: '/console/notifications', icon: <BellOutlined />, label: '通知中心' }, // 通知中心
   { key: '/console/profile', icon: <UserOutlined />, label: '个人中心' }, // 个人中心
 ];
 
-// 面包屑用的路由标题映射；不在表中的路径由 breadcrumbTitle 单独兜底。
+// 所有可命中菜单 key（含子菜单叶子），用于 selectedMenuKey 的精确/前缀匹配。
+const ALL_MENU_KEYS: string[] = (() => {
+  const keys: string[] = [];
+  for (const item of MENU_ITEMS) {
+    keys.push(item.key);
+    if ('children' in item) item.children.forEach((c) => keys.push(c.key));
+  }
+  return keys;
+})();
+
+// 面包屑用的路由标题映射；不在表中的路径由 breadcrumbItems 单独兜底。
 const ROUTE_TITLES: Record<string, string> = {
   '/console': '工作台', // 工作台
   '/console/projects': '我的项目', // 我的项目
   '/console/defects': '缺陷管理', // 缺陷管理
   '/console/api-catalog': '接口管理', // 接口管理
   '/console/business-management': '业务管理', // 业务管理
+  '/console/test-asset': '测试资产', // 测试资产
+  '/console/test-suites': '测试套件', // 测试套件
+  '/console/test-plans': '测试计划', // 测试计划
+  '/console/execution-center': '执行中心', // 执行中心
+  '/console/execution-history': '执行历史', // 执行历史
+  '/console/test-reports': '测试报告', // 测试报告
+  '/console/notification-channels': '飞书通知', // 飞书通知
+  '/console/test-data': '测试数据', // 测试数据
+  '/console/agent': '接口测试 Agent', // 接口测试 Agent
   '/console/notifications': '通知中心', // 通知中心
   '/console/profile': '个人中心', // 个人中心
 };
@@ -105,23 +161,37 @@ export function ConsoleLayout() {
     }
   }, [currentOrgId, orgs, setOrgId]);
 
-  // 高亮当前菜单：先精确匹配，再退化为前缀匹配（覆盖 /console/projects/123）。
+  // 高亮当前菜单：先在全部 key（含子菜单叶子）中精确匹配，再退化为最长前缀匹配
+  // （最长前缀优先，避免 '/console' 抢占 '/console/projects/123' 的叶子项）。
   const selectedMenuKey = useMemo(() => {
-    const exact = MENU_ITEMS.find((i) => i.key === location.pathname);
-    if (exact) return exact.key;
-    const prefix = MENU_ITEMS.find((i) =>
-      location.pathname.startsWith(i.key + '/'),
+    if (ALL_MENU_KEYS.includes(location.pathname)) return location.pathname;
+    const prefixes = ALL_MENU_KEYS.filter((k) =>
+      location.pathname.startsWith(k + '/'),
     );
+    if (prefixes.length > 0) {
+      return prefixes.reduce((a, b) => (b.length > a.length ? b : a));
+    }
     // 都不是时默认高亮工作台，避免菜单全灰。
-    return prefix?.key ?? '/console';
+    return '/console';
   }, [location.pathname]);
 
-  // 面包屑末段标题：项目详情路由不在标题表中，需单独判断。
-  const breadcrumbTitle = useMemo(() => {
-    if (location.pathname.startsWith('/console/projects/')) {
-      return '项目详情';
+  // 面包屑：命中分组子项时展示「控制台 / 分组名 / 叶子名」三级；其余按标题表兜底。
+  const breadcrumbItems = useMemo(() => {
+    const items: { title: string }[] = [{ title: '控制台' }];
+    const group = MENU_ITEMS.find(
+      (i): i is MenuGroup =>
+        'children' in i && i.children.some((c) => c.key === selectedMenuKey),
+    );
+    if (group) {
+      const child = group.children.find((c) => c.key === selectedMenuKey);
+      items.push({ title: group.label });
+      if (child) items.push({ title: child.label });
+    } else if (location.pathname.startsWith('/console/projects/')) {
+      items.push({ title: '项目详情' });
+    } else {
+      items.push({ title: ROUTE_TITLES[selectedMenuKey] ?? '工作台' });
     }
-    return ROUTE_TITLES[selectedMenuKey] ?? '工作台';
+    return items;
   }, [location.pathname, selectedMenuKey]);
 
   // 顶部用户菜单：个人中心与退出登录两个可操作项。
@@ -167,11 +237,28 @@ export function ConsoleLayout() {
           theme="dark"
           mode="inline"
           selectedKeys={[selectedMenuKey]}
-          items={MENU_ITEMS.map((item) => ({
-            ...item,
-            // 用 Link 替换纯文本，让菜单项走路由跳转而非整页刷新。
-            label: <Link to={item.key}>{item.label}</Link>,
-          }))}
+          // 测试管理分组默认展开；命中子项时 antd 会自动展开其父级。
+          defaultOpenKeys={['/console/test-management']}
+          items={MENU_ITEMS.map((item) => {
+            if ('children' in item) {
+              // 分组父节点：不包 Link（无对应路由），仅作为可展开容器；叶子项包 Link。
+              return {
+                key: item.key,
+                icon: item.icon,
+                label: item.label,
+                children: item.children.map((c) => ({
+                  key: c.key,
+                  icon: c.icon,
+                  label: <Link to={c.key}>{c.label}</Link>,
+                })),
+              };
+            }
+            return {
+              key: item.key,
+              icon: item.icon,
+              label: <Link to={item.key}>{item.label}</Link>,
+            };
+          })}
         />
       </Sider>
       <Layout>
@@ -222,7 +309,7 @@ export function ConsoleLayout() {
         </Header>
         <Content style={{ background: themeToken.colorBgLayout }}>
           <div style={{ padding: '16px 24px 0' }}>
-            <Breadcrumb items={[{ title: '控制台' }, { title: breadcrumbTitle }]} />
+            <Breadcrumb items={breadcrumbItems} />
           </div>
           <Outlet />
         </Content>

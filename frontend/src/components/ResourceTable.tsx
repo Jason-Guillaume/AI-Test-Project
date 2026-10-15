@@ -1,6 +1,6 @@
 // 通用分页表格：统一 page/page_size 参数与后端 Paginated 信封对齐。
 import { Table, type TableProps } from 'antd';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 // 前端使用的分页状态：字段名与后端分页信封一致，避免转换出错。
 export interface PaginationState {
@@ -27,6 +27,8 @@ export function ResourceTable<T>({
   onPaginationChange,
   emptyText = '暂无数据',
   expandedRowRender,
+  onRowClick,
+  rowStyle,
 }: {
   rowKey: (row: T) => string | number; // 每行唯一键，优先用后端主键 id
   columns: TableProps<T>['columns']; // 列定义，由调用方按业务拼装
@@ -37,6 +39,8 @@ export function ResourceTable<T>({
   onPaginationChange: (next: PaginationState) => void; // 翻页或改每页条数时的回调
   emptyText?: string; // 空态文案
   expandedRowRender?: (row: T) => ReactNode; // 可选的展开行渲染函数
+  onRowClick?: (row: T) => void; // 可选的行点击回调（打开详情抽屉等）
+  rowStyle?: CSSProperties; // 可选的行样式（如 cursor: pointer）
 }) {
   return (
     <Table<T>
@@ -46,6 +50,10 @@ export function ResourceTable<T>({
       loading={loading}
       locale={{ emptyText }}
       expandable={expandedRowRender ? { expandedRowRender } : undefined}
+      onRow={(record) => ({
+        ...(rowStyle ? { style: rowStyle } : {}),
+        ...(onRowClick ? { onClick: () => onRowClick(record) } : {}),
+      })}
       pagination={{
         current: pagination.page,
         pageSize: pagination.page_size,

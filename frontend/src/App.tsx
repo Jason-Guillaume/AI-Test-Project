@@ -33,6 +33,17 @@ import { ConsoleProfilePage } from '@/pages/console/Profile';
 import { ConsoleDefectsPage } from '@/pages/console/Defects';
 import { ConsoleApiCatalogPage } from '@/pages/console/ApiCatalog';
 import { ConsoleBusinessManagementPage } from '@/pages/console/BusinessManagement';
+import {
+  ConsoleTestAssetPage,
+  ConsoleTestSuitesPage,
+  ConsoleTestPlansPage,
+  ConsoleExecutionCenterPage,
+  ConsoleExecutionHistoryPage,
+} from '@/pages/console/TestManagement';
+import { ConsoleAgentPage } from '@/pages/console/Agent';
+import { ConsoleReportListPage, ConsoleReportDetailPage } from '@/pages/console/Reports';
+import { ConsoleNotificationChannelsPage } from '@/pages/console/NotificationChannels';
+import { ConsoleTestDataPage } from '@/pages/console/TestData';
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -146,6 +157,16 @@ function AppRoutes() {
         <Route path="defects" element={<ConsoleDefectsPage />} />
         <Route path="api-catalog" element={<ConsoleApiCatalogPage />} />
         <Route path="business-management" element={<ConsoleBusinessManagementPage />} />
+        <Route path="test-asset" element={<ConsoleTestAssetPage />} />
+        <Route path="test-suites" element={<ConsoleTestSuitesPage />} />
+        <Route path="test-plans" element={<ConsoleTestPlansPage />} />
+        <Route path="execution-center" element={<ConsoleExecutionCenterPage />} />
+        <Route path="execution-history" element={<ConsoleExecutionHistoryPage />} />
+        <Route path="test-reports" element={<ConsoleReportListPage />} />
+        <Route path="test-reports/:reportId" element={<ConsoleReportDetailPage />} />
+        <Route path="notification-channels" element={<ConsoleNotificationChannelsPage />} />
+        <Route path="test-data" element={<ConsoleTestDataPage />} />
+        <Route path="agent" element={<ConsoleAgentPage />} />
         <Route path="notifications" element={<ConsoleNotificationsPage />} />
         <Route path="profile" element={<ConsoleProfilePage />} />
       </Route>

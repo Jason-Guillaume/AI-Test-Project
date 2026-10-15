@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from app.features.captcha.router import router as captcha_router
+from app.features.agent.router import router as agent_router
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
@@ -18,6 +19,7 @@ from app.features.model_configuration.router import router as model_configuratio
 from app.features.notifications.router import router as notifications_router
 from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
+from app.features.test_data.router import router as test_data_router  # noqa: F401  与 main.py 保持注册一致
 from app.features.users.admin import router as users_admin_router
 from app.features.users.auth import router as users_auth_router
 
@@ -34,9 +36,13 @@ router.include_router(projects_router)
 router.include_router(defects_router)
 # 业务管理：依赖项目权限，且其业务绑定引用接口管理（api_catalog），故装配在两者之后
 router.include_router(business_router)
+# 测试数据中心：独立模块，依赖项目权限与被测库连接/策略（平台管理员）。
+router.include_router(test_data_router)
 # 平台级配置：模型与环境是项目成员调用的下游依赖，装配在项目之后便于故障隔离
 router.include_router(model_configuration_router)
 router.include_router(environment_router)
 # 通知与看板：只读当前用户收件箱 / 当前用户可见范围，放在最后不影响其它业务路由
 router.include_router(notifications_router)
 router.include_router(dashboard_router)
+# Agent：接口测试 Agent，依赖 test_management + api_catalog + business，放在最后
+router.include_router(agent_router)

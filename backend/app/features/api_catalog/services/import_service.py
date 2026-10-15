@@ -110,7 +110,7 @@ class ImportService:
             source_hash=None,
             total=len(schemas),
             new_count=counts["NEW"],
-            existing_count=0,
+            existing_count=counts["CHANGED"] + counts["UNCHANGED"],
             changed_count=counts["CHANGED"],
             unchanged_count=counts["UNCHANGED"],
             items=items,

@@ -674,10 +674,10 @@ export interface ApiDebugResult {
 
 export type BusinessDomainStatus = 'ACTIVE' | 'INACTIVE';
 export type BusinessFlowStatus = 'DRAFT' | 'ACTIVE' | 'DEPRECATED';
-export type BusinessActionType = 'API' | 'WEB' | 'MOBILE';
+export type BusinessActionType = 'NORMAL' | 'SYSTEM' | 'MANUAL' | 'WAIT' | 'DECISION';
 export type BusinessBindingType = 'API' | 'WEB' | 'MOBILE';
 export type BusinessPreconditionType = 'VARIABLE' | 'STATE' | 'BUSINESS' | 'TEXT';
-export type BusinessPreconditionOperator = 'EQ' | 'NE' | 'IN' | 'CONTAINS';
+export type BusinessPreconditionOperator = 'EQ' | 'NE' | 'IN' | 'CONTAINS' | 'EXISTS' | 'NOT_EXISTS';
 export type BusinessVariableDirection = 'INPUT' | 'OUTPUT';
 export type BusinessVariableDataType =
   | 'STRING' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'OBJECT' | 'ARRAY';
@@ -719,6 +719,7 @@ export interface BusinessFlow {
   description: string | null;
   status: string;
   version: number;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -732,6 +733,7 @@ export interface BusinessFlowUpdate {
   name?: string;
   description?: string | null;
   status?: BusinessFlowStatus;
+  revision?: number;
 }
 export type BusinessFlowListResponse = Paginated<BusinessFlow>;
 
@@ -744,6 +746,7 @@ export interface BusinessAction {
   action_key: string;
   sort: number;
   action_type: BusinessActionType;
+  revision: number;
   created_at: string;
   updated_at: string;
 }
@@ -760,6 +763,7 @@ export interface BusinessActionUpdate {
   action_key?: string;
   sort?: number;
   action_type?: BusinessActionType;
+  revision?: number;
 }
 export interface BusinessActionReorderItem {
   action_id: number;
@@ -856,8 +860,10 @@ export interface BusinessVariableRef {
   flow_id: number;
   source_action_id: number;
   source_variable: string;
+  source_variable_id: number | null;
   target_action_id: number;
   target_variable: string;
+  target_variable_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -874,6 +880,9 @@ export interface BusinessBinding {
   action_id: number;
   binding_type: BusinessBindingType;
   api_id: number | null;
+  name: string | null;
+  is_default: boolean;
+  sort: number;
   config_json: Record<string, unknown> | null;
   enabled: boolean;
   created_at: string;
@@ -882,12 +891,18 @@ export interface BusinessBinding {
 export interface BusinessBindingCreate {
   binding_type?: BusinessBindingType;
   api_id?: number | null;
+  name?: string | null;
+  is_default?: boolean;
+  sort?: number;
   config_json?: Record<string, unknown> | null;
   enabled?: boolean;
 }
 export interface BusinessBindingUpdate {
   binding_type?: BusinessBindingType;
   api_id?: number | null;
+  name?: string | null;
+  is_default?: boolean;
+  sort?: number;
   config_json?: Record<string, unknown> | null;
   enabled?: boolean;
 }
@@ -975,3 +990,1226 @@ export interface BusinessFlowDetail extends BusinessFlow {
   variable_refs: BusinessVariableRef[];
   rules: BusinessRule[];
 }
+
+// ---- 执行引擎 ----
+export type FlowExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+export type ActionExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+
+export interface FlowExecutionRequest {
+  environment_id: number;
+  variables?: Record<string, unknown>;
+}
+
+export interface FlowExecution {
+  id: number;
+  project_id: number;
+  flow_id: number;
+  environment_id: number | null;
+  status: FlowExecutionStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  context_json: Record<string, unknown> | null;
+  error_message: string | null;
+  error_code: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActionExecution {
+  id: number;
+  flow_execution_id: number;
+  action_id: number | null;
+  binding_id: number | null;
+  sequence: number;
+  status: ActionExecutionStatus;
+  request_snapshot: Record<string, unknown> | null;
+  response_snapshot: Record<string, unknown> | null;
+  input_context: Record<string, unknown> | null;
+  output_context: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_message: string | null;
+  error_code: string | null;
+  unverified_preconditions: Array<Record<string, unknown>> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FlowExecutionActionListResponse = Paginated<ActionExecution>;
+
+// ============================================================ 测试管理
+// 字段命名与后端 test_management schemas 严格对齐（snake_case）。
+// 覆盖：测试资产 TestStrategy / TestPoint / TestCase（含前置条件 / 测试数据 / 步骤 / 断言
+// 子实体 + 聚合详情 TestCaseDetail）、测试管理 TestSuite / TestPlan / TestRun / CaseExecution。
+// §27：source_type 预留 AI 取值（当前仅 MANUAL，后端校验；前端下拉只给 MANUAL）。
+// §25：所有测试资产归属 Project，跨项目访问按 404 返回，前端不展示。
+// §26：TestCase.revision 乐观锁——并发更新冲突返回 409，前端提示「当前测试用例已被其他用户修改」。
+// §16：TestCase 通过 target_type 路由执行器：API→ApiRequestExecutor、
+//      BUSINESS_FLOW→BusinessFlowExecutor、BUSINESS_ACTION→复用业务执行器单步。
+
+// ---- 枚举字面量（与后端 Literal/常量元组逐项对齐）----
+export type TestStrategyCategory =
+  | 'FUNCTIONAL' | 'PARAMETER' | 'BOUNDARY' | 'AUTH' | 'PERMISSION'
+  | 'BUSINESS' | 'EXCEPTION' | 'IDEMPOTENCY' | 'SECURITY' | 'DATA_CONSISTENCY';
+export type TestPriority = 'P0' | 'P1' | 'P2' | 'P3';
+export type TestTargetType = 'API' | 'BUSINESS_FLOW' | 'BUSINESS_ACTION';
+export type TestStatus = 'DRAFT' | 'ACTIVE' | 'DEPRECATED';
+export type TestSourceType = 'MANUAL' | 'AI'; // §27：AI 预留，当前不产生
+export type TestCaseType =
+  | 'FUNCTIONAL' | 'BUSINESS' | 'NEGATIVE' | 'BOUNDARY' | 'PERMISSION' | 'SECURITY' | 'EXCEPTION';
+export type TestPreconditionType =
+  | 'VARIABLE' | 'TEXT' | 'FIXTURE' | 'API' | 'BUSINESS_ACTION' | 'BUSINESS_FLOW';
+export type TestOperator =
+  | 'EQ' | 'NE' | 'GT' | 'GE' | 'LT' | 'LE' | 'IN' | 'CONTAINS' | 'EXISTS' | 'NOT_EXISTS';
+export type TestValueType = 'STRING' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'OBJECT' | 'ARRAY';
+export type TestDataSourceType = 'STATIC' | 'ENVIRONMENT' | 'VARIABLE' | 'RUNTIME' | 'FAKER' | 'FIXTURE';
+export type TestStepType = 'SETUP' | 'ACTION' | 'ASSERT' | 'CLEANUP';
+export type TestAssertionType =
+  | 'STATUS_CODE' | 'JSON_PATH' | 'HEADER' | 'RESPONSE_TIME' | 'CONTAINS' | 'NOT_CONTAINS';
+export type TestSuiteType = 'SMOKE' | 'REGRESSION' | 'BUSINESS' | 'CUSTOM';
+export type TestPlanStatus = 'DRAFT' | 'ACTIVE' | 'DISABLED';
+export type TestExecutionMode = 'MANUAL' | 'SCHEDULED' | 'CI';
+export type TestRunStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+export type CaseExecutionStatus = 'PENDING' | 'RUNNING' | 'PASSED' | 'FAILED' | 'SKIPPED' | 'ERROR';
+export type CaseExecutorType = 'API' | 'BUSINESS_FLOW' | 'BUSINESS_ACTION'; // §16 路由依据
+
+// ---- 测试策略 ----
+export interface TestStrategy {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  category: string;
+  enabled: boolean;
+  source_type: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestStrategyCreate {
+  name: string;
+  description?: string | null;
+  category?: TestStrategyCategory;
+  enabled?: boolean;
+}
+export interface TestStrategyUpdate {
+  name?: string;
+  description?: string | null;
+  category?: TestStrategyCategory;
+  enabled?: boolean;
+}
+
+// ---- 测试点 ----
+export interface TestPoint {
+  id: number;
+  project_id: number;
+  strategy_id: number | null;
+  name: string;
+  description: string | null;
+  priority: string;
+  target_type: string;
+  api_id: number | null;
+  business_flow_id: number | null;
+  business_action_id: number | null;
+  status: string;
+  source_type: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestPointCreate {
+  name: string;
+  description?: string | null;
+  priority?: TestPriority;
+  target_type?: TestTargetType;
+  strategy_id?: number | null;
+  api_id?: number | null;
+  business_flow_id?: number | null;
+  business_action_id?: number | null;
+  status?: TestStatus;
+}
+export interface TestPointUpdate {
+  name?: string;
+  description?: string | null;
+  priority?: TestPriority;
+  target_type?: TestTargetType;
+  strategy_id?: number | null;
+  api_id?: number | null;
+  business_flow_id?: number | null;
+  business_action_id?: number | null;
+  status?: TestStatus;
+}
+
+// ---- 测试用例 ----
+export interface TestCase {
+  id: number;
+  project_id: number;
+  test_point_id: number | null;
+  name: string;
+  description: string | null;
+  priority: string;
+  case_type: string;
+  target_type: string;
+  api_id: number | null;
+  business_flow_id: number | null;
+  business_action_id: number | null;
+  status: string;
+  enabled: boolean;
+  revision: number; // §26 乐观锁版本号
+  source_type: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestCaseCreate {
+  name: string;
+  description?: string | null;
+  priority?: TestPriority;
+  case_type?: TestCaseType;
+  target_type?: TestTargetType;
+  test_point_id?: number | null;
+  api_id?: number | null;
+  business_flow_id?: number | null;
+  business_action_id?: number | null;
+  status?: TestStatus;
+  enabled?: boolean;
+}
+export interface TestCaseUpdate {
+  name?: string;
+  description?: string | null;
+  priority?: TestPriority;
+  case_type?: TestCaseType;
+  target_type?: TestTargetType;
+  test_point_id?: number | null;
+  api_id?: number | null;
+  business_flow_id?: number | null;
+  business_action_id?: number | null;
+  status?: TestStatus;
+  enabled?: boolean;
+  revision?: number; // §26：更新时携带当前 revision，不匹配 → 409
+}
+
+// ---- 用例子实体：前置条件 ----
+export interface TestCasePrecondition {
+  id: number;
+  test_case_id: number;
+  type: string;
+  target: string | null;
+  operator: string;
+  expected_value: string | null;
+  description: string | null;
+  config_json: Record<string, unknown> | null;
+  sort: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestCasePreconditionCreate {
+  type?: TestPreconditionType;
+  target?: string | null;
+  operator?: TestOperator;
+  expected_value?: string | null;
+  description?: string | null;
+  config_json?: Record<string, unknown> | null;
+  sort?: number;
+}
+export interface TestCasePreconditionUpdate {
+  type?: TestPreconditionType;
+  target?: string | null;
+  operator?: TestOperator;
+  expected_value?: string | null;
+  description?: string | null;
+  config_json?: Record<string, unknown> | null;
+  sort?: number;
+}
+
+// ---- 用例子实体：测试数据 ----
+export interface TestCaseData {
+  id: number;
+  test_case_id: number;
+  name: string;
+  value_type: string;
+  value: string | null;
+  source_type: string;
+  required: boolean;
+  description: string | null;
+  config_json: Record<string, unknown> | null;
+  sort: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestCaseDataCreate {
+  name: string;
+  value_type?: TestValueType;
+  value?: string | null;
+  source_type?: TestDataSourceType;
+  required?: boolean;
+  description?: string | null;
+  config_json?: Record<string, unknown> | null;
+  sort?: number;
+}
+// 注意：Update 不含 name（数据项名不可改，与后端 TestCaseDataUpdate 一致）。
+export interface TestCaseDataUpdate {
+  value_type?: TestValueType;
+  value?: string | null;
+  source_type?: TestDataSourceType;
+  required?: boolean;
+  description?: string | null;
+  config_json?: Record<string, unknown> | null;
+  sort?: number;
+}
+
+// ---- 用例子实体：所需 Fixture（执行前由平台按依赖顺序生成）----
+export interface TestCaseFixture {
+  id: number;
+  test_case_id: number;
+  fixture_id: number;
+  fixture_key: string;
+  name: string;
+  entity_type: string | null;
+  scope: 'PROJECT' | 'GLOBAL';
+  status: string;
+  outputs: string[];
+  sort: number;
+}
+export interface TestCaseFixtureCreate {
+  fixture_key: string;
+  sort?: number;
+}
+
+// ---- 用例子实体：步骤 ----
+export interface TestStep {
+  id: number;
+  test_case_id: number;
+  name: string;
+  step_type: string;
+  target_type: string | null;
+  target_id: number | null;
+  sort: number;
+  config_json: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestStepCreate {
+  name: string;
+  step_type?: TestStepType;
+  target_type?: TestTargetType | null;
+  target_id?: number | null;
+  sort?: number;
+  config_json?: Record<string, unknown> | null;
+}
+export interface TestStepUpdate {
+  name?: string;
+  step_type?: TestStepType;
+  target_type?: TestTargetType | null;
+  target_id?: number | null;
+  sort?: number;
+  config_json?: Record<string, unknown> | null;
+}
+
+// ---- 用例子实体：断言 ----
+export interface TestAssertion {
+  id: number;
+  test_case_id: number;
+  step_id: number | null;
+  assertion_type: string;
+  source: string | null;
+  path: string | null;
+  operator: string;
+  expected_value: string | null;
+  required: boolean;
+  sort: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestAssertionCreate {
+  assertion_type?: TestAssertionType;
+  source?: string | null;
+  path?: string | null;
+  operator?: TestOperator;
+  expected_value?: string | null;
+  required?: boolean;
+  step_id?: number | null;
+  sort?: number;
+}
+export interface TestAssertionUpdate {
+  assertion_type?: TestAssertionType;
+  source?: string | null;
+  path?: string | null;
+  operator?: TestOperator;
+  expected_value?: string | null;
+  required?: boolean;
+  step_id?: number | null;
+  sort?: number;
+}
+
+// ---- 用例聚合详情（编辑器一次性拉取，减少往返）----
+export interface TestCaseDetail extends TestCase {
+  preconditions: TestCasePrecondition[];
+  test_data: TestCaseData[];
+  steps: TestStep[];
+  assertions: TestAssertion[];
+  fixtures: TestCaseFixture[];
+}
+
+// ---- 测试套件 ----
+export interface TestSuite {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  suite_type: string;
+  enabled: boolean;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestSuiteCreate {
+  name: string;
+  description?: string | null;
+  suite_type?: TestSuiteType;
+  enabled?: boolean;
+}
+export interface TestSuiteUpdate {
+  name?: string;
+  description?: string | null;
+  suite_type?: TestSuiteType;
+  enabled?: boolean;
+}
+export interface TestSuiteCaseAdd {
+  test_case_id: number;
+  sort?: number;
+  enabled?: boolean;
+}
+export interface TestSuiteCaseResponse {
+  id: number;
+  suite_id: number;
+  test_case_id: number;
+  sort: number;
+  enabled: boolean;
+  created_at: string;
+}
+
+// ---- 测试计划 ----
+export interface TestPlan {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  environment_id: number | null;
+  status: string;
+  execution_mode: string;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestPlanCreate {
+  name: string;
+  description?: string | null;
+  environment_id?: number | null;
+  status?: TestPlanStatus;
+  execution_mode?: TestExecutionMode;
+}
+export interface TestPlanUpdate {
+  name?: string;
+  description?: string | null;
+  environment_id?: number | null;
+  status?: TestPlanStatus;
+  execution_mode?: TestExecutionMode;
+}
+export interface TestPlanSuiteAdd {
+  suite_id: number;
+  sort?: number;
+}
+export interface TestPlanSuiteResponse {
+  id: number;
+  plan_id: number;
+  suite_id: number;
+  sort: number;
+  created_at: string;
+}
+
+// ---- 测试执行 ----
+export interface TestRunCreateRequest {
+  environment_id?: number | null; // 覆盖计划环境；为空用计划环境
+}
+export interface TestRun {
+  id: number;
+  project_id: number;
+  plan_id: number | null;
+  environment_id: number | null;
+  status: string;
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  error: number;
+  started_at: string | null;
+  finished_at: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+// list_runs 返回分页信封（后端 TestRunListResponse）。
+export type TestRunListResponse = Paginated<TestRun>;
+
+export interface CaseExecution {
+  id: number;
+  test_run_id: number;
+  test_case_id: number | null;
+  status: string;
+  executor_type: string | null;
+  request_snapshot: Record<string, unknown> | null;
+  response_snapshot: Record<string, unknown> | null;
+  assertion_results: Array<Record<string, unknown>> | null;
+  context_json: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+// list_case_executions 返回分页信封（后端 CaseExecutionListResponse）。
+export type CaseExecutionListResponse = Paginated<CaseExecution>;
+
+// ---- 接口测试 Agent ----
+
+export type AgentStage =
+  | 'UNDERSTANDING'
+  | 'CONTEXT_LOADING'
+  | 'PLANNING'
+  | 'TEST_POINT_REVIEW'
+  | 'TEST_POINT_GENERATED'
+  | 'TEST_CASE_REVIEW'
+  | 'READY_TO_EXECUTE'
+  | 'EXECUTING'
+  | 'ANALYZING'
+  // Phase 2：报告闭环与飞书通知阶段
+  | 'REPORT_GENERATING'
+  | 'REPORT_REVIEW'
+  | 'NOTIFYING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CLARIFY';
+
+export type AgentAction =
+  | 'confirm_points'
+  | 'confirm_cases'
+  | 'execute'
+  | 'analyze'
+  | 'regenerate_points'
+  | 'regenerate_cases'
+  | 'query'
+  | 'continue'
+  // Phase 2：报告 review 暂停点的两个出口
+  | 'confirm_report'
+  | 'skip_notification';
+
+export type AgentMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
+
+export type AgentMessageType =
+  | 'TEXT'
+  | 'TEST_PLAN'
+  | 'TEST_POINTS'
+  | 'TEST_CASES'
+  | 'EXECUTION'
+  | 'RESULT'
+  | 'CLARIFY'
+  // Phase 2：报告与通知产物消息（metadata_json 为脱敏 brief）
+  | 'REPORT'
+  | 'NOTIFICATION';
+
+export interface AgentSession {
+  id: number;
+  project_id: number;
+  user_id: number | null;
+  title: string | null;
+  status: string;
+  current_stage: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentMessage {
+  id: number;
+  session_id: number;
+  role: AgentMessageRole;
+  message_type: AgentMessageType;
+  content: string | null;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface AgentSessionDetail {
+  session: AgentSession;
+  messages: AgentMessage[];
+}
+
+export interface SendMessageRequest {
+  content?: string | null;
+  action?: AgentAction | null;
+  point_ids?: number[] | null;
+  case_ids?: number[] | null;
+  environment_id?: number | null;
+  /** Phase 2：飞书通知渠道ID（confirm_report 时可选，缺省取项目首个启用渠道） */
+  channel_id?: number | null;
+}
+
+export interface AgentWorkspace {
+  stage: AgentStage;
+  intent: string | null;
+  test_plan: Record<string, unknown> | null;
+  test_points: Array<Record<string, unknown>>;
+  test_cases: Array<Record<string, unknown>>;
+  test_run_id: number | null;
+  execution_result: Record<string, unknown> | null;
+  analysis: Record<string, unknown> | null;
+  /** Phase 2：已生成报告的ID */
+  report_id: number | null;
+  /** Phase 2：脱敏报告摘要（report_no/风险/通过率/AI 总结） */
+  report_brief: Record<string, unknown> | null;
+  /** Phase 2：飞书通知结果（status/error_message/skipped/channel_name） */
+  notification_brief: Record<string, unknown> | null;
+  error: Record<string, unknown> | null;
+  suggested_actions: string[];
+}
+
+export interface AgentTurnResponse {
+  session: AgentSession;
+  messages: AgentMessage[];
+  workspace: AgentWorkspace;
+}
+
+// ---- 正式测试报告（Phase 2）----
+// 字段与后端 features/reports/schemas.py 严格对齐（snake_case）。
+
+export type ReportStatus = 'GENERATING' | 'COMPLETED' | 'FAILED';
+export type ReportRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+// 失败分类：POTENTIAL_BUG 仅表示「疑似产品问题，需人工确认」，不是已确认缺陷。
+export type ReportFailureType =
+  | 'ASSERTION_FAILURE'
+  | 'EXECUTION_ERROR'
+  | 'TEST_DATA_ISSUE'
+  | 'ENVIRONMENT_ERROR'
+  | 'POTENTIAL_BUG'
+  | 'UNKNOWN';
+
+export interface ReportGenerateRequest {
+  /** 是否调用 LLM 生成结构化总结（失败不影响报告状态） */
+  generate_ai_summary?: boolean;
+  /** 已有 COMPLETED 报告时仅重生成 AI 总结（统计字段不可变） */
+  regenerate?: boolean;
+}
+
+export interface ReportGenerateResponse {
+  report_id: number;
+  status: ReportStatus;
+}
+
+/** 报告详情内的单用例执行摘要（快照已脱敏）。 */
+export interface CaseExecutionSummary {
+  id: number;
+  test_case_id: number | null;
+  case_name: string;
+  priority: string;
+  case_type: string | null;
+  status: string;
+  failure_type: ReportFailureType | null;
+  executor_type: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  request_snapshot: Record<string, unknown> | null;
+  response_snapshot: Record<string, unknown> | null;
+  assertion_results: Array<Record<string, unknown>> | null;
+  context_json: Record<string, unknown> | null;
+}
+
+/** 报告详情里附带的一次性 TestRun 摘要。 */
+export interface TestRunBrief {
+  id: number;
+  status: string;
+  environment_id: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface TestReport {
+  id: number;
+  project_id: number;
+  test_run_id: number | null;
+  report_no: string;
+  title: string;
+  environment_id: number | null;
+  status: ReportStatus;
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  error_cases: number;
+  skipped_cases: number;
+  /** 通过率 0-100，保留两位小数（passed/(total-skipped)*100，分母 0 记 0） */
+  pass_rate: number;
+  duration_ms: number | null;
+  /** 代码统计的结构化汇总（failure_clusters / case_failure_types），不可变 */
+  summary: Record<string, unknown> | null;
+  /** LLM 结构化总结；生成失败时为空（报告仍 COMPLETED） */
+  ai_summary: Record<string, unknown> | null;
+  ai_summary_version: string | null;
+  risk_level: ReportRiskLevel;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 报告列表项（不含 AI 总结等大字段）。 */
+export interface TestReportListItem {
+  id: number;
+  report_no: string;
+  title: string;
+  test_run_id: number | null;
+  environment_id: number | null;
+  status: ReportStatus;
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  error_cases: number;
+  skipped_cases: number;
+  pass_rate: number;
+  duration_ms: number | null;
+  risk_level: ReportRiskLevel;
+  created_at: string;
+}
+
+// list_reports 返回分页信封（后端 TestReportListResponse）。
+export type TestReportListResponse = Paginated<TestReportListItem>;
+
+/** 报告详情：报告本体 + TestRun 摘要 + 逐用例执行 + 失败分类聚类。 */
+export interface TestReportDetail {
+  report: TestReport;
+  test_run: TestRunBrief | null;
+  case_executions: CaseExecutionSummary[];
+  failure_clusters: Array<Record<string, unknown>>;
+}
+
+export interface ReportListQuery {
+  page?: number;
+  page_size?: number;
+  environment_id?: number;
+  risk_level?: ReportRiskLevel;
+  status?: ReportStatus;
+  test_run_id?: number;
+}
+
+// ---- 飞书通知渠道与发送记录（Phase 2）----
+// 字段与后端 features/notifications/schemas_channel.py 严格对齐（snake_case）。
+// 安全红线：后端响应**永不**回吐 webhook_url / secret 明文，仅回 webhook_configured
+// （布尔）与 webhook_masked（脱敏 URL）。
+
+export type NotifyCondition = 'ALWAYS' | 'ONLY_FAILED' | 'ONLY_HIGH_RISK';
+export type NotifyStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+
+export interface ChannelCreateRequest {
+  name: string;
+  channel_type?: 'FEISHU_WEBHOOK';
+  /** 飞书 webhook URL（明文入参，后端加密入库；仅写入不回读） */
+  webhook_url: string;
+  /** 飞书签名密钥（明文入参，后端加密入库；不填则不签名） */
+  secret?: string | null;
+  enabled?: boolean;
+  notify_condition?: NotifyCondition;
+  keyword?: string | null;
+}
+
+/** 更新渠道；webhook_url / secret 留空（undefined）表示不变，传空串表示清除。 */
+export interface ChannelUpdateRequest {
+  name?: string;
+  webhook_url?: string;
+  secret?: string;
+  enabled?: boolean;
+  notify_condition?: NotifyCondition;
+  keyword?: string;
+}
+
+export interface NotificationChannel {
+  id: number;
+  project_id: number;
+  name: string;
+  channel_type: string;
+  enabled: boolean;
+  notify_condition: NotifyCondition;
+  /** 是否已配置 webhook URL（不含 URL 本身） */
+  webhook_configured: boolean;
+  /** 脱敏 webhook URL，如 https://open.feishu.cn/...**** */
+  webhook_masked: string;
+  keyword: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// list_channels 返回分页信封。
+export type ChannelListResponse = Paginated<NotificationChannel>;
+
+/** 发送审计记录（不含卡片原文 request_snapshot）。 */
+export interface NotificationRecord {
+  id: number;
+  project_id: number;
+  channel_id: number;
+  report_id: number | null;
+  status: NotifyStatus;
+  error_message: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
+// 发送记录列表返回分页信封。
+export type NotificationRecordListResponse = Paginated<NotificationRecord>;
+
+/** 触发发送（手动 / 连通性测试）的即时结果。 */
+export interface SendResult {
+  record_id: number | null;
+  status: NotifyStatus;
+  error_message: string | null;
+  /** 因渠道禁用或通知条件不满足而跳过（未发送） */
+  skipped: boolean;
+}
+
+export interface NotifyReportRequest {
+  /** 渠道 ID；省略时后端取项目首个启用渠道，均无则跳过（skipped=true），而不是 422。 */
+  channel_id?: number;
+}
+
+// ===========================================================================
+// 测试数据中心 / Data Factory（features/test_data/schemas.py 对齐，snake_case）
+// 列表接口统一走 Paginated<T>；写操作的请求体与后端 Pydantic 入参一致。
+// 安全约定：Provider 配置 extra=forbid；连接响应只回 password_set；value/payload 已脱敏。
+// ===========================================================================
+
+// Fixture 作用域 / 状态 / 清理策略 / 步骤类型等字面量类型，供下拉与表单复用。
+export type FixtureScope = 'CASE' | 'RUN' | 'PROJECT' | 'GLOBAL';
+export type FixtureStatus = 'DRAFT' | 'ACTIVE' | 'DISABLED';
+export type FixtureCleanupPolicy = 'AFTER_CASE' | 'AFTER_RUN' | 'MANUAL' | 'NEVER';
+export type FixturePhase = 'GENERATE' | 'CLEANUP';
+export type FixtureStepType =
+  | 'FIXTURE' | 'API' | 'BUSINESS_ACTION' | 'BUSINESS_FLOW'
+  | 'FAKER' | 'STATIC' | 'DATABASE_INSERT' | 'DATABASE_PATCH'
+  | 'WAIT' | 'DATABASE_QUERY' | 'EXTERNAL_PROVIDER';
+export type FixtureOnFailure = 'ABORT' | 'CONTINUE';
+export type ValueType = 'STRING' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'OBJECT' | 'ARRAY';
+export type ProviderType =
+  | 'STATIC' | 'ENVIRONMENT' | 'FAKER' | 'API_CREATE'
+  | 'BUSINESS_ACTION' | 'BUSINESS_FLOW' | 'EXISTING_POOL'
+  | 'DATABASE_INSERT' | 'DATABASE_PATCH';
+export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type AssetSource = 'STATIC' | 'POOL' | 'FIXTURE';
+export type AssetStatus = 'ACTIVE' | 'DISABLED' | 'EXPIRED';
+export type PoolStatus = 'ACTIVE' | 'DISABLED';
+export type PoolItemStatus = 'AVAILABLE' | 'OCCUPIED' | 'EXPIRED' | 'DISABLED';
+export type LeaseStatus = 'ACTIVE' | 'RELEASED' | 'EXPIRED';
+export type DbOperation = 'INSERT' | 'UPDATE' | 'SELECT' | 'DELETE';
+export type DbEnvironmentClass = 'DEV' | 'TEST' | 'STAGING' | 'PRODUCTION';
+export type DataExecutionStatus =
+  | 'PENDING' | 'GENERATING' | 'READY' | 'FAILED'
+  | 'EXPIRED' | 'DIRTY' | 'CLEANING' | 'CLEANED';
+export type ProviderExecutionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+export type CleanupStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+
+// ---- Fixture ----
+
+/** Fixture 步骤（响应）。config_json 为自由结构，按 step_type 解释。 */
+export interface FixtureStep {
+  id: number;
+  fixture_id: number;
+  phase: FixturePhase;
+  step_type: FixtureStepType;
+  name: string;
+  sort: number;
+  provider_id: number | null;
+  config_json: Record<string, unknown> | null;
+  on_failure: FixtureOnFailure;
+}
+
+/** 输出契约（响应）。 */
+export interface FixtureOutput {
+  id: number;
+  fixture_id: number;
+  name: string;
+  value_type: ValueType;
+  source_path: string;
+  description: string | null;
+  sort: number;
+}
+
+/** 依赖边（响应，附被依赖方 key/name/类型，便于画树）。 */
+export interface FixtureDependency {
+  id: number;
+  fixture_id: number;
+  depends_on_fixture_id: number;
+  sort: number;
+  depends_on_key: string | null;
+  depends_on_name: string | null;
+  depends_on_entity_type: string | null;
+}
+
+/** Fixture 列表项（含聚合计数）。 */
+export interface FixtureBrief {
+  id: number;
+  project_id: number;
+  name: string;
+  fixture_key: string;
+  entity_type: string;
+  description: string | null;
+  scope: FixtureScope;
+  status: FixtureStatus;
+  cache_enabled: boolean;
+  cleanup_policy: FixtureCleanupPolicy;
+  output_names: string[];
+  step_count: number;
+  generate_step_count: number;
+  cleanup_step_count: number;
+  dependency_count: number;
+  referenced_case_count: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Fixture 详情（列表项 + 步骤 + 输出 + 依赖 + 引用用例）。 */
+export interface FixtureDetail extends FixtureBrief {
+  steps: FixtureStep[];
+  outputs: FixtureOutput[];
+  dependencies: FixtureDependency[];
+  referenced_cases: { test_case_id: number; sort: number }[];
+}
+
+/** 依赖树节点（含子依赖）。 */
+export interface FixtureTreeNode {
+  id: number;
+  fixture_key: string;
+  name: string;
+  entity_type: string;
+  scope: FixtureScope;
+  status: FixtureStatus;
+  depth: number;
+  children: FixtureTreeNode[];
+}
+
+// 写入入参
+export interface FixtureStepInput {
+  phase?: FixturePhase;
+  step_type: FixtureStepType;
+  name: string;
+  sort?: number;
+  provider_id?: number | null;
+  config_json?: Record<string, unknown> | null;
+  on_failure?: FixtureOnFailure;
+}
+export interface FixtureOutputInput {
+  name: string;
+  value_type?: ValueType;
+  source_path: string;
+  description?: string | null;
+  sort?: number;
+}
+export interface FixtureCreate {
+  name: string;
+  fixture_key: string;
+  entity_type: string;
+  description?: string | null;
+  scope?: FixtureScope;
+  status?: FixtureStatus;
+  cache_enabled?: boolean;
+  cleanup_policy?: FixtureCleanupPolicy;
+  steps?: FixtureStepInput[];
+  outputs?: FixtureOutputInput[];
+  dependencies?: number[];
+}
+export interface FixtureUpdate {
+  name?: string;
+  description?: string | null;
+  scope?: FixtureScope;
+  status?: FixtureStatus;
+  cache_enabled?: boolean;
+  cleanup_policy?: FixtureCleanupPolicy;
+}
+export interface FixtureStepsReplace {
+  steps: FixtureStepInput[];
+}
+export interface FixtureOutputsReplace {
+  outputs: FixtureOutputInput[];
+}
+
+export type FixtureListResponse = Paginated<FixtureBrief>;
+
+// ---- 测试数据目录 ----
+export interface TestDataAsset {
+  id: number;
+  project_id: number;
+  name: string;
+  entity_type: string;
+  source: AssetSource;
+  scope: FixtureScope;
+  status: AssetStatus;
+  fixture_id: number | null;
+  value_json: Record<string, unknown> | null; // 已脱敏，敏感值为 ******
+  description: string | null;
+  referenced_count: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TestDataAssetCreate {
+  name: string;
+  entity_type: string;
+  source?: AssetSource;
+  scope?: FixtureScope;
+  status?: AssetStatus;
+  fixture_id?: number | null;
+  value_json?: Record<string, unknown> | null;
+  description?: string | null;
+}
+export interface TestDataAssetUpdate {
+  name?: string;
+  entity_type?: string;
+  source?: AssetSource;
+  scope?: FixtureScope;
+  status?: AssetStatus;
+  fixture_id?: number | null;
+  value_json?: Record<string, unknown> | null;
+  description?: string | null;
+}
+export type TestDataAssetListResponse = Paginated<TestDataAsset>;
+
+// ---- Data Provider ----
+export interface DataProvider {
+  id: number;
+  project_id: number;
+  name: string;
+  provider_type: ProviderType;
+  config_json: Record<string, unknown>; // 不含密码；DATABASE 类只回 connection_id
+  enabled: boolean;
+  risk_level: RiskLevel;
+  description: string | null;
+  usage_count: number;
+  last_status: ProviderExecutionStatus | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface DataProviderCreate {
+  name: string;
+  provider_type: ProviderType;
+  config_json?: Record<string, unknown>;
+  enabled?: boolean;
+  risk_level?: RiskLevel | null;
+  description?: string | null;
+}
+export interface DataProviderUpdate {
+  name?: string;
+  provider_type?: ProviderType;
+  config_json?: Record<string, unknown> | null;
+  enabled?: boolean;
+  risk_level?: RiskLevel | null;
+  description?: string | null;
+}
+export interface DataProviderTestRequest {
+  environment_id: number;
+  variables?: Record<string, unknown>;
+}
+/** 手工试跑 Fixture 的请求体：scope 只接收不生效，试跑一律按 CASE 处理。 */
+export interface FixtureGenerateRequest {
+  environment_id: number;
+  scope?: string;
+  variables?: Record<string, unknown>;
+}
+export type DataProviderListResponse = Paginated<DataProvider>;
+
+// ---- 数据池 ----
+export interface DataPool {
+  id: number;
+  project_id: number;
+  asset_id: number | null;
+  pool_key: string;
+  name: string;
+  scope: FixtureScope;
+  max_concurrency: number;
+  lease_ttl_seconds: number;
+  status: PoolStatus;
+  item_count: number;
+  available_count: number;
+  active_lease_count: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface DataPoolItem {
+  id: number;
+  pool_id: number;
+  status: PoolItemStatus;
+  payload_json: Record<string, unknown>; // 已脱敏
+  occupied_count: number;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface DataPoolCreate {
+  name: string;
+  pool_key: string;
+  asset_id?: number | null;
+  scope?: FixtureScope;
+  max_concurrency?: number;
+  lease_ttl_seconds?: number;
+  status?: PoolStatus;
+}
+export interface DataPoolItemCreate {
+  payload_json?: Record<string, unknown>;
+  expires_at?: string | null;
+  status?: PoolItemStatus;
+}
+export type DataPoolListResponse = Paginated<DataPool>;
+export type DataPoolItemListResponse = Paginated<DataPoolItem>;
+
+// ---- 被测库连接与策略 ----
+export interface TargetDbConnection {
+  id: number;
+  project_id: number;
+  environment_id: number;
+  environment_name: string | null;
+  environment_class: DbEnvironmentClass | null;
+  name: string;
+  host: string;
+  port: number;
+  database_name: string;
+  username: string;
+  schema_name: string | null;
+  enabled: boolean;
+  password_set: boolean; // 只回是否存在密码，绝不回显
+  referenced_count: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface TargetDbConnectionCreate {
+  environment_id: number;
+  name: string;
+  host: string;
+  port?: number;
+  database_name: string;
+  username: string;
+  password: string; // 创建时唯一一次明文
+  schema_name?: string | null;
+  enabled?: boolean;
+}
+export interface TargetDbConnectionUpdate {
+  name?: string;
+  host?: string;
+  port?: number;
+  database_name?: string;
+  username?: string;
+  password?: string;
+  schema_name?: string | null;
+  enabled?: boolean;
+}
+export type TargetDbConnectionListResponse = Paginated<TargetDbConnection>;
+
+export interface DatabasePolicy {
+  id: number;
+  project_id: number;
+  environment_id: number;
+  enabled: boolean;
+  allowed_tables: string[];
+  allowed_operations: DbOperation[];
+  environment_name: string | null;
+  environment_display_name: string | null;
+  environment_class: DbEnvironmentClass;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface DatabasePolicyUpsert {
+  enabled: boolean;
+  allowed_tables?: string[];
+  allowed_operations?: DbOperation[];
+}
+export type DatabasePolicyListResponse = Paginated<DatabasePolicy>;
+
+// ---- 执行记录（只读；Phase A 列表恒空） ----
+export interface ProviderExecution {
+  id: number;
+  fixture_execution_id: number | null;
+  data_execution_id: number | null;
+  project_id: number;
+  provider_id: number | null;
+  provider_type: string;
+  step_id: number | null;
+  status: ProviderExecutionStatus;
+  input_snapshot: Record<string, unknown> | null; // 已脱敏
+  output_snapshot: Record<string, unknown> | null; // 已脱敏
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  cleanup_status: CleanupStatus | null;
+}
+export interface FixtureExecution {
+  id: number;
+  data_execution_id: number;
+  project_id: number;
+  fixture_id: number | null;
+  fixture_key: string;
+  status: DataExecutionStatus;
+  scope: string;
+  cache_hit: boolean;
+  input_snapshot: Record<string, unknown> | null;
+  output_snapshot: Record<string, unknown> | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  cleanup_status: CleanupStatus | null;
+  cleanup_error_code: string | null;
+  cleanup_error_message: string | null;
+  provider_executions: ProviderExecution[];
+}
+export interface DataExecution {
+  id: number;
+  project_id: number;
+  test_run_id: number | null;
+  case_execution_id: number | null;
+  environment_id: number | null;
+  status: DataExecutionStatus;
+  scope: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  cleanup_status: CleanupStatus | null;
+  cleanup_error_code: string | null;
+  cleanup_error_message: string | null;
+  fixture_key_count: number;
+  provider_step_count: number;
+  created_at: string;
+}
+export interface DataExecutionDetail extends DataExecution {
+  fixture_executions: FixtureExecution[];
+  /**
+   * 没有归属 Fixture 的步骤记录：手工试跑单个 Provider 时
+   * fixture_execution_id 为空，只能挂在这一层。
+   */
+  provider_executions: ProviderExecution[];
+}
+export interface DataExecutionListQuery {
+  status?: DataExecutionStatus;
+  test_run_id?: number;
+  page?: number;
+  page_size?: number;
+}
+export type DataExecutionListResponse = Paginated<DataExecution>;
+

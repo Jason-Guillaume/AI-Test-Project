@@ -43,6 +43,9 @@ import type {
   BusinessVariableRef,
   BusinessVariableRefCreate,
   BusinessVariableUpdate,
+  ActionExecution,
+  FlowExecution,
+  FlowExecutionRequest,
   Paginated,
 } from '@/types';
 
@@ -144,6 +147,13 @@ export const businessApi = {
   updateRule: (ruleId: number, body: BusinessRuleUpdate) =>
     api.patch<BusinessRule>(`/business-rules/${ruleId}`, body),
   removeRule: (ruleId: number) => api.delete<void>(`/business-rules/${ruleId}`),
+
+  // ---- 执行引擎 ----
+  executeFlow: (flowId: number, body: FlowExecutionRequest) =>
+    api.post<FlowExecution>(`/business-flows/${flowId}/execute`, body),
+  getExecution: (executionId: number) => api.get<FlowExecution>(`/business-executions/${executionId}`),
+  listExecutionActions: (executionId: number) =>
+    api.get<Paginated<ActionExecution>>(`/business-executions/${executionId}/actions`),
 };
 
 // 写入载荷的类型再导出一份，供页面组件 Form 直接引用（避免重复定义）。
@@ -171,4 +181,5 @@ export type {
   BusinessActionDetail,
   BusinessBindingDetail,
   BusinessFlowDetail,
+  FlowExecutionRequest,
 };

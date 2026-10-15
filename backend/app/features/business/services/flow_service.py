@@ -253,6 +253,9 @@ class FlowService:
         data = body.model_dump(exclude_unset=True)
         if not data:
             return _flow_response(flow)
+        # 乐观锁校验。
+        if "revision" in data and data["revision"] != flow.revision:
+            raise conflict("业务流程已被其他用户修改，请刷新后重试")
         if "name" in data and data["name"] is not None:
             new_name = data["name"].strip()
             if not new_name:
@@ -265,6 +268,7 @@ class FlowService:
                 setattr(flow, field, data[field])
         if "description" in data:
             flow.description = data["description"]
+        flow.revision = (flow.revision or 0) + 1
         db.flush()
         db.commit()
         db.refresh(flow)
@@ -295,6 +299,9 @@ class FlowService:
         action_key = body.action_key.strip()
         if not action_key:
             raise bad_request("业务动作 action_key 不能为空")
+        name = body.name.strip()
+        if not name:
+            raise bad_request("业务动作名称不能为空")
         _ensure_unique_action_key(db, flow_id, action_key)
         # append 到末尾：sort 未显式给时取当前最大 sort + 1，保证新动作排在最后。
         max_sort = (
@@ -306,7 +313,7 @@ class FlowService:
         next_sort = (max_sort.sort if max_sort else 0) + 1 if body.sort == 0 else body.sort
         action = BusinessAction(
             flow_id=flow_id,
-            name=body.name.strip(),
+            name=name,
             description=(body.description or "").strip() or None,
             action_key=action_key,
             sort=next_sort,
@@ -335,6 +342,9 @@ class FlowService:
         data = body.model_dump(exclude_unset=True)
         if not data:
             return _action_response(action)
+        # 乐观锁校验。
+        if "revision" in data and data["revision"] != action.revision:
+            raise conflict("业务动作已被其他用户修改，请刷新后重试")
         if "action_key" in data and data["action_key"] is not None:
             new_key = data["action_key"].strip()
             if not new_key:
@@ -343,7 +353,10 @@ class FlowService:
                 _ensure_unique_action_key(db, action.flow_id, new_key, exclude_id=action.id)
                 action.action_key = new_key
         if "name" in data and data["name"] is not None:
-            action.name = data["name"].strip()
+            stripped_name = data["name"].strip()
+            if not stripped_name:
+                raise bad_request("业务动作名称不能为空")
+            action.name = stripped_name
         for field in ("description", "sort", "action_type"):
             if field in data and data[field] is not None:
                 if field == "action_type" and data[field] not in BUSINESS_ACTION_TYPES:
@@ -351,6 +364,7 @@ class FlowService:
                 setattr(action, field, data[field])
         if "description" in data:
             action.description = data["description"]
+        action.revision = (action.revision or 0) + 1
         db.flush()
         db.commit()
         db.refresh(action)

@@ -184,7 +184,7 @@ export function RequestTab({ api }: { api: ApiInterfaceDetail }) {
     const bodyIn: ApiBodyIn = {
       body_type: body.body_type,
       content_type: body.content_type || null,
-      raw_text: body.body_type === 'raw' ? body.raw_text || null : null,
+      raw_text: body.raw_text || null,
       schema_json: null,
     };
     if (body.body_type !== 'none' && body.body_type !== 'raw' && bodySchemaText) {

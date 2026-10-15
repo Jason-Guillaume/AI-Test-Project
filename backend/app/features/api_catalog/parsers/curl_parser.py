@@ -33,7 +33,8 @@ from app.features.api_catalog.services.module_resolver import infer_module_name_
 _SENSITIVE_HEADERS: frozenset[str] = frozenset(
     {
         "authorization", "token", "cookie", "set-cookie",
-        "x-api-key", "api-key", "x-auth-token", "proxy-authorization",
+        "x-api-key", "api-key", "x-auth-token", "x-token", "x-access-token",
+        "proxy-authorization",
     }
 )
 # 这些 header 不作为 HEADER 参数落库（Cookie 路由到 COOKIE 参数，Content-Type 进 body）。
@@ -348,9 +349,13 @@ def _build_parameters(
             ))
         sort += 1
     for name, value in cookies.items():
+        # Cookie 一律不落库真实值：example 写占位串（调试/用例侧再填真值）。
+        # 否则 sessionid / JSESSIONID 这类真实会话值会经 api_parameter.example 明文入库，
+        # 并被 get_interface 详情原样回给项目内任意成员；而 schema_json 的 sensitive 标记
+        # 全仓库无人消费，纯属装饰。
         params.append(InternalParameter(
             name=name, location="COOKIE", type="string", required=False,
-            example=value, schema_json={"sensitive": True} if _looks_sensitive_cookie(name) else None,
+            example="${cookie}", schema_json={"sensitive": True} if _looks_sensitive_cookie(name) else None,
             sort=sort,
         ))
         sort += 1
