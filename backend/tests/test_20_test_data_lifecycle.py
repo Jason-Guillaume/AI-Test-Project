@@ -122,7 +122,7 @@ class TestScenarioOneApiThenBusinessAction:
             stub.add_fn("POST", "/tasks",
                         lambda h, body: (task_bodies.append(json.loads(body))
                                          or (200, {"code": 0, "data": {"task_id": 8801}})))
-            stub.add_fn("POST", "/tasks/8801/run",
+            stub.add_fn("POST", "/tasks/555/run",
                         lambda h, body: (200, {"code": 0, "data": {
                             "task_id": 8801, "status": "RUNNING"}}))
             stub.add_fn("DELETE", "/projects/555",
@@ -220,7 +220,7 @@ class TestScenarioOneApiThenBusinessAction:
 
             # 业务动作用例：路径变量确实来自夹具输出。
             assert all(a["passed"] for a in action_case["assertion_results"])
-            assert action_case["request_snapshot"]["url"].endswith("/tasks/8801/run")
+            assert action_case["request_snapshot"]["url"].endswith("/tasks/555/run")
 
             # Cleanup 被调用：两条 CASE 夹具各清一次。
             db.expire_all()
@@ -242,33 +242,36 @@ class TestScenarioTwoDatabaseSpecialState:
     """DATABASE_PATCH 改特殊状态；白名单之外 → 用例 ERROR。"""
 
     def test_patch_status_is_assertable(self, api, admin, db):
-        env_id = _dev_env(db, "dev")
-        pid = _create_project(api, admin)
-        conn_id = _db_connection(api, admin, pid, env_id)
-        _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])
-
-        seed_id = _task_seed_row(db, status="PENDING")
-        provider = _make_provider(
-            api, admin, pid, provider_type="DATABASE_PATCH",
-            config_json={
-                "connection_id": conn_id, "table": "td_sandbox_task",
-                "operation": "UPDATE", "values": {"status": "FAILED"},
-                "where": {"id": seed_id},
-            },
-        )
-        _make_fixture(
-            api, admin, pid, key="FAILED_TASK",
-            steps=[_step("DATABASE_PATCH", 10, name="改特殊状态", provider_id=provider["id"])],
-            outputs=[{"name": "affected_rows", "value_type": "INTEGER",
-                      "source_path": "affected_rows", "sort": 1}],
-        )
+        from tests.test_15_test_executor import _admin_id, _make_env, _make_iface, _whitelist
 
         with StubServer() as stub:
-            stub.add("GET", "/health", 200, {"code": 0, "data": {"status": "UP"}})
-            _, env_id_2, _aid, iface = _stub_env(api, admin, db, stub)
+            stub.add("GET", "/health", 200, {"code": 0, "data": {"affected_rows": 1}})
+            pid = _create_project(api, admin)
+            # 造数连接和这次运行必须是同一个环境，否则会先报环境不一致。
+            env_id = _make_env(db, stub.base_url, _admin_id(db), name=unique("dev-db"))
+            _whitelist(db, pid, stub.port, _admin_id(db))
+            conn_id = _db_connection(api, admin, pid, env_id)
+            _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])
+
+            seed_id = _task_seed_row(db, status="PENDING")
+            provider = _make_provider(
+                api, admin, pid, provider_type="DATABASE_PATCH",
+                config_json={
+                    "connection_id": conn_id, "table": "td_sandbox_task",
+                    "operation": "UPDATE", "values": {"status": "FAILED"},
+                    "where": {"id": seed_id},
+                },
+            )
+            _make_fixture(
+                api, admin, pid, key="FAILED_TASK",
+                steps=[_step("DATABASE_PATCH", 10, name="改特殊状态", provider_id=provider["id"])],
+                outputs=[{"name": "affected_rows", "value_type": "INTEGER",
+                          "source_path": "affected_rows", "sort": 1}],
+            )
+
             case_id = _create_case(
                 api, admin, pid, name=unique("特殊状态-断言受影响行数"),
-                api_id=iface("GET", "/health", "健康检查"),
+                api_id=_make_iface(db, pid, "GET", "/health", "健康检查"),
                 assertions=[
                     _status_code_assertion("200", 0),
                     {"assertion_type": "JSON_PATH", "path": "$.data.affected_rows",
@@ -280,8 +283,8 @@ class TestScenarioTwoDatabaseSpecialState:
             _add_data(api, admin, case_id, name="affected_rows", source_type="FIXTURE",
                       config={"fixture_key": "FAILED_TASK", "output": "affected_rows"}, sort=0)
 
-            plan_id = _build_plan_with_cases(api, admin, pid, [case_id], env_id_2)
-            run = _run(api, admin, plan_id, env_id_2)
+            plan_id = _build_plan_with_cases(api, admin, pid, [case_id], env_id)
+            run = _run(api, admin, plan_id, env_id)
             assert run["passed"] == 1 and run["error"] == 0, run
 
             execs = _case_execs(api, admin, run["id"])
@@ -293,29 +296,28 @@ class TestScenarioTwoDatabaseSpecialState:
             assert _task_status(db, seed_id) == "FAILED"
 
     def test_non_whitelisted_table_marks_case_error(self, api, admin, db):
-        env_id = _dev_env(db, "dev")
-        pid = _create_project(api, admin)
-        conn_id = _db_connection(api, admin, pid, env_id)
-        _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])
-
-        provider = _make_provider(
-            api, admin, pid, provider_type="DATABASE_PATCH",
-            config_json={
-                "connection_id": conn_id, "table": "environment",
-                "operation": "UPDATE", "values": {"is_active": False},
-                "where": {"id": 1},
-            },
-        )
-        _make_fixture(
-            api, admin, pid, key="OUTSIDE_TABLE",
-            steps=[_step("DATABASE_PATCH", 10, name="越界表", provider_id=provider["id"])],
-            outputs=[{"name": "affected_rows", "value_type": "INTEGER",
-                      "source_path": "affected_rows", "sort": 1}],
-        )
-
         with StubServer() as stub:
             stub.add("GET", "/health", 200, {"code": 0, "data": {}})
-            _, stub_env_id, _aid, iface = _stub_env(api, admin, db, stub)
+            # 连接、策略和这次运行必须是同一个环境，否则会先报环境不一致。
+            pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
+            conn_id = _db_connection(api, admin, pid, env_id)
+            _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])
+
+            provider = _make_provider(
+                api, admin, pid, provider_type="DATABASE_PATCH",
+                config_json={
+                    "connection_id": conn_id, "table": "environment",
+                    "operation": "UPDATE", "values": {"is_active": False},
+                    "where": {"id": 1},
+                },
+            )
+            _make_fixture(
+                api, admin, pid, key="OUTSIDE_TABLE",
+                steps=[_step("DATABASE_PATCH", 10, name="越界表", provider_id=provider["id"])],
+                outputs=[{"name": "affected_rows", "value_type": "INTEGER",
+                          "source_path": "affected_rows", "sort": 1}],
+            )
+
             case_id = _create_case(
                 api, admin, pid, name=unique("越界表-造数失败"),
                 api_id=iface("GET", "/health", "健康检查"),
@@ -323,8 +325,8 @@ class TestScenarioTwoDatabaseSpecialState:
             )
             _declare_fixtures(api, admin, case_id, "OUTSIDE_TABLE")
 
-            plan_id = _build_plan_with_cases(api, admin, pid, [case_id], stub_env_id)
-            run = _run(api, admin, plan_id, stub_env_id)
+            plan_id = _build_plan_with_cases(api, admin, pid, [case_id], env_id)
+            run = _run(api, admin, plan_id, env_id)
 
             # 造数失败是 ERROR，不是 FAILED：断言从未执行。
             assert run["error"] == 1 and run["failed"] == 0, run
@@ -678,10 +680,11 @@ class TestProjectIsolation:
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
             other_pid = _create_project(api, admin)
 
+            task_iface = iface("POST", "/tasks", "创建任务")
             _make_fixture(
                 api, admin, pid, key="ISOLATED_TASK",
                 steps=[_step("API", 10, name="创建任务", config={
-                    "api_id": iface("POST", "/tasks", "创建任务"),
+                    "api_id": task_iface,
                     "output_mappings": [{"name": "task_id", "expression": "$.data.task_id"}],
                 })],
                 outputs=[{"name": "task_id", "value_type": "INTEGER",
@@ -689,7 +692,7 @@ class TestProjectIsolation:
             )
             case_id = _create_case(
                 api, admin, pid, name=unique("隔离-造数用例"),
-                api_id=iface("POST", "/tasks", "创建任务"),
+                api_id=task_iface,
                 assertions=[_status_code_assertion("200", 0)],
             )
             _declare_fixtures(api, admin, case_id, "ISOLATED_TASK")
@@ -718,6 +721,8 @@ class TestProjectIsolation:
             assert theirs["items"] == [], theirs["items"]
 
             # 记录归属字段本身也要对：夹具与 Provider 执行记录的 project_id 一致。
+            from app.features.test_data.models.execution import FixtureExecution
+
             fixture_rows = (
                 db.query(FixtureExecution)
                 .filter(FixtureExecution.data_execution_id == row.id)
@@ -839,11 +844,14 @@ class TestAgentFixtureReference:
         from app.features.agent.schemas import TestCaseDraft
         from app.features.agent.tools.test_asset_tool import save_cases
 
+        from app.features.test_data.models.case_fixture import TestCaseFixture
+
         pid = _create_project(api, admin)
         user = _user_of(db, admin)
         before_providers = self._provider_count(db, pid)
         before_tasks = _sandbox_count(db)
         before_fixtures = self._fixture_count(db, pid)
+        before_links = db.query(TestCaseFixture).count()
 
         draft = TestCaseDraft(
             name=unique("Agent 引用不存在的夹具"), target_type="API",
@@ -861,11 +869,11 @@ class TestAgentFixtureReference:
             assert exc.status_code == 404, exc
             assert "当前缺少 FAILED_TASK Fixture" in str(exc.detail), exc
 
-        # 不落库、不建 Provider、不执行 SQL。
+        # 不落库、不建 Provider、不执行 SQL。会话库里已有其他用例的引用，只比较增量。
         assert self._provider_count(db, pid) == before_providers
         assert self._fixture_count(db, pid) == before_fixtures
         assert _sandbox_count(db) == before_tasks
-        assert db.query(TestCaseFixture).count() == 0
+        assert db.query(TestCaseFixture).count() == before_links
 
     @staticmethod
     def _fixture_count(db, project_id):

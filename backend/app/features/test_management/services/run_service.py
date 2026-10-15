@@ -238,13 +238,13 @@ class RunService:
 
     @staticmethod
     def _declared_fixtures(
-        db: Session, project_id: int, case_ids: list[int],
+        db: Session, _project_id: int, case_ids: list[int],
     ) -> dict[int, list[Fixture]]:
-        """用例声明的可见 Fixture（本项目，或 GLOBAL 且 ACTIVE），按 sort 排序。
+        """用例声明的 Fixture，按 sort 排序。
 
-        造数只看 ``test_case_fixture``（§12.1）；用例前置条件不参与本阶段。
-        不可见 / 非 ACTIVE 的定义不在此处过滤——交给 LifecycleManager 报
-        FIXTURE_NOT_FOUND / FIXTURE_DISABLED，用例落到 ERROR。
+        造数只看 ``test_case_fixture``。跨项目私有夹具和已停用夹具都原样交给
+        LifecycleManager，由它报 FIXTURE_NOT_FOUND / FIXTURE_DISABLED。
+        在这里丢掉的话，用例会在没有造数的情况下直接通过。
         """
         if not case_ids:
             return {}
@@ -257,8 +257,9 @@ class RunService:
         )
         declared: dict[int, list[Fixture]] = {}
         for tcf, fx in rows:
-            if fx.project_id != project_id and not (fx.scope == "GLOBAL" and fx.status == "ACTIVE"):
-                continue
+            # 跨项目私有夹具也要带上 key。Lifecycle 按当前项目重新加载，
+            # 看不见时抛 FIXTURE_NOT_FOUND，用例记 ERROR。这里丢掉的话，
+            # 用例会在没有造数的情况下直接跑过。
             declared.setdefault(tcf.test_case_id, []).append(fx)
         return declared
 

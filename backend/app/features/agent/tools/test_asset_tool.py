@@ -228,7 +228,7 @@ def save_points(
             business_flow_id=d.business_flow_id,
             business_action_id=d.business_action_id,
             source_type="AI",
-            agent_session_id=agent_session_id,
+            agent_session_id=agent_session_id or None,
             generation_version=generation_version,
         )
         resp = _POINT.create_point(db, project_id, body, actor=actor)
@@ -316,7 +316,7 @@ def save_cases(
             business_flow_id=d.business_flow_id,
             business_action_id=d.business_action_id,
             source_type="AI",
-            agent_session_id=agent_session_id,
+            agent_session_id=agent_session_id or None,
             generation_version=generation_version,
         )
         case_resp = _CASE.create_case(db, project_id, body, actor=actor)
