@@ -89,10 +89,10 @@ def _stub_env(api, admin, db, stub):
 
 def _make_fixture(api, admin, project_id, *, key, steps=None, outputs=None,
                   cleanup_policy="AFTER_CASE", status="ACTIVE", scope="CASE",
-                  dependencies=None):
+                  dependencies=None, cache_enabled=True):
     body = {
         "name": key, "fixture_key": key, "entity_type": "TASK",
-        "scope": scope, "status": status, "cache_enabled": True,
+        "scope": scope, "status": status, "cache_enabled": cache_enabled,
         "cleanup_policy": cleanup_policy,
         "steps": steps or [], "outputs": outputs or [], "dependencies": dependencies or [],
     }

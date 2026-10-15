@@ -440,13 +440,16 @@ class CaseService:
         if not key or not output:
             raise bad_request(f"测试数据 {row.name} 的 FIXTURE 配置需要 fixture_key 与 output")
 
-        declared = db.query(TestCaseFixture.fixture_id).filter(
-            TestCaseFixture.test_case_id == case_id,
-        ).all()
-        if not declared:
+        declared_ids = [
+            fixture_id
+            for (fixture_id,) in db.query(TestCaseFixture.fixture_id).filter(
+                TestCaseFixture.test_case_id == case_id,
+            ).all()
+        ]
+        if not declared_ids:
             raise bad_request(f"测试数据 {row.name} 引用 Fixture {key}，但该用例未声明所需 Fixture")
         fixture = (
-            db.query(Fixture).filter(Fixture.id.in_(declared), Fixture.fixture_key == key).first()
+            db.query(Fixture).filter(Fixture.id.in_(declared_ids), Fixture.fixture_key == key).first()
         )
         if fixture is None:
             raise bad_request(f"测试数据 {row.name} 引用的 Fixture {key} 未在该用例声明")

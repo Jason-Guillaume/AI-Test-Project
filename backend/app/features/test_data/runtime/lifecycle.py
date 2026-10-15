@@ -192,16 +192,24 @@ class LifecycleManager:
             test_run_id=test_run_id,
             case_execution_id=case_execution_id,
         )
+        produced = result.outputs if isinstance(result.outputs, dict) else {}
+        flat = produced.get(fixture.fixture_key)
+        if not isinstance(flat, dict):
+            flat = produced
         self._write_cache(
             db,
             project_id=project_id,
             fixture_id=fixture.id,
             scope=scope,
             scope_key=scope_key,
-            outputs=result.outputs,
+            outputs=flat,
             data_execution_id=result.data_execution_id,
         )
-        return {fixture.fixture_key: dict(result.outputs)}
+        # generate() 的 outputs 已经是 {fixture_key: 契约输出}。再包一层的话，
+        # 用例侧会去找 ACTIVE_PROJECT.project_id，实际却在再下一层。
+        if isinstance(produced.get(fixture.fixture_key), dict):
+            return dict(produced)
+        return {fixture.fixture_key: dict(flat)}
 
     # ---------------------------------------------------------------- CLEANUP
 
