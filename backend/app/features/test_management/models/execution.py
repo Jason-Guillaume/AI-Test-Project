@@ -98,6 +98,14 @@ class CaseExecution(Base):
     duration_ms = Column(Integer, nullable=True, comment="执行耗时（毫秒）")
     error_code = Column(String(50), nullable=True, comment="标准化错误代码")
     error_message = Column(Text, nullable=True, comment="错误信息")
+    # Cleanup 三列（alembic 0009 增量添加，全可空）：清理失败只写这三列，
+    # 绝不覆盖 status / error_code / error_message —— 造数与产品断言的结论保持原样。
+    cleanup_status = Column(
+        String(20), nullable=True,
+        comment="清理状态：PENDING/SUCCESS/FAILED/SKIPPED（不覆盖 status 与 error_code）",
+    )
+    cleanup_error_code = Column(String(50), nullable=True, comment="清理失败错误码（仅 cleanup_* 字段）")
+    cleanup_error_message = Column(Text, nullable=True, comment="清理失败原因（多步骤拼接，截断 2000 字）")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
     updated_at = Column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间",

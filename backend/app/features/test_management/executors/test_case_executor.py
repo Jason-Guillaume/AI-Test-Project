@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.business.executors.api_executor import ApiRequestExecutor
 from app.features.business.executors.business_flow_executor import execute_flow
+from app.features.business.executors.context import ExecutionContext
 from app.features.business.executors.mapping_resolver import resolve_input_mappings
 from app.features.business.executors.sensitive import SensitiveDataMasker
 from app.features.business.models.business_action import BusinessAction
@@ -36,15 +37,21 @@ from app.features.test_management.models.test_assertion import TestAssertion
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_case_data import TestCaseData
 from app.features.test_management.models.test_step import TestStep
+from app.features.test_data.runtime.data_factory import build_scope_variables
+from app.features.test_data.runtime.variable_resolver import (
+    ResolveScope,
+    generate_faker_value,
+    resolve_env_key,
+    resolve_template,
+)
 from app.models.configuration import Environment
 from app.models.identity import User
+from app.shared.errors import CODE_DATA_RESOLVE_FAILED, CODE_VARIABLE_RESOLVE_FAILED, AppError
 
 _EXECUTOR = ApiRequestExecutor()
 
-_ENV_ATTR_KEYS = {
-    "base_url", "gateway_prefix", "display_name", "name", "description",
-    "is_active", "is_default",
-}
+#: source_type 里从已注入变量取的两种：value 是变量名，不是字面值。
+_VAR_SOURCES = ("VARIABLE", "RUNTIME")
 
 
 @dataclass
@@ -62,17 +69,30 @@ class CaseExecutionResult:
     error_message: str | None = None
 
 
-def execute(db: Session, test_case: TestCase, *, environment: Environment, actor: User) -> CaseExecutionResult:
-    """执行单个测试用例，按 target_type 路由。"""
+def execute(
+    db: Session,
+    test_case: TestCase,
+    *,
+    environment: Environment,
+    actor: User,
+    variables: ExecutionContext | None = None,
+) -> CaseExecutionResult:
+    """执行单个测试用例，按 target_type 路由。
+
+    ``variables`` 是 Data Factory 注入的运行时上下文（``LifecycleManager`` 产出，
+    ``variables`` 里按 fixture_key 分组存契约输出）。不传时行为与原来一致，
+    没有造数的旧用例照常执行。
+    """
     started = time.perf_counter()
     target = (test_case.target_type or "API").upper()
+    fixture_outputs = _fixture_outputs(variables)
     try:
         if target == "API":
-            result = _execute_api(db, test_case, environment, actor)
+            result = _execute_api(db, test_case, environment, actor, fixture_outputs)
         elif target == "BUSINESS_FLOW":
-            result = _execute_business_flow(db, test_case, environment, actor)
+            result = _execute_business_flow(db, test_case, environment, actor, fixture_outputs)
         elif target == "BUSINESS_ACTION":
-            result = _execute_business_action(db, test_case, environment, actor)
+            result = _execute_business_action(db, test_case, environment, actor, fixture_outputs)
         else:
             result = CaseExecutionResult(
                 status="ERROR", executor_type=target,
@@ -85,6 +105,13 @@ def execute(db: Session, test_case: TestCase, *, environment: Environment, actor
             status="ERROR", executor_type=target,
             error_code="EXECUTION_ERROR", error_message=str(exc),
         )
+    except AppError as exc:
+        # 造数/模板解析失败：ERROR + 原始错误码（DATA_RESOLVE_FAILED 等），
+        # 绝不降级成 FAILED —— 断言从未执行过。
+        result = CaseExecutionResult(
+            status="ERROR", executor_type=target,
+            error_code=exc.code or "EXECUTION_ERROR", error_message=str(exc),
+        )
     except Exception as exc:  # noqa: BLE001 — 执行器需兜底，避免单用例拖垮整轮。
         result = CaseExecutionResult(
             status="ERROR", executor_type=target,
@@ -96,10 +123,32 @@ def execute(db: Session, test_case: TestCase, *, environment: Environment, actor
     return result
 
 
+def _fixture_outputs(variables: ExecutionContext | None) -> dict[str, dict[str, Any]]:
+    """从 ExecutionContext 取出 ``{fixture_key: {output_name: value}}``。
+
+    值本身是 dict 的条目视为一个 Fixture 命名空间；扁平标量条目留给 ``${runtime.X}``，
+    不参与 Fixture 解析。
+    """
+    if variables is None:
+        return {}
+    raw = variables.variables if isinstance(variables, ExecutionContext) else dict(variables or {})
+    return {
+        key: dict(value)
+        for key, value in raw.items()
+        if isinstance(value, dict)
+    }
+
+
 # --------------------------------------------------------------------------- API
 
 
-def _execute_api(db: Session, test_case: TestCase, environment: Environment, actor: User) -> CaseExecutionResult:
+def _execute_api(
+    db: Session,
+    test_case: TestCase,
+    environment: Environment,
+    actor: User,
+    fixture_outputs: dict[str, dict[str, Any]],
+) -> CaseExecutionResult:
     executor_type = "API"
     if test_case.api_id is None:
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
@@ -109,17 +158,18 @@ def _execute_api(db: Session, test_case: TestCase, environment: Environment, act
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
                                    error_code="API_NOT_FOUND", error_message="关联接口不存在或不属于本项目")
 
-    data_values = _load_data_values(db, test_case.id, environment)
+    data_values, overrides = _load_data_values(db, test_case.id, environment, fixture_outputs)
+    scope = _scope(data_values, environment, fixture_outputs)
     step_config = _load_action_step_config(db, test_case.id)
 
     # 请求构造：step_config 优先，缺省回退接口默认值 / 测试数据。
     method = (step_config.get("method") or iface.method or "GET").upper()
-    path_params = _resolve_tokens(step_config.get("path_params") or {}, data_values, environment)
+    path_params = _resolve_tokens(step_config.get("path_params") or {}, scope)
     headers = _EXECUTOR.get_environment_headers(environment)
-    headers.update(_resolve_tokens(step_config.get("headers") or {}, data_values, environment))
-    query = _resolve_tokens(step_config.get("query") or {}, data_values, environment)
+    headers.update(_resolve_tokens(step_config.get("headers") or {}, scope))
+    query = _resolve_tokens(step_config.get("query") or {}, scope)
     if step_config.get("body") is not None:
-        json_body = _resolve_tokens(step_config.get("body"), data_values, environment)
+        json_body = _resolve_tokens(step_config.get("body"), scope)
     elif data_values:
         json_body = data_values
     else:
@@ -146,10 +196,14 @@ def _execute_api(db: Session, test_case: TestCase, environment: Environment, act
     )
 
     status, error_code, error_message = _decide_status(resp, assertion_results)
+    context_json: dict[str, Any] = {"data": data_values}
+    if overrides:
+        # 数据项名与 Fixture 输出同名时以数据项为准，冲突写进快照便于排查。
+        context_json["fixture_overrides"] = overrides
     return CaseExecutionResult(
         status=status, executor_type=executor_type,
         request_snapshot=request_snapshot, response_snapshot=response_snapshot,
-        assertion_results=assertion_results, context_json={"data": data_values},
+        assertion_results=assertion_results, context_json=context_json,
         error_code=error_code, error_message=error_message,
     )
 
@@ -158,7 +212,11 @@ def _execute_api(db: Session, test_case: TestCase, environment: Environment, act
 
 
 def _execute_business_flow(
-    db: Session, test_case: TestCase, environment: Environment, actor: User,
+    db: Session,
+    test_case: TestCase,
+    environment: Environment,
+    actor: User,
+    fixture_outputs: dict[str, dict[str, Any]],
 ) -> CaseExecutionResult:
     executor_type = "BUSINESS_FLOW"
     if test_case.business_flow_id is None:
@@ -169,7 +227,10 @@ def _execute_business_flow(
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
                                    error_code="FLOW_NOT_FOUND", error_message="关联业务流程不存在或不属于本项目")
 
-    initial_variables = _load_data_values(db, test_case.id, environment)
+    # Fixture 输出先进入，test_case_data 覆盖同名键（用例作者显式绑定优先）。
+    data_values, overrides = _load_data_values(db, test_case.id, environment, fixture_outputs)
+    initial_variables = {**_fixture_flat(fixture_outputs), **data_values}
+
     execution = execute_flow(
         db, test_case.business_flow_id,
         environment_id=environment.id, variables=initial_variables, actor=actor,
@@ -213,7 +274,11 @@ def _execute_business_flow(
 
 
 def _execute_business_action(
-    db: Session, test_case: TestCase, environment: Environment, actor: User,
+    db: Session,
+    test_case: TestCase,
+    environment: Environment,
+    actor: User,
+    fixture_outputs: dict[str, dict[str, Any]],
 ) -> CaseExecutionResult:
     executor_type = "BUSINESS_ACTION"
     if test_case.business_action_id is None:
@@ -248,7 +313,7 @@ def _execute_business_action(
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
                                    error_code="API_NOT_FOUND", error_message="绑定接口已失效")
 
-    data_values = _load_data_values(db, test_case.id, environment)
+    data_values, overrides = _load_data_values(db, test_case.id, environment, fixture_outputs)
     mappings = [
         {"direction": m.direction, "business_variable": m.business_variable,
          "api_location": m.api_location, "api_field": m.api_field, "expression": m.expression}
@@ -284,10 +349,13 @@ def _execute_business_action(
         resp.status_code, resp.response_headers, _try_parse_json(resp.response_body),
     )
     status, error_code, error_message = _decide_status(resp, assertion_results)
+    context_json: dict[str, Any] = {"data": data_values}
+    if overrides:
+        context_json["fixture_overrides"] = overrides
     return CaseExecutionResult(
         status=status, executor_type=executor_type,
         request_snapshot=request_snapshot, response_snapshot=response_snapshot,
-        assertion_results=assertion_results, context_json={"data": data_values},
+        assertion_results=assertion_results, context_json=context_json,
         error_code=error_code, error_message=error_message,
     )
 
@@ -295,8 +363,27 @@ def _execute_business_action(
 # --------------------------------------------------------------------------- 辅助
 
 
-def _load_data_values(db: Session, case_id: int, environment: Environment) -> dict[str, Any]:
-    """加载测试数据并解析为 name→value 字典。"""
+def _load_data_values(
+    db: Session,
+    case_id: int,
+    environment: Environment,
+    fixture_outputs: dict[str, dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """加载测试数据并解析为 name→value（§12.1 的 source_type 分派）。
+
+    - STATIC：value 字面值
+    - ENVIRONMENT：环境键（base_url / gateway_prefix / default_headers）
+    - FIXTURE：从 Data Factory 注入的契约输出取
+    - FAKER：白名单生成器现取现造
+    - VARIABLE / RUNTIME：value 是变量名，从已注入变量里取
+
+    缺失且 ``required`` 的项抛 ``AppError(DATA_RESOLVE_FAILED)`` —— 用例 ERROR，
+    不是 FAILED（造数/解析失败不等于产品断言失败）。
+    返回的第二个元素是「数据项名与 Fixture 输出同名」的冲突列表，写进 context_json。
+    """
+    fixture_outputs = fixture_outputs or {}
+    flat_names = {f"{key}.{name}" for key, values in fixture_outputs.items() for name in values}
+
     rows = (
         db.query(TestCaseData)
         .filter(TestCaseData.test_case_id == case_id)
@@ -304,24 +391,128 @@ def _load_data_values(db: Session, case_id: int, environment: Environment) -> di
         .all()
     )
     values: dict[str, Any] = {}
+    overrides: list[str] = []
     for row in rows:
         source = (row.source_type or "STATIC").upper()
+        cfg = row.config_json if isinstance(row.config_json, dict) else {}
         if source == "ENVIRONMENT":
-            values[row.name] = _resolve_env_value(environment, row.value or "")
+            values[row.name] = resolve_env_key(environment, row.value or "")
+        elif source == "FIXTURE":
+            values[row.name] = _fixture_output_value(row, cfg, fixture_outputs)
+        elif source == "FAKER":
+            values[row.name] = _faker_data_value(row, cfg)
+        elif source in _VAR_SOURCES:
+            values[row.name] = _lookup_variable((row.value or "").strip(), fixture_outputs, row)
         else:
-            # STATIC / VARIABLE / RUNTIME / FAKER / FIXTURE：第一阶段取字面值。
             values[row.name] = _parse_value(row.value, row.value_type)
-    return values
+        if row.name in flat_names:
+            overrides.append(row.name)
+    return values, overrides
 
 
-def _resolve_env_value(environment: Environment, key: str) -> str:
-    key = (key or "").strip()
-    if not key:
-        return ""
-    if key in _ENV_ATTR_KEYS:
-        return str(getattr(environment, key, "") or "")
-    dh = environment.default_headers if isinstance(environment.default_headers, dict) else {}
-    return str(dh.get(key, ""))
+def _fixture_output_value(
+    row: TestCaseData,
+    cfg: dict[str, Any],
+    fixture_outputs: dict[str, dict[str, Any]],
+) -> Any:
+    """FIXTURE 数据项：按 config_json 的 fixture_key/output 取已注入的契约输出。"""
+    key = str(cfg.get("fixture_key") or "").strip()
+    output = str(cfg.get("output") or "").strip()
+    if not key or not output:
+        raise AppError(
+            f"测试数据 {row.name} 的 FIXTURE 配置缺少 fixture_key 或 output",
+            status_code=400,
+            code=CODE_DATA_RESOLVE_FAILED,
+        )
+    outs = fixture_outputs.get(key)
+    found = isinstance(outs, dict) and output in outs and outs[output] is not None
+    if not found and row.required:
+        raise AppError(
+            f"测试数据 {row.name} 引用的 Fixture 输出 {key}.{output} 不可用",
+            status_code=400,
+            code=CODE_DATA_RESOLVE_FAILED,
+        )
+    return outs.get(output) if isinstance(outs, dict) else None
+
+
+def _faker_data_value(row: TestCaseData, cfg: dict[str, Any]) -> Any:
+    """FAKER 数据项：只调白名单生成器，不执行用户代码。"""
+    generator = str(cfg.get("generator") or "").strip()
+    if not generator:
+        raise AppError(
+            f"测试数据 {row.name} 的 FAKER 配置缺少 generator",
+            status_code=400,
+            code=CODE_VARIABLE_RESOLVE_FAILED,
+        )
+    locale = str(cfg.get("locale") or "zh_CN")
+    choices = cfg.get("choices") if isinstance(cfg.get("choices"), list) else None
+    try:
+        return generate_faker_value(generator, locale=locale, choices=choices)
+    except AppError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - Faker 内部异常收敛成统一错误码
+        raise AppError(
+            f"测试数据 {row.name} 的 FAKER 生成失败（generator={generator}）：{exc}",
+            status_code=400,
+            code=CODE_VARIABLE_RESOLVE_FAILED,
+        ) from exc
+
+
+def _lookup_variable(
+    target: str,
+    fixture_outputs: dict[str, dict[str, Any]],
+    row: TestCaseData,
+) -> Any:
+    """VARIABLE / RUNTIME 数据项：value 是变量名，不是字面值。
+
+    依次按 fixture_key、输出名、`KEY.name` 三种写法找；找不到且必需时报
+    ``DATA_RESOLVE_FAILED``。
+    """
+    if not target:
+        if row.required:
+            raise AppError(
+                f"测试数据 {row.name} 的 source_type={row.source_type} 缺少变量名",
+                status_code=400,
+                code=CODE_DATA_RESOLVE_FAILED,
+            )
+        return None
+    for key, values in fixture_outputs.items():
+        if target == key:
+            return dict(values)
+        if isinstance(values, dict) and target in values:
+            return values[target]
+        if isinstance(values, dict) and f"{key}.{target}" in values:
+            return values[f"{key}.{target}"]
+    if row.required:
+        raise AppError(
+            f"测试数据 {row.name} 引用的变量 {target} 不可用",
+            status_code=400,
+            code=CODE_DATA_RESOLVE_FAILED,
+        )
+    return None
+
+
+def _fixture_flat(fixture_outputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Fixture 输出的扁平视图 ``KEY.name → value``，供业务流变量使用。"""
+    flat: dict[str, Any] = {}
+    for key, values in fixture_outputs.items():
+        for name, value in values.items():
+            flat[f"{key}.{name}"] = value
+    return flat
+
+
+def _scope(
+    data_values: dict[str, Any],
+    environment: Environment,
+    fixture_outputs: dict[str, dict[str, Any]],
+) -> ResolveScope:
+    """用例执行器的模板作用域：`${data.X}` 走测试数据，`${env.X}` 走环境，
+    `${fixture.K.n}` / `${runtime.X}` 走 Data Factory 注入的输出。"""
+    return ResolveScope(
+        variables=build_scope_variables(fixture_outputs),
+        data_values=data_values,
+        environment=environment,
+    )
 
 
 def _parse_value(raw: str | None, value_type: str | None) -> Any:
@@ -376,37 +567,13 @@ def _load_assertions(db: Session, case_id: int) -> list[dict[str, Any]]:
     ]
 
 
-def _resolve_tokens(obj: Any, data_values: dict[str, Any], environment: Environment) -> Any:
-    """递归替换 ${data.NAME} / ${env.KEY} 占位符。"""
-    if isinstance(obj, str):
-        return _resolve_token_str(obj, data_values, environment)
-    if isinstance(obj, dict):
-        return {k: _resolve_tokens(v, data_values, environment) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_resolve_tokens(v, data_values, environment) for v in obj]
-    return obj
+def _resolve_tokens(obj: Any, scope: ResolveScope) -> Any:
+    """占位符解析统一委托 VariableResolver（§12.1：执行器不再自己写正则）。
 
-
-def _resolve_token_str(text: str, data_values: dict[str, Any], environment: Environment) -> Any:
-    """替换单个字符串中的占位符。整串恰好是占位符时保留原类型。"""
-    import re
-    pattern = re.compile(r"\$\{(data|env)\.([A-Za-z0-9_]+)\}")
-
-    matches = list(pattern.finditer(text))
-    if not matches:
-        return text
-    # 整串即单一占位符 → 返回原类型值。
-    if len(matches) == 1 and matches[0].group(0) == text:
-        kind, key = matches[0].group(1), matches[0].group(2)
-        if kind == "data":
-            return data_values.get(key)
-        return _resolve_env_value(environment, key)
-    # 多占位符 / 混合文本 → 字符串拼接。
-    def repl(m: re.Match) -> str:
-        kind, key = m.group(1), m.group(2)
-        val = data_values.get(key) if kind == "data" else _resolve_env_value(environment, key)
-        return "" if val is None else str(val)
-    return pattern.sub(repl, text)
+    支持 ``${data.X}`` / ``${env.X}``（原有语义不变），以及 Phase C 新增的
+    ``${fixture.KEY.name}`` / ``${runtime.X}`` / ``${faker.X}``。
+    """
+    return resolve_template(obj, scope, required=False)
 
 
 def _build_response_dict(resp) -> dict[str, Any]:

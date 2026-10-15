@@ -37,6 +37,7 @@ from app.features.notifications.channel_router import router as notification_cha
 from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
 from app.features.reports.router import router as reports_router
+from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
 from app.features.users.auth import router as auth_router
@@ -184,6 +185,7 @@ def create_app() -> FastAPI:
     application.include_router(model_configs_router, prefix=API_PREFIX)
     application.include_router(environments_router, prefix=API_PREFIX)
     application.include_router(dashboard_router, prefix=API_PREFIX)
+    application.include_router(test_data_router, prefix=API_PREFIX)
     return application
 
 

@@ -359,6 +359,43 @@ class TestCaseDataResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# --------------------------------------------------------------------------- 测试用例：所需 Fixture
+
+
+class TestCaseFixtureItem(BaseModel):
+    """用例声明所需 Fixture 的一项：只引用 fixture_key，不写真实 task_id。"""
+
+    fixture_key: str = Field(
+        ..., min_length=1, max_length=100,
+        pattern=r"^[A-Z][A-Z0-9_]{0,99}$",
+        description="Fixture 引用键（与 fixture.fixture_key 同规则）",
+    )
+    sort: int = Field(default=0, ge=0, description="排序")
+
+
+class TestCaseFixtureReplace(BaseModel):
+    """整体替换用例所需 Fixture 列表；空列表表示解除全部声明。"""
+
+    fixtures: list[TestCaseFixtureItem] = Field(default_factory=list, max_length=50)
+
+
+class TestCaseFixtureResponse(BaseModel):
+    id: int
+    test_case_id: int
+    fixture_id: int
+    fixture_key: str
+    name: str | None = None
+    entity_type: str | None = None
+    scope: str | None = None
+    status: str | None = None
+    outputs: list[str] = Field(
+        default_factory=list, description="输出契约名：测试数据按 fixture_key + output 绑定",
+    )
+    sort: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # --------------------------------------------------------------------------- 测试用例：步骤
 
 
@@ -460,6 +497,9 @@ class TestCaseDetailResponse(TestCaseResponse):
     test_data: list[TestCaseDataResponse] = Field(default_factory=list)
     steps: list[TestStepResponse] = Field(default_factory=list)
     assertions: list[TestAssertionResponse] = Field(default_factory=list)
+    fixtures: list[TestCaseFixtureResponse] = Field(
+        default_factory=list, description="所需 Fixture（执行前由 Data Factory 生成并注入）",
+    )
 
 
 # --------------------------------------------------------------------------- 测试套件
@@ -642,6 +682,11 @@ class CaseExecutionResponse(BaseModel):
     duration_ms: int | None = None
     error_code: str | None = None
     error_message: str | None = None
+    cleanup_status: str | None = Field(
+        None, description="清理状态：PENDING/SUCCESS/FAILED/SKIPPED（不覆盖 status 与 error_code）",
+    )
+    cleanup_error_code: str | None = Field(None, description="清理失败错误码（仅 cleanup_* 字段）")
+    cleanup_error_message: str | None = Field(None, description="清理失败原因（截断 2000 字）")
     created_at: datetime
     updated_at: datetime
 
@@ -704,6 +749,9 @@ __all__ = [
     "TestCaseDataCreate",
     "TestCaseDataResponse",
     "TestCaseDataUpdate",
+    "TestCaseFixtureItem",
+    "TestCaseFixtureReplace",
+    "TestCaseFixtureResponse",
     # 步骤
     "TestStepBase",
     "TestStepCreate",

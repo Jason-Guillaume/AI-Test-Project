@@ -3,7 +3,7 @@
 单 APIRouter（无自身前缀），挂在 /api/v1 下。资源级路径：
 - /projects/{project_id}/test-(strategies|points|cases|suites|plans|runs)
 - /test-(strategies|points|cases|suites|plans)/{id}
-- /test-cases/{id}/(preconditions|data|steps|assertions) 与子实体 /test-case-*/{id}
+- /test-cases/{id}/(preconditions|data|fixtures|steps|assertions) 与子实体 /test-case-*/{id}
 - /test-suites/{id}/cases、/test-suite-cases/{id}
 - /test-plans/{id}/suites、/test-plan-suites/{id}
 - /test-plans/{plan_id}/runs（触发执行）、/test-runs/{id}(/cases)
@@ -23,6 +23,7 @@ from app.features.test_management.schemas import (
     TestCaseCreate,
     TestCaseDataCreate,
     TestCaseDataUpdate,
+    TestCaseFixtureReplace,
     TestCaseListResponse,
     TestCasePreconditionCreate,
     TestCasePreconditionUpdate,
@@ -278,6 +279,22 @@ def update_data(
 def delete_data(data_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     _CASE.delete_data(db, data_id, actor=user)
     return None
+
+
+# --------------------------------------------------------------------------- 用例子实体：所需 Fixture
+
+
+@router.get("/test-cases/{case_id}/fixtures", response_model=list, summary="所需 Fixture 列表")
+def list_case_fixtures(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return _CASE.list_fixtures(db, case_id, user)
+
+
+@router.put("/test-cases/{case_id}/fixtures", summary="整体替换所需 Fixture")
+def replace_case_fixtures(
+    case_id: int, body: TestCaseFixtureReplace,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    return _CASE.replace_fixtures(db, case_id, body, actor=user)
 
 
 # --------------------------------------------------------------------------- 用例子实体：步骤

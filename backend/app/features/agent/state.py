@@ -39,6 +39,8 @@ class AgentState(TypedDict, total=False):
     business_context: dict[str, Any] | None
     strategy_context: list[dict[str, Any]]
     existing_test_context: dict[str, Any] | None
+    available_fixtures: list[dict[str, Any]]  # 可引用的 Fixture 清单（fixture_key/entity_type/scope/outputs）
+    available_fixtures_ok: bool  # 清单是否成功加载；失败（False）时不校验 required_fixtures
 
     # --- 规划 / 生成产物 ---
     test_plan: dict[str, Any] | None
@@ -84,6 +86,8 @@ def make_initial_state(project_id: int, user_id: int | None, session_id: int | N
         business_context=None,
         strategy_context=[],
         existing_test_context=None,
+        available_fixtures=[],
+        available_fixtures_ok=False,
         test_plan=None,
         generated_test_points=[],
         generated_test_cases=[],

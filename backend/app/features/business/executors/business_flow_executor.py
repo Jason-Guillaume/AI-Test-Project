@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -64,6 +65,65 @@ _API_STATUS_ERROR_MESSAGES = {
     "MOCK": "API_NOT_EXECUTABLE",
     "DELETED": "API_NOT_EXECUTABLE",
 }
+
+
+@dataclass
+class ActionRunResult:
+    """单个业务动作的执行结果（内存对象，不落库）。
+
+    Data Factory 的 BUSINESS_ACTION Provider 消费它；``_execute_action`` 只是把它
+    的字段搬到 ``ActionExecution`` 行上。快照已脱敏，错误码沿用执行器既有口径。
+    """
+
+    status: str = "FAILED"
+    error_code: str | None = None
+    error_message: str | None = None
+    duration_ms: int | None = None
+    outputs: dict[str, object] = field(default_factory=dict)
+    input_context: dict[str, object] = field(default_factory=dict)
+    output_context: dict[str, object] = field(default_factory=dict)
+    request_snapshot: dict | None = None
+    response_snapshot: dict | None = None
+    binding_id: int | None = None
+    unverified_preconditions: list[dict] = field(default_factory=list)
+
+
+def run_action(
+    db: Session,
+    action_id: int,
+    *,
+    environment: Environment,
+    variables: dict[str, object] | None = None,
+    actor: User,
+    project_id: int,
+) -> ActionRunResult:
+    """执行单个业务动作（不跑整条流程）。
+
+    给 Data Factory 的 BUSINESS_ACTION Provider 用：动作输入来自当前私有变量
+    （依赖 Fixture 已经注入的 user_id 等），输出合并回私有变量后再由
+    ``fixture_output`` 挑选。
+
+    注意：这里是**单个动作**，不是 ``execute_flow``。调用 ``execute_flow`` 会把
+    整条流程跑完，且它会自己 commit，外层事务边界会不可控。
+
+    Args:
+        db: 数据库会话。
+        action_id: 业务动作 ID。
+        environment: 执行环境（调用方已解析好，不再由动作自己挑）。
+        variables: 初始运行时变量。
+        actor: 执行用户。
+        project_id: 归属项目（供出站白名单校验用）。
+
+    Returns:
+        ActionRunResult: 不写 ActionExecution 行；状态与错误码与 ``_execute_action`` 一致。
+    """
+    action = db.get(BusinessAction, action_id)
+    if action is None:
+        raise not_found("业务动作不存在")
+    ctx = ExecutionContext(variables=variables or {})
+    return _run_action_core(
+        db, action, environment=environment, ctx=ctx, project_id=project_id, flow_id=None,
+    )
 
 
 def execute_flow(
@@ -167,7 +227,11 @@ def _execute_action(
     project_id: int,
     sequence: int = 0,
 ) -> ActionExecution:
-    """执行单个业务动作。"""
+    """执行单个业务动作并落库 ActionExecution。
+
+    只负责「建行 + 把核心结果搬进字段」；前置条件、绑定、映射、HTTP、输出回写都在
+    ``_run_action_core`` 里，与 ``run_action`` 共用，避免两套绑定查询漂移。
+    """
     action_exec = ActionExecution(
         flow_execution_id=execution.id,
         action_id=action.id,
@@ -178,6 +242,37 @@ def _execute_action(
     db.add(action_exec)
     db.flush()
 
+    result = _run_action_core(
+        db, action, environment=environment, ctx=ctx,
+        project_id=project_id, flow_id=execution.flow_id,
+    )
+    action_exec.status = result.status
+    action_exec.error_code = result.error_code
+    action_exec.error_message = result.error_message
+    action_exec.duration_ms = result.duration_ms
+    action_exec.binding_id = result.binding_id
+    # 原实现把列表原样赋上去（可能为空列表）：保持空列表而不是 NULL，
+    # 避免 report / 前端把它当「未采集」而不是「采集到 0 条」。
+    action_exec.unverified_preconditions = result.unverified_preconditions
+    action_exec.input_context = result.input_context
+    action_exec.output_context = result.output_context
+    action_exec.request_snapshot = result.request_snapshot
+    action_exec.response_snapshot = result.response_snapshot
+    action_exec.finished_at = datetime.now()
+    return action_exec
+
+
+def _run_action_core(
+    db: Session,
+    action: BusinessAction,
+    *,
+    environment: Environment,
+    ctx: ExecutionContext,
+    project_id: int,
+    flow_id: int | None,
+) -> ActionRunResult:
+    """单个动作的执行核心：不建行、不提交事务，返回内存结果。"""
+    result = ActionRunResult()
     try:
         # 1. 评估前置条件。
         preconditions = (
@@ -195,25 +290,20 @@ def _execute_action(
 
         # 收集无法自动验证的前置条件（BUSINESS/TEXT 类型）。
         unverified_pcs = []
-        for pc, result in zip(pc_dicts, pc_results):
-            if "MANUAL" in (result.reason or "") or "NOT_EXECUTABLE" in (result.reason or ""):
+        for pc, pr in zip(pc_dicts, pc_results):
+            if "MANUAL" in (pr.reason or "") or "NOT_EXECUTABLE" in (pr.reason or ""):
                 unverified_pcs.append({
                     "id": pc["id"],
                     "type": pc["type"],
                     "target": pc["target"],
-                    "reason": result.reason,
+                    "reason": pr.reason,
                 })
+        result.unverified_preconditions = unverified_pcs
 
         if not all_passed:
-            action_exec.status = "FAILED"
-            action_exec.error_code = "PRECONDITION_FAILED"
-            action_exec.error_message = "前置条件不满足"
-            action_exec.finished_at = datetime.now()
-            return action_exec
-
-        # 记录无法验证的前置条件（不阻断执行，但标记为未验证）。
-        if unverified_pcs:
-            action_exec.unverified_preconditions = unverified_pcs
+            result.error_code = "PRECONDITION_FAILED"
+            result.error_message = "前置条件不满足"
+            return result
 
         # 2. 加载默认 API Binding。
         binding = (
@@ -227,45 +317,34 @@ def _execute_action(
             .first()
         )
         if binding is None:
-            action_exec.status = "FAILED"
-            action_exec.error_code = "DEFAULT_BINDING_NOT_FOUND"
-            action_exec.error_message = f"动作「{action.name}」未配置默认 API 绑定"
-            action_exec.finished_at = datetime.now()
-            return action_exec
-
-        action_exec.binding_id = binding.id
+            result.error_code = "DEFAULT_BINDING_NOT_FOUND"
+            result.error_message = f"动作「{action.name}」未配置默认 API 绑定"
+            return result
+        result.binding_id = binding.id
 
         # 3. 加载绑定接口。
         if binding.api_id is None:
-            action_exec.status = "FAILED"
-            action_exec.error_code = "API_NOT_FOUND"
-            action_exec.error_message = "绑定接口已失效（api_id 为空）"
-            action_exec.finished_at = datetime.now()
-            return action_exec
+            result.error_code = "API_NOT_FOUND"
+            result.error_message = "绑定接口已失效（api_id 为空）"
+            return result
 
         from app.features.api_catalog.models.api_interface import ApiInterface
         iface = db.get(ApiInterface, binding.api_id)
         if iface is None:
-            action_exec.status = "FAILED"
-            action_exec.error_code = "API_NOT_FOUND"
-            action_exec.error_message = "绑定接口已失效（接口不存在）"
-            action_exec.finished_at = datetime.now()
-            return action_exec
+            result.error_code = "API_NOT_FOUND"
+            result.error_message = "绑定接口已失效（接口不存在）"
+            return result
 
         # 3.1. 校验接口状态（Section 5）。
         api_status = (iface.status or "").upper()
         if api_status == "DELETED" or api_status == "":
-            action_exec.status = "FAILED"
-            action_exec.error_code = "API_NOT_EXECUTABLE"
-            action_exec.error_message = f"接口状态为 {api_status or 'NULL'}，不允许执行"
-            action_exec.finished_at = datetime.now()
-            return action_exec
+            result.error_code = "API_NOT_EXECUTABLE"
+            result.error_message = f"接口状态为 {api_status or 'NULL'}，不允许执行"
+            return result
         if api_status not in _EXECUTABLE_API_STATUSES:
-            action_exec.status = "FAILED"
-            action_exec.error_code = _API_STATUS_ERROR_MESSAGES.get(api_status, "API_NOT_EXECUTABLE")
-            action_exec.error_message = f"接口状态为 {api_status}，不允许执行（仅 ACTIVE 状态可执行）"
-            action_exec.finished_at = datetime.now()
-            return action_exec
+            result.error_code = _API_STATUS_ERROR_MESSAGES.get(api_status, "API_NOT_EXECUTABLE")
+            result.error_message = f"接口状态为 {api_status}，不允许执行（仅 ACTIVE 状态可执行）"
+            return result
 
         # 4. 加载 INPUT/OUTPUT 映射。
         mappings = (
@@ -292,15 +371,13 @@ def _execute_action(
         request_parts, errors = resolve_input_mappings(
             mapping_dicts, ctx.variables, required_vars,
         )
+        result.input_context = _mask_context_variables(
+            {k: ctx.get(k) for k in required_vars},
+        )
         if errors:
-            action_exec.status = "FAILED"
-            action_exec.error_code = "MISSING_RUNTIME_VARIABLE"
-            action_exec.error_message = "; ".join(errors)
-            action_exec.input_context = _mask_context_variables(
-                {k: ctx.get(k) for k in required_vars},
-            )
-            action_exec.finished_at = datetime.now()
-            return action_exec
+            result.error_code = "MISSING_RUNTIME_VARIABLE"
+            result.error_message = "; ".join(errors)
+            return result
 
         # 7. 构造并执行 HTTP 请求。
         base_headers = _EXECUTOR.get_environment_headers(environment)
@@ -314,7 +391,7 @@ def _execute_action(
         body_type = "json" if json_body else "none"
 
         started = time.perf_counter()
-        result = _EXECUTOR.execute(
+        http_result = _EXECUTOR.execute(
             db,
             method=method,
             url=url,
@@ -328,32 +405,25 @@ def _execute_action(
         elapsed_ms = int((time.perf_counter() - started) * 1000)
 
         # 8. 保存脱敏后的请求/响应快照。
-        action_exec.request_snapshot = SensitiveDataMasker.mask_request(
+        result.request_snapshot = SensitiveDataMasker.mask_request(
             method, url, base_headers, request_parts["query"], json_body or {}, body_type,
         )
-        action_exec.response_snapshot = SensitiveDataMasker.mask_response(
-            result.status_code, result.response_headers, _try_parse_json(result.response_body),
-        )
-        action_exec.input_context = _mask_context_variables(
-            {k: ctx.get(k) for k in required_vars},
+        result.response_snapshot = SensitiveDataMasker.mask_response(
+            http_result.status_code, http_result.response_headers, _try_parse_json(http_result.response_body),
         )
 
-        if result.error_message:
-            action_exec.status = "FAILED"
-            # 判断超时 vs 连接失败。
-            if "超时" in result.error_message:
-                action_exec.error_code = "HTTP_TIMEOUT"
-            else:
-                action_exec.error_code = "HTTP_REQUEST_FAILED"
-            action_exec.error_message = result.error_message
-            action_exec.duration_ms = elapsed_ms
-            action_exec.finished_at = datetime.now()
-            return action_exec
+        if http_result.error_message:
+            result.error_code = (
+                "HTTP_TIMEOUT" if "超时" in http_result.error_message else "HTTP_REQUEST_FAILED"
+            )
+            result.error_message = http_result.error_message
+            result.duration_ms = elapsed_ms
+            return result
 
         # 9. 解析 OUTPUT 映射。
         output_vars = {v.name: v.required for v in variables if v.direction == "OUTPUT"}
         extracted, warnings = resolve_output_mappings(
-            mapping_dicts, result.response_body, output_vars,
+            mapping_dicts, http_result.response_body, output_vars,
         )
 
         # 如果提取失败但有 required 变量，记录错误代码。
@@ -362,57 +432,56 @@ def _execute_action(
             if "required" in w.lower() or "缺失" in w
         ]
         if missing_required:
-            action_exec.error_code = "OUTPUT_EXTRACTION_FAILED"
+            result.error_code = "OUTPUT_EXTRACTION_FAILED"
 
         for var_name, value in extracted.items():
             if value is not None:
                 ctx.set(var_name, value)
 
         # 10. 检查 HTTP 状态码。
-        if not result.success:
-            action_exec.status = "FAILED"
-            action_exec.error_code = "HTTP_REQUEST_FAILED"
-            action_exec.error_message = f"HTTP {result.status_code}: {result.response_body[:500]}"
-            action_exec.duration_ms = elapsed_ms
-            action_exec.finished_at = datetime.now()
-            return action_exec
+        if not http_result.success:
+            result.error_code = "HTTP_REQUEST_FAILED"
+            result.error_message = f"HTTP {http_result.status_code}: {http_result.response_body[:500]}"
+            result.duration_ms = elapsed_ms
+            return result
 
         # 11. 保存 Action 输出到 namespaced context（Section 3）。
         output_output = {k: extracted.get(k) for k in output_vars if extracted.get(k) is not None}
         ctx.set_action_output(action.action_key, output_output)
+        result.outputs = dict(output_output)
 
-        # 12. 执行 VariableRef 传递。
-        refs = (
-            db.query(BusinessVariableRef)
-            .filter(BusinessVariableRef.flow_id == execution.flow_id)
-            .all()
-        )
-        for ref in refs:
-            if ref.source_action_id == action.id and ref.target_action_id:
-                # 模型列为 source_variable/target_variable（与 schemas 一致），此处必须同名读取。
-                if ref.source_variable and ref.target_variable:
-                    # 优先从 action_output 命名空间查找，其次从 variables 查找。
-                    action_output = ctx.get_action_output(action.action_key)
-                    if action_output and ref.source_variable in action_output:
-                        ctx.set(ref.target_variable, action_output[ref.source_variable])
-                    elif ref.source_variable in ctx.variables:
-                        ctx.apply_ref(ref.source_variable, ref.target_variable)
+        # 12. 执行 VariableRef 传递（单动作独立执行时没有 flow 级 Ref）。
+        if flow_id is not None:
+            refs = (
+                db.query(BusinessVariableRef)
+                .filter(BusinessVariableRef.flow_id == flow_id)
+                .all()
+            )
+            for ref in refs:
+                if ref.source_action_id == action.id and ref.target_action_id:
+                    # 模型列为 source_variable/target_variable（与 schemas 一致），此处必须同名读取。
+                    if ref.source_variable and ref.target_variable:
+                        # 优先从 action_output 命名空间查找，其次从 variables 查找。
+                        action_output = ctx.get_action_output(action.action_key)
+                        if action_output and ref.source_variable in action_output:
+                            ctx.set(ref.target_variable, action_output[ref.source_variable])
+                        elif ref.source_variable in ctx.variables:
+                            ctx.apply_ref(ref.source_variable, ref.target_variable)
 
         # 13. 标记成功。
-        action_exec.status = "SUCCESS"
-        action_exec.output_context = _mask_context_variables(
+        result.status = "SUCCESS"
+        result.error_code = None
+        result.error_message = None
+        result.output_context = _mask_context_variables(
             {k: ctx.get(k) for k in output_vars},
         )
-        action_exec.duration_ms = elapsed_ms
-        action_exec.finished_at = datetime.now()
-        return action_exec
+        result.duration_ms = elapsed_ms
+        return result
 
     except Exception as exc:
-        action_exec.status = "FAILED"
-        action_exec.error_code = "EXECUTION_CANCELLED"
-        action_exec.error_message = f"执行异常：{exc}"
-        action_exec.finished_at = datetime.now()
-        return action_exec
+        result.error_code = "EXECUTION_CANCELLED"
+        result.error_message = f"执行异常：{exc}"
+        return result
 
 
 def _mask_context_variables(data: dict) -> dict:

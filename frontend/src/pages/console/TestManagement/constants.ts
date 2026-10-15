@@ -102,6 +102,27 @@ export const TEST_DATA_SOURCE_OPTIONS = [
   { value: 'FIXTURE' as TestDataSourceType, label: '夹具 FIXTURE' },
 ];
 
+// FAKER 生成器白名单：与后端 variable_resolver.FAKER_GENERATORS 严格对齐（不开放任意方法名）。
+export const TEST_FAKER_GENERATOR_OPTIONS = [
+  { value: 'uuid', label: 'UUID' },
+  { value: 'name', label: '姓名 name' },
+  { value: 'phone', label: '手机号 phone' },
+  { value: 'email', label: '邮箱 email' },
+  { value: 'string', label: '随机串 string' },
+  { value: 'integer', label: '整数 integer' },
+  { value: 'timestamp', label: '时间戳 timestamp' },
+  { value: 'date', label: '日期 date' },
+  { value: 'url', label: 'URL url' },
+  { value: 'ip', label: 'IP ip' },
+  { value: 'random_choice', label: '候选随机 random_choice（需候选值）' },
+  { value: 'project_name', label: '项目名 project_name' },
+];
+
+export const TEST_FAKER_LOCALE_OPTIONS = [
+  { value: 'zh_CN', label: '中文 zh_CN' },
+  { value: 'en_US', label: '英文 en_US' },
+];
+
 export const TEST_STEP_TYPE_OPTIONS = [
   { value: 'SETUP' as TestStepType, label: '前置 SETUP' },
   { value: 'ACTION' as TestStepType, label: '动作 ACTION' },

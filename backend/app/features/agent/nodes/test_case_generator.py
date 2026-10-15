@@ -47,7 +47,9 @@ def test_case_generator_node(ctx: NodeContext, state: AgentState) -> dict:
             + _dump(confirmed_points)
             + "\n\n## 接口上下文\n" + _dump(state.get("api_context")) + "\n\n"
             + "## 业务上下文\n" + _dump(state.get("business_context")) + "\n\n"
-            + "## 已有测试用例（请勿重复生成同名项）\n"
+            + "## 可用 Fixture（required_fixtures 只能引用这里的 fixture_key）\n"
+            + _dump(state.get("available_fixtures") or [])
+            + "\n\n## 已有测试用例（请勿重复生成同名项）\n"
             + _dump((state.get("existing_test_context") or {}).get("cases", []))
         )
         result = ctx.provider.generate_structured(

@@ -5,9 +5,10 @@
 // 权限（服务端为准）：读 = 项目可见（viewer+）；写 = 项目成员（member+）；跨项目越权 404，前端不展示。
 // §26：用例编辑携带 revision 乐观锁；并发冲突返回 409，前端提示「当前测试用例已被其他用户修改」并重载详情。
 // 返回形态：listStrategies/listPoints/listCases/getCaseDetail 及子实体列表均为裸数组/对象（无分页信封）。
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   App,
+  Alert,
   Button,
   Card,
   Col,
@@ -31,6 +32,7 @@ import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/api/testManagement';
+import { testDataApi } from '@/api/testData';
 import { getErrorMessage } from '@/api/client';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
@@ -38,6 +40,8 @@ import {
   TEST_ASSERTION_TYPE_OPTIONS,
   TEST_CASE_TYPE_OPTIONS,
   TEST_DATA_SOURCE_OPTIONS,
+  TEST_FAKER_GENERATOR_OPTIONS,
+  TEST_FAKER_LOCALE_OPTIONS,
   TEST_OPERATOR_OPTIONS,
   TEST_PRECONDITION_TYPE_OPTIONS,
   TEST_PRIORITY_OPTIONS,
@@ -55,6 +59,7 @@ import type {
   TestCaseData,
   TestCaseDataCreate,
   TestCaseDataUpdate,
+  TestCaseFixture,
   TestCasePrecondition,
   TestCasePreconditionCreate,
   TestCasePreconditionUpdate,
@@ -355,7 +360,8 @@ export function ConsoleTestAssetPage() {
                 <Tabs
                   items={[
                     { key: 'preconditions', label: '前置条件', children: <PreconditionsTab caseId={detail.id} items={detail.preconditions} /> },
-                    { key: 'data', label: '测试数据', children: <DataTab caseId={detail.id} items={detail.test_data} /> },
+                    { key: 'data', label: '测试数据', children: <DataTab caseId={detail.id} items={detail.test_data} fixtures={detail.fixtures} /> },
+                    { key: 'fixtures', label: '所需 Fixture', children: <FixturesTab caseId={detail.id} items={detail.fixtures} /> },
                     { key: 'steps', label: '步骤', children: <StepsTab caseId={detail.id} items={detail.steps} /> },
                     { key: 'assertions', label: '断言', children: <AssertionsTab caseId={detail.id} items={detail.assertions} /> },
                   ]}
@@ -652,14 +658,56 @@ interface DataFormValues {
   required: boolean;
   description?: string;
   sort: number;
+  /** FIXTURE 模式：来自本用例「所需 Fixture」的 fixture_key。 */
+  fixture_key?: string;
+  /** FIXTURE 模式：该 Fixture 输出契约里的名称。 */
+  output?: string;
+  /** FAKER 模式：后端白名单生成器名。 */
+  generator?: string;
+  /** FAKER 模式：生成语言。 */
+  locale?: string;
+  /** FAKER 模式：random_choice 候选值。 */
+  choices?: string[];
 }
 
-function DataTab({ caseId, items }: { caseId: number; items: TestCaseData[] }) {
+function DataTab({ caseId, items, fixtures }: { caseId: number; items: TestCaseData[]; fixtures: TestCaseFixture[] }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TestCaseData | null>(null);
   const [form] = Form.useForm<DataFormValues>();
+
+  const watchedSource = Form.useWatch('source_type', form);
+  const watchedFixtureKey = Form.useWatch('fixture_key', form);
+  const watchedGenerator = Form.useWatch('generator', form);
+
+  // FIXTURE 模式只能绑定本用例已声明的 Fixture（未声明的 key 后端拒绝）。
+  const fixtureOptions = useMemo(
+    () =>
+      fixtures.map((f) => ({
+        value: f.fixture_key,
+        label: `${f.fixture_key} — ${f.name}`,
+        outputs: f.outputs ?? [],
+      })),
+    [fixtures],
+  );
+  const outputOptions = (watchedFixtureKey ? fixtureOptions.find((o) => o.value === watchedFixtureKey) : undefined)
+    ?.outputs.map((n) => ({ value: n, label: n })) ?? [];
+
+  const sourceValueLabel =
+    watchedSource === 'VARIABLE'
+      ? '变量名（如 ${fixture.SUCCESS_TASK.task_id} 或输出名）'
+      : watchedSource === 'RUNTIME'
+        ? '运行时变量名（如 task_id）'
+        : watchedSource === 'ENVIRONMENT'
+          ? '环境变量名'
+          : '值';
+  const sourceHint =
+    watchedSource === 'FAKER'
+      ? '值在每次执行时现造，不需要填「值」。'
+      : watchedSource === 'FIXTURE'
+        ? '值在执行前由平台注入，无需填写。'
+        : undefined;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['test-case-detail', caseId] });
 
@@ -684,16 +732,46 @@ function DataTab({ caseId, items }: { caseId: number; items: TestCaseData[] }) {
     setEditing(row);
     form.resetFields();
     // 编辑模式不提供 name（TestCaseDataUpdate 无 name 字段）。
-    form.setFieldsValue({ name: row.name, value_type: row.value_type as DataFormValues['value_type'], value: row.value ?? undefined, source_type: row.source_type as DataFormValues['source_type'], required: row.required, description: row.description ?? undefined, sort: row.sort });
+    const cfg = row.config_json ?? {};
+    form.setFieldsValue({
+      name: row.name,
+      value_type: row.value_type as DataFormValues['value_type'],
+      source_type: row.source_type as DataFormValues['source_type'],
+      required: row.required,
+      description: row.description ?? undefined,
+      sort: row.sort,
+      // STATIC/ENVIRONMENT/VARIABLE/RUNTIME 直接复用 value 列；FIXTURE/FAKER 的 value 不展示。
+      value: (row.source_type === 'FIXTURE' || row.source_type === 'FAKER') ? undefined : row.value ?? undefined,
+      fixture_key: typeof cfg.fixture_key === 'string' ? cfg.fixture_key : undefined,
+      output: typeof cfg.output === 'string' ? cfg.output : undefined,
+      generator: typeof cfg.generator === 'string' ? cfg.generator : undefined,
+      locale: typeof cfg.locale === 'string' ? cfg.locale : undefined,
+      choices: Array.isArray(cfg.choices) ? cfg.choices.map(String) : undefined,
+    });
     setOpen(true);
   };
   const submit = async () => {
     const v = await form.validateFields();
+    // FIXTURE / FAKER 走 config_json，value 列不适用（FIXTURE 由后端回写表达式）。
+    let config_json: Record<string, unknown> | null = null;
+    if (v.source_type === 'FIXTURE') {
+      if (!v.fixture_key || !v.output) { message.error('请选择 Fixture 与输出'); return; }
+      config_json = { fixture_key: v.fixture_key, output: v.output, variable: v.name };
+    } else if (v.source_type === 'FAKER') {
+      if (!v.generator) { message.error('请选择 FAKER 生成器'); return; }
+      config_json = { generator: v.generator, locale: v.locale || 'zh_CN' };
+      if (v.generator === 'random_choice') {
+        const choices = (v.choices ?? []).map((c) => c.trim()).filter(Boolean);
+        if (!choices.length) { message.error('random_choice 需要至少 1 个候选值'); return; }
+        config_json.choices = choices;
+      }
+    }
+    const value = v.source_type === 'FIXTURE' || v.source_type === 'FAKER' ? null : v.value ?? null;
     if (editing) {
       // 不传 name（不可改）。
-      await updateMut.mutateAsync({ id: editing.id, body: { value_type: v.value_type, value: v.value ?? null, source_type: v.source_type, required: v.required, description: v.description ?? null, sort: v.sort } });
+      await updateMut.mutateAsync({ id: editing.id, body: { value_type: v.value_type, value, source_type: v.source_type, config_json, required: v.required, description: v.description ?? null, sort: v.sort } });
     } else {
-      await createMut.mutateAsync({ name: v.name, value_type: v.value_type, value: v.value ?? null, source_type: v.source_type, required: v.required, description: v.description ?? null, sort: v.sort });
+      await createMut.mutateAsync({ name: v.name, value_type: v.value_type, value, source_type: v.source_type, config_json, required: v.required, description: v.description ?? null, sort: v.sort });
     }
   };
 
@@ -721,18 +799,230 @@ function DataTab({ caseId, items }: { caseId: number; items: TestCaseData[] }) {
       <Table rowKey="id" size="small" columns={columns} dataSource={items} pagination={false} />
       <Modal title={editing ? '编辑测试数据' : '新增测试数据'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnClose width={480}>
         <Form<DataFormValues> form={form} layout="vertical" initialValues={{ value_type: 'STRING', source_type: 'STATIC', required: false, sort: 0 }}>
+          <Form.Item name="source_type" label="来源" extra={sourceHint}>
+            <Select options={TEST_DATA_SOURCE_OPTIONS} />
+          </Form.Item>
           <Form.Item name="name" label="数据项名" rules={[{ required: true, message: '请输入名称' }]}>
             <Input maxLength={100} disabled={editing != null} />
           </Form.Item>
-          <Form.Item name="value_type" label="值类型"><Select options={TEST_VALUE_TYPE_OPTIONS} /></Form.Item>
-          <Form.Item name="value" label="值"><Input /></Form.Item>
-          <Form.Item name="source_type" label="来源"><Select options={TEST_DATA_SOURCE_OPTIONS} /></Form.Item>
+          {watchedSource !== 'FIXTURE' && watchedSource !== 'FAKER' && (
+            <Form.Item name="value_type" label="值类型"><Select options={TEST_VALUE_TYPE_OPTIONS} /></Form.Item>
+          )}
+          <Form.Item
+            name="value"
+            label={sourceValueLabel}
+            dependencies={['source_type']}
+            rules={[
+              {
+                validator: async (_rule, value) => {
+                  const src = form.getFieldValue('source_type');
+                  if (src === 'FIXTURE' || src === 'FAKER') return;
+                  if (value === undefined || value === null || String(value).trim() === '') {
+                    throw new Error('该来源需要填写值');
+                  }
+                },
+              },
+            ]}
+          >
+            <Input />
+          </Form.Item>
+          {watchedSource === 'FIXTURE' && (
+            <>
+              <Form.Item
+                name="fixture_key"
+                label="所需 Fixture"
+                rules={[{ required: true, message: '请选择 Fixture' }]}
+                extra={fixtureOptions.length ? undefined : '本用例还没有声明所需 Fixture，请到「所需 Fixture」页签添加'}
+              >
+                <Select options={fixtureOptions} showSearch optionFilterProp="label" placeholder="选择本用例所需的 Fixture" />
+              </Form.Item>
+              <Form.Item name="output" label="输出名" rules={[{ required: true, message: '请选择输出名' }]}>
+                <Select
+                  options={outputOptions}
+                  placeholder={watchedFixtureKey ? '选择该 Fixture 的输出' : '先选择 Fixture'}
+                  disabled={!watchedFixtureKey || outputOptions.length === 0}
+                />
+              </Form.Item>
+            </>
+          )}
+          {watchedSource === 'FAKER' && (
+            <>
+              <Form.Item name="generator" label="生成器" rules={[{ required: true, message: '请选择生成器' }]}>
+                <Select options={TEST_FAKER_GENERATOR_OPTIONS} />
+              </Form.Item>
+              <Form.Item name="locale" label="语言" initialValue="zh_CN">
+                <Select options={TEST_FAKER_LOCALE_OPTIONS} />
+              </Form.Item>
+              {watchedGenerator === 'random_choice' && (
+                <Form.Item name="choices" label="候选值" extra="运行时从这些候选中随机取一个">
+                  <Select mode="tags" open={false} tokenSeparators={[',']} />
+                </Form.Item>
+              )}
+            </>
+          )}
           <Form.Item name="required" label="必需" valuePropName="checked"><Switch /></Form.Item>
           <Form.Item name="description" label="说明"><Input maxLength={500} /></Form.Item>
           <Form.Item name="sort" label="排序"><InputNumber min={0} /></Form.Item>
         </Form>
       </Modal>
     </>
+  );
+}
+
+// ============================================================ 所需 Fixture Tab
+//
+// 执行本用例前，平台按这里的顺序（含各自依赖）执行这些 Fixture 生成运行时数据；
+// 清理按各 Fixture 自身的 cleanup_policy 决定。只能引用本用例已声明的 fixture_key，
+// 因此「测试数据」页签的 FIXTURE 来源只能从下拉里选，不用手填表达式。
+// 后端接口是整体替换（PUT 全量），这里在本地暂存选择，点「保存 Fixture」一次性提交。
+
+interface FixtureRow {
+  /** 行内唯一序号（Table rowKey，避免排序 / 换选时整行重建）。 */
+  _row: number;
+  fixture_key?: string;
+}
+
+function FixturesTab({ caseId, items }: { caseId: number; items: TestCaseFixture[] }) {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+  const { currentProjectId } = useConsoleScope();
+  const nextRowId = useRef(0);
+
+  const [rows, setRows] = useState<FixtureRow[]>(() =>
+    items.map((f) => ({ _row: nextRowId.current++, fixture_key: f.fixture_key })),
+  );
+  const [dirty, setDirty] = useState(false);
+
+  // 切换用例 / 后端刷新详情时回到服务端状态。
+  useEffect(() => {
+    setRows(items.map((f) => ({ _row: nextRowId.current++, fixture_key: f.fixture_key })));
+    setDirty(false);
+  }, [items]);
+
+  const activeQuery = useQuery({
+    queryKey: ['fixtures', currentProjectId, 'active'],
+    queryFn: () => testDataApi.listFixtures(currentProjectId!, { status: 'ACTIVE' }),
+    enabled: currentProjectId != null,
+  });
+  const available = useMemo(() => activeQuery.data?.items ?? [], [activeQuery.data]);
+  const keyName = useMemo(() => {
+    const m = new Map<string, string>();
+    available.forEach((f) => m.set(f.fixture_key, f.name));
+    return m;
+  }, [available]);
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      testManagementApi.replaceCaseFixtures(
+        caseId,
+        rows.filter((r) => r.fixture_key).map((r) => ({ fixture_key: r.fixture_key! })),
+      ),
+    onSuccess: () => {
+      message.success('所需 Fixture 已保存');
+      setDirty(false);
+      queryClient.invalidateQueries({ queryKey: ['test-case-detail', caseId] });
+    },
+    onError: (e) => message.error(getErrorMessage(e, '保存失败')),
+  });
+
+  const commit = (next: FixtureRow[]) => { setRows(next); setDirty(true); };
+  const move = (idx: number, delta: number) => {
+    const to = idx + delta;
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    [next[idx], next[to]] = [next[to], next[idx]];
+    commit(next);
+  };
+
+  const columns: TableColumnsType<FixtureRow> = [
+    { title: '执行顺序', width: 90, render: (_v, _row, idx) => `第 ${idx + 1} 位` },
+    {
+      title: 'Fixture',
+      render: (_v, _row, idx) => {
+        const used = new Set(rows.filter((r) => r.fixture_key && r.fixture_key !== rows[idx].fixture_key).map((r) => r.fixture_key as string));
+        return (
+          <Select
+            size="small"
+            style={{ minWidth: 240 }}
+            showSearch
+            optionFilterProp="label"
+            placeholder="选择 Fixture"
+            value={rows[idx].fixture_key}
+            onChange={(key: string) => commit(rows.map((r, i) => (i === idx ? { ...r, fixture_key: key } : r)))}
+            options={available.map((f) => ({
+              value: f.fixture_key,
+              label: `${f.fixture_key} — ${f.name}`,
+              disabled: used.has(f.fixture_key),
+            }))}
+          />
+        );
+      },
+    },
+    { title: '名称', width: 180, render: (_v, row) => (row.fixture_key ? keyName.get(row.fixture_key) ?? '-' : '-') },
+    {
+      title: '输出契约',
+      width: 240,
+      render: (_v, _row, idx) => {
+        const outputs = items[idx]?.outputs ?? [];
+        return outputs.length ? <Space size={[0, 2]} wrap>{outputs.map((o) => <Tag key={o}>{o}</Tag>)}</Space> : '-';
+      },
+    },
+    {
+      title: '操作',
+      width: 140,
+      render: (_v, _row, idx) => (
+        <Space size={4}>
+          <Button size="small" disabled={idx === 0} onClick={() => move(idx, -1)}>上移</Button>
+          <Button size="small" disabled={idx === rows.length - 1} onClick={() => move(idx, 1)}>下移</Button>
+          <Popconfirm title="移除此 Fixture？" onConfirm={() => commit(rows.filter((_r, i) => i !== idx))}>
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <Space direction="vertical" style={{ width: '100%' }} size={8}>
+      <Typography.Text type="secondary">
+        执行本用例前，平台按依赖顺序执行这里声明的 Fixture，输出可被「测试数据」的 FIXTURE 来源引用；清理按各 Fixture 自身的 cleanup_policy 执行。
+      </Typography.Text>
+      {activeQuery.error && (
+        <Alert
+          type="warning"
+          showIcon
+          message="无法加载 Fixture 列表"
+          description={getErrorMessage(activeQuery.error, '请到「测试数据中心」确认权限与配置')}
+        />
+      )}
+      <Table
+        rowKey={(row) => row._row}
+        size="small"
+        columns={columns}
+        dataSource={rows}
+        pagination={false}
+        locale={{ emptyText: '本用例还没有声明所需 Fixture' }}
+      />
+      <Space>
+        <Button
+          size="small"
+          icon={<PlusOutlined />}
+          disabled={available.length === 0}
+          onClick={() => commit([...rows, { _row: nextRowId.current++, fixture_key: undefined }])}
+        >
+          新增 Fixture
+        </Button>
+        <Button
+          size="small"
+          type="primary"
+          loading={saveMut.isPending}
+          disabled={!dirty}
+          onClick={() => saveMut.mutate()}
+        >
+          保存 Fixture
+        </Button>
+      </Space>
+    </Space>
   );
 }
 

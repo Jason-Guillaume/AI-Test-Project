@@ -22,6 +22,8 @@ httpx>=0.27,<1
 # 接口测试 Agent：用 langgraph StateGraph 编排节点/边与 human-in-the-loop 暂停
 # （LLMProvider 仍自写 httpx 调 OpenAI 兼容；持久化仍用自建 agent_session 表，不用 langgraph checkpointer）
 langgraph>=1.2,<2
+# 测试数据中心 Data Factory：FAKER Provider 只调固定白名单方法生成假数据（不执行用户代码）
+Faker>=33,<40
 
 # 测试
 pytest>=8.0,<10

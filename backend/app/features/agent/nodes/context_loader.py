@@ -10,12 +10,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import HTTPException
 
 from app.features.agent.nodes._context import NodeContext
 from app.features.agent.providers.sanitizer import sanitize_context
 from app.features.agent.state import AgentState, set_error
-from app.features.agent.tools import api_catalog_tool, business_tool, test_asset_tool
+from app.features.agent.tools import api_catalog_tool, business_tool, fixture_tool, test_asset_tool
 
 
 def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
@@ -36,6 +38,18 @@ def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
             "当前仅支持单个测试目标，请一次指定一个接口或业务流程",
         )
     target_id = target_ids[0]
+
+    # 可用 Fixture 清单独立于目标上下文加载：失败按空列表处理，不阻断其他意图。
+    fixtures_payload: dict[str, Any]
+    try:
+        fixtures_payload = {
+            "available_fixtures": sanitize_context(
+                fixture_tool.list_active_fixtures(ctx.db, project_id)
+            ),
+            "available_fixtures_ok": True,
+        }
+    except Exception:  # noqa: BLE001 - 清单缺失只是让 Agent 拿不到建议，不应报错终止。
+        fixtures_payload = {"available_fixtures": [], "available_fixtures_ok": False}
 
     try:
         api_context = None
@@ -102,6 +116,7 @@ def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
             "business_context": sanitize_context(business_context),
             "strategy_context": sanitize_context(strategies.get("items", [])),
             "existing_test_context": sanitize_context(existing_test_context),
+            **fixtures_payload,
             "current_stage": "PLANNING",
         }
     except HTTPException as exc:

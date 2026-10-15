@@ -15,15 +15,22 @@ from __future__ import annotations
 
 import re
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.features.agent.schemas import TestCaseDraft, TestPointDraft
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.business.models.business_action import BusinessAction
 from app.features.business.models.business_flow import BusinessFlow
+from app.features.test_data.models.fixture import Fixture
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_point import TestPoint
-from app.features.test_management.schemas import TestCaseCreate, TestPointCreate
+from app.features.test_management.schemas import (
+    TestCaseCreate,
+    TestCaseFixtureItem,
+    TestCaseFixtureReplace,
+    TestPointCreate,
+)
 from app.features.test_management.services._access import get_project_or_404
 from app.features.test_management.services.case_service import CaseService
 from app.features.test_management.services.point_service import PointService
@@ -244,6 +251,38 @@ def _rebase_assertion_steps(assertions, step_ids: list[int]):
     return rebased
 
 
+def _resolve_fixture_ids(db: Session, project_id: int, keys: list[str]) -> list[str]:
+    """校验 required_fixtures 全部可见且 ACTIVE，返回去重后的 key 顺序。
+
+    任一 key 缺失 → 404「当前缺少 XXX Fixture」，**整条用例不落库**（与现在子实体
+    失败即 conflict 的粒度一致：已保存的前序用例保留，其他合法用例仍可保存）。
+    这里只校验引用，绝不创建 Provider / Fixture，也不接触连接配置。
+    """
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw in keys or []:
+        key = (raw or "").strip()
+        if key and key not in seen:
+            seen.add(key)
+            ordered.append(key)
+    if not ordered:
+        return []
+    rows = (
+        db.query(Fixture)
+        .filter(
+            Fixture.status == "ACTIVE",
+            Fixture.fixture_key.in_(ordered),
+            or_(Fixture.project_id == project_id, Fixture.scope == "GLOBAL"),
+        )
+        .all()
+    )
+    found = {r.fixture_key for r in rows}
+    missing = [k for k in ordered if k not in found]
+    if missing:
+        raise not_found(f"当前缺少 {', '.join(missing)} Fixture")
+    return ordered
+
+
 def save_cases(
     db: Session,
     project_id: int,
@@ -264,6 +303,8 @@ def save_cases(
         _validate_resource_ids(
             db, project_id, d.api_id, d.business_flow_id, d.business_action_id,
         )
+        # 先校验 Fixture 引用再建用例：key 缺失时整条不落库。
+        fixture_keys = _resolve_fixture_ids(db, project_id, d.required_fixtures or [])
         body = TestCaseCreate(
             name=d.name,
             description=d.description,
@@ -280,6 +321,17 @@ def save_cases(
         )
         case_resp = _CASE.create_case(db, project_id, body, actor=actor)
         case_id = case_resp.id
+        if fixture_keys:
+            _CASE.replace_fixtures(
+                db, case_id,
+                TestCaseFixtureReplace(
+                    fixtures=[
+                        TestCaseFixtureItem(fixture_key=k, sort=i)
+                        for i, k in enumerate(fixture_keys)
+                    ]
+                ),
+                actor=actor,
+            )
         for pre in d.preconditions:
             _CASE.create_precondition(db, case_id, pre, actor=actor)
         for data in d.test_data:

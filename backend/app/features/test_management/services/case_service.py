@@ -16,6 +16,8 @@ from collections import defaultdict
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.features.test_data.models.case_fixture import TestCaseFixture
+from app.features.test_data.models.fixture import Fixture, FixtureOutput
 from app.features.test_management.models.test_assertion import TestAssertion
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_case_data import TestCaseData
@@ -32,6 +34,8 @@ from app.features.test_management.schemas import (
     TestCaseDataResponse,
     TestCaseDataUpdate,
     TestCaseDetailResponse,
+    TestCaseFixtureReplace,
+    TestCaseFixtureResponse,
     TestCaseListResponse,
     TestCasePreconditionCreate,
     TestCasePreconditionResponse,
@@ -51,7 +55,14 @@ from app.features.test_management.services._access import (
     resolve_case_project_id,
 )
 from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
+from app.shared.errors import (
+    CODE_FIXTURE_DISABLED,
+    CODE_FIXTURE_NOT_FOUND,
+    AppError,
+    bad_request,
+    conflict,
+    not_found,
+)
 from app.shared.notify import notify
 from app.shared.pagination import DEFAULT_PAGE_SIZE
 
@@ -164,6 +175,7 @@ class CaseService:
             test_data=[TestCaseDataResponse.model_validate(d) for d in data],
             steps=[TestStepResponse.model_validate(s) for s in steps],
             assertions=[TestAssertionResponse.model_validate(a) for a in assertions],
+            fixtures=self._fixture_rows(db, case_id),
         )
 
     def update_case(
@@ -287,6 +299,7 @@ class CaseService:
             source_type=body.source_type, required=body.required, description=body.description,
             config_json=body.config_json, sort=body.sort,
         )
+        self._validate_fixture_data(db, case_id, row)
         db.add(row)
         db.flush()
         db.commit()
@@ -305,6 +318,7 @@ class CaseService:
             row.value = data["value"]
         if "required" in data:
             row.required = data["required"]
+        self._validate_fixture_data(db, row.test_case_id, row)
         db.flush()
         db.commit()
         db.refresh(row)
@@ -314,6 +328,135 @@ class CaseService:
         row = self._get_writable_sub_or_404(db, data_id, TestCaseData, "测试数据", actor)
         db.delete(row)
         db.commit()
+
+    # -------------------------------------------------------------- 所需 Fixture
+
+    def list_fixtures(self, db: Session, case_id: int, user: User) -> list[TestCaseFixtureResponse]:
+        self._get_or_404(db, case_id, user)
+        return self._fixture_rows(db, case_id)
+
+    def replace_fixtures(
+        self, db: Session, case_id: int, body: TestCaseFixtureReplace, *, actor: User,
+    ) -> list[TestCaseFixtureResponse]:
+        """整体替换用例所需 Fixture。用例只声明 fixture_key，运行时值由 Data Factory 注入。
+
+        key 不存在或不可见 → FIXTURE_NOT_FOUND；不是 ACTIVE → FIXTURE_DISABLED。
+        任一 key 校验失败整条不保存（与子实体「失败即不落库」的粒度一致）。
+        """
+        case = self._get_writable_or_404(db, case_id, actor)
+
+        seen: set[str] = set()
+        resolved: list[tuple[Fixture, int]] = []
+        for item in body.fixtures:
+            key = item.fixture_key.strip()
+            if key in seen:
+                raise conflict(f"所需 Fixture 重复：{key}")
+            seen.add(key)
+            resolved.append((self._load_visible_fixture(db, case.project_id, key), item.sort))
+
+        for row in db.query(TestCaseFixture).filter(TestCaseFixture.test_case_id == case_id).all():
+            db.delete(row)
+        db.flush()
+
+        for sort, (fixture, _ignored) in enumerate(resolved):
+            db.add(TestCaseFixture(test_case_id=case_id, fixture_id=fixture.id, sort=sort))
+        db.commit()
+        return self._fixture_rows(db, case_id)
+
+    @staticmethod
+    def _fixture_rows(db: Session, case_id: int) -> list[TestCaseFixtureResponse]:
+        rows = (
+            db.query(TestCaseFixture).filter(TestCaseFixture.test_case_id == case_id)
+            .order_by(TestCaseFixture.sort.asc(), TestCaseFixture.id.asc()).all()
+        )
+        if not rows:
+            return []
+        fixture_ids = [row.fixture_id for row in rows]
+        fixtures = {
+            f.id: f for f in db.query(Fixture).filter(Fixture.id.in_(fixture_ids)).all()
+        }
+        output_names: dict[int, list[str]] = defaultdict(list)
+        for fx_id, name in (
+            db.query(FixtureOutput.fixture_id, FixtureOutput.name)
+            .filter(FixtureOutput.fixture_id.in_(fixture_ids))
+            .order_by(FixtureOutput.sort.asc(), FixtureOutput.id.asc())
+            .all()
+        ):
+            output_names[fx_id].append(name)
+
+        result: list[TestCaseFixtureResponse] = []
+        for row in rows:
+            fixture = fixtures.get(row.fixture_id)
+            result.append(TestCaseFixtureResponse(
+                id=row.id,
+                test_case_id=row.test_case_id,
+                fixture_id=row.fixture_id,
+                fixture_key=fixture.fixture_key if fixture else "",
+                name=fixture.name if fixture else None,
+                entity_type=fixture.entity_type if fixture else None,
+                scope=fixture.scope if fixture else None,
+                status=fixture.status if fixture else None,
+                outputs=output_names.get(row.fixture_id, []),
+                sort=row.sort,
+            ))
+        return result
+
+    @staticmethod
+    def _load_visible_fixture(db: Session, project_id: int, fixture_key: str) -> Fixture:
+        """按 key 加载可见 Fixture：本项目，或 GLOBAL 且 ACTIVE（与 Data Factory 同口径）。"""
+        key = (fixture_key or "").strip()
+        if not key:
+            raise bad_request("fixture_key 不能为空")
+        fixture = (
+            db.query(Fixture).filter(Fixture.project_id == project_id, Fixture.fixture_key == key).first()
+        )
+        if fixture is None:
+            fixture = (
+                db.query(Fixture)
+                .filter(Fixture.fixture_key == key, Fixture.scope == "GLOBAL", Fixture.status == "ACTIVE")
+                .first()
+            )
+        if fixture is None:
+            raise AppError(f"Fixture {key} 不存在", status_code=404, code=CODE_FIXTURE_NOT_FOUND)
+        if fixture.project_id == project_id and fixture.status != "ACTIVE":
+            raise AppError(
+                f"Fixture {key} 状态为 {fixture.status}，只有 ACTIVE 可被用例引用",
+                status_code=400,
+                code=CODE_FIXTURE_DISABLED,
+            )
+        return fixture
+
+    def _validate_fixture_data(self, db: Session, case_id: int, row: TestCaseData) -> None:
+        """FIXTURE 数据项：config_json 必须指向已声明的 Fixture 及其输出契约。
+
+        校验通过时服务端写入 ``value = ${fixture.<KEY>.<output>}``，用例上永远不出现
+        真实 ID（§12.4）。
+        """
+        if (row.source_type or "").upper() != "FIXTURE":
+            return
+        cfg = row.config_json if isinstance(row.config_json, dict) else {}
+        key = str(cfg.get("fixture_key") or "").strip()
+        output = str(cfg.get("output") or "").strip()
+        if not key or not output:
+            raise bad_request(f"测试数据 {row.name} 的 FIXTURE 配置需要 fixture_key 与 output")
+
+        declared = db.query(TestCaseFixture.fixture_id).filter(
+            TestCaseFixture.test_case_id == case_id,
+        ).all()
+        if not declared:
+            raise bad_request(f"测试数据 {row.name} 引用 Fixture {key}，但该用例未声明所需 Fixture")
+        fixture = (
+            db.query(Fixture).filter(Fixture.id.in_(declared), Fixture.fixture_key == key).first()
+        )
+        if fixture is None:
+            raise bad_request(f"测试数据 {row.name} 引用的 Fixture {key} 未在该用例声明")
+        names = [
+            o.name for o in db.query(FixtureOutput).filter(FixtureOutput.fixture_id == fixture.id).all()
+        ]
+        if output not in names:
+            raise bad_request(f"测试数据 {row.name} 引用的输出 {output} 不在 Fixture {key} 的输出契约里")
+        row.value = f"${{fixture.{key}.{output}}}"
+        row.config_json = {**cfg, "variable": row.name}
 
     # -------------------------------------------------------------- 步骤
 

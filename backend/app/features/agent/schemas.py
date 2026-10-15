@@ -12,7 +12,7 @@ service / router / nodes / tools 共用本文件作为接口契约（与 test_ma
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -226,6 +226,10 @@ class TestPointDraftList(BaseModel):
     points: list[TestPointDraft]
 
 
+# Fixture 引用键：与 fixture.fixture_key 同规则（^[A-Z][A-Z0-9_]{0,99}$）。
+FixtureKey = Annotated[str, Field(min_length=1, max_length=100, pattern=r"^[A-Z][A-Z0-9_]{0,99}$")]
+
+
 class TestCaseDraft(BaseModel):
     """TestCaseGeneratorNode 单条产出：用例 + 子实体。子实体复用 test_management Create 模型。"""
 
@@ -244,6 +248,11 @@ class TestCaseDraft(BaseModel):
     test_data: list[TestCaseDataCreate] = Field(default_factory=list)
     steps: list[TestStepCreate] = Field(default_factory=list)
     assertions: list[TestAssertionCreate] = Field(default_factory=list, description="至少 1 条断言")
+    # 所需 Fixture：只填提示词里列出的 fixture_key，需要运行时数据时才有；不写真实 ID。
+    required_fixtures: list[FixtureKey] = Field(
+        default_factory=list, max_length=20,
+        description="所需 Fixture 的 fixture_key（仅可引用已注册且 ACTIVE 的）",
+    )
     rationale: str | None = None
 
 
