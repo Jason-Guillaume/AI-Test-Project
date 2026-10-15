@@ -134,7 +134,7 @@ def seed_admin(dsn_url: str) -> str | None:
     """创建初始管理员与演示账号；已存在时跳过，不覆盖历史密码。"""
     # 同样要在导入 app.shared.database 之前设置 DATABASE_URL（见上方说明）。
     os.environ["DATABASE_URL"] = dsn_url
-    from app.features.organizations.service import ensure_personal_organization
+    from app.features.organizations.services.organization_service import ensure_personal_organization
     from app.models.identity import Organization, User
     from app.shared.database import SessionLocal
     from app.shared.passwords import hash_password

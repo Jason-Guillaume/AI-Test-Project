@@ -20,7 +20,7 @@ from app.features.defects.schemas import (
     BugResponse,
     BugUpdate,
 )
-from app.features.defects.service import DefectService
+from app.features.defects.services.defect_service import DefectService
 from app.models.identity import User
 from app.models.project import Project
 from app.shared.auth import get_current_user

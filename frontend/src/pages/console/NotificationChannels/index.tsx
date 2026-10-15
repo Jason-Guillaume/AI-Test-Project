@@ -47,7 +47,7 @@ import {
   NOTIFY_CONDITION_OPTIONS,
   NOTIFY_STATUS_COLOR,
   NOTIFY_STATUS_OPTIONS,
-} from './Reports/constants';
+} from '../Reports/constants';
 import type {
   ChannelCreateRequest,
   ChannelUpdateRequest,

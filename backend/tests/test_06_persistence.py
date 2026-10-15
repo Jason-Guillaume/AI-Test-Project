@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy import select, text
 
-from app.features.dashboard.service import readiness
+from app.features.dashboard.services.dashboard_service import readiness
 from app.models.identity import Organization, User
 from app.models.notification import Notification
 from app.models.project import Project

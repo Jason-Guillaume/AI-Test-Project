@@ -18,7 +18,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.features.agent.providers.sanitizer import build_chat_messages
-from app.features.model_configuration.service import decrypt_api_key
+from app.features.model_configuration.services.model_config_service import decrypt_api_key
 from app.models.configuration import ModelConfiguration
 
 

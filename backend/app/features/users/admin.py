@@ -16,7 +16,7 @@ from app.features.users.schemas import (
     UserResponse,
     UserUpdate,
 )
-from app.features.users.service import UserAdminService
+from app.features.users.services.user_service import UserAdminService
 from app.shared.auth import get_current_user
 from app.shared.database import get_db
 from app.shared.errors import forbidden, not_found

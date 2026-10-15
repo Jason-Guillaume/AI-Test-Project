@@ -17,7 +17,7 @@ import pytest
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from app.features.captcha.service import _STORAGE, _reset_storage
+from app.features.captcha.services.captcha_service import _STORAGE, _reset_storage
 
 from tests.conftest import unique
 

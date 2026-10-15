@@ -20,7 +20,7 @@ from app.features.model_configuration.schemas import (
     ModelConfigurationUpdate,
     ProviderCatalogItem,
 )
-from app.features.model_configuration.service import (
+from app.features.model_configuration.services.model_config_service import (
     create_configuration,
     delete_configuration,
     get_or_404,

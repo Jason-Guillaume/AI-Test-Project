@@ -27,7 +27,7 @@ import { AdminModelConfigsPage } from '@/pages/admin/ModelConfigs';
 import { AdminEnvironmentsPage } from '@/pages/admin/Environments';
 import { ConsoleWorkbenchPage } from '@/pages/console/Workbench';
 import { ConsoleProjectsPage } from '@/pages/console/Projects';
-import { ConsoleProjectDetailPage } from '@/pages/console/ProjectDetail';
+import { ConsoleProjectDetailPage } from '@/pages/console/Projects/ProjectDetail';
 import { ConsoleNotificationsPage } from '@/pages/console/Notifications';
 import { ConsoleProfilePage } from '@/pages/console/Profile';
 import { ConsoleDefectsPage } from '@/pages/console/Defects';

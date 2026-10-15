@@ -51,23 +51,28 @@ description: "在本项目（ai-test-project）中做开发任务时使用：启
 ```
 backend/
   app/
-    main.py                      # create_app 入口
+    main.py                      # create_app；路由只在这里 include_router
     shared/                      # config, database, auth, roles, errors, pagination,
                                  #   notify, rate_limit, passwords, dependencies, request_context
-    models/                      # user, organization, project, bug (+ Base 只做再导出)
-    features/                    # 每个 feature 一个目录：users, organizations, projects,
+                                 #   Base 只在 database.py 定义
+    models/                      # 0001 基线表：identity, project, configuration, notification
+    features/                    # 每个 feature 一个目录，service 一律放 services/<name>_service.py
+                                 #   users, organizations, projects, captcha, defects,
                                  #   model_configuration, environment_configuration, dashboard,
-                                 #   notifications, captcha, defects, api_catalog, business
-    scripts/                     # ⚠️ legacy，勿新增
-  scripts/                       # 顶层脚本（seed_admin.py、e2e_smoke.sh）
-  alembic/                       # 迁移（当前 head = 0004）
-  tests/                         # pytest 套件
+                                 #   notifications, api_catalog, business, test_management,
+                                 #   reports, agent, test_data
+  scripts/                       # seed_admin.py、e2e_smoke.sh（唯一入口）
+  alembic/                       # 迁移（当前 head = 0009）
+  tests/                         # pytest：test_01 … test_20，另有 test_api_catalog.py
 frontend/
   src/
-    api/                         # 13 个文件：client（axios 底座）+ auth/captcha/users/orgs/
+    api/                         # 18 个文件：client + auth/captcha/users/organizations/
                                  #   projects/modelConfigs/environments/dashboard/notifications/
-                                 #   defects/apiCatalog/business
-    pages/{console,admin,auth}/  # 6 admin + 8 console + 2 auth（ApiCatalog、BusinessManagement 为目录）
+                                 #   notificationChannels/defects/apiCatalog/business/
+                                 #   testManagement/reports/agent/testData
+    pages/console/               # 控制台页面都是目录 + index.tsx
+    pages/admin/                 # 管理端仍是单文件
+    pages/auth/
     components/ hooks/ layouts/ types/
 ```
 
@@ -91,7 +96,7 @@ psql -h 127.0.0.1 -U root -d postgres -c 'CREATE DATABASE testplatform OWNER roo
 psql -h 127.0.0.1 -U root -d postgres -c 'CREATE DATABASE testplatform_test OWNER root;'
 .venv/bin/python -m alembic stamp base
 .venv/bin/python -m alembic upgrade head
-.venv/bin/python -m app.scripts.seed_admin        # 或顶层 backend/scripts/seed_admin.py
+python scripts/seed_admin.py
 
 # 前端
 cd ../frontend
@@ -137,7 +142,7 @@ cd backend
 
 - 测试**不依赖生产数据**，用独立的 `testplatform_test` 数据库
 - `conftest.py` 里 `ApiClient.register()` 会自动 seed 验证码（`_STORAGE[cid] = ...`），业务代码不用管
-- 断言 Alembic head：`assert head == "0004"`（新增迁移后同步改）
+- 断言 Alembic head：`assert head == "0009"`（`test_01`、`test_10`、`test_18`；新增迁移后三处一起改）
 
 ---
 
@@ -145,20 +150,21 @@ cd backend
 
 ### 6.1 加一个 feature
 
-目录结构——小 feature 4 文件，大 feature 分三层子目录：
+目录一律按这个来，不再使用根上的 `service.py`：
 
-- 小：`app/features/<name>/{__init__,schemas,service,router}.py`（如 users、defects）
-- 大：`app/features/<name>/{schemas,router}.py` + `models/` + `services/` +（需要时）`parsers/`（如 api_catalog、business）
+- 必有：`app/features/<name>/{__init__,schemas,router}.py` + `services/<name>_service.py` + `services/__init__.py`
+- 有自己的表：再加 `models/`。0002 及以后的表放这里，**不要**放进 `app/models/`
+- 需要时再加 `parsers/`、`providers/`、`runtime/`、`executors/`。没有实现就不要建空目录
+- 路由只登记 `app/main.py` 的 `include_router(..., prefix=API_PREFIX)`
 
 - **schemas.py**：Pydantic v2，字段全 snake_case
-- **service.py**：`class XxxService:` 类方法，**service 层负责 commit**（router 不 commit）
+- **services/<name>_service.py**：`class XxxService:` 类方法，**service 层负责 commit**（router 不 commit）
 - **router.py**：`@router.get("/xxx", response_model=...)`，不写库事务
 
-**新增后必须做的四件事**（漏一个 = 迁移/路由静默失败）：
+**新增后必须做的三件事**（漏一个 = 迁移/路由静默失败）：
 1. 建 feature-local 表：`app/features/<name>/models/`，由 `alembic/versions/000X_*.py` 显式 `op.create_table` 建。**不要**把新模型加进 `app/models/__init__.py`（原因见下）
 2. 在 `app/main.py` `create_app()` 里 `include_router(..., prefix=API_PREFIX)`（`API_PREFIX = "/api/v1"`）
-3. 在 `app/bootstrap/routes.py` 同步登记（虽未被运行期引用，但 docstring 声明是装配点，保持同步）
-4. 新迁移的 `down_revision` 接当前 head，并同步 `backend/tests` 里断言的 `alembic head`
+3. 新迁移的 `down_revision` 接当前 head，并同步 `backend/tests` 里断言的 `alembic head`
 
 **❌ 绝对不要**把新表 import 进 `app/models/__init__.py`：0001 的 `Base.metadata.create_all` 会认识这张表，与 0002+ 的 `op.create_table` 建表冲突。当前设计是"0001 用 create_all 建基线表，0002+ 用显式 `op.create_table`"（见 [docs/coding-conventions.md](../../../docs/coding-conventions.md) §17 红线 17 与 FAQ）。
 
@@ -177,15 +183,14 @@ cd backend
 .venv/bin/python -m alembic upgrade head
 ```
 
-- head 当前是 `0004`（0001 基线 → 0002 bug → 0003 接口管理 8 表 → 0004 业务表）；新增迁移记得同步 `backend/tests` 的 head 断言
+- head 当前是 `0009`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心。新增迁移把 `down_revision` 接 `0009`，并同步 `test_01`、`test_10`、`test_18` 的 head 断言
 - `--database-url` 可覆盖 `settings.DATABASE_URL`，别硬编码
 - 空库必须先 `stamp base` 再 `upgrade head`，否则 Alembic 认不出库
 
 ### 6.3 常用脚本
 
 ```bash
-# 冒烟脚本（顶层 scripts/ 优先；app/scripts/ 是 legacy）
-.venv/bin/python -m app.scripts.seed_admin            # legacy
+# 初始化管理员（唯一入口）
 python scripts/seed_admin.py --database-url "$DB" --username u --password p
 
 # 端到端冒烟
@@ -194,7 +199,7 @@ bash scripts/e2e_smoke.sh
 
 ### 6.4 必须遵守的红线（详见 coding-conventions.md §2.4）
 
-- **只有 `app/shared/database.py` 里定义 `Base = declarative_base()`**，`app/models/base.py` 只做再导出——加新模型时 `from app.models.base import Base` 即可
+- **只有 `app/shared/database.py` 里定义 `Base = declarative_base()`**。加新模型时 `from app.shared.database import Base`
 - **Alembic `env.py` 必须 import `app.models`**，否则 Alembic 看不到基线表
 - **新表不加进 `app/models/__init__.py`**：feature-local 模型靠显式 `000X` 迁移建表；进了 `__init__.py` 会让 `create_all` 也建一遍，与 `op.create_table` 冲突
 - **`SessionLocal` 三个参数不能改**：`autocommit=False, autoflush=False, expire_on_commit=False`
@@ -238,13 +243,13 @@ export const regressionsApi = {
 
 **Step 2** — `src/types/index.ts` 加 `Regression` + `RegressionListQuery` interface
 
-**Step 3** — `src/pages/console/Regressions.tsx` 新建（仿 [Defects.tsx](../../../frontend/src/pages/console/Defects.tsx)）：`export function ConsoleRegressionsPage()`
+**Step 3** — `src/pages/console/Regressions/index.tsx` 新建（仿 [Defects/index.tsx](../../../frontend/src/pages/console/Defects/index.tsx)）：`export function ConsoleRegressionsPage()`。控制台页面用目录，管理端页面继续用单文件。
 
 **Step 4** — 编辑 [App.tsx](../../../frontend/src/App.tsx) 加 `<Route path="regressions" element={<ConsoleRegressionsPage />} />` + 编辑 [ConsoleLayout.tsx](../../../frontend/src/layouts/ConsoleLayout.tsx) 加 `MENU_ITEMS` 和 `ROUTE_TITLES`（**key 必须等于 `/console/regressions`**，用于菜单高亮）
 
 **完成校验**：`npm run typecheck && npm run build`
 
-### 7.2 页面样板骨架（照抄 [Defects.tsx](../../../frontend/src/pages/console/Defects.tsx)）
+### 7.2 页面样板骨架（照抄 [Defects/index.tsx](../../../frontend/src/pages/console/Defects/index.tsx)）
 
 ```tsx
 export function ConsoleXxxPage() {
@@ -344,7 +349,12 @@ Base URL：`/api/v1/*`（相对前端代理路径；完整 URL `http://localhost
 | Dashboard | `GET /dashboard/overview`（**不是 `/summary`**）· `GET /dashboard/projects` · `GET /dashboard/ready`（**唯一 readiness 端点**，需登录）· `GET /dashboard/platform`（仅平台管理员）|
 | Captcha | `GET /captcha` |
 | ApiCatalog（接口管理，23 个端点）| 见 **8.1** |
-| Business（业务场景，47 个端点，含未提交的阶段二执行引擎）| 见 **8.2** |
+| Business（业务场景，47 个端点）| 见 **8.2** |
+| TestManagement（测试资产 / 套件 / 计划 / 执行）| 见 **8.3** |
+| Reports | 见 **8.4** |
+| Agent | 见 **8.4** |
+| Notifications | 见 **8.4** |
+| TestData（Fixture / Provider / Pool / 目标库）| 见 **8.5** |
 | Health | `GET /healthz`（**根路径，不带 `/api/v1` 前缀**）· `GET /health`（同样根路径）· 均返回 `{"status":"ok"}` |
 
 **路径参数命名约定**：全项目 `{xxx_id}` 后缀（`bug_id` / `project_id` / `member_id` / `target_id` / `organization_id` / `config_id` / `user_id`），**不是** `{id}`。
@@ -375,7 +385,7 @@ Base URL：`/api/v1/*`（相对前端代理路径；完整 URL `http://localhost
 
 **注意**：`/apis/{api_id}`、`/api-modules/{module_id}`、`/api-relations/{relation_id}` **不带项目路径前缀**，靠 id 定位后在服务层校验项目可见性。权限：读 viewer+、写 member+、调试 platform admin；不可见项目统一 404 隐藏存在性。
 
-### 8.2 业务场景 Business（47 端点，含未提交的阶段二执行引擎）
+### 8.2 业务场景 Business（47 端点）
 
 **业务域（5）**：`GET|POST /projects/{project_id}/business-domains` · `GET|PATCH|DELETE /business-domains/{domain_id}`
 
@@ -394,7 +404,35 @@ Base URL：`/api/v1/*`（相对前端代理路径；完整 URL `http://localhost
 
 **规则（4）**：`GET|POST /projects/{project_id}/business-rules` · `PATCH|DELETE /business-rules/{rule_id}`
 
-**执行（3，阶段二新增、尚未提交）**：`POST /business-flows/{flow_id}/execute` · `GET /business-executions/{execution_id}` · `GET /business-executions/{execution_id}/actions`
+**执行（3，0005 已入库）**：`POST /business-flows/{flow_id}/execute` · `GET /business-executions/{execution_id}` · `GET /business-executions/{execution_id}/actions`
+
+### 8.3 测试管理
+
+单路由、无自身前缀。列表走 `/projects/{project_id}/test-*`，详情走资源 id。读 viewer+，写 member+。
+
+- 策略 / 测试点 / 用例 / 套件 / 计划：各自 `GET|POST /projects/{project_id}/test-(strategies|points|cases|suites|plans)`，以及 `GET|PATCH|DELETE /test-*/{id}`
+- 用例子资源：`/test-cases/{case_id}/(preconditions|data|fixtures|steps|assertions)`。`fixtures` 是整体 `PUT` 替换
+- 套件用例、计划套件：`/test-suites/{suite_id}/cases`、`/test-plans/{plan_id}/suites`
+- 执行：`POST /test-plans/{plan_id}/runs` · `GET /projects/{project_id}/test-runs` · `GET /test-runs/{run_id}` · `GET /test-runs/{run_id}/cases`
+
+### 8.4 报告、Agent、通知
+
+- 报告：`POST /test-runs/{run_id}/report` · `GET /projects/{project_id}/reports` · `GET|DELETE /reports/{report_id}` · `POST /reports/{report_id}/regenerate-ai-summary`
+- Agent：`GET|POST /projects/{project_id}/agent/sessions` · `GET|DELETE /agent/sessions/{session_id}` · `GET /agent/sessions/{session_id}/workspace` · `POST /agent/sessions/{session_id}/messages`
+- 站内通知：`GET /notifications` · `GET /notifications/summary` · `GET /notifications/events` · `POST /notifications/{notification_id}/read` · `POST /notifications/read-all` · `DELETE /notifications/{notification_id}`
+- 飞书渠道：`/projects/{project_id}/notification-channels` 与 `/notification-channels/{channel_id}`（含测试发送）
+
+### 8.5 测试数据中心
+
+Fixture、数据资产、Provider、数据池、目标库连接都挂在 `/api/v1` 下，列表走项目前缀，详情走资源 id。
+
+- Fixture：`/projects/{project_id}/fixtures` · `/fixtures/{fixture_id}`（含 steps、outputs、dependencies、generate、cleanup）
+- 资产：`/projects/{project_id}/test-data-assets` · `/test-data-assets/{asset_id}`
+- Provider：`/projects/{project_id}/data-providers` · `/data-providers/{provider_id}`（enable / disable / test）
+- 数据池：`/projects/{project_id}/data-pools` · `/data-pools/{pool_id}/items` · `/data-pool-items/{item_id}`
+- 目标库：`/projects/{project_id}/target-databases` · `/target-databases/{connection_id}`（含 ping 与写策略）。生产环境名禁止写库
+
+变量只由测试数据运行时解析：`${env.*}`、`${data.*}`、`${runtime.*}`、`${fixture.KEY.name}`、`${faker.*}`。Agent 不建 Fixture，也不直接执行 SQL。
 
 ## 9. 配置速查
 
@@ -474,10 +512,10 @@ cd frontend && npm run preview       # 预览 dist 产物
 | 500「关系 xxx 不存在」 | 跑 `.venv/bin/python -m alembic upgrade head` |
 | `OperationalError: relation "pg_backend_pid" does not exist` | 查连接串 `?options=-csearch_path=...`；或去掉 `pg_backend_pid` exclude 列 |
 | 403「你没有权限」 | 检查登录用户角色；管理员用 `/admin/*`，普通用户用 `/console/*` |
-| 429「过于频繁」 | 登录 ≤5/min · 注册 ≤3/min · captcha ≤30/min；等一分钟或换 IP |
+| 429「过于频繁」 | 登录 IP 60/min、同用户名 10/min；注册同 IP 10/小时；验证码 30/min。等窗口过去或换 IP |
 | 400「验证码错误或已过期」 | 验证码一次性、300s 过期；点图片刷新 |
 | `Cannot add a child` 循环导入 | `app.features.xxx` 之间**必须 lazy import**；service 层用 `from app.features...` |
-| Alembic 看不到新表 | `app/models/__init__.py` 没 import；Alembic `env.py` 没 import `app.models` |
+| Alembic 看不到 0001 基线表 | `app/models/__init__.py` 没 import 该模型，或 `env.py` 没 import `app.models`。0002 及以后的表不要加进 `__init__.py`，靠对应迁移的 `op.create_table` |
 | 空库 `alembic upgrade` 报 head 冲突 | 先 `alembic stamp base` 再 `upgrade head` |
 | 登录失败无响应 | 前端 `getErrorMessage(e, '登录失败')`；后端返 401 |
 | `npm install` 卡住 | 换 registry 或清 cache：`npm cache clean --force && npm install` |
@@ -570,7 +608,7 @@ git push origin develop
 - [ ] `git status --porcelain` 逐行看过，只包含本次功能的文件（迁移 + 模型 + 测试在同一批）
 - [ ] `cd backend && .venv/bin/python -m pytest tests/ -q` 全绿
 - [ ] `cd frontend && npm run typecheck && npm run build` 全绿
-- [ ] 新增 feature 三件套都同步了：`main.py` 注册路由 + `bootstrap/routes.py` + `000X` 迁移（`down_revision` 接当前 head）与 `backend/tests` 的 head 断言；新表**没有**加进 `app/models/__init__.py`
+- [ ] 新增 feature 已同步：`main.py` 注册路由 + `000X` 迁移（`down_revision` 接当前 head）与 `backend/tests` 的 head 断言；新表**没有**加进 `app/models/__init__.py`
 - [ ] 新增页面三件套（`types/index.ts` + `App.tsx` 路由 + `ConsoleLayout.tsx` 菜单）都同步了
 - [ ] 所有新文件顶部有模块级中文 docstring；每个函数 / 关键节点都有中文注释（见 [coding-conventions.md](../../../docs/coding-conventions.md) §1.2）
 - [ ] 没有触碰 coding-conventions §2.4 里的 17 条红线
@@ -585,7 +623,16 @@ git push origin develop
 - [docs/migration-plan.md](../../../docs/migration-plan.md) — 从旧项目迁移的路径
 - [docs/current-system-analysis.md](../../../docs/current-system-analysis.md) — 现状分析
 
-**版本**：v1.3（2026-10-13）——新增 §12「Git 分支与提交流程」，§13 自检清单加入分支 / 推送项，原 §12、§13 顺移为 §13、§14。Alembic head 现为 `0004`（`0003` 接口管理 8 表、`0004` 业务表已入库；`0005` 属未提交的业务阶段二）。Alembic head 变更后同步更新本 skill 的 §5、§6.2 与 `backend/tests` 里的 head 断言。
+**版本**：v1.4（2026-10-15）——目录与事实对齐到当前 `develop`。Alembic head 为 `0009`。变更 head 后同步改本文 §2、§5、§6.2，以及 `test_01`、`test_10`、`test_18` 的断言。
+
+**v1.3 → v1.4 变更**：
+
+- §2 去掉已删除的 `app/scripts` 与 `app/bootstrap`；feature 补到 test_data；前端 API 改为 18 个文件；控制台页面统一为目录
+- §5 / §6.2 head 从 `0004` 改为 `0009`，并写明 0005–0009 各管什么
+- §6.1 目录标准改为一律 `services/<name>_service.py`，路由只登记 `main.py`
+- §7.1 新页面示例改为 `pages/console/<Name>/index.tsx`
+- §8 补测试管理、报告、Agent、通知、测试数据；业务执行端点改为已入库
+- §11 限流数字与 §9.3 对齐；「看不到新表」不再要求把 0002+ 模型加进 `app/models/__init__.py`
 
 **v1.2 → v1.3 变更**：
 
