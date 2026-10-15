@@ -279,13 +279,10 @@ AI 智能体编排 · 用例自动生成 · API 用例执行 · UI 自动化执�
    同类教训已固化到脚本里：`e2e_smoke.sh` 的连接串改走环境变量而不是 argv，
    清理失败必须打印出来，不再静默。
 
-3. **遗留脚本**：`backend/app/scripts/seed_admin.py` 是迁移初期的旧式入口，已不被引用，
-   初始化请用 `backend/scripts/seed_admin.py`。
-
-4. **`compose.yaml` 里的 `root` / `fangzhou123` 是单机开发默认值**（监听 127.0.0.1、
+3. **`compose.yaml` 里的 `root` / `fangzhou123` 是单机开发默认值**（监听 127.0.0.1、
    数据在 compose 卷里）。只要 5432 会暴露给局域网或共享机器，先改它并同步 `backend/.env`。
 
-5. **`/healthz` 不带版本前缀**，是部署探活用的；`/readyz`、`/status`、`/ping` 都不存在。
+4. **`/healthz` 不带版本前缀**，是部署探活用的；`/readyz`、`/status`、`/ping` 都不存在。
    API 文档在 `/docs`、`/redoc`、`/openapi.json`。
 # AI-Test-Project
 # AI-Test-Project

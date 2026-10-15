@@ -31,7 +31,7 @@ from app.features.projects.schemas import (
     ProjectResponse,
     ProjectUpdate,
 )
-from app.features.projects.service import ProjectAdminService
+from app.features.projects.services.project_service import ProjectAdminService
 from app.models.identity import Organization, User
 from app.models.project import Project, ProjectMember, ProjectOutboundTarget
 from app.shared.auth import get_current_user

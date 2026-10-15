@@ -20,7 +20,7 @@ from app.features.environment_configuration.schemas import (
     EnvironmentResponse,
     EnvironmentUpdate,
 )
-from app.features.environment_configuration.service import (
+from app.features.environment_configuration.services.environment_service import (
     create_environment,
     delete_environment,
     get_or_404,

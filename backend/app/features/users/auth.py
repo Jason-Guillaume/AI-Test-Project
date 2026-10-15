@@ -21,9 +21,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
-from app.features.captcha.service import verify_challenge
+from app.features.captcha.services.captcha_service import verify_challenge
 from app.features.organizations.schemas import OrganizationResponse, PaginatedOrganizationResponse
-from app.features.organizations.service import count_members, ensure_personal_organization
+from app.features.organizations.services.organization_service import (
+    count_members,
+    ensure_personal_organization,
+)
 from app.features.users.schemas import (
     PasswordChange,
     TokenResponse,
@@ -31,7 +34,7 @@ from app.features.users.schemas import (
     UserLogin,
     UserResponse,
 )
-from app.features.users.service import UserAdminService, token_expires_in_seconds
+from app.features.users.services.user_service import UserAdminService, token_expires_in_seconds
 from app.models.identity import Organization, OrganizationMember, User
 from app.shared.auth import create_access_token, get_current_user
 from app.shared.config import ACCESS_TOKEN_EXPIRE_MINUTES

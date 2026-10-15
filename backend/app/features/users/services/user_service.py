@@ -13,7 +13,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.features.organizations.service import ensure_personal_organization
+from app.features.organizations.services.organization_service import ensure_personal_organization
 from app.features.users.schemas import (
     AdminUserCreate,
     UserLogin,

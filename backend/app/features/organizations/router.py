@@ -25,7 +25,7 @@ from app.features.organizations.schemas import (
     PaginatedOrganizationResponse,
     UserCandidate,
 )
-from app.features.organizations.service import (
+from app.features.organizations.services.organization_service import (
     count_members,
     get_organization_or_404,
     remove_member,

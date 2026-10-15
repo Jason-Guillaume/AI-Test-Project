@@ -11,7 +11,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from app.features.captcha.schemas import CaptchaResponse
-from app.features.captcha.service import generate_challenge
+from app.features.captcha.services.captcha_service import generate_challenge
 from app.shared.rate_limit import enforce_auth_rate_limit
 
 router = APIRouter(tags=["验证码"])

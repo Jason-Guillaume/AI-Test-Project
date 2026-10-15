@@ -243,7 +243,7 @@ def admin(api, admin_user):
     from app.models.identity import Organization, User
     from app.shared.database import SessionLocal
     from app.shared.passwords import hash_password
-    from app.features.organizations.service import ensure_personal_organization
+    from app.features.organizations.services.organization_service import ensure_personal_organization
 
     with SessionLocal() as session:
         existing = (
@@ -287,7 +287,7 @@ class ApiClient:
         """调用 POST /register 创建账号，返回原始响应（由调用方断言状态码）。
 
         注册接口需要图形验证码，本 helper 直接写入内存 challenge 存储
-        （见 app.features.captcha.service._STORAGE），保证既有测试无需改动即可通过。
+        （见 app.features.captcha.services.captcha_service._STORAGE），保证既有测试无需改动即可通过。
         需要验证验证码失败分支的用例请显式构造 challenge_id / captcha_code。
 
         Args:
@@ -297,7 +297,7 @@ class ApiClient:
         from datetime import datetime, timedelta
         from uuid import uuid4
 
-        from app.features.captcha.service import _STORAGE
+        from app.features.captcha.services.captcha_service import _STORAGE
 
         # 每个测试独立 challenge：避免多次 register 复用同一个 ID。
         challenge_id = f"test-{uuid4().hex[:8]}"

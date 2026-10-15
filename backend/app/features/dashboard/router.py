@@ -17,7 +17,7 @@ from app.features.dashboard.schemas import (
     ProjectSummaryResponse,
     ReadyResponse,
 )
-from app.features.dashboard.service import (
+from app.features.dashboard.services.dashboard_service import (
     overview_for_user,
     platform_statistics,
     project_summaries,

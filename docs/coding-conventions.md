@@ -161,7 +161,6 @@ backend/
 ├── app/
 │   ├── main.py                  # FastAPI 应用工厂，装配中间件 + 路由
 │   ├── models/                  # ORM 模型（不含业务逻辑）
-│   │   ├── base.py              #   DeclarativeBase
 │   │   ├── identity.py          #   User 相关
 │   │   ├── project.py           #   Project 相关
 │   │   ├── configuration.py     #   配置相关
@@ -189,8 +188,7 @@ backend/
 │   │   ├── rate_limit.py        #   进程内滑动窗口限流
 │   │   ├── request_context.py   #   请求 ID 中间件、日志配置
 │   │   └── roles.py             #   三层角色模型
-│   ├── bootstrap/               # 脚本入口的备用路由装配点（保持与 main.py 同步）
-│   └── scripts/                 # ⚠️ 已弃用（legacy），保留仅供对比历史；请用 backend/scripts/
+│   └── （路由只在 main.py 装配，不再保留 bootstrap 副本）
 ├── alembic/                     # 数据库迁移
 │   ├── versions/
 │   │   ├── 0001_initial_schema.py
@@ -337,8 +335,8 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 13. `app/main.py:49-50, 102-109, 111-133, 135-136, 162-172`
 14. `app/main.py:71-85`
 15. `app/shared/rate_limit.py:26-27, 30-50, 64-80, 85-89`
-16. `app/features/captcha/service.py:3-8, 132-135, 154-161`
-17. `alembic/versions/0001_initial_schema.py:22-26, 29-38` + `backend/scripts/seed_admin.py:87-90, 149-152`（顶层 scripts/，非已弃用的 `app/scripts/seed_admin.py`）
+16. `app/features/captcha/services/captcha_service.py`
+17. `alembic/versions/0001_initial_schema.py:22-26, 29-38` + `backend/scripts/seed_admin.py`
 
 ---
 
@@ -1028,8 +1026,8 @@ A：是的。**关键节点**必须写。改 3 行代码里如果是权限判定
 **Q：`# type: ignore` 之类的类型注释要中文吗？**
 A：不强制。如果 `type: ignore` 附近有需要解释的东西，加中文注释；类型系统本身的注释保持英文。
 
-**Q：新增路由必须加进 bootstrap/routes.py 吗？**
-A：是。虽然它目前没有被引用，但它的 docstring 声称是"备用装配点"，为了保持一致性必须同步修改。
+**Q：新增路由要登记到别的装配文件吗？**
+A：不用。运行时只认 `app/main.py` 的 `include_router`。
 
 **Q：`app/models/__init__.py` 什么时候可以往里加 import？**
 A：**基本不推荐**。当前设计是"0001 用 create_all 建所有基线表，0002+ 用显式 op.create_table"。加了 import 会让 `Base.metadata.create_all` 也认识这个表，然后 0002 的 `op.create_table` 就会冲突。除非你有理由重新设计整个迁移策略，否则永远不加。
