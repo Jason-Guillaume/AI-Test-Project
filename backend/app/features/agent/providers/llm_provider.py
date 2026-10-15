@@ -252,5 +252,15 @@ _DEFAULT_FAKE: dict[str, dict[str, Any]] = {
         ],
         "recommendation": "建议人工复核失败用例的测试数据与接口实现",
     },
+    # Phase 2：报告 AI 总结默认样例（reports.services.ai_summary 校验通过的结构）。
+    "report_summary": {
+        "overview": "本次执行 1 条用例失败，通过率 0%，风险等级 HIGH。",
+        "key_findings": ["P0 用例状态码断言未通过"],
+        "potential_issues": [],
+        "test_data_issues": [],
+        "environment_issues": [],
+        "recommendations": ["建议复核失败用例对应接口实现"],
+        "risk_summary": "HIGH：存在 P0 用例失败，需优先处理。",
+    },
     "default": {"result": "ok"},
 }

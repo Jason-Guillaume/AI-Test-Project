@@ -23,6 +23,9 @@ from app.features.agent.providers.sanitizer import (
 from app.features.agent.services import session_service
 from app.features.agent.state import make_initial_state, set_error
 from app.features.agent.tools.test_asset_tool import semantic_key
+from app.features.notifications.models.notification_record import NotificationRecord
+from app.features.reports.models.report import TestReport
+from app.features.test_management.models.execution import TestRun
 from app.models.configuration import Environment
 from app.models.identity import User
 
@@ -353,9 +356,81 @@ class TestAgentFlow:
         )
         # 即使执行失败（127.0.0.1:1 不可达），TestRun 也会创建
         assert state3["test_run_id"] is not None
-        assert state3["current_stage"] == "COMPLETED"
         assert state3["analysis"] is not None
         assert "summary" in state3["analysis"]
+        # Phase 2：分析后自动生成报告，并在报告 review 暂停，等人工确认是否推送飞书。
+        assert state3["current_stage"] == "REPORT_REVIEW"
+        assert state3["report_id"] is not None
+        assert state3["report_brief"] is not None
+        assert state3["report_brief"]["report_id"] == state3["report_id"]
+        # 人工跳过通知 → 报告记录仍在，会话 COMPLETED。
+        state4, _ = run_agent(db, session_obj, user, fake, action="skip_notification")
+        assert state4["current_stage"] == "COMPLETED"
+        assert state4["report_id"] == state3["report_id"]
+        assert state4["notification_brief"]["skipped"] is True
+
+    def test_confirm_report_notify_failure_keeps_report_and_run_untouched(self, api, admin, db):
+        """Phase 2：人工确认报告并推飞书，渠道指向不可达地址时——
+
+        通知记录 FAILED，但 TestReport 仍 COMPLETED、TestRun 状态不变（§二十八 三者独立），
+        且不可达地址不进通知记录快照（§三十一）。走 Agent 编排而非 REST，验证节点不会
+        在发送失败时回写报告 / 执行记录。
+        """
+        pid = _create_project(api, admin)
+        api_id = _create_api(api, admin, pid)
+        env = _create_env(db)
+        sid = _create_session_http(api, admin, pid)
+        session_obj = _get_session_obj(db, sid)
+        user = _get_user(db, admin)
+        fake = _make_fake()
+
+        # 走到 REPORT_REVIEW：执行目标是 127.0.0.1:1（必然失败），但 TestRun 仍会创建。
+        resp = _full_responses(api_id)
+        fake.set_response("intent", resp["intent"])
+        fake.set_response("test_plan", resp["test_plan"])
+        fake.set_response("test_points", resp["test_points"])
+        state1, _ = run_agent(db, session_obj, user, fake, content="生成测试点")
+        point_id = state1["generated_test_points"][0]["id"]
+        fake.set_response("test_cases", _full_responses(api_id, point_id=point_id)["test_cases"])
+        state2, _ = run_agent(db, session_obj, user, fake, action="confirm_points")
+        case_id = state2["generated_test_cases"][0]["id"]
+        fake.set_response("result_analysis", resp["result_analysis"])
+        state3, _ = run_agent(
+            db, session_obj, user, fake,
+            action="execute", case_ids=[case_id], environment_id=env.id,
+        )
+        assert state3["current_stage"] == "REPORT_REVIEW"
+        report_id, run_id = state3["report_id"], state3["test_run_id"]
+
+        # 渠道指向被拒绝的端口 → 飞书必然发送失败，且完全不依赖真实网络 / 密钥。
+        r = api.post(
+            f"/projects/{pid}/notification-channels", username=admin,
+            json={"name": unique("refused"), "webhook_url": "http://127.0.0.1:1/hook/none",
+                  "enabled": True, "notify_condition": "ALWAYS"},
+        )
+        assert r.status_code == 201, r.text
+        cid = r.json()["id"]
+
+        run_before = db.get(TestRun, run_id).status
+        report_before = db.get(TestReport, report_id).status
+
+        state4, _ = run_agent(db, session_obj, user, fake, action="confirm_report", channel_id=cid)
+
+        assert state4["current_stage"] == "COMPLETED"
+        assert state4["notification_brief"]["status"] == "FAILED"
+        assert state4["notification_brief"]["skipped"] is False
+        rec_id = state4.get("notification_record_id")
+        assert rec_id is not None
+        rec = db.get(NotificationRecord, rec_id)
+        assert rec is not None
+        assert rec.status == "FAILED"
+        assert rec.report_id == report_id
+        # 通知失败绝不反向改写报告与执行记录。
+        assert db.get(TestReport, report_id).status == report_before == "COMPLETED"
+        assert db.get(TestRun, run_id).status == run_before
+        # 不可达地址属于本测试自己的渠道地址，不得进入通知记录快照。
+        blob = str(rec.request_snapshot) + str(rec.response_snapshot) + str(rec.error_message)
+        assert "127.0.0.1" not in blob
 
     def test_query_asset_intent(self, api, admin, db):
         """QUERY_TEST_ASSET 意图：查询已有测试资产。"""

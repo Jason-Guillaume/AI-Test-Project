@@ -6,6 +6,7 @@
 // 权限（服务端为准）：读 = 项目可见（viewer+）；越权 404，前端不展示。
 import { useState } from 'react';
 import {
+  App,
   Button,
   Drawer,
   Empty,
@@ -15,9 +16,12 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { EyeOutlined, FileTextOutlined } from '@ant-design/icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
+import { getErrorMessage } from '@/api/client';
+import { reportsApi } from '@/api/reports';
 import { testManagementApi } from '@/api/testManagement';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
@@ -62,6 +66,20 @@ export function ConsoleExecutionHistoryPage() {
   const [pageSize, setPageSize] = useState(20);
   const [drawerRunId, setDrawerRunId] = useState<number | null>(null);
   const [selectedCe, setSelectedCe] = useState<CaseExecution | null>(null);
+  const { message: msg } = App.useApp();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // 为一次已完成的执行生成正式测试报告；同一执行已有 COMPLETED 报告时后端幂等返回已有。
+  const generateReportMutation = useMutation({
+    mutationFn: (runId: number) => reportsApi.generate(runId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['test-reports'] });
+      msg.success(`报告已就绪（${data.status}），正在打开详情`);
+      navigate(`/console/test-reports/${data.report_id}`);
+    },
+    onError: (e) => msg.error(getErrorMessage(e, '报告生成失败')),
+  });
 
   const runsQuery = useQuery({
     queryKey: ['test-runs', currentProjectId, page, pageSize],
@@ -99,11 +117,22 @@ export function ConsoleExecutionHistoryPage() {
     { title: '结束', dataIndex: 'finished_at', width: 150, render: (v: string | null) => v?.slice(0, 16).replace('T', ' ') ?? '-' },
     {
       title: '操作',
-      width: 110,
+      width: 190,
       render: (_, row) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => setDrawerRunId(row.id)}>
-          查看详情
-        </Button>
+        <span style={{ display: 'inline-flex', gap: 8 }}>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => setDrawerRunId(row.id)}>
+            查看详情
+          </Button>
+          <Button
+            size="small"
+            icon={<FileTextOutlined />}
+            loading={generateReportMutation.isPending}
+            disabled={row.status === 'RUNNING' || row.status === 'PENDING'}
+            onClick={() => generateReportMutation.mutate(row.id)}
+          >
+            生成报告
+          </Button>
+        </span>
       ),
     },
   ];

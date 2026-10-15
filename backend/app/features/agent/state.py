@@ -56,6 +56,12 @@ class AgentState(TypedDict, total=False):
     execution_result: dict[str, Any] | None
     analysis: dict[str, Any] | None
 
+    # --- 报告闭环 + 飞书通知（Phase 2，§二四）---
+    report_id: int | None
+    report_brief: dict[str, Any] | None  # 脱敏报告摘要（report_no/风险/通过率/AI 总结）
+    notification_record_id: int | None  # 最近一次飞书发送记录ID
+    notification_brief: dict[str, Any] | None  # 通知结果（status/error_message/skipped/channel_name）
+
     # --- 控制 ---
     current_stage: str
     error: dict[str, Any] | None  # {"code": ..., "message": ...}
@@ -90,6 +96,10 @@ def make_initial_state(project_id: int, user_id: int | None, session_id: int | N
         test_run_id=None,
         execution_result=None,
         analysis=None,
+        report_id=None,
+        report_brief=None,
+        notification_record_id=None,
+        notification_brief=None,
         current_stage="UNDERSTANDING",
         error=None,
         messages=[],
@@ -113,8 +123,11 @@ def is_terminal(stage: str) -> bool:
 
 
 def is_review_stage(stage: str) -> bool:
-    """阶段是否为 human review 暂停点（需人工确认才推进）。"""
-    return stage in ("TEST_POINT_REVIEW", "TEST_CASE_REVIEW", "READY_TO_EXECUTE")
+    """阶段是否为 human review 暂停点（需人工确认才推进）。
+
+    REPORT_REVIEW：报告已落库，人工确认后才触发飞书通知（不自动推送）。
+    """
+    return stage in ("TEST_POINT_REVIEW", "TEST_CASE_REVIEW", "READY_TO_EXECUTE", "REPORT_REVIEW")
 
 
 # 合法阶段集合（供校验）。

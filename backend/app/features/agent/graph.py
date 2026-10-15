@@ -6,9 +6,9 @@
 持久化完全在自建表（agent_session / agent_message），进程重启 / 浏览器刷新无损恢复
 （§15）。
 
-`interrupt_before=["test_point_review", "test_case_review"]`：langgraph 在执行到
-这两个 review 节点之前自动暂停本次 invoke 并返回当前 state，实现 §14 human review
-暂停点。
+`interrupt_before=["test_point_review", "test_case_review", "report_review"]`：
+langgraph 在执行到这三个 review 节点之前自动暂停本次 invoke 并返回当前 state，
+实现 §14 human review 暂停点（report_review 用于人工确认是否推送飞书通知）。
 
 错误守卫：每个可失败节点之后接条件边，`state.error` 存在时短路到 END（不再推进
 后续节点），错误由 persist_turn 追加 SYSTEM 消息告知用户（§36）。
@@ -29,6 +29,9 @@ from app.features.agent.nodes.context_loader import context_loader_node
 from app.features.agent.nodes.execution import execution_node
 from app.features.agent.nodes.intent import intent_node
 from app.features.agent.nodes.query import query_node
+from app.features.agent.nodes.notification_sender import notification_sender_node
+from app.features.agent.nodes.report_generator import report_generator_node
+from app.features.agent.nodes.report_review import report_review_node
 from app.features.agent.nodes.result_analyzer import result_analyzer_node
 from app.features.agent.nodes.router import (
     confirm_cases_node,
@@ -77,6 +80,9 @@ def build_graph(ctx: NodeContext):
     graph.add_node("confirm_cases", partial(confirm_cases_node, ctx))
     graph.add_node("execution", partial(execution_node, ctx))
     graph.add_node("result_analyzer", partial(result_analyzer_node, ctx))
+    graph.add_node("report_generator", partial(report_generator_node, ctx))
+    graph.add_node("report_review", partial(report_review_node, ctx))
+    graph.add_node("notification_sender", partial(notification_sender_node, ctx))
     graph.add_node("query", partial(query_node, ctx))
 
     graph.add_edge(START, "router")
@@ -89,6 +95,7 @@ def build_graph(ctx: NodeContext):
         "execution": "execution",
         "result_analyzer": "result_analyzer",
         "test_point_generator": "test_point_generator",
+        "notification_sender": "notification_sender",
     })
     # 意图路由：按识别出的意图选择下一节点。
     graph.add_conditional_edges("intent", partial(route_after_intent, ctx), {
@@ -130,15 +137,27 @@ def build_graph(ctx: NodeContext):
     graph.add_edge("test_case_review", END)
     graph.add_edge("confirm_cases", END)
 
-    # 执行链：执行 → 分析 → END
+    # 执行链：执行 → 分析 → 报告生成 →[暂停]报告 review → 通知发送
+    # （报告为执行后的正式产物，自动生成；是否推送飞书由人工在 report_review 确认）
     graph.add_conditional_edges(
         "execution", partial(_error_guard("result_analyzer"), ctx),
         {"result_analyzer": "result_analyzer", "end": END},
     )
-    graph.add_edge("result_analyzer", END)
+    graph.add_conditional_edges(
+        "result_analyzer", partial(_error_guard("report_generator"), ctx),
+        {"report_generator": "report_generator", "end": END},
+    )
+    graph.add_conditional_edges(
+        "report_generator", partial(_error_guard("report_review"), ctx),
+        {"report_review": "report_review", "end": END},
+    )
+    graph.add_edge("report_review", END)
+    graph.add_edge("notification_sender", END)
     graph.add_edge("query", END)
 
-    return graph.compile(interrupt_before=["test_point_review", "test_case_review"])
+    return graph.compile(
+        interrupt_before=["test_point_review", "test_case_review", "report_review"],
+    )
 
 
 # action 描述：写入消息历史，便于刷新恢复后用户看到操作记录。
@@ -149,6 +168,8 @@ _ACTION_LABELS: dict[str, str] = {
     "analyze": "分析结果",
     "regenerate_points": "重新生成测试点",
     "regenerate_cases": "重新生成测试用例",
+    "confirm_report": "确认报告并发送飞书通知",
+    "skip_notification": "跳过飞书通知",
 }
 
 
@@ -168,6 +189,7 @@ def run_agent(
     point_ids: list[int] | None = None,
     case_ids: list[int] | None = None,
     environment_id: int | None = None,
+    channel_id: int | None = None,
 ) -> tuple[AgentState, list[AgentMessage]]:
     """单次请求编排：重建 state → 注入输入 → invoke → 持久化 → 返回。
 
@@ -188,6 +210,7 @@ def run_agent(
             "point_ids": point_ids,
             "case_ids": case_ids,
             "environment_id": environment_id,
+            "channel_id": channel_id,
         }
         session_service.append_message(
             db, session.id, role="USER", message_type="TEXT",

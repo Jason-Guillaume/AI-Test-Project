@@ -87,7 +87,7 @@ def _create_interface(api, actor, project_id, name="创建任务接口", method=
 
 
 def test_business_tables_created_by_migration(db):
-    """业务表由 0004 迁移建出；迁移链 head 推进到 0007（0005 执行引擎、0006 测试管理、0007 Agent）。"""
+    """业务表由 0004 迁移建出；迁移链 head 推进到 0008（0005 执行引擎、0006 测试管理、0007 Agent、0008 报告/通知）。"""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     from pathlib import Path
@@ -95,7 +95,7 @@ def test_business_tables_created_by_migration(db):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     head = ScriptDirectory.from_config(config).get_current_head()
-    assert head == "0007", f"迁移 head 应为 0007，实际 {head}"
+    assert head == "0008", f"迁移 head 应为 0008，实际 {head}"
 
     from sqlalchemy import inspect
 

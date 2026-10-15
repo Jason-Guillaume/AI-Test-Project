@@ -24,6 +24,7 @@ import {
   PartitionOutlined,
   ProjectOutlined,
   ScheduleOutlined,
+  SendOutlined,
   ThunderboltOutlined,
   UserOutlined,
 } from '@ant-design/icons';
@@ -70,6 +71,8 @@ const MENU_ITEMS: MenuItem[] = [
       { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
       { key: '/console/execution-center', icon: <ThunderboltOutlined />, label: '执行中心' },
       { key: '/console/execution-history', icon: <HistoryOutlined />, label: '执行历史' },
+      { key: '/console/test-reports', icon: <FileTextOutlined />, label: '测试报告' },
+      { key: '/console/notification-channels', icon: <SendOutlined />, label: '飞书通知' },
     ],
   },
   { key: '/console/agent', icon: <RobotOutlined />, label: '接口测试 Agent' }, // 接口测试 Agent
@@ -99,6 +102,8 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/test-plans': '测试计划', // 测试计划
   '/console/execution-center': '执行中心', // 执行中心
   '/console/execution-history': '执行历史', // 执行历史
+  '/console/test-reports': '测试报告', // 测试报告
+  '/console/notification-channels': '飞书通知', // 飞书通知
   '/console/agent': '接口测试 Agent', // 接口测试 Agent
   '/console/notifications': '通知中心', // 通知中心
   '/console/profile': '个人中心', // 个人中心

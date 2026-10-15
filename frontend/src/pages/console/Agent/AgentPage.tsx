@@ -31,13 +31,16 @@ import {
 } from 'antd';
 import {
   DeleteOutlined,
+  EyeOutlined,
   PlusOutlined,
   RobotOutlined,
   SendOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { agentApi } from '@/api/agent';
 import { environmentsApi } from '@/api/environments';
+import { notificationChannelsApi } from '@/api/notificationChannels';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { getErrorMessage } from '@/api/client';
 import { EmptyState, ErrorState } from '@/components/PageState';
@@ -51,6 +54,8 @@ const STAGE_ACTION_LABELS: Record<string, string> = {
   analyze: '分析结果',
   regenerate_points: '重新生成测试点',
   regenerate_cases: '重新生成测试用例',
+  confirm_report: '确认报告并发送飞书通知',
+  skip_notification: '跳过飞书通知',
 };
 
 const STAGE_LABELS: Record<string, string> = {
@@ -63,13 +68,31 @@ const STAGE_LABELS: Record<string, string> = {
   READY_TO_EXECUTE: '准备执行',
   EXECUTING: '执行中',
   ANALYZING: '分析中',
+  REPORT_GENERATING: '报告生成中',
+  REPORT_REVIEW: '报告待确认',
+  NOTIFYING: '通知发送中',
   COMPLETED: '已完成',
   FAILED: '失败',
   CLARIFY: '等待澄清',
 };
 
+/** 报告风险等级 Tag 颜色（与报告页保持一致）。 */
+const RISK_TAG_COLOR: Record<string, string> = {
+  LOW: 'green',
+  MEDIUM: 'gold',
+  HIGH: 'orange',
+  CRITICAL: 'red',
+};
+const RISK_LABEL: Record<string, string> = {
+  LOW: '低',
+  MEDIUM: '中',
+  HIGH: '高',
+  CRITICAL: '严重',
+};
+
 // ---- 消息类型 → 渲染器 ----
 function MessageBubble({ message }: { message: AgentMessage }) {
+  const navigate = useNavigate();
   const roleIcon = message.role === 'USER' ? '👤' : message.role === 'SYSTEM' ? '⚙️' : '🤖';
   const bgColor =
     message.role === 'USER'
@@ -145,6 +168,75 @@ function MessageBubble({ message }: { message: AgentMessage }) {
           </div>
         );
         break;
+      case 'REPORT': {
+        const brief = (meta.report ?? meta) as Record<string, unknown>;
+        const totals = (brief.totals as Record<string, unknown> | undefined) ?? {};
+        const ai = (brief.ai_summary as Record<string, unknown> | undefined) ?? null;
+        const risk = String(brief.risk_level ?? '');
+        return (
+          <div style={{ fontSize: 13 }}>
+            <b>测试报告</b>
+            <div style={{ margin: '4px 0' }}>
+              <Tag color={RISK_TAG_COLOR[risk] ?? 'default'}>
+                风险 {(RISK_LABEL[risk] ?? risk) || '-'}
+              </Tag>
+              <Tag color="blue">通过率 {String(brief.pass_rate ?? '-')}%</Tag>
+              <Tag>共 {String(totals.total ?? brief.total_cases ?? '-')} 条</Tag>
+              <Tag color="green">{String(totals.passed ?? '-')} 通过</Tag>
+              <Tag color="red">{String(totals.failed ?? '-')} 失败</Tag>
+              {Number(totals.error ?? 0) > 0 && <Tag color="orange">{String(totals.error)} 错误</Tag>}
+            </div>
+            {brief.report_no != null && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {String(brief.report_no)}
+                {brief.title ? ` · ${String(brief.title)}` : ''}
+              </Typography.Text>
+            )}
+            {typeof ai?.overview === 'string' && ai.overview ? (
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#555', whiteSpace: 'pre-wrap' }}>
+                {ai.overview}
+              </p>
+            ) : null}
+            {brief.report_id != null && (
+              <Button
+                size="small"
+                type="link"
+                style={{ padding: 0, marginTop: 2 }}
+                icon={<EyeOutlined />}
+                onClick={() => navigate(`/console/test-reports/${String(brief.report_id)}`)}
+              >
+                查看完整报告
+              </Button>
+            )}
+          </div>
+        );
+      }
+      case 'NOTIFICATION': {
+        const brief = (meta.notification ?? meta) as Record<string, unknown>;
+        const ok = brief.skipped === false && brief.status === 'SUCCESS';
+        const skipped = brief.skipped === true;
+        return (
+          <div style={{ fontSize: 13 }}>
+            <b>飞书通知</b>
+            <div style={{ margin: '4px 0' }}>
+              <Tag color={skipped ? 'default' : ok ? 'green' : 'red'}>
+                {skipped ? '已跳过' : ok ? '发送成功' : `发送失败：${String(brief.error_message ?? '未知错误')}`}
+              </Tag>
+              {brief.channel_name != null && <Tag>{String(brief.channel_name)}</Tag>}
+            </div>
+            {brief.message != null && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {String(brief.message)}
+              </Typography.Text>
+            )}
+            {!ok && !skipped && (
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 2 }}>
+                通知发送失败不影响报告与执行记录状态，可在报告详情页重试。
+              </Typography.Text>
+            )}
+          </div>
+        );
+      }
       case 'CLARIFY':
         body = <div style={{ fontSize: 13 }}><b>需要澄清</b><p style={{ margin: '4px 0 0' }}>{message.content}</p></div>;
         break;
@@ -171,11 +263,118 @@ function MessageBubble({ message }: { message: AgentMessage }) {
   );
 }
 
+// ---- 工作区「报告」面板：Agent 侧脱敏摘要（由代码统计，不含 webhook / secret）----
+function ReportBriefPanel({
+  brief,
+  onOpen,
+}: {
+  brief: Record<string, unknown> | null;
+  onOpen: () => void;
+}) {
+  if (!brief) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无报告数据" />;
+  const totals = (brief.totals as Record<string, unknown> | undefined) ?? {};
+  const ai = (brief.ai_summary as Record<string, unknown> | undefined) ?? null;
+  const risk = String(brief.risk_level ?? '');
+  const potentialIssues = ((ai?.potential_issues as string[] | undefined) ?? []);
+  const recommendations = ((ai?.recommendations as string[] | undefined) ?? []);
+
+  return (
+    <div style={{ fontSize: 13 }}>
+      <Flex justify="space-between" align="center" style={{ marginBottom: 6 }}>
+        <Typography.Text strong>{String(brief.title ?? brief.report_no ?? '测试报告')}</Typography.Text>
+        {brief.report_id != null && (
+          <Button size="small" type="link" style={{ padding: 0 }} icon={<EyeOutlined />} onClick={onOpen}>
+            查看详情
+          </Button>
+        )}
+      </Flex>
+      <div style={{ marginBottom: 6 }}>
+        <Tag color={RISK_TAG_COLOR[risk] ?? 'default'}>风险 {(RISK_LABEL[risk] ?? risk) || '-'}</Tag>
+        <Tag color="blue">通过率 {String(brief.pass_rate ?? '-')}%</Tag>
+      </div>
+      <div style={{ color: '#666', fontSize: 12, marginBottom: 8 }}>
+        共 {String(totals.total ?? '-')} 条 · 通过 {String(totals.passed ?? '-')} · 失败 {String(totals.failed ?? '-')} ·
+        错误 {String(totals.error ?? '-')} · 跳过 {String(totals.skipped ?? '-')}
+        {brief.duration_ms != null && ` · 耗时 ${(Number(brief.duration_ms) / 1000).toFixed(2)}s`}
+      </div>
+      {typeof ai?.overview === 'string' && ai.overview && (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 8, fontSize: 12 }}
+          message="总体结论"
+          description={<span style={{ whiteSpace: 'pre-wrap' }}>{ai.overview}</span>}
+        />
+      )}
+      {potentialIssues.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 8, fontSize: 12 }}
+          message="疑似产品问题（需人工确认，不是已确认缺陷）"
+          description={
+            <ul style={{ margin: 0, paddingLeft: 16 }}>
+              {potentialIssues.map((t, i) => (
+                <li key={i} style={{ lineHeight: 1.6 }}>
+                  {t}
+                </li>
+              ))}
+            </ul>
+          }
+        />
+      )}
+      {recommendations.length > 0 && (
+        <div style={{ fontSize: 12, color: '#666' }}>
+          <b>建议</b>
+          <ul style={{ margin: '2px 0 0', paddingLeft: 16 }}>
+            {recommendations.map((t, i) => (
+              <li key={i} style={{ lineHeight: 1.6 }}>
+                {t}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- 工作区「通知」面板：飞书发送结果留痕 ----
+function NotificationBriefPanel({ brief }: { brief: Record<string, unknown> | null }) {
+  if (!brief) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无通知记录" />;
+  const skipped = brief.skipped === true;
+  const ok = !skipped && brief.status === 'SUCCESS';
+  return (
+    <div style={{ fontSize: 13 }}>
+      <Tag color={skipped ? 'default' : ok ? 'green' : 'red'}>
+        {skipped ? '已跳过' : ok ? '发送成功' : '发送失败'}
+      </Tag>
+      {brief.channel_name != null && <Tag>{String(brief.channel_name)}</Tag>}
+      {brief.message != null && (
+        <div style={{ marginTop: 6, fontSize: 12, color: '#666' }}>{String(brief.message)}</div>
+      )}
+      {!ok && !skipped && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ marginTop: 8, fontSize: 12 }}
+          message="通知发送失败"
+          description={String(brief.error_message ?? '未知错误')}
+        />
+      )}
+      <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
+        通知失败不会把报告或执行记录标记为失败，可在报告详情页重试。
+      </Typography.Text>
+    </div>
+  );
+}
+
 // ---- 主页面 ----
 export function AgentPage() {
   const { message: msg, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
+  const navigate = useNavigate();
 
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -207,6 +406,17 @@ export function AgentPage() {
     queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
     staleTime: 60_000,
   });
+
+  // 飞书通知渠道候选项：确认报告时选择推送渠道（只显示启用且已配置 webhook 的渠道）。
+  const channelsQuery = useQuery({
+    queryKey: ['agent', 'notification-channels', currentProjectId],
+    queryFn: () => notificationChannelsApi.list(currentProjectId!, { page: 1, page_size: 100 }),
+    enabled: currentProjectId != null,
+    staleTime: 60_000,
+  });
+  const notifyChannels = (channelsQuery.data?.items ?? []).filter(
+    (c) => c.enabled && c.webhook_configured,
+  );
 
   // ---- 自动选中第一个会话 ----
   useEffect(() => {
@@ -243,8 +453,14 @@ export function AgentPage() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: (body: { content?: string; action?: AgentAction; point_ids?: number[]; case_ids?: number[]; environment_id?: number | null }) =>
-      agentApi.sendMessage(selectedSessionId!, body),
+    mutationFn: (body: {
+      content?: string;
+      action?: AgentAction;
+      point_ids?: number[];
+      case_ids?: number[];
+      environment_id?: number | null;
+      channel_id?: number | null;
+    }) => agentApi.sendMessage(selectedSessionId!, body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['agent', 'session', selectedSessionId] });
       queryClient.invalidateQueries({ queryKey: ['agent', 'workspace', selectedSessionId] });
@@ -304,6 +520,44 @@ export function AgentPage() {
         });
         return;
       }
+      if (action === 'confirm_report') {
+        // 报告已生成并暂停在 REPORT_REVIEW，需人工确认后才会推送飞书（不自动发送）。
+        if (notifyChannels.length === 0) {
+          msg.warning('没有可用的飞书通知渠道，请先到「飞书通知」配置并启用渠道');
+          return;
+        }
+        let channelId: number | null = null;
+        modal.confirm({
+          title: '确认报告并发送飞书通知',
+          content: (
+            <div>
+              <div style={{ marginBottom: 8 }}>报告已生成，选择要推送的渠道：</div>
+              <Select
+                style={{ width: '100%' }}
+                options={notifyChannels.map((c) => ({
+                  label: `${c.name}（${c.notify_condition}）`,
+                  value: c.id,
+                }))}
+                placeholder="请选择通知渠道"
+                onChange={(v) => {
+                  channelId = v;
+                }}
+              />
+              <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
+                Webhook 与签名密钥不会出现在对话或报告中；发送失败不影响报告状态。
+              </div>
+            </div>
+          ),
+          onOk: () => {
+            if (channelId == null) {
+              msg.warning('请选择一个通知渠道');
+              return Promise.reject();
+            }
+            sendMutation.mutate({ action: 'confirm_report' as AgentAction, channel_id: channelId });
+          },
+        });
+        return;
+      }
       if (action === 'confirm_points') {
         sendMutation.mutate({ action: 'confirm_points' as AgentAction, point_ids: selectedPointIds.length > 0 ? selectedPointIds : undefined });
         return;
@@ -314,7 +568,7 @@ export function AgentPage() {
       }
       sendMutation.mutate({ action: action as AgentAction });
     },
-    [selectedSessionId, envsQuery.data, sendMutation, selectedPointIds, selectedCaseIds, msg, modal],
+    [selectedSessionId, envsQuery.data, notifyChannels, sendMutation, selectedPointIds, selectedCaseIds, msg, modal],
   );
 
   // ---- 无项目提示 ----
@@ -463,7 +717,7 @@ export function AgentPage() {
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="请选择会话" style={{ marginTop: 80 }} />
           ) : !workspace ? (
             <div style={{ textAlign: 'center', padding: 24 }}><Spin size="small" /></div>
-          ) : workspace.test_plan || workspace.test_points.length > 0 || workspace.test_cases.length > 0 || workspace.analysis ? (
+          ) : workspace.test_plan || workspace.test_points.length > 0 || workspace.test_cases.length > 0 || workspace.analysis || workspace.report_brief || workspace.notification_brief ? (
             <Tabs
               size="small"
               items={[
@@ -558,6 +812,29 @@ export function AgentPage() {
                           {JSON.stringify(workspace.execution_result, null, 2)}
                         </pre>
                       ),
+                    }]
+                  : []),
+                ...(workspace.report_brief
+                  ? [{
+                      key: 'report',
+                      label: '报告',
+                      children: (
+                        <ReportBriefPanel
+                          brief={workspace.report_brief}
+                          onOpen={() =>
+                            workspace.report_id != null
+                              ? navigate(`/console/test-reports/${workspace.report_id}`)
+                              : undefined
+                          }
+                        />
+                      ),
+                    }]
+                  : []),
+                ...(workspace.notification_brief
+                  ? [{
+                      key: 'notification',
+                      label: '通知',
+                      children: <NotificationBriefPanel brief={workspace.notification_brief} />,
                     }]
                   : []),
               ]}

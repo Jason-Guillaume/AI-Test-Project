@@ -1468,6 +1468,10 @@ export type AgentStage =
   | 'READY_TO_EXECUTE'
   | 'EXECUTING'
   | 'ANALYZING'
+  // Phase 2：报告闭环与飞书通知阶段
+  | 'REPORT_GENERATING'
+  | 'REPORT_REVIEW'
+  | 'NOTIFYING'
   | 'COMPLETED'
   | 'FAILED'
   | 'CLARIFY';
@@ -1480,7 +1484,10 @@ export type AgentAction =
   | 'regenerate_points'
   | 'regenerate_cases'
   | 'query'
-  | 'continue';
+  | 'continue'
+  // Phase 2：报告 review 暂停点的两个出口
+  | 'confirm_report'
+  | 'skip_notification';
 
 export type AgentMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 
@@ -1491,7 +1498,10 @@ export type AgentMessageType =
   | 'TEST_CASES'
   | 'EXECUTION'
   | 'RESULT'
-  | 'CLARIFY';
+  | 'CLARIFY'
+  // Phase 2：报告与通知产物消息（metadata_json 为脱敏 brief）
+  | 'REPORT'
+  | 'NOTIFICATION';
 
 export interface AgentSession {
   id: number;
@@ -1525,6 +1535,8 @@ export interface SendMessageRequest {
   point_ids?: number[] | null;
   case_ids?: number[] | null;
   environment_id?: number | null;
+  /** Phase 2：飞书通知渠道ID（confirm_report 时可选，缺省取项目首个启用渠道） */
+  channel_id?: number | null;
 }
 
 export interface AgentWorkspace {
@@ -1536,6 +1548,12 @@ export interface AgentWorkspace {
   test_run_id: number | null;
   execution_result: Record<string, unknown> | null;
   analysis: Record<string, unknown> | null;
+  /** Phase 2：已生成报告的ID */
+  report_id: number | null;
+  /** Phase 2：脱敏报告摘要（report_no/风险/通过率/AI 总结） */
+  report_brief: Record<string, unknown> | null;
+  /** Phase 2：飞书通知结果（status/error_message/skipped/channel_name） */
+  notification_brief: Record<string, unknown> | null;
   error: Record<string, unknown> | null;
   suggested_actions: string[];
 }
@@ -1545,3 +1563,205 @@ export interface AgentTurnResponse {
   messages: AgentMessage[];
   workspace: AgentWorkspace;
 }
+
+// ---- 正式测试报告（Phase 2）----
+// 字段与后端 features/reports/schemas.py 严格对齐（snake_case）。
+
+export type ReportStatus = 'GENERATING' | 'COMPLETED' | 'FAILED';
+export type ReportRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+// 失败分类：POTENTIAL_BUG 仅表示「疑似产品问题，需人工确认」，不是已确认缺陷。
+export type ReportFailureType =
+  | 'ASSERTION_FAILURE'
+  | 'EXECUTION_ERROR'
+  | 'TEST_DATA_ISSUE'
+  | 'ENVIRONMENT_ERROR'
+  | 'POTENTIAL_BUG'
+  | 'UNKNOWN';
+
+export interface ReportGenerateRequest {
+  /** 是否调用 LLM 生成结构化总结（失败不影响报告状态） */
+  generate_ai_summary?: boolean;
+  /** 已有 COMPLETED 报告时仅重生成 AI 总结（统计字段不可变） */
+  regenerate?: boolean;
+}
+
+export interface ReportGenerateResponse {
+  report_id: number;
+  status: ReportStatus;
+}
+
+/** 报告详情内的单用例执行摘要（快照已脱敏）。 */
+export interface CaseExecutionSummary {
+  id: number;
+  test_case_id: number | null;
+  case_name: string;
+  priority: string;
+  case_type: string | null;
+  status: string;
+  failure_type: ReportFailureType | null;
+  executor_type: string | null;
+  duration_ms: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  request_snapshot: Record<string, unknown> | null;
+  response_snapshot: Record<string, unknown> | null;
+  assertion_results: Array<Record<string, unknown>> | null;
+  context_json: Record<string, unknown> | null;
+}
+
+/** 报告详情里附带的一次性 TestRun 摘要。 */
+export interface TestRunBrief {
+  id: number;
+  status: string;
+  environment_id: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface TestReport {
+  id: number;
+  project_id: number;
+  test_run_id: number | null;
+  report_no: string;
+  title: string;
+  environment_id: number | null;
+  status: ReportStatus;
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  error_cases: number;
+  skipped_cases: number;
+  /** 通过率 0-100，保留两位小数（passed/(total-skipped)*100，分母 0 记 0） */
+  pass_rate: number;
+  duration_ms: number | null;
+  /** 代码统计的结构化汇总（failure_clusters / case_failure_types），不可变 */
+  summary: Record<string, unknown> | null;
+  /** LLM 结构化总结；生成失败时为空（报告仍 COMPLETED） */
+  ai_summary: Record<string, unknown> | null;
+  ai_summary_version: string | null;
+  risk_level: ReportRiskLevel;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 报告列表项（不含 AI 总结等大字段）。 */
+export interface TestReportListItem {
+  id: number;
+  report_no: string;
+  title: string;
+  test_run_id: number | null;
+  environment_id: number | null;
+  status: ReportStatus;
+  total_cases: number;
+  passed_cases: number;
+  failed_cases: number;
+  error_cases: number;
+  skipped_cases: number;
+  pass_rate: number;
+  duration_ms: number | null;
+  risk_level: ReportRiskLevel;
+  created_at: string;
+}
+
+// list_reports 返回分页信封（后端 TestReportListResponse）。
+export type TestReportListResponse = Paginated<TestReportListItem>;
+
+/** 报告详情：报告本体 + TestRun 摘要 + 逐用例执行 + 失败分类聚类。 */
+export interface TestReportDetail {
+  report: TestReport;
+  test_run: TestRunBrief | null;
+  case_executions: CaseExecutionSummary[];
+  failure_clusters: Array<Record<string, unknown>>;
+}
+
+export interface ReportListQuery {
+  page?: number;
+  page_size?: number;
+  environment_id?: number;
+  risk_level?: ReportRiskLevel;
+  status?: ReportStatus;
+  test_run_id?: number;
+}
+
+// ---- 飞书通知渠道与发送记录（Phase 2）----
+// 字段与后端 features/notifications/schemas_channel.py 严格对齐（snake_case）。
+// 安全红线：后端响应**永不**回吐 webhook_url / secret 明文，仅回 webhook_configured
+// （布尔）与 webhook_masked（脱敏 URL）。
+
+export type NotifyCondition = 'ALWAYS' | 'ONLY_FAILED' | 'ONLY_HIGH_RISK';
+export type NotifyStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
+
+export interface ChannelCreateRequest {
+  name: string;
+  channel_type?: 'FEISHU_WEBHOOK';
+  /** 飞书 webhook URL（明文入参，后端加密入库；仅写入不回读） */
+  webhook_url: string;
+  /** 飞书签名密钥（明文入参，后端加密入库；不填则不签名） */
+  secret?: string | null;
+  enabled?: boolean;
+  notify_condition?: NotifyCondition;
+  keyword?: string | null;
+}
+
+/** 更新渠道；webhook_url / secret 留空（undefined）表示不变，传空串表示清除。 */
+export interface ChannelUpdateRequest {
+  name?: string;
+  webhook_url?: string;
+  secret?: string;
+  enabled?: boolean;
+  notify_condition?: NotifyCondition;
+  keyword?: string;
+}
+
+export interface NotificationChannel {
+  id: number;
+  project_id: number;
+  name: string;
+  channel_type: string;
+  enabled: boolean;
+  notify_condition: NotifyCondition;
+  /** 是否已配置 webhook URL（不含 URL 本身） */
+  webhook_configured: boolean;
+  /** 脱敏 webhook URL，如 https://open.feishu.cn/...**** */
+  webhook_masked: string;
+  keyword: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// list_channels 返回分页信封。
+export type ChannelListResponse = Paginated<NotificationChannel>;
+
+/** 发送审计记录（不含卡片原文 request_snapshot）。 */
+export interface NotificationRecord {
+  id: number;
+  project_id: number;
+  channel_id: number;
+  report_id: number | null;
+  status: NotifyStatus;
+  error_message: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
+// 发送记录列表返回分页信封。
+export type NotificationRecordListResponse = Paginated<NotificationRecord>;
+
+/** 触发发送（手动 / 连通性测试）的即时结果。 */
+export interface SendResult {
+  record_id: number | null;
+  status: NotifyStatus;
+  error_message: string | null;
+  /** 因渠道禁用或通知条件不满足而跳过（未发送） */
+  skipped: boolean;
+}
+
+export interface NotifyReportRequest {
+  /** 渠道 ID；省略时后端取项目首个启用渠道，均无则跳过（skipped=true），而不是 422。 */
+  channel_id?: number;
+}
+

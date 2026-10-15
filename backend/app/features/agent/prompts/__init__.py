@@ -16,12 +16,15 @@ TEST_INTENT_PROMPT_V1 = "intent-v1"
 TEST_POINT_PROMPT_V1 = "point-v1"
 TEST_CASE_PROMPT_V1 = "case-v1"
 TEST_RESULT_ANALYSIS_PROMPT_V1 = "result-v1"
+# Phase 2：报告 AI 总结（reports.services.ai_summary + agent 报告节点共用）。
+REPORT_SUMMARY_PROMPT_V1 = "summary-v1"
 
 _PROMPT_FILES = {
     "intent": "intent.md",
     "test_point": "test_point.md",
     "test_case": "test_case.md",
     "result_analysis": "result_analysis.md",
+    "report_summary": "report_summary.md",
 }
 
 

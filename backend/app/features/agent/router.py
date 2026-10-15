@@ -149,6 +149,7 @@ def send_message(
         point_ids=body.point_ids,
         case_ids=body.case_ids,
         environment_id=body.environment_id,
+        channel_id=body.channel_id,
     )
 
     return {
@@ -172,6 +173,9 @@ _STAGE_ACTIONS: dict[str, list[str]] = {
     "READY_TO_EXECUTE": ["execute"],
     "EXECUTING": [],
     "ANALYZING": ["analyze"],
+    "REPORT_GENERATING": [],
+    "REPORT_REVIEW": ["confirm_report", "skip_notification"],
+    "NOTIFYING": [],
     "COMPLETED": ["analyze"],
     "FAILED": ["regenerate_points", "regenerate_cases"],
     "CLARIFY": [],
@@ -190,6 +194,9 @@ def _build_workspace(state: AgentState, session) -> AgentWorkspace:
         test_run_id=state.get("test_run_id"),
         execution_result=state.get("execution_result"),
         analysis=state.get("analysis"),
+        report_id=state.get("report_id"),
+        report_brief=state.get("report_brief"),
+        notification_brief=state.get("notification_brief"),
         error=state.get("error"),
         suggested_actions=_STAGE_ACTIONS.get(stage, []),
     )

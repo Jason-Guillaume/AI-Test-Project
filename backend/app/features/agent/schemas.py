@@ -39,22 +39,27 @@ AgentIntent = Literal[
 AGENT_STAGES = (
     "UNDERSTANDING", "CONTEXT_LOADING", "PLANNING", "TEST_POINT_REVIEW",
     "TEST_POINT_GENERATED", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
-    "EXECUTING", "ANALYZING", "COMPLETED", "FAILED", "CLARIFY",
+    "EXECUTING", "ANALYZING", "REPORT_GENERATING", "REPORT_REVIEW",
+    "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
 )
 AgentStage = Literal[
     "UNDERSTANDING", "CONTEXT_LOADING", "PLANNING", "TEST_POINT_REVIEW",
     "TEST_POINT_GENERATED", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
-    "EXECUTING", "ANALYZING", "COMPLETED", "FAILED", "CLARIFY",
+    "EXECUTING", "ANALYZING", "REPORT_GENERATING", "REPORT_REVIEW",
+    "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
 ]
 
 # sendMessage 入参 action：人工在 review 暂停点的快捷操作。
 AGENT_ACTIONS = (
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
+    # Phase 2：报告 review 暂停点的快捷操作（confirm_report 触发飞书通知，skip 跳过）。
+    "confirm_report", "skip_notification",
 )
 AgentAction = Literal[
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
+    "confirm_report", "skip_notification",
 ]
 
 AGENT_SESSION_STATUSES = ("ACTIVE", "COMPLETED", "FAILED")
@@ -63,8 +68,15 @@ AgentSessionStatus = Literal["ACTIVE", "COMPLETED", "FAILED"]
 AGENT_MESSAGE_ROLES = ("USER", "ASSISTANT", "SYSTEM")
 AgentMessageRole = Literal["USER", "ASSISTANT", "SYSTEM"]
 
-AGENT_MESSAGE_TYPES = ("TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY")
-AgentMessageType = Literal["TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY"]
+AGENT_MESSAGE_TYPES = (
+    "TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY",
+    # Phase 2：报告与通知产物消息（metadata 存脱敏 brief，不含 webhook/sign）。
+    "REPORT", "NOTIFICATION",
+)
+AgentMessageType = Literal[
+    "TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY",
+    "REPORT", "NOTIFICATION",
+]
 
 # 错误码（§36）：节点失败时写入 state.error_code + 人类可读消息。
 AGENT_ERROR_CODES = (
@@ -72,6 +84,8 @@ AGENT_ERROR_CODES = (
     "STRUCTURED_OUTPUT_INVALID", "TEST_POINT_VALIDATION_FAILED",
     "TEST_CASE_VALIDATION_FAILED", "EXECUTION_FAILED", "NO_DEFAULT_MODEL",
     "NO_ENVIRONMENT", "PERMISSION_DENIED",
+    # Phase 2：报告生成 / 飞书发送失败（独立于 TestRun/Report 状态，§二十八）。
+    "REPORT_GENERATION_FAILED", "FEISHU_SEND_FAILED",
 )
 
 # 结果分析 issue 严重度：区分疑似缺陷 / 测试数据问题 / 执行错误 / 断言失败 / 未知。
@@ -134,6 +148,7 @@ class SendMessageRequest(BaseModel):
     point_ids: list[int] | None = Field(None, description="确认/执行选中的测试点ID子集")
     case_ids: list[int] | None = Field(None, description="确认/执行选中的用例ID子集")
     environment_id: int | None = Field(None, gt=0, description="执行环境ID（execute 时必填）")
+    channel_id: int | None = Field(None, gt=0, description="飞书通知渠道ID（confirm_report 时可选，缺省取项目首个启用渠道）")
 
 
 class AgentWorkspace(BaseModel):
@@ -148,6 +163,10 @@ class AgentWorkspace(BaseModel):
     execution_result: dict[str, Any] | None = None
     analysis: dict[str, Any] | None = None
     error: dict[str, Any] | None = None
+    # Phase 2：报告闭环 + 飞书通知产物（脱敏 brief，不含 webhook/sign）。
+    report_id: int | None = None
+    report_brief: dict[str, Any] | None = None
+    notification_brief: dict[str, Any] | None = None
     suggested_actions: list[str] = []
 
 

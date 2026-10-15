@@ -170,6 +170,16 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
     if result_meta:
         state["analysis"] = result_meta.get("analysis")
 
+    report_meta = latest("REPORT")
+    if report_meta:
+        state["report_id"] = report_meta.get("report_id")
+        state["report_brief"] = report_meta.get("report")
+
+    notif_meta = latest("NOTIFICATION")
+    if notif_meta:
+        state["notification_record_id"] = notif_meta.get("record_id")
+        state["notification_brief"] = notif_meta.get("notification")
+
     # prompt 消息历史：只保留 role + content（已脱敏），最近 8 条控制 token。
     state["messages"] = [
         {"role": m.role, "content": m.content}
@@ -263,6 +273,40 @@ def persist_turn(
                 db, session.id, role="ASSISTANT", message_type="RESULT",
                 content=analysis.get("summary") or "已完成结果分析",
                 metadata={"analysis": analysis},
+            )
+        )
+
+    # 报告：本轮新生成 / 重新生成时才追加（regenerate 会产生新的 report_id）。
+    if _points_changed(initial, final, "report_id") or _points_changed(
+        initial, final, "report_brief",
+    ):
+        brief = final.get("report_brief") or {}
+        emitted.append(
+            append_message(
+                db, session.id, role="ASSISTANT", message_type="REPORT",
+                content=f"已生成测试报告 {brief.get('report_no') or ''}".strip(),
+                # metadata 为脱敏 brief（report_no/风险/通过率/AI 总结），不含 webhook/sign（§31）
+                metadata={"report": brief, "report_id": final.get("report_id")},
+            )
+        )
+
+    # 通知：本轮确实执行了发送 / 跳过时才追加。record_id 每次发送都变，因此重复
+    # 点击「发送通知」也会留下新的留痕；跳过则靠 brief 内容变化触发。
+    if _points_changed(initial, final, "notification_brief") or (
+        final.get("notification_record_id") != initial.get("notification_record_id")
+    ):
+        brief = final.get("notification_brief") or {}
+        if brief.get("skipped"):
+            text = brief.get("message") or "已跳过飞书通知"
+        elif brief.get("status") == "SUCCESS":
+            text = f"飞书通知发送成功（{brief.get('channel_name') or '未指定渠道'}）"
+        else:
+            text = f"飞书通知发送失败：{brief.get('error_message') or '未知错误'}"
+        emitted.append(
+            append_message(
+                db, session.id, role="ASSISTANT", message_type="NOTIFICATION",
+                content=text,
+                metadata={"notification": brief, "record_id": final.get("notification_record_id")},
             )
         )
 

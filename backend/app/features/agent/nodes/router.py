@@ -28,9 +28,13 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
     - execute：执行 → 进入执行
     - analyze：分析结果
     - regenerate_points / regenerate_cases：重新生成
+    - confirm_report / skip_notification：报告 review 暂停点的两个出口（确认推送飞书
+      或跳过通知，报告本身已落库）
     无 action（或 action=continue/query）= 新的自然语言消息，走 intent。
     """
     action = state.get("action")
+    if action in ("confirm_report", "skip_notification"):
+        return "notification_sender"
     if action == "confirm_points":
         return "test_case_generator"
     if action == "confirm_cases":
