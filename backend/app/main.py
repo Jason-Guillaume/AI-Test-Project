@@ -39,6 +39,7 @@ from app.features.notifications.channel_router import router as notification_cha
 from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
 from app.features.reports.router import router as reports_router
+from app.features.security_testing.router import router as security_testing_router
 from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
@@ -188,6 +189,8 @@ def create_app() -> FastAPI:
     application.include_router(environments_router, prefix=API_PREFIX)
     application.include_router(dashboard_router, prefix=API_PREFIX)
     application.include_router(test_data_router, prefix=API_PREFIX)
+    # Security Testing：只改请求与解释结果，执行仍走现有 RunService（开发计划 §16.1）。
+    application.include_router(security_testing_router, prefix=API_PREFIX)
     # Mock Management：管理面（需平台 JWT）与执行面（X-Mock-Token）分离（§十四）。
     # 执行面 router 自带 prefix=/mock，catch-all 挂在 /api/v1/mock 下，必须最后装配，
     # 避免其 {path:path} 吞掉其它路由（/mock/ 与 /mock-services/ 不冲突）。
