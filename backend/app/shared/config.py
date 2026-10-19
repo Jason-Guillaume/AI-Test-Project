@@ -132,6 +132,18 @@ class Settings(BaseSettings):
     INIT_ADMIN_USERNAME: str | None = None
     INIT_ADMIN_PASSWORD: str | None = None
 
+    # Langfuse LLM 可观测（Agent 埋点）。
+    # 三环境隔离约定：每个环境使用独立的 Langfuse project（各一套 key），
+    # key 只通过部署侧环境变量 / 本地 .env 注入，绝不进版本库；
+    # LANGFUSE_ENVIRONMENT 是 trace 上的 environment 标签，供同 project 内过滤。
+    # 未启用或 key 不齐时埋点全部为 no-op，不影响主流程。
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"
+    # trace 环境标签：development / test / production 之一。
+    LANGFUSE_ENVIRONMENT: str = "development"
+
     # 默认关闭：表结构只通过 Alembic 变更，应用启动不自动改正式表结构。
     AUTO_CREATE_SCHEMA: bool = False
 

@@ -24,6 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
+from app.features.agent.providers.langfuse_tracer import flush_langfuse
 from app.features.agent.router import router as agent_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.business.router import router as business_router
@@ -91,7 +92,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         finally:
             session.close()
     yield
-    # 停止期回收连接池，避免 gunicorn worker 反复退出时留下半开连接
+    # 停止期先把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
+    # 再回收连接池，避免 gunicorn worker 反复退出时留下半开连接
+    flush_langfuse()
     engine.dispose()
     logger.info("应用已停止")
 
