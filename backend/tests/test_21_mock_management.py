@@ -105,19 +105,28 @@ def _create_scenario(
 def _runtime(
     api, project_id, service_key, path, *,
     method="GET", token=None, context=None, json_body=None, params=None, headers=None,
+    raw_body=None, content_type=None,
 ):
-    """执行面调用：走 /api/v1/mock/{project}/{service}/{path}，不携带平台 JWT。"""
+    """执行面调用：走 /api/v1/mock/{project}/{service}/{path}，不携带平台 JWT。
+
+    raw_body / content_type 用于非 JSON 体（form-urlencoded、text/plain），
+    验证这类体在调用记录里同样脱敏。
+    """
     url = f"{API}/mock/{project_id}/{service_key}/{path.lstrip('/')}"
     h = dict(headers or {})
     if token is not None:
         h["X-Mock-Token"] = token
     if context is not None:
         h["X-Mock-Context"] = context
+    if content_type is not None:
+        h["Content-Type"] = content_type
     kwargs = {"headers": h}
     if params is not None:
         kwargs["params"] = params
     if json_body is not None:
         kwargs["json"] = json_body
+    if raw_body is not None:
+        kwargs["data"] = raw_body
     return api.client.request(method, url, **kwargs)
 
 
@@ -528,6 +537,45 @@ def test_mock_matching_priority_and_concurrency_isolation(api, admin, db):
     assert r_closed.json() == {"who": "B"}  # Override 消失，Matcher 接管
 
 
+def test_mock_no_matcher_scenario_shadows_default(api, admin):
+    """无匹配规则的非默认场景先命中，默认场景兜不到——给最低优先级也救不了它。
+
+    `_select_scenario` 的次序是「Context 覆盖 → priority 排序里逐条评估 matcher（无规则者
+    直接命中）→ 最后才是 is_default 兜底」，所以「非默认 + 零 matcher」的场景会在**任何**
+    优先级下抢在默认场景之前。默认场景的优先级高低无关紧要，兜底只在第 3 步全部落空时
+    才轮到。这是设计本意（「无条件返回某响应」是合法配置），用测试把行为钉住，
+    将来有人把它「修正」时这里会响。
+    """
+    project_id = _create_project(api, admin)
+    svc = _create_service(api, admin, project_id, _skey("SHADOW"))
+    token = svc["runtime_token"]
+    skey = svc["service"]["service_key"]
+
+    ep = _create_endpoint(api, admin, svc["service"]["id"], method="GET", path="/items")
+    # 默认场景故意给最低优先级 —— 仍然兜不到。
+    _create_scenario(
+        api, admin, ep["id"], _skey("DEF"), is_default=True, priority=0, body={"who": "default"},
+    )
+    always = _create_scenario(
+        api, admin, ep["id"], _skey("ALWAYS"), priority=5, body={"who": "always"},
+    )  # 非默认 + 零 matcher
+
+    r = _runtime(api, project_id, skey, "/items", token=token)
+    assert r.status_code == 200
+    assert r.json() == {"who": "always"}
+
+    # 出路：给这条场景配上一条规则，默认兜底立刻恢复。
+    r_upd = api.put(
+        f"/mock-scenarios/{always['id']}/matchers", username=admin,
+        json={"matchers": [_matcher("QUERY", "mode", "EQ", "always")]},
+    )
+    assert r_upd.status_code == 200, r_upd.text
+    assert _runtime(api, project_id, skey, "/items", token=token).json() == {"who": "default"}
+    assert _runtime(
+        api, project_id, skey, "/items", token=token, params={"mode": "always"},
+    ).json() == {"who": "always"}
+
+
 # --------------------------------------------------------------------------- 6. 执行面分离 + 脱敏 + 调用记录
 
 
@@ -591,6 +639,26 @@ def test_mock_execution_plane_separation_and_masking(api, admin):
     assert bs["password"] == "******"
     assert bs["profile"]["token"] == "******"
     assert bs["username"] == "bob"  # 非敏感保留
+
+    # 非 JSON 体（form-urlencoded）：路由层回退成字符串，快照必须走 mask_text。
+    # mask_body 对 str 原样返回，漏掉这一步会让凭据明文落库并在调用记录页回显。
+    r_form = _runtime(
+        api, project_id, priv_skey, "/pay", method="POST", token=priv_token,
+        raw_body="username=alice&password=hunter2&api_key=sk_live_12345&amount=9",
+        content_type="application/x-www-form-urlencoded",
+    )
+    assert r_form.status_code == 200
+    exes_form = api.get(f"/projects/{project_id}/mock-executions", username=admin).json()["items"]
+    form_rec = next(
+        e for e in exes_form
+        if e["service_key"] == priv_skey and isinstance(e["body_snapshot"], str)
+    )
+    assert "hunter2" not in form_rec["body_snapshot"]
+    assert "sk_live_12345" not in form_rec["body_snapshot"]
+    assert "password=******" in form_rec["body_snapshot"]
+    assert "api_key=******" in form_rec["body_snapshot"]
+    assert "username=alice" in form_rec["body_snapshot"]  # 非敏感字段保留
+    assert "amount=9" in form_rec["body_snapshot"]
 
     # 服务不存在 → 404 + 仍记录一条执行。
     before = api.get(f"/projects/{project_id}/mock-executions", username=admin).json()["total"]
@@ -768,3 +836,333 @@ def test_mock_case_mocks_crud_and_validation(api, admin):
         }]},
     )
     assert api.delete(f"/mock-scenarios/{scenario_id}", username=admin).status_code == 409
+
+
+# --------------------------------------------------------------------------- 10. 交付后审查修复回归
+
+
+def _latest_executions(api, admin, project_id, page_size=20):
+    """按 id 倒序取调用记录（最新在前）。"""
+    r = api.get(
+        f"/projects/{project_id}/mock-executions", username=admin,
+        params={"page_size": page_size},
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["items"]
+
+
+def test_mock_review_fixes_matcher_and_record_safety(api, admin, db):
+    """审查修复回归（匹配引擎 + 调用记录安全）。
+
+    - METHOD 比较大小写不敏感：actual 已归一大写，expected 必须同步归一，
+      否则用户按 HTTP 习惯写 "get" 时场景永远落回 default。
+    - JSONPath 非法括号段整体判不存在，不再丢段退化成兄弟键 / 整个 body。
+    - JSON_PATH_EXISTS 是存在性判断，前端按「无期望值」提交，不能再被 400 拦死。
+    - 执行面鉴权头 X-Mock-Token 绝不出现在调用记录快照里。
+    - 未命中的调用也持久化 error_code / error_message（之前只存在于内存响应）。
+    """
+    from app.features.mock_management.matchers.request_matcher import (
+        RequestSnapshot,
+        evaluate_matcher,
+        extract_jsonpath,
+    )
+
+    # --- METHOD 大小写归一
+    snap = RequestSnapshot(method="GET", path="/items/1", headers={}, query={})
+    assert evaluate_matcher(snap, _matcher("METHOD", "method", "EQ", "get")) is True
+    assert evaluate_matcher(snap, _matcher("METHOD", "method", "IN", ["get", "post"])) is True
+    assert evaluate_matcher(snap, _matcher("METHOD", "method", "EQ", "POST")) is False
+    assert evaluate_matcher(snap, _matcher("METHOD", "method", "EQ", "get")) is True
+
+    # --- JSONPath 非法段：整体不存在，而不是丢段后误命中
+    payload = {"a": {"b": 1}, "items": [{"id": 1}, {"id": 2}]}
+    assert extract_jsonpath(payload, "$.a[foo].b") == (False, None)
+    assert extract_jsonpath(payload, "$.items[0:2].id") == (False, None)
+    assert extract_jsonpath(payload, "$.items[]") == (False, None)
+    # 合法路径不受影响。
+    assert extract_jsonpath(payload, "$.a.b") == (True, 1)
+    assert extract_jsonpath(payload, "$.items[1].id") == (True, 2)
+    assert extract_jsonpath(payload, "$") == (True, payload)
+
+    project_id = _create_project(api, admin)
+    svc = _create_service(api, admin, project_id, _skey("FIX"))
+    token = svc["runtime_token"]
+    skey = svc["service"]["service_key"]
+    ep = _create_endpoint(api, admin, svc["service"]["id"], method="POST", path="/things")
+
+    # JSON_PATH_EXISTS 不带 expected_value 也必须能保存。
+    r_jp = api.post(
+        f"/mock-endpoints/{ep['id']}/scenarios", username=admin,
+        json={
+            "name": "金额存在", "scenario_key": _skey("JP"),
+            "priority": 10, "response_body": {"who": "jp"},
+            "matchers": [_matcher("BODY", "$.amount", "JSON_PATH_EXISTS")],
+        },
+    )
+    assert r_jp.status_code == 201, r_jp.text
+    jp = r_jp.json()
+    default = _create_scenario(api, admin, ep["id"], _skey("DEF"), is_default=True, body={"who": "default"})
+
+    # JSONPath 存在性在运行时真的生效：有 amount → 命中规则场景。
+    r_hit = _runtime(
+        api, project_id, skey, "things", method="POST", token=token,
+        json_body={"amount": 5}, headers={"X-Trace": "t-1"},
+    )
+    assert r_hit.status_code == 200
+    assert r_hit.json() == {"who": "jp"}
+
+    # --- 调用记录：鉴权头不落快照，业务头正常保留
+    hit = _latest_executions(api, admin, project_id)[0]
+    assert hit["header_snapshot"] is not None
+    assert _header_ci(hit["header_snapshot"], "X-Mock-Token") is None
+    assert _header_ci(hit["header_snapshot"], "X-Trace") == "t-1"
+
+    # 没有 amount → 规则场景不命中，回落到默认。
+    r_fallback = _runtime(
+        api, project_id, skey, "things", method="POST", token=token, json_body={"other": 1},
+    )
+    assert r_fallback.json() == {"who": "default"}
+
+    # --- 未命中也落记录，并持久化错误码
+    r_miss = _runtime(api, project_id, skey, "nope", token=token)
+    assert r_miss.status_code == 404
+    miss = _latest_executions(api, admin, project_id)[0]
+    assert miss["matched"] is False
+    assert miss["error_code"] == "MOCK_SCENARIO_NOT_MATCHED"
+    assert miss["error_message"]
+    assert miss["mock_scenario_id"] is None
+    # 命中的那条带上了场景归属。
+    rows = _latest_executions(api, admin, project_id)
+    assert any(r["mock_scenario_id"] == jp["id"] for r in rows)
+    assert any(r["mock_scenario_id"] == default["id"] for r in rows)
+    # 存在性规则按「无期望值」落库，未被默认成空串。
+    assert jp["matchers"][0]["operator"] == "JSON_PATH_EXISTS"
+    assert jp["matchers"][0]["expected_value"] is None
+
+    # --- replace_matchers 也有乐观锁：matcher 是整体重建语义，不加校验时两个会话
+    #     同时保存会互相覆盖，后写者静默丢掉对方刚存的规则集（PATCH 早有 revision）。
+    r_rm1 = api.put(
+        f"/mock-scenarios/{jp['id']}/matchers", username=admin,
+        json={
+            "revision": jp["revision"],
+            "matchers": [_matcher("BODY", "$.other", "JSON_PATH_EXISTS")],
+        },
+    )
+    assert r_rm1.status_code == 200, r_rm1.text
+    rev_before = r_rm1.json()["revision"]
+    # 拿旧 revision 再写一次 → 409，且规则集保持第一次写入的结果。
+    r_rm2 = api.put(
+        f"/mock-scenarios/{jp['id']}/matchers", username=admin,
+        json={
+            "revision": jp["revision"],
+            "matchers": [_matcher("QUERY", "x", "EQ", "1")],
+        },
+    )
+    assert r_rm2.status_code == 409
+    r_now = api.get(f"/mock-scenarios/{jp['id']}", username=admin)
+    assert r_now.status_code == 200, r_now.text
+    now = r_now.json()
+    assert {m["field"] for m in now["matchers"]} == {"$.other"}
+    assert now["revision"] == rev_before
+    # 不传 revision 保持向后兼容（旧调用方），仍能替换。
+    r_rm3 = api.put(
+        f"/mock-scenarios/{jp['id']}/matchers", username=admin,
+        json={"matchers": [_matcher("QUERY", "x", "EQ", "1")]},
+    )
+    assert r_rm3.status_code == 200, r_rm3.text
+    assert {m["field"] for m in r_rm3.json()["matchers"]} == {"x"}
+    assert r_rm3.json()["revision"] == rev_before + 1
+
+
+def test_mock_context_propagated_to_executed_request(api, admin, db):
+    """端到端：用例声明的 Mock 覆盖必须真正送达被测系统入口。
+
+    激活 MockContext 只是建行；只有 X-Mock-Context 随请求送到被测系统，
+    覆盖才会生效。修复前 run_service 激活后从未注入这个头，隔离只在测试里
+    手工注入头时才成立——所以这里用真 Stub 服务记录收到的头来验证。
+    """
+    from tests.test_15_test_executor import (
+        StubServer,
+        _admin_id,
+        _build_plan_with_cases,
+        _case_execs,
+        _create_case,
+        _make_env,
+        _make_iface,
+        _run,
+        _whitelist,
+    )
+
+    with StubServer() as stub:
+        seen: list[str] = []
+
+        def sut(h, body):
+            seen.append(h.headers.get("X-Mock-Context") or "")
+            return 200, {"code": 0, "data": {"ok": True}}
+
+        stub.add_fn("GET", "/sut/call", sut)
+        admin_id = _admin_id(db)
+        project_id = _create_project(api, admin)
+        env_id = _make_env(db, stub.base_url, admin_id)
+        _whitelist(db, project_id, stub.port, admin_id)
+        iface_id = _make_iface(db, project_id, "GET", "/sut/call")
+        case_id = _create_case(
+            api, admin, project_id, name="依赖隔离", api_id=iface_id,
+            assertions=[{"assertion_type": "STATUS_CODE", "operator": "EQ", "expected_value": "200"}],
+        )
+
+        svc = _create_service(api, admin, project_id, _skey("SUITE"))
+        token = svc["runtime_token"]
+        skey = svc["service"]["service_key"]
+        ep = _create_endpoint(api, admin, svc["service"]["id"], path="/orders/{id}")
+        _create_scenario(api, admin, ep["id"], _skey("NORMAL"), is_default=True, body={"who": "default"})
+        # 覆盖场景带一条请求里永远不会满足的匹配规则（ctx-only 值从不出现在请求上），
+        # 这样返回值才能证明「覆盖来自 Context」，而不是场景自己就命中了默认兜底。
+        override = _create_scenario(
+            api, admin, ep["id"], _skey("TIMEOUT500"), priority=10, body={"who": "override"},
+            matchers=[_matcher("QUERY", "env", "EQ", "ctx-only")],
+        )
+
+        r = api.put(
+            f"/test-cases/{case_id}/mocks", username=admin,
+            json={"mocks": [{
+                "mock_service_id": svc["service"]["id"], "mock_endpoint_id": ep["id"],
+                "mock_scenario_id": override["id"], "scope": "EXECUTION", "sort": 0,
+            }]},
+        )
+        assert r.status_code == 200, r.text
+
+        plan_id = _build_plan_with_cases(api, admin, project_id, [case_id], env_id)
+        run = _run(api, admin, plan_id, env_id)
+        assert run["status"] == "SUCCESS"
+        execs = _case_execs(api, admin, run["id"])
+        assert len(execs) == 1
+        assert execs[0]["status"] == "PASSED"
+
+        # 被测系统入口确实收到了非空的 X-Mock-Context（修复前这里是空的）。
+        assert len(seen) == 1, seen
+        ctx_id = seen[0]
+        assert ctx_id
+
+        # 这个 id 是本轮真实的 MockContext：归属本 run / 本 case，覆盖内容正确，
+        # 且生命周期已关闭。
+        r_ctx = api.get(
+            f"/projects/{project_id}/mock-contexts", username=admin,
+            params={"test_run_id": run["id"], "page_size": 20},
+        )
+        assert r_ctx.status_code == 200, r_ctx.text
+        row = [c for c in r_ctx.json() if c["context_id"] == ctx_id]
+        assert len(row) == 1
+        ctx_row = row[0]
+        assert ctx_row["case_execution_id"] == execs[0]["id"]
+        assert ctx_row["status"] == "CLOSED"
+        assert ctx_row["closed_at"] is not None
+        assert ctx_row["scenario_overrides"] == {str(ep["id"]): override["id"]}
+        assert ctx_row["test_run_id"] == run["id"]
+
+        # 被测系统按约定把这个头透传给依赖的 Mock Runtime。上面验证「平台送得出」，
+        # 这里验证「Runtime 接得住」：承接的记录带上本轮的 test_run_id / case_execution_id /
+        # mock_context_id，这正是报告「Mock 覆盖摘要」（report_service._mock_summary）按
+        # test_run_id 过滤的数据来源——修复前这三列永远为空，摘要恒为 involved=False。
+        # 用新开一个仍处于 ACTIVE 的 Context（上面的已随用例结束 CLOSED），
+        # 否则无法区分「记录来自 Context」与「恰好命中同一条场景」。
+        from app.features.mock_management.services.mock_runtime_service import MockRuntimeService
+
+        dep_ctx = MockRuntimeService().activate_context(
+            db, project_id=project_id, test_run_id=run["id"],
+            case_execution_id=execs[0]["id"],
+            overrides={ep["id"]: override["id"]},
+        )
+        db.commit()
+
+        r_dep = _runtime(
+            api, project_id, skey, "/orders/1", token=token, context=dep_ctx.context_id,
+        )
+        assert r_dep.status_code == 200
+        assert r_dep.json() == {"who": "override"}  # Context Override 生效
+        r_bare = _runtime(api, project_id, skey, "/orders/1", token=token)
+        assert r_bare.json() == {"who": "default"}  # 不带 Context 落回默认
+        dep_rec = [
+            e for e in _latest_executions(api, admin, project_id, page_size=50)
+            if e.get("mock_context_id") == dep_ctx.context_id
+        ]
+        assert len(dep_rec) == 1
+        assert dep_rec[0]["test_run_id"] == run["id"]
+        assert dep_rec[0]["case_execution_id"] == execs[0]["id"]
+        assert dep_rec[0]["matched"] is True
+        assert dep_rec[0]["mock_scenario_id"] == override["id"]
+
+        # 无声明的既有用例不受影响：不创建 Context、不带头。
+        bare_case = _create_case(api, admin, project_id, name="无 Mock 依赖", api_id=iface_id,
+                                 assertions=[])
+        bare_plan = _build_plan_with_cases(api, admin, project_id, [bare_case], env_id)
+        bare_run = _run(api, admin, bare_plan, env_id)
+        assert bare_run["status"] in ("SUCCESS", "FAILED")
+        assert seen[-1] == ""
+
+
+def test_mock_disabled_scenario_errors_case_not_run(api, admin, db):
+    """引用了已停用场景的用例：用例判 ERROR，而不是整轮 TestRun 卡在 RUNNING。
+
+    activate_for_case 校验失败会抛 AppError；修复前 run_service 没接这个异常，
+    整个 TestRun 会崩溃并永远停在 RUNNING。这里验证：用例 ERROR + 原始错误码，
+    且因为没有创建 MockContext 行，无需 deactivate。
+    """
+    from tests.test_15_test_executor import (
+        StubServer,
+        _admin_id,
+        _build_plan_with_cases,
+        _case_execs,
+        _create_case,
+        _make_env,
+        _make_iface,
+        _run,
+        _whitelist,
+    )
+
+    with StubServer() as stub:
+        stub.add("GET", "/sut/call", 200, {"code": 0})
+        admin_id = _admin_id(db)
+        project_id = _create_project(api, admin)
+        env_id = _make_env(db, stub.base_url, admin_id)
+        _whitelist(db, project_id, stub.port, admin_id)
+        iface_id = _make_iface(db, project_id, "GET", "/sut/call")
+        case_id = _create_case(api, admin, project_id, name="停用依赖", api_id=iface_id,
+                               assertions=[])
+
+        svc = _create_service(api, admin, project_id, _skey("DIS"))
+        ep = _create_endpoint(api, admin, svc["service"]["id"], path="/orders")
+        scenario = _create_scenario(api, admin, ep["id"], _skey("OFF"), body={"who": "x"})
+
+        api.put(
+            f"/test-cases/{case_id}/mocks", username=admin,
+            json={"mocks": [{
+                "mock_service_id": svc["service"]["id"], "mock_endpoint_id": ep["id"],
+                "mock_scenario_id": scenario["id"], "scope": "EXECUTION", "sort": 0,
+            }]},
+        )
+
+        # 用例引用的场景停用 → 激活阶段报 MOCK_SCENARIO_DISABLED。
+        r_off = api.patch(
+            f"/mock-scenarios/{scenario['id']}", username=admin,
+            json={"enabled": False, "revision": scenario["revision"]},
+        )
+        assert r_off.status_code == 200, r_off.text
+
+        plan_id = _build_plan_with_cases(api, admin, project_id, [case_id], env_id)
+        run = _run(api, admin, plan_id, env_id)
+        # 终止态：绝不留在 RUNNING。
+        assert run["status"] == "FAILED"
+        assert run["error"] == 1
+        ce = _case_execs(api, admin, run["id"])[0]
+        assert ce["status"] == "ERROR"
+        assert ce["error_code"] == "MOCK_SCENARIO_DISABLED"
+        assert ce["error_message"]
+
+        # 激活在校验阶段就失败，没有 MockContext 行（因此也无需 deactivate）。
+        r_ctx = api.get(
+            f"/projects/{project_id}/mock-contexts", username=admin,
+            params={"test_run_id": run["id"], "page_size": 20},
+        )
+        assert r_ctx.status_code == 200
+        assert r_ctx.json() == []

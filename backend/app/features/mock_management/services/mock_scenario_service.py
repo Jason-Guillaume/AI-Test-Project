@@ -231,6 +231,10 @@ class MockScenarioService:
         self, db: Session, scenario_id: int, body: MockMatchersReplace, *, actor: User,
     ) -> MockScenarioResponse:
         scenario = self._get_writable_or_404(db, scenario_id, actor)
+        # 与 PATCH 同样的乐观锁：matcher 是整体重建，不加校验时两个会话会互相覆盖
+        # （最后写入者静默丢掉对方刚保存的规则集）。不传 revision 保持向后兼容。
+        if body.revision is not None and body.revision != scenario.revision:
+            raise conflict("该场景已被他人修改，请刷新后重试")
         for m in body.matchers:
             self._validate_matcher(m)
         db.query(MockMatcher).filter(MockMatcher.scenario_id == scenario.id).delete(
@@ -405,8 +409,13 @@ class MockScenarioService:
                 f"操作符 {m.operator} 要求 field 为 JSONPath（以 $ 开头）",
                 status_code=400, code=CODE_MOCK_MATCHER_INVALID,
             )
-        # EXISTS / NOT_EXISTS 不需要 expected_value；其余需要。
-        if m.operator not in ("EXISTS", "NOT_EXISTS") and m.expected_value is None:
+        # EXISTS / NOT_EXISTS / JSON_PATH_EXISTS 是存在性判断，不读 expected_value；
+        # 其余操作符必须有。JSON_PATH_EXISTS 漏在这里会导致前端（已按「无期望值」
+        # 提交）保存 JSONPath 存在性规则时必然 400。
+        if (
+            m.operator not in ("EXISTS", "NOT_EXISTS", "JSON_PATH_EXISTS")
+            and m.expected_value is None
+        ):
             raise AppError(
                 f"操作符 {m.operator} 需要 expected_value",
                 status_code=400, code=CODE_MOCK_MATCHER_INVALID,

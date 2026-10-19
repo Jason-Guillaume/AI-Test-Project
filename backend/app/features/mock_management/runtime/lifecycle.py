@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.features.mock_management.models import TestCaseMock
 from app.features.mock_management.services.mock_runtime_service import (
     DEFAULT_CONTEXT_TTL_MINUTES,
+    MOCK_CONTEXT_HEADER,
     MockRuntimeService,
 )
 
@@ -62,6 +63,18 @@ class MockLifecycle:
             ttl_minutes=ttl_minutes,
         )
         return ctx.context_id
+
+    def context_headers(self, context_id: str | None) -> dict[str, str] | None:
+        """用例执行作用域的请求头，供执行器注入「发给被测系统」的那次请求。
+
+        Mock Runtime 靠 X-Mock-Context 识别执行作用域并应用 scenario_overrides
+        （Context Override > Explicit Matcher > Default）。激活 Context 只是建行；
+        不把这个头送到被测系统入口，Context 永远不会生效，用例拿到的仍是默认场景。
+        被测系统是否把它继续转发给依赖服务，属于被测系统侧的配合义务。
+        """
+        if not context_id:
+            return None
+        return {MOCK_CONTEXT_HEADER: context_id}
 
     def deactivate(self, db: Session, context_id: str | None) -> None:
         """关闭 MockContext（幂等）。context_id 为 None 时无操作。"""

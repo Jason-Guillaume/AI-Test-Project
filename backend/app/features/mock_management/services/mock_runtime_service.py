@@ -29,7 +29,7 @@ from typing import Any
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
-from app.features.business.executors.sensitive import mask_body, mask_headers
+from app.features.business.executors.sensitive import mask_body, mask_headers, mask_text
 from app.features.mock_management.matchers import RequestSnapshot, evaluate_matchers, match_path
 from app.features.mock_management.models import (
     MockContext,
@@ -220,8 +220,11 @@ class MockRuntimeService:
                 service_id=service.id,
             )
 
-        # 解析 X-Mock-Context（§二十四 / §二十五）。
-        ctx = self._resolve_context(db, _header_lookup(headers, MOCK_CONTEXT_HEADER))
+        # 解析 X-Mock-Context（§二十四 / §二十五）；必须校验归属本项目——context_id
+        # 一旦泄露，不应能借别的项目的 Context 把它的 test_run / case 归属写进本项目的记录。
+        ctx = self._resolve_context(
+            db, _header_lookup(headers, MOCK_CONTEXT_HEADER), project_id
+        )
 
         # 匹配 Endpoint（method + path）。
         endpoint, path_params = self._match_endpoint(db, service.id, method, path)
@@ -289,10 +292,19 @@ class MockRuntimeService:
             .first()
         )
 
-    def _resolve_context(self, db: Session, context_id: str) -> MockContext | None:
-        """读取 X-Mock-Context 对应的 Context；过期或已关闭按 None 处理（§二十六）。"""
+    def _resolve_context(
+        self, db: Session, context_id: str, project_id: int,
+    ) -> MockContext | None:
+        """读取 X-Mock-Context 对应的 Context；无效 / 过期 / 已关闭 / 不属于本项目都按 None。
+
+        归属校验是 Project 边界的一部分（§五十「Mock Runtime 不能绕过 Project 边界」）：
+        Context 里的 test_run_id / case_execution_id 会被写进本次 MockExecution，
+        跨项目接受就等于把别项目的执行归属写进本项目的调用记录。
+        """
+        if not context_id:
+            return None
         ctx = self._get_context(db, context_id)
-        if ctx is None:
+        if ctx is None or ctx.project_id != project_id:
             return None
         if ctx.status != "ACTIVE":
             return None
@@ -381,11 +393,13 @@ class MockRuntimeService:
         query: dict[str, Any], headers: dict[str, str], body: Any,
         response_status: int | None, response_headers: dict[str, str], response_body: Any,
         matched: bool, duration_ms: int,
+        error_code: str | None = None, error_message: str | None = None,
     ) -> None:
-        """记录 MockExecution（快照经 SensitiveDataMasker 脱敏，§十八 / §五十）。"""
-        masked_query = {
-            k: ("******" if _is_sensitive(k) else v) for k, v in (query or {}).items()
-        }
+        """记录 MockExecution（快照经 SensitiveDataMasker 脱敏，§十八 / §五十）。
+
+        error_code / error_message 必须落库：§十八 把它们列为 MockExecution 字段，
+        调用记录页的「错误码」能力依赖这两列，而不是只在响应里回传一次。
+        """
         execution = MockExecution(
             project_id=project_id,
             mock_service_id=service_id,
@@ -394,14 +408,16 @@ class MockRuntimeService:
             request_id=request_id,
             method=(method or "").upper(),
             path=path,
-            query_snapshot=masked_query or None,
-            header_snapshot=mask_headers(headers) or None,
-            body_snapshot=mask_body(body) if body is not None else None,
+            query_snapshot=_snapshot_query(query) or None,
+            header_snapshot=mask_headers(_snapshot_headers(headers)) or None,
+            body_snapshot=_mask_snapshot(body),
             response_status=response_status,
             response_header_snapshot=mask_headers(response_headers) or None,
-            response_body_snapshot=mask_body(response_body) if response_body is not None else None,
+            response_body_snapshot=_mask_snapshot(response_body),
             matched=matched,
             duration_ms=duration_ms,
+            error_code=error_code,
+            error_message=error_message,
             test_run_id=ctx.test_run_id if ctx else None,
             case_execution_id=ctx.case_execution_id if ctx else None,
             mock_context_id=ctx.context_id if ctx else None,
@@ -423,6 +439,7 @@ class MockRuntimeService:
             query=query, headers=headers, body=body,
             response_status=status, response_headers={}, response_body=None,
             matched=False, duration_ms=duration_ms,
+            error_code=code, error_message=message,
         )
         return RuntimeResponse(
             status_code=status, headers={}, body=_error_body(code, message),
@@ -451,6 +468,7 @@ class MockRuntimeService:
             query=query, headers=headers, body=body,
             response_status=status, response_headers={}, response_body=None,
             matched=False, duration_ms=duration_ms,
+            error_code=code, error_message=message,
         )
         return RuntimeResponse(
             status_code=status, headers={}, body=_error_body(code, message),
@@ -473,6 +491,40 @@ def _is_sensitive(key: str) -> bool:
     from app.features.business.executors.sensitive import is_sensitive_key
 
     return is_sensitive_key(key)
+
+
+def _mask_snapshot(value: object) -> object | None:
+    """脱敏请求 / 响应体快照：结构化体按敏感字段名，自由文本按 key=value 形态。
+
+    不能只对字符串直接调 mask_body：它对 str 原样返回，而路由层 _parse_body 会把
+    非 JSON 体（form-urlencoded / text/plain）回退成字符串。不同步处理，
+    `password=...` / `api_key=...` 这类凭据会以明文永久落库并在调用记录页回显。
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return mask_text(value)
+    return mask_body(value)
+
+
+def _snapshot_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    """快照请求 / 响应头：先剔除执行面凭证头，再交给统一 Masker。
+
+    X-Mock-Token 是执行面 Bearer，§五十 要求明文只在创建 / 重置时返回一次。
+    模板解析那边已经把它从 RequestContext 排除了；快照也必须同样排除，
+    否则明文 Token 会随 MockExecution 永久落库、并在管理面调用记录里回显。
+    """
+    return {
+        k: v for k, v in (headers or {}).items() if k.lower() != MOCK_TOKEN_HEADER.lower()
+    }
+
+
+def _snapshot_query(query: dict[str, Any] | None) -> dict[str, Any]:
+    """快照查询参数：§十五 允许 URL Token，同样剔除；其余走 Masker 键名规则。"""
+    return {
+        k: ("******" if (_is_sensitive(k) or k.lower() == MOCK_TOKEN_HEADER.lower()) else v)
+        for k, v in (query or {}).items()
+    }
 
 
 def _error_body(code: str, message: str) -> dict[str, str]:

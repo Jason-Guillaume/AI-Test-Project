@@ -250,9 +250,14 @@ class MockMatcherResponse(_ORM):
 
 
 class MockMatchersReplace(BaseModel):
-    """整体替换一个 Scenario 的 Matcher 列表（重建，与 Fixture steps 同款语义）。"""
+    """整体替换一个 Scenario 的 Matcher 列表（重建，与 Fixture steps 同款语义）。
+
+    ``revision`` 可选：传入时做乐观锁校验，与 PATCH 场景一致。matcher 是重建式
+    写入，不加校验的话两个会话会互相覆盖、最后写入者静默吃掉对方的规则集。
+    """
 
     matchers: list[MockMatcherCreate] = Field(default_factory=list)
+    revision: int | None = None
 
 
 # --------------------------------------------------------------------------- MockExecution

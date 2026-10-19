@@ -32,6 +32,8 @@ def extract_jsonpath(body: Any, expression: str) -> tuple[bool, Any]:
         return True, body
     current: Any = body
     for part in _parse_parts(expr):
+        if part is _INVALID_PART:
+            return False, None
         if isinstance(part, int):
             if isinstance(current, list) and 0 <= part < len(current):
                 current = current[part]
@@ -45,9 +47,20 @@ def extract_jsonpath(body: Any, expression: str) -> tuple[bool, Any]:
     return True, current
 
 
-def _parse_parts(expr: str) -> list[str | int]:
-    """把 ``.a[0].b`` 解析成 ``['a', 0, 'b']``。"""
-    parts: list[str | int] = []
+# 非法括号段（[foo] / [0:2] / []）的占位符。
+# 之前解析失败是静默 pass——丢段会让 ``$.a[foo].b`` 退化成 ``$.a.b`` 命中兄弟键，
+# 或让 ``$.items[0:2].id`` 退化成 ``$.items.id`` 命中整个 body，
+# 直接造成 JSON_PATH_EXISTS / JSON_PATH_EQ 误命中不该命中的场景。
+_INVALID_PART: object = object()
+
+
+def _parse_parts(expr: str) -> list[str | int | object]:
+    """把 ``.a[0].b`` 解析成 ``['a', 0, 'b']``。
+
+    括号内容不是整数时追加 ``_INVALID_PART``，由 ``extract_jsonpath`` 整体判不存在，
+    而不是丢弃这一段继续匹配。
+    """
+    parts: list[str | int | object] = []
     current = ""
     for ch in expr:
         if ch == ".":
@@ -62,7 +75,7 @@ def _parse_parts(expr: str) -> list[str | int]:
             try:
                 parts.append(int(current))
             except (ValueError, TypeError):
-                pass
+                parts.append(_INVALID_PART)
             current = ""
         else:
             current += ch
@@ -154,6 +167,13 @@ def _contains(actual: Any, expected: Any) -> bool:
     return _values_equal(actual, expected)
 
 
+def _upper_expected(value: Any) -> Any:
+    """METHOD 期望值归一：标量转大写，``IN`` 用的列表逐项转大写，其它原样返回。"""
+    if isinstance(value, list):
+        return [item.upper() if isinstance(item, str) else item for item in value]
+    return value.upper() if isinstance(value, str) else value
+
+
 def evaluate_matcher(snapshot: RequestSnapshot, matcher: Any) -> bool:
     """评估单条 Matcher 规则。
 
@@ -172,6 +192,12 @@ def evaluate_matcher(snapshot: RequestSnapshot, matcher: Any) -> bool:
                 or (matcher.get("expected_value") if isinstance(matcher, dict) else None))
 
     exists, actual = _resolve_field(snapshot, source, field_name)
+    # METHOD 比较大小写不敏感（见模块 docstring）：用户按 HTTP 习惯写 "get" / "Post"
+    # 也要能命中。actual 已由 _resolve_field 归一成大写，这里同步归一 expected，
+    # 否则 "get" 会静默不匹配、场景永远落回 default。
+    if (source or "").upper() == "METHOD":
+        actual = str(actual or "")
+        expected = _upper_expected(expected)
 
     if operator == "EXISTS":
         return exists
