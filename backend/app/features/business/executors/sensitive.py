@@ -21,6 +21,7 @@ _SENSITIVE_KEYS = frozenset({
     "refresh_token",
     "id_token",
     "auth_token",
+    "mock_token",
     "cookie",
     "set_cookie",
     "password",

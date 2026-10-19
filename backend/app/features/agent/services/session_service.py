@@ -160,15 +160,32 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
     if cases_meta:
         state["generated_test_cases"] = cases_meta.get("cases", [])
         state["confirmed_case_ids"] = cases_meta.get("confirmed_case_ids", [])
+        # 高风险确认待办随用例一起恢复：materializer 写入，刷新后工作区仍要给出
+        # confirm_security_risk 按钮，否则用户看不到「执行前需人工确认」的提示。
+        state["security_risk_pending"] = cases_meta.get("security_risk_pending")
+
+    sec_meta = latest("SECURITY_PLAN")
+    if sec_meta:
+        state["security_plan"] = sec_meta.get("plan")
+        state["security_plan_id"] = sec_meta.get("plan_id")
+        state["security_strategy_keys"] = sec_meta.get("strategy_keys") or []
+        state["target_type"] = sec_meta.get("target_type")
+        state["target_ids"] = sec_meta.get("target_ids") or []
+        # 安全上下文跨轮次保留（confirm_security_plan 时 materializer 需要重放 preview）
+        state["security_context"] = sec_meta.get("context")
+
+    result_meta = latest("RESULT")
+    if result_meta:
+        state["analysis"] = result_meta.get("analysis")
+        # 未关闭 Finding 摘要由 result_analyzer 挂在 analysis 上，这里同步到顶层键。
+        state["security_finding_brief"] = (result_meta.get("analysis") or {}).get(
+            "security_findings", [],
+        ) or []
 
     exec_meta = latest("EXECUTION")
     if exec_meta:
         state["test_run_id"] = exec_meta.get("run_id")
         state["execution_result"] = exec_meta.get("run")
-
-    result_meta = latest("RESULT")
-    if result_meta:
-        state["analysis"] = result_meta.get("analysis")
 
     report_meta = latest("REPORT")
     if report_meta:
@@ -251,6 +268,31 @@ def persist_turn(
                 metadata={
                     "cases": cases,
                     "confirmed_case_ids": final.get("confirmed_case_ids", []),
+                    # 高风险确认待办（materializer / security_risk_confirm 写入），
+                    # 供刷新恢复后重建工作区按钮。
+                    "security_risk_pending": final.get("security_risk_pending"),
+                },
+            )
+        )
+
+    # 安全计划：preview 的预览项（确认前不落 TestCase）；人工确认后 materializer 追加
+    # TEST_CASES 消息，本消息留作「哪几条预览项被接受」的追溯。
+    if _points_changed(initial, final, "security_plan") or (
+        final.get("security_plan_id") != initial.get("security_plan_id")
+    ):
+        plan = final.get("security_plan") or {}
+        emitted.append(
+            append_message(
+                db, session.id, role="ASSISTANT", message_type="SECURITY_PLAN",
+                content=f"已生成安全计划（{len(plan.get('items') or [])} 条预览项，待确认）",
+                metadata={
+                    "plan": plan,
+                    "plan_id": final.get("security_plan_id"),
+                    "strategy_keys": final.get("security_strategy_keys") or [],
+                    "target_type": final.get("target_type"),
+                    "target_ids": final.get("target_ids") or [],
+                    # 持久化安全上下文，供跨轮次重建（confirm_security_plan 复用）
+                    "context": final.get("security_context"),
                 },
             )
         )

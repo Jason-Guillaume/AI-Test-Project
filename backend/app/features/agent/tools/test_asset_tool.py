@@ -22,6 +22,9 @@ from app.features.agent.schemas import TestCaseDraft, TestPointDraft
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.business.models.business_action import BusinessAction
 from app.features.business.models.business_flow import BusinessFlow
+from app.features.mock_management.models import MockEndpoint, MockScenario
+from app.features.mock_management.schemas import TestCaseMockCreate, TestCaseMocksReplace
+from app.features.mock_management.services.test_case_mock_service import TestCaseMockService
 from app.features.test_data.models.fixture import Fixture
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_point import TestPoint
@@ -42,6 +45,7 @@ from app.shared.errors import not_found
 _STRATEGY = StrategyService()
 _POINT = PointService()
 _CASE = CaseService()
+_MOCK_CASE = TestCaseMockService()
 
 # 被测对象类型 → 对应 id 列名（TestPoint / TestCase 两模型列名一致）。
 _TARGET_COLUMN_BY_TYPE = {
@@ -283,6 +287,55 @@ def _resolve_fixture_ids(db: Session, project_id: int, keys: list[str]) -> list[
     return ordered
 
 
+def _resolve_mock_refs(
+    db: Session, project_id: int, refs: list[Any],
+) -> list[TestCaseMockCreate]:
+    """校验 required_mocks 全部指向本项目已配置的 Scenario，返回可直接落库的声明。
+
+    与 ``required_fixtures`` 同粒度：任一 scenario 缺失或跨项目 → 404「当前缺少
+    Mock 场景 X」，**整条用例不落库**（已保存的前序用例保留，其他合法用例仍可保存）。
+    这里只校验引用并补全 service/endpoint 归属，绝不创建 Service / Endpoint /
+    Scenario，也不接触 Runtime Token。
+    """
+    ordered: list[int] = []
+    seen: set[int] = set()
+    scope_by_id: dict[int, str] = {}
+    for ref in refs or []:
+        sid = int(ref.mock_scenario_id)
+        scope_by_id[sid] = str(getattr(ref, "scope", "EXECUTION") or "EXECUTION")
+        if sid not in seen:
+            seen.add(sid)
+            ordered.append(sid)
+    if not ordered:
+        return []
+
+    rows = (
+        db.query(MockScenario)
+        .filter(MockScenario.id.in_(ordered), MockScenario.project_id == project_id)
+        .all()
+    )
+    found = {r.id: r for r in rows}
+    missing = [sid for sid in ordered if sid not in found]
+    if missing:
+        raise not_found(f"当前缺少 Mock 场景 {', '.join(str(s) for s in missing)}")
+
+    out: list[TestCaseMockCreate] = []
+    for i, sid in enumerate(ordered):
+        scenario = found[sid]
+        endpoint = db.get(MockEndpoint, scenario.mock_endpoint_id)
+        # scenario 与 endpoint 同表族，仍显式校验 project 归属，防止孤立 / 错绑行。
+        if endpoint is None or endpoint.project_id != project_id:
+            raise not_found(f"Mock 场景 {sid} 关联的接口不存在")
+        out.append(TestCaseMockCreate(
+            mock_service_id=endpoint.mock_service_id,
+            mock_endpoint_id=endpoint.id,
+            mock_scenario_id=sid,
+            scope=scope_by_id[sid],
+            sort=i,
+        ))
+    return out
+
+
 def save_cases(
     db: Session,
     project_id: int,
@@ -303,8 +356,9 @@ def save_cases(
         _validate_resource_ids(
             db, project_id, d.api_id, d.business_flow_id, d.business_action_id,
         )
-        # 先校验 Fixture 引用再建用例：key 缺失时整条不落库。
+        # 先校验 Fixture / Mock 引用再建用例：引用缺失时整条不落库。
         fixture_keys = _resolve_fixture_ids(db, project_id, d.required_fixtures or [])
+        mock_refs = _resolve_mock_refs(db, project_id, d.required_mocks or [])
         body = TestCaseCreate(
             name=d.name,
             description=d.description,
@@ -331,6 +385,10 @@ def save_cases(
                     ]
                 ),
                 actor=actor,
+            )
+        if mock_refs:
+            _MOCK_CASE.replace_case_mocks(
+                db, case_id, TestCaseMocksReplace(mocks=mock_refs), actor=actor,
             )
         for pre in d.preconditions:
             _CASE.create_precondition(db, case_id, pre, actor=actor)

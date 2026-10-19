@@ -31,12 +31,15 @@ from app.features.captcha.router import router as captcha_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
 from app.features.environment_configuration.router import router as environments_router
+from app.features.mock_management.router import router as mock_management_router
+from app.features.mock_management.runtime_router import router as mock_runtime_router
 from app.features.model_configuration.router import router as model_configs_router
 from app.features.notifications.router import router as notifications_router
 from app.features.notifications.channel_router import router as notification_channel_router
 from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
 from app.features.reports.router import router as reports_router
+from app.features.security_testing.router import router as security_testing_router
 from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
@@ -186,6 +189,13 @@ def create_app() -> FastAPI:
     application.include_router(environments_router, prefix=API_PREFIX)
     application.include_router(dashboard_router, prefix=API_PREFIX)
     application.include_router(test_data_router, prefix=API_PREFIX)
+    # Security Testing：只改请求与解释结果，执行仍走现有 RunService（开发计划 §16.1）。
+    application.include_router(security_testing_router, prefix=API_PREFIX)
+    # Mock Management：管理面（需平台 JWT）与执行面（X-Mock-Token）分离（§十四）。
+    # 执行面 router 自带 prefix=/mock，catch-all 挂在 /api/v1/mock 下，必须最后装配，
+    # 避免其 {path:path} 吞掉其它路由（/mock/ 与 /mock-services/ 不冲突）。
+    application.include_router(mock_management_router, prefix=API_PREFIX)
+    application.include_router(mock_runtime_router, prefix=API_PREFIX)
     return application
 
 

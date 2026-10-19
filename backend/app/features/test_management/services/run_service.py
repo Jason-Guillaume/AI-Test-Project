@@ -25,6 +25,7 @@ from app.features.business.executors.context import ExecutionContext
 from app.features.test_data.models.case_fixture import TestCaseFixture
 from app.features.test_data.models.fixture import Fixture
 from app.features.test_data.runtime.lifecycle import CleanupOutcome, LifecycleManager
+from app.features.mock_management.runtime.lifecycle import MockLifecycle
 from app.features.test_management.executors import test_case_executor
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
@@ -63,6 +64,7 @@ class RunService:
 
     def __init__(self) -> None:
         self._lifecycle = LifecycleManager()
+        self._mock = MockLifecycle()
 
     def create_and_execute_run(
         self, db: Session, plan_id: int, body: TestRunCreateRequest, *, actor: User,
@@ -132,6 +134,26 @@ class RunService:
             db.add(ce)
             db.flush()
 
+            # Mock 执行作用域激活（§二十三）：用例声明了 required_mocks 才创建 Context；
+            # 提交后才对 Mock Runtime 的独立会话可见。无声明时 mock_context_id 为 None，零影响。
+            mock_context_id: str | None = None
+            try:
+                mock_context_id = self._mock.activate_for_case(
+                    db, project_id=project_id, test_run_id=run.id,
+                    case_execution_id=ce.id, case_id=case.id,
+                )
+            except AppError as exc:
+                # 场景被删除 / 停用 / 越权引用：按 §二十二 记 ERROR + 原始错误码，
+                # 绝不中断整轮 TestRun（与下方 SETUP 失败同构）。activate 在校验阶段
+                # 就抛，此时 Context 行尚未创建，无需 deactivate。
+                self._fail_case(ce, exc)
+                self._bump_counter(run, ce.status)
+                db.commit()
+                continue
+            if mock_context_id:
+                db.commit()
+                db.refresh(ce)
+
             if prep_failed is not None:
                 self._fail_case(ce, prep_failed)
                 self._bump_counter(run, ce.status)
@@ -156,6 +178,7 @@ class RunService:
                             db, case_execution_id=ce.id, project_id=project_id, actor=actor,
                         ),
                     )
+                    self._mock.deactivate(db, mock_context_id)
                     db.commit()
                     continue
 
@@ -164,8 +187,12 @@ class RunService:
                     if (run_outputs or case_outputs) else None
                 )
                 try:
+                    # X-Mock-Context 随请求送到被测系统入口：Mock Runtime 靠它识别
+                    # 执行作用域并应用 scenario_overrides，缺它 Context 激活等于没生效。
                     result = test_case_executor.execute(
                         db, case, environment=environment, actor=actor, variables=variables,
+                        extra_headers=self._mock.context_headers(mock_context_id),
+                        run_id=run.id, case_execution_id=ce.id,
                     )
                 except Exception as exc:  # noqa: BLE001 — 单用例异常不应拖垮整轮。
                     result = test_case_executor.CaseExecutionResult(
@@ -191,6 +218,8 @@ class RunService:
                         db, case_execution_id=ce.id, project_id=project_id, actor=actor,
                     ),
                 )
+            # Mock 执行作用域关闭（§二十七：finally 必须关闭）；prep_failed 与正常路径都走这里。
+            self._mock.deactivate(db, mock_context_id)
             db.commit()
             db.refresh(ce)
 

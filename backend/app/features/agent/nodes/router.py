@@ -28,6 +28,8 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
     - execute：执行 → 进入执行
     - analyze：分析结果
     - regenerate_points / regenerate_cases：重新生成
+    - confirm_security_plan：确认安全计划 → 把预览项落成安全用例（人工按钮）
+    - confirm_security_risk：高风险用例人工确认（人工按钮，执行前必需）
     - confirm_report / skip_notification：报告 review 暂停点的两个出口（确认推送飞书
       或跳过通知，报告本身已落库）
     无 action（或 action=continue/query）= 新的自然语言消息，走 intent。
@@ -39,6 +41,12 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
         return "test_case_generator"
     if action == "confirm_cases":
         return "confirm_cases"
+    if action == "confirm_security_plan":
+        # 只由人工按钮触发：把 PlanService.preview 的预览项落成安全用例。
+        return "security_case_materializer"
+    if action == "confirm_security_risk":
+        # 同样只由人工触发；LLM 工具里没有这个参数（§13.2）。
+        return "security_risk_confirm"
     if action == "execute":
         return "execution"
     if action == "analyze":
@@ -58,6 +66,9 @@ def route_after_intent(ctx: NodeContext, state: AgentState) -> str:
     - 执行已有用例 → test_case_review（暂停点，人工选用例 + 环境）
     - 分析结果 → result_analyzer（直接分析最近一次执行）
     - 查询资产 → query（只读查询后结束）
+    - 安全测试生成 → security_context_loader（计划由代码生成，LLM 只选目标与策略）
+    - 执行安全测试 → security_case_loader（只列 case_type='SECURITY'，再停 test_case_review）
+    - 分析安全结果 → result_analyzer；查询 Finding → query（只读摘要，不含 evidence）
     - CLARIFY → END（澄清提问，不猜危险操作）
     """
     intent = state.get("intent")
@@ -67,9 +78,13 @@ def route_after_intent(ctx: NodeContext, state: AgentState) -> str:
         return "test_case_generator"
     if intent == "EXECUTE_EXISTING_CASES":
         return "test_case_review"
-    if intent == "ANALYZE_RESULT":
+    if intent == "GENERATE_SECURITY_TEST":
+        return "security_context_loader"
+    if intent == "EXECUTE_SECURITY_TEST":
+        return "security_case_loader"
+    if intent in ("ANALYZE_RESULT", "ANALYZE_SECURITY_RESULT"):
         return "result_analyzer"
-    if intent == "QUERY_TEST_ASSET":
+    if intent in ("QUERY_TEST_ASSET", "QUERY_SECURITY_FINDING"):
         return "query"
     return "clarify_end"
 

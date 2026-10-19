@@ -150,6 +150,8 @@ def send_message(
         case_ids=body.case_ids,
         environment_id=body.environment_id,
         channel_id=body.channel_id,
+        security_item_indexes=body.security_item_indexes,
+        security_case_ids=body.security_case_ids,
     )
 
     return {
@@ -179,12 +181,19 @@ _STAGE_ACTIONS: dict[str, list[str]] = {
     "COMPLETED": ["analyze"],
     "FAILED": ["regenerate_points", "regenerate_cases"],
     "CLARIFY": [],
+    # Phase F：安全计划已生成但未确认（用例还没落库）。
+    "SECURITY_PLAN_REVIEW": ["confirm_security_plan"],
 }
 
 
 def _build_workspace(state: AgentState, session) -> AgentWorkspace:
     """从最终 state 组装工作区快照（按 stage 决定 suggested_actions）。"""
     stage = state.get("current_stage") or session.current_stage
+    actions = list(_STAGE_ACTIONS.get(stage, []))
+    # 有待确认的高风险用例时才给「确认风险」按钮（否则点了只会提示没有待确认项）。
+    pending = state.get("security_risk_pending") or {}
+    if pending.get("count"):
+        actions.append("confirm_security_risk")
     return AgentWorkspace(
         stage=stage,
         intent=state.get("intent"),
@@ -198,5 +207,7 @@ def _build_workspace(state: AgentState, session) -> AgentWorkspace:
         report_brief=state.get("report_brief"),
         notification_brief=state.get("notification_brief"),
         error=state.get("error"),
-        suggested_actions=_STAGE_ACTIONS.get(stage, []),
+        security_plan=state.get("security_plan"),
+        security_findings=state.get("security_finding_brief", []),
+        suggested_actions=actions,
     )

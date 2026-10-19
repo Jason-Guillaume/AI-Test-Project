@@ -4,6 +4,7 @@
 - API：接口详情 + 所属业务动作 / 流程（若有绑定）
 - BUSINESS_FLOW：单次往返拿完整流程树（actions + 子配置 + 规则）
 - BUSINESS_ACTION：动作 → 流程详情 + 规则
+- Mock：本项目已配置的 Mock 场景清单（独立于目标，供 required_mocks 引用）
 
 所有上下文经 `sanitizer.sanitize_context()` 脱敏后入 prompt（§34）。
 """
@@ -17,7 +18,13 @@ from fastapi import HTTPException
 from app.features.agent.nodes._context import NodeContext
 from app.features.agent.providers.sanitizer import sanitize_context
 from app.features.agent.state import AgentState, set_error
-from app.features.agent.tools import api_catalog_tool, business_tool, fixture_tool, test_asset_tool
+from app.features.agent.tools import (
+    api_catalog_tool,
+    business_tool,
+    fixture_tool,
+    mock_tool,
+    test_asset_tool,
+)
 
 
 def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
@@ -50,6 +57,18 @@ def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
         }
     except Exception:  # noqa: BLE001 - 清单缺失只是让 Agent 拿不到建议，不应报错终止。
         fixtures_payload = {"available_fixtures": [], "available_fixtures_ok": False}
+
+    # 可用 Mock 清单同样独立加载：项目没配 Mock 时给空列表，不阻断意图流转。
+    mocks_payload: dict[str, Any]
+    try:
+        mocks_payload = {
+            "available_mocks": sanitize_context(
+                mock_tool.list_mock_scenarios(ctx.db, project_id, ctx.user)
+            ),
+            "available_mocks_ok": True,
+        }
+    except Exception:  # noqa: BLE001 - 同上：清单缺失不阻断其他意图。
+        mocks_payload = {"available_mocks": [], "available_mocks_ok": False}
 
     try:
         api_context = None
@@ -117,6 +136,7 @@ def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
             "strategy_context": sanitize_context(strategies.get("items", [])),
             "existing_test_context": sanitize_context(existing_test_context),
             **fixtures_payload,
+            **mocks_payload,
             "current_stage": "PLANNING",
         }
     except HTTPException as exc:

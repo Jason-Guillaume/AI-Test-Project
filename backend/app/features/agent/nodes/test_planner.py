@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.features.agent.nodes._context import NodeContext
+from app.features.agent.nodes.validator import assert_no_forbidden_fields
 from app.features.agent.providers.llm_provider import LLMError
 from app.features.agent.providers.sanitizer import sanitize_context
 from app.features.agent.schemas import TestPlanDraft
@@ -49,6 +50,7 @@ def test_planner_node(ctx: NodeContext, state: AgentState) -> dict:
         result = ctx.provider.generate_structured(
             _PLANNER_SYSTEM, user_content, kind="test_plan", history=state.get("messages"),
         )
+        assert_no_forbidden_fields(result)
         plan = TestPlanDraft.model_validate(result)
         return {"test_plan": plan.model_dump(), "current_stage": "TEST_POINT_REVIEW"}
     except LLMError as exc:
