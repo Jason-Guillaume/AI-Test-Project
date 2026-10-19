@@ -5,6 +5,10 @@
   failed/error/skipped、pass_rate（passed/(total-skipped)*100，分母 0 记 0）、总耗时、
   失败分类（§七）、风险等级（§八）；LLM 只负责总结 / 风险解释 / 失败聚类 / 建议。
 - 报告只存汇总 + AI 总结 + 风险 + 元数据；明细实时读取 CaseExecution（§四，不复制快照）。
+- summary JSON 含 failure_clusters / case_failure_types / mock_summary（§六十二：本次执行
+  触发的 Mock 服务数 / 场景数 / 调用数 / 失败调用数，仅计数与键名，不复制快照）
+  与 security（§14：安全执行五态计数 + 未关闭 Finding 严重级别分布 + top 5 Finding，
+  数字全部由代码从 security_execution / security_finding 取，不经 LLM；无安全用例时为 null）。
 - 幂等：同一 test_run_id 已有 COMPLETED 报告时默认返回已有；regenerate=true 仅重生成 AI 总结（§二九）。
 - AI 总结失败不影响基础报告：报告仍 COMPLETED，ai_summary 置空（§九）。
 
@@ -14,6 +18,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime
 from typing import Any
 
@@ -21,6 +26,11 @@ from sqlalchemy.orm import Session
 
 from app.features.agent.providers.sanitizer import sanitize_context, sanitize_text
 from app.features.mock_management.models import MockExecution, MockScenario, MockService
+from app.features.security_testing.models import SecurityExecution, SecurityFinding
+from app.features.security_testing.schemas import (
+    FINDING_OPEN_STATUSES,
+    SEVERITY_LEVELS,
+)
 from app.features.reports.models.report import TestReport
 from app.features.reports.schemas import (
     CaseExecutionSummary,
@@ -57,6 +67,19 @@ _DATA_SIGNALS = (
     "数据", "参数", "变量", "缺少", "无效", "缺失", "非法",
     "data", "variable", "param", "missing", "invalid", "required field",
 )
+
+#: 风险档位由低到高；用作 max() 时顺序即优先级。
+_RISK_LEVELS = ("LOW", "MEDIUM", "HIGH", "CRITICAL")
+
+
+def max_severity(*levels: str) -> str:
+    """取最高的风险 / 严重级别；未知取值按 LOW 处理。"""
+    best = "LOW"
+    for level in levels:
+        name = str(level or "").upper()
+        if name in _RISK_LEVELS and _RISK_LEVELS.index(name) > _RISK_LEVELS.index(best):
+            best = name
+    return best
 
 
 class ReportService:
@@ -117,9 +140,12 @@ class ReportService:
 
         rows = self._rows_for_run(db, test_run_id)
         try:
-            stats, summary, duration_ms, risk = self._analyze(rows)
+            stats, summary, duration_ms, risk = self._analyze(db, rows, test_run_id)
             # Mock Summary（§六十二）：与统计同步写入 summary JSON，不可变。
             summary["mock_summary"] = self._mock_summary(db, test_run_id)
+            # Security Summary（§14）：与 Mock Summary 同一位置，独立于 AI 总结——
+            # AI 失败只影响 ai_summary，security 计数已在此写入 summary，不受影响。
+            summary["security"] = self._security_summary(db, test_run_id, rows)
             report.total_cases = stats["total"]
             report.passed_cases = stats["passed"]
             report.failed_cases = stats["failed"]
@@ -347,8 +373,89 @@ class ReportService:
             ],
         }
 
+    def _open_findings_for_run(self, db: Session, test_run_id: int | None) -> list[SecurityFinding]:
+        """本次 Run 的未关闭 Finding（OPEN + CONFIRMED）。"""
+        if test_run_id is None:
+            return []
+        return (
+            db.query(SecurityFinding)
+            .filter(
+                SecurityFinding.test_run_id == test_run_id,
+                SecurityFinding.status.in_(list(FINDING_OPEN_STATUSES)),
+            )
+            .order_by(SecurityFinding.id.asc())
+            .all()
+        )
+
+    def _security_summary(
+        self, db: Session, test_run_id: int | None,
+        rows: list[tuple[CaseExecution, TestCase | None]],
+    ) -> dict[str, Any] | None:
+        """安全摘要（§14）：没有安全用例时返回 None（旧报告前端读到 null 不报错）。
+
+        口径全部来自代码：
+        - cases = 本 Run 里 case_type='SECURITY' 的用例执行数；
+        - pass / inconclusive / failed_execution / skipped 来自 security_execution 五态；
+        - potential_issues 与 findings 来自未关闭 Finding（两者互不自洽：前者是条数，
+          后者是同批 Finding 的严重级别分布）；
+        - top_findings 最多 5 条、按严重级别降序，**不含 evidence 正文**——详情页从
+          Finding API 按需拉证据。
+        """
+        if test_run_id is None:
+            return None
+        security_cases = [
+            ce for ce, case in rows
+            if case is not None and str(case.case_type or "").upper() == "SECURITY"
+        ]
+        if not security_cases:
+            return None
+
+        executions = (
+            db.query(SecurityExecution)
+            .filter(SecurityExecution.test_run_id == test_run_id)
+            .all()
+        )
+        results = Counter(str(e.security_result or "").upper() for e in executions)
+        findings = self._open_findings_for_run(db, test_run_id)
+
+        severity_counts = {level: 0 for level in SEVERITY_LEVELS}
+        for finding in findings:
+            key = str(finding.severity or "").upper()
+            severity_counts[key] = severity_counts.get(key, 0) + 1
+
+        top = sorted(
+            findings,
+            key=lambda f: (
+                SEVERITY_LEVELS.index(str(f.severity).upper())
+                if str(f.severity).upper() in SEVERITY_LEVELS
+                else len(SEVERITY_LEVELS),
+                f.id,
+            ),
+        )[:5]
+
+        return {
+            "cases": len(security_cases),
+            "pass": results.get("PASS", 0),
+            "potential_issues": len(findings),
+            "inconclusive": results.get("INCONCLUSIVE", 0),
+            "failed_execution": results.get("FAILED_EXECUTION", 0),
+            "skipped": results.get("SKIPPED", 0),
+            "findings": severity_counts,
+            "top_findings": [
+                {
+                    "id": f.id,
+                    "severity": f.severity,
+                    "title": f.title,
+                    "api_id": f.api_id,
+                    "mutation_type": f.mutation_type,
+                }
+                for f in top
+            ],
+        }
+
     def _analyze(
-        self, rows: list[tuple[CaseExecution, TestCase | None]],
+        self, db: Session,
+        rows: list[tuple[CaseExecution, TestCase | None]], test_run_id: int | None,
     ) -> tuple[dict[str, Any], dict[str, Any], int, str]:
         """代码统计：计数 / 通过率 / 总耗时 / 失败分类 / 风险等级。
 
@@ -393,7 +500,7 @@ class ReportService:
             ],
             "case_failure_types": case_failure_types,
         }
-        risk = self._compute_risk(rows)
+        risk = self._compute_risk(rows, self._open_findings_for_run(db, test_run_id))
         return stats, summary, duration_ms, risk
 
     def _classify_failure(self, ce: CaseExecution, case: TestCase | None) -> str:
@@ -422,14 +529,26 @@ class ReportService:
             return "ASSERTION_FAILURE"
         return "UNKNOWN"
 
-    def _compute_risk(self, rows: list[tuple[CaseExecution, TestCase | None]]) -> str:
+    def _compute_risk(
+        self, rows: list[tuple[CaseExecution, TestCase | None]],
+        findings: list[SecurityFinding] | None = None,
+    ) -> str:
         """风险等级（§八）：由代码规则决定，AI 仅提供解释。
 
         - 全部通过 → LOW
         - 权限/鉴权类（PERMISSION/SECURITY）P0 失败 → CRITICAL
         - 其余 P0 失败 → HIGH
         - 仅 P1/P2/P3 失败 → MEDIUM
+        - 安全 Finding 下限（§14）：存在未关闭（OPEN / CONFIRMED）的 CRITICAL Finding
+          → 至少 CRITICAL；HIGH → 至少 HIGH；MEDIUM → 至少 MEDIUM。Finding 不依赖用例
+          是否 FAIL（基线可能仍 PASSED），所以下限独立于上面的失败规则。
         """
+        risk = self._failure_risk(rows)
+        floor = self._finding_floor(findings or [])
+        return max_severity(risk, floor)
+
+    def _failure_risk(self, rows: list[tuple[CaseExecution, TestCase | None]]) -> str:
+        """用例失败规则（§八）：与 Finding 下限无关的原有四档。"""
         failed_rows = [(ce, case) for ce, case in rows if ce.status in ("FAILED", "ERROR")]
         if not failed_rows:
             return "LOW"
@@ -442,6 +561,18 @@ class ReportService:
         if any(case is not None and case.priority == "P0" for ce, case in failed_rows):
             return "HIGH"
         return "MEDIUM"
+
+    @staticmethod
+    def _finding_floor(findings: list[SecurityFinding]) -> str:
+        """未关闭 Finding 带来的风险下限（§14），由代码计算。"""
+        severities = {str(f.severity or "").upper() for f in findings}
+        if "CRITICAL" in severities:
+            return "CRITICAL"
+        if "HIGH" in severities:
+            return "HIGH"
+        if "MEDIUM" in severities:
+            return "MEDIUM"
+        return "LOW"
 
     def _gen_report_no(self, db: Session) -> str:
         """生成稳定编号 RPT-YYYYMMDD-NNNNNN（按当日已存在报告数 +1）。"""
@@ -506,6 +637,8 @@ class ReportService:
             "failure_clusters": (report.summary or {}).get("failure_clusters", []) or [],
             # Mock Summary 只有计数与 service_key / scenario_key，无快照，可安全进 LLM。
             "mock_summary": (report.summary or {}).get("mock_summary") or {},
+            # Security Summary 只有计数与标题（top_findings 不含 evidence），可安全进 LLM。
+            "security_summary": (report.summary or {}).get("security") or {},
             "failed_cases": failed_cases,
         }
         # 进 LLM 前整体脱敏（§三一、§敏感数据）。

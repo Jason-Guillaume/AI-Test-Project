@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.features.agent.nodes._context import NodeContext
+from app.features.agent.nodes.validator import assert_no_forbidden_fields
 from app.features.agent.providers.llm_provider import LLMError
 from app.features.agent.prompts import load_prompt
 from app.features.agent.providers.sanitizer import sanitize_context
@@ -46,6 +47,7 @@ def test_point_generator_node(ctx: NodeContext, state: AgentState) -> dict:
             load_prompt("test_point"), user_content, kind="test_points",
             history=state.get("messages"),
         )
+        assert_no_forbidden_fields(result)
         draft_list = TestPointDraftList.model_validate(result)
 
         # 去重：与已有测试点 semantic_key 相同的跳过（保留生成顺序）。

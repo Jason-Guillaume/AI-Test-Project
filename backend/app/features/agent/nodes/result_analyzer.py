@@ -16,16 +16,30 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.features.agent.nodes._context import NodeContext
+from app.features.agent.nodes.validator import assert_no_forbidden_fields
 from app.features.agent.providers.llm_provider import LLMError
 from app.features.agent.prompts import load_prompt
 from app.features.agent.providers.sanitizer import sanitize_context
 from app.features.agent.schemas import ResultAnalysis
 from app.features.agent.state import AgentState, set_error
-from app.features.agent.tools import execution_tool
+from app.features.agent.tools import execution_tool, security_tool
 
 
 def _dump(obj) -> str:
     return json.dumps(sanitize_context(obj), ensure_ascii=False, default=str)
+
+
+def _load_security_findings(ctx: NodeContext, state: AgentState, run_id: int) -> list[dict]:
+    """本 Run 的未关闭 Finding 摘要（脱敏、不含 evidence）。
+
+    读失败不影响执行结果分析本身：Finding 是附加信息，不是分析的输入依赖。
+    """
+    try:
+        return security_tool.open_findings_brief(
+            ctx.db, state["project_id"], ctx.user, test_run_id=run_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return []
 
 
 def result_analyzer_node(ctx: NodeContext, state: AgentState) -> dict:
@@ -42,16 +56,26 @@ def result_analyzer_node(ctx: NodeContext, state: AgentState) -> dict:
         run = execution_tool.get_test_run(ctx.db, run_id, ctx.user, project_id=project_id)
         executions = execution_tool.get_case_executions(ctx.db, run_id, ctx.user, project_id=project_id)
 
+        findings = _load_security_findings(ctx, state, run_id)
+
         user_content = (
             "## 执行记录\n" + _dump(run) + "\n\n"
-            "## 逐用例执行详情\n" + _dump(executions.get("items", []))
+            "## 逐用例执行详情\n" + _dump(executions.get("items", [])) + "\n\n"
+            "## 本次执行的未关闭安全 Finding（仅供复核，不代表已确认漏洞）\n" + _dump(findings)
         )
         result = ctx.provider.generate_structured(
             load_prompt("result_analysis"), user_content, kind="result_analysis",
             history=state.get("messages"),
         )
+        assert_no_forbidden_fields(result)
         analysis = ResultAnalysis.model_validate(result)
-        return {"analysis": analysis.model_dump(), "current_stage": "COMPLETED"}
+        return {
+            # security_findings 从代码路径（Finding 表）来，不来自 LLM：LLM 的 numbers
+            # 不可信，Finding 状态也不能由 LLM 改写（§二十四）。
+            "analysis": {**analysis.model_dump(), "security_findings": findings},
+            "security_finding_brief": findings,
+            "current_stage": "COMPLETED",
+        }
     except LLMError as exc:
         return set_error(state, exc.code, str(exc))
     except (ValueError, ValidationError) as exc:

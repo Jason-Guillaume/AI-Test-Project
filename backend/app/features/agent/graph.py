@@ -33,6 +33,14 @@ from app.features.agent.nodes.notification_sender import notification_sender_nod
 from app.features.agent.nodes.report_generator import report_generator_node
 from app.features.agent.nodes.report_review import report_review_node
 from app.features.agent.nodes.result_analyzer import result_analyzer_node
+from app.features.agent.nodes.security_context import security_context_loader_node
+from app.features.agent.nodes.security_plan import (
+    security_case_loader_node,
+    security_case_materializer_node,
+    security_plan_generator_node,
+    security_plan_review_node,
+    security_risk_confirm_node,
+)
 from app.features.agent.nodes.router import (
     confirm_cases_node,
     route_after_intent,
@@ -63,6 +71,21 @@ def _error_guard(ok_next: str):
     return route
 
 
+def _clarify_guard(ok_next: str):
+    """条件边工厂：error 或 CLARIFY 都短路到 END。
+
+    安全上下文加载器遇到多目标时返回澄清而不置 error——它需要一条单独的出口，
+    否则澄清会被继续路由到计划生成，变成「缺少安全上下文」的错误。
+    """
+
+    def route(ctx: NodeContext, state: AgentState) -> str:
+        if state.get("error"):
+            return "end"
+        return "end" if state.get("current_stage") == "CLARIFY" else ok_next
+
+    return route
+
+
 def build_graph(ctx: NodeContext):
     """构造并编译 Agent 工作流图（每次 invoke 前重建，绑定本次 ctx）。"""
     graph = StateGraph(AgentState)
@@ -84,6 +107,13 @@ def build_graph(ctx: NodeContext):
     graph.add_node("report_review", partial(report_review_node, ctx))
     graph.add_node("notification_sender", partial(notification_sender_node, ctx))
     graph.add_node("query", partial(query_node, ctx))
+    # 安全测试链（Phase F，§13.2）：上下文 → 代码生成计划 →[暂停]计划 review
+    graph.add_node("security_context_loader", partial(security_context_loader_node, ctx))
+    graph.add_node("security_plan_generator", partial(security_plan_generator_node, ctx))
+    graph.add_node("security_plan_review", partial(security_plan_review_node, ctx))
+    graph.add_node("security_case_materializer", partial(security_case_materializer_node, ctx))
+    graph.add_node("security_case_loader", partial(security_case_loader_node, ctx))
+    graph.add_node("security_risk_confirm", partial(security_risk_confirm_node, ctx))
 
     graph.add_edge(START, "router")
 
@@ -96,6 +126,8 @@ def build_graph(ctx: NodeContext):
         "result_analyzer": "result_analyzer",
         "test_point_generator": "test_point_generator",
         "notification_sender": "notification_sender",
+        "security_case_materializer": "security_case_materializer",
+        "security_risk_confirm": "security_risk_confirm",
     })
     # 意图路由：按识别出的意图选择下一节点。
     graph.add_conditional_edges("intent", partial(route_after_intent, ctx), {
@@ -103,6 +135,8 @@ def build_graph(ctx: NodeContext):
         "test_case_review": "test_case_review",
         "result_analyzer": "result_analyzer",
         "query": "query",
+        "security_context_loader": "security_context_loader",
+        "security_case_loader": "security_case_loader",
         "clarify_end": END,
     })
 
@@ -137,6 +171,27 @@ def build_graph(ctx: NodeContext):
     graph.add_edge("test_case_review", END)
     graph.add_edge("confirm_cases", END)
 
+    # 安全测试链：计划由代码生成（LLM 只选目标与策略），review 前不落 TestCase；
+    # 人工 confirm_security_plan 才落库，随后复用 test_case_review 暂停点。
+    graph.add_conditional_edges(
+        "security_context_loader", partial(_clarify_guard("security_plan_generator"), ctx),
+        {"security_plan_generator": "security_plan_generator", "end": END},
+    )
+    graph.add_conditional_edges(
+        "security_plan_generator", partial(_error_guard("security_plan_review"), ctx),
+        {"security_plan_review": "security_plan_review", "end": END},
+    )
+    graph.add_edge("security_plan_review", END)
+    graph.add_conditional_edges(
+        "security_case_materializer", partial(_error_guard("test_case_review"), ctx),
+        {"test_case_review": "test_case_review", "end": END},
+    )
+    graph.add_conditional_edges(
+        "security_case_loader", partial(_error_guard("test_case_review"), ctx),
+        {"test_case_review": "test_case_review", "end": END},
+    )
+    graph.add_edge("security_risk_confirm", END)
+
     # 执行链：执行 → 分析 → 报告生成 →[暂停]报告 review → 通知发送
     # （报告为执行后的正式产物，自动生成；是否推送飞书由人工在 report_review 确认）
     graph.add_conditional_edges(
@@ -156,7 +211,10 @@ def build_graph(ctx: NodeContext):
     graph.add_edge("query", END)
 
     return graph.compile(
-        interrupt_before=["test_point_review", "test_case_review", "report_review"],
+        # security_plan_review：安全计划已生成但未确认，用例还没落库（Phase F，§13.2）。
+        interrupt_before=[
+            "test_point_review", "test_case_review", "report_review", "security_plan_review",
+        ],
     )
 
 
@@ -170,6 +228,8 @@ _ACTION_LABELS: dict[str, str] = {
     "regenerate_cases": "重新生成测试用例",
     "confirm_report": "确认报告并发送飞书通知",
     "skip_notification": "跳过飞书通知",
+    "confirm_security_plan": "确认安全计划",
+    "confirm_security_risk": "确认高风险用例",
 }
 
 
@@ -190,6 +250,8 @@ def run_agent(
     case_ids: list[int] | None = None,
     environment_id: int | None = None,
     channel_id: int | None = None,
+    security_item_indexes: list[int] | None = None,
+    security_case_ids: list[int] | None = None,
 ) -> tuple[AgentState, list[AgentMessage]]:
     """单次请求编排：重建 state → 注入输入 → invoke → 持久化 → 返回。
 
@@ -211,6 +273,9 @@ def run_agent(
             "case_ids": case_ids,
             "environment_id": environment_id,
             "channel_id": channel_id,
+            # Phase F：安全计划确认（预览项 index）与高风险确认（TestCase id）。
+            "security_item_indexes": security_item_indexes,
+            "security_case_ids": security_case_ids,
         }
         session_service.append_message(
             db, session.id, role="USER", message_type="TEXT",

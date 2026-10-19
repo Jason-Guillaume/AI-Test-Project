@@ -64,6 +64,14 @@ class AgentState(TypedDict, total=False):
     notification_record_id: int | None  # 最近一次飞书发送记录ID
     notification_brief: dict[str, Any] | None  # 通知结果（status/error_message/skipped/channel_name）
 
+    # --- 安全测试（Phase F，§十三）---
+    security_context: dict[str, Any] | None  # API/业务/Fixture/策略/未关闭 Finding 摘要（已脱敏）
+    security_plan: dict[str, Any] | None  # PlanService.preview 的预览项（确认前不落 TestCase）
+    security_plan_id: int | None  # PlanService.preview 写入的 DRAFT 计划ID（确认后才落 TestCase）
+    security_strategy_keys: list[str]  # 意图解析出的策略 strategy_key（只能取自已加载清单）
+    security_finding_brief: list[dict[str, Any]]  # 未关闭 Finding 摘要（脱敏，最多 20 条）
+    security_risk_pending: dict[str, Any] | None  # 待高风险确认的用例（{count, case_ids, message}）
+
     # --- 控制 ---
     current_stage: str
     error: dict[str, Any] | None  # {"code": ..., "message": ...}
@@ -104,6 +112,12 @@ def make_initial_state(project_id: int, user_id: int | None, session_id: int | N
         report_brief=None,
         notification_record_id=None,
         notification_brief=None,
+        security_context=None,
+        security_plan=None,
+        security_plan_id=None,
+        security_strategy_keys=[],
+        security_finding_brief=[],
+        security_risk_pending=None,
         current_stage="UNDERSTANDING",
         error=None,
         messages=[],
@@ -130,8 +144,12 @@ def is_review_stage(stage: str) -> bool:
     """阶段是否为 human review 暂停点（需人工确认才推进）。
 
     REPORT_REVIEW：报告已落库，人工确认后才触发飞书通知（不自动推送）。
+    SECURITY_PLAN_REVIEW：安全计划已生成，人工确认后才写入 TestCase（不自动落库）。
     """
-    return stage in ("TEST_POINT_REVIEW", "TEST_CASE_REVIEW", "READY_TO_EXECUTE", "REPORT_REVIEW")
+    return stage in (
+        "TEST_POINT_REVIEW", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
+        "REPORT_REVIEW", "SECURITY_PLAN_REVIEW",
+    )
 
 
 # 合法阶段集合（供校验）。

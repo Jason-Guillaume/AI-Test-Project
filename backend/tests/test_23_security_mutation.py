@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -96,6 +97,24 @@ from app.shared.errors import (
 from tests.conftest import BACKEND_DIR
 
 RUNTIME_DIR = BACKEND_DIR / "app" / "features" / "security_testing" / "runtime"
+
+#: 执行器所在模块。runtime 里只有 runner.py 允许引用它。
+_EXECUTOR_MODULE = "app.features.business.executors.api_executor"
+
+
+def _imports_executor(path: Path) -> bool:
+    """这个文件是否真的 import 了请求执行器（只看 AST，不含注释/docstring）。"""
+    tree = ast.parse(path.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            refs = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            refs = [node.module or ""]
+        else:
+            continue
+        if any(ref == _EXECUTOR_MODULE or ref.startswith(_EXECUTOR_MODULE + ".") for ref in refs):
+            return True
+    return False
 
 # 一个真实样子的 Bearer Token，用来验证脱敏与「不被伪造」两条断言。
 TOKEN = "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyLTAwMSJ9.c2ln"
@@ -200,23 +219,50 @@ def _fields_for(rule: MutationRuleView, spec: FieldSpec) -> list[FieldSpec]:
 
 
 class TestSourceGuards:
-    """§6.3：引擎是纯函数，禁止出站、查库、eval。"""
+    """§6.3：引擎是纯函数，禁止出站、查库、eval。
+
+    ``runner.py`` 是文档化的唯一例外（§21 Phase E）：它负责查库、写 execution、
+    调 ``ApiRequestExecutor``。变异、断言、严重级别仍然是纯函数。对 runner 单独
+    断言「不直接 import httpx」——出站必须经由执行器，不能自己拼 httpx 调用。
+    """
 
     def test_runtime_modules_do_no_http_db_or_eval(self) -> None:
         for path in sorted(RUNTIME_DIR.glob("*.py")):
+            is_runner = path.name == "runner.py"
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     roots = [alias.name.split(".")[0] for alias in node.names]
                     assert "httpx" not in roots, f"{path.name} 直接 import httpx"
-                    assert "sqlalchemy" not in roots, f"{path.name} 直接 import sqlalchemy"
+                    if not is_runner:
+                        assert "sqlalchemy" not in roots, f"{path.name} 直接 import sqlalchemy"
                 elif isinstance(node, ast.ImportFrom):
                     root = (node.module or "").split(".")[0]
-                    assert root not in {"httpx", "sqlalchemy"}, f"{path.name} import {root}"
+                    assert root not in {"httpx"}, f"{path.name} import {root}"
+                    if not is_runner:
+                        assert root not in {"sqlalchemy"}, f"{path.name} import {root}"
                 elif isinstance(node, ast.Call):
                     func = node.func
                     if isinstance(func, ast.Name) and func.id in {"eval", "exec", "compile"}:
                         pytest.fail(f"{path.name} 调用了 {func.id}()")
+
+    def test_runner_is_the_only_outbound_module(self) -> None:
+        """出站执行器只允许 runner.py 引用；其余模块必须保持纯函数。
+
+        按 AST 看 import，不做全文子串匹配：``baseline`` / ``types`` / ``replay`` 的
+        docstring 会提到执行器名，只为说明字段与超时和谁对齐，那不是依赖。
+        """
+        offenders = [
+            path.name
+            for path in sorted(RUNTIME_DIR.glob("*.py"))
+            if path.name != "runner.py"
+            and _imports_executor(path)
+        ]
+        assert offenders == [], f"只有 runner.py 可以引用执行器：{offenders}"
+
+    def test_runner_imports_the_executor(self) -> None:
+        """runner 必须真的接上执行器，否则所有闸门都只拦自己。"""
+        assert _imports_executor(RUNTIME_DIR / "runner.py")
 
     def test_no_result_value_uses_vulnerable(self) -> None:
         """§5.6：结果只用五态，不使用「已确认漏洞」。"""

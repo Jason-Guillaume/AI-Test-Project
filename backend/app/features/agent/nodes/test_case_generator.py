@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.features.agent.nodes._context import NodeContext
+from app.features.agent.nodes.validator import assert_no_forbidden_fields
 from app.features.agent.providers.llm_provider import LLMError
 from app.features.agent.prompts import load_prompt
 from app.features.agent.providers.sanitizer import sanitize_context
@@ -58,6 +59,7 @@ def test_case_generator_node(ctx: NodeContext, state: AgentState) -> dict:
             load_prompt("test_case"), user_content, kind="test_cases",
             history=state.get("messages"),
         )
+        assert_no_forbidden_fields(result)
         draft_list = TestCaseDraftList.model_validate(result)
         cases = [c.model_dump() for c in draft_list.cases]
         return {

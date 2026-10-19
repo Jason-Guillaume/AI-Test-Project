@@ -62,6 +62,7 @@ import type {
   ReportFailureType,
   ReportRiskLevel,
   ReportStatus,
+  SecuritySummary,
 } from '@/types';
 
 const riskLabel = (v: ReportRiskLevel) =>
@@ -146,6 +147,97 @@ function AiSummaryPanel({ summary }: { summary: Record<string, unknown> | null }
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 安全摘要卡片：仅在 summary.security 存在时渲染。
+ * 文案统一「疑似问题」，不写「已发现漏洞」；top_findings 不含 evidence 正文。
+ */
+function SecuritySummaryCard({ summary }: { summary: Record<string, unknown> | null }) {
+  const sec = (summary?.security as SecuritySummary | undefined) ?? null;
+  if (!sec) return null; // 无安全用例的旧报告不渲染该卡片。
+
+  const severityLabel: Record<string, string> = {
+    INFO: '提示',
+    LOW: '低',
+    MEDIUM: '中',
+    HIGH: '高',
+    CRITICAL: '严重',
+  };
+  const severityColor: Record<string, string> = {
+    INFO: 'default',
+    LOW: 'blue',
+    MEDIUM: 'orange',
+    HIGH: 'red',
+    CRITICAL: 'volcano',
+  };
+
+  return (
+    <Card size="small" style={{ marginBottom: 16, background: '#fff1f0' }}>
+      <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
+        <Typography.Text strong>安全摘要（疑似问题）</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          统计由代码从安全执行与未关闭疑似问题计算，不经 AI。
+        </Typography.Text>
+      </Flex>
+      <Row gutter={16}>
+        <Col span={4}>
+          <Statistic title="安全用例" value={sec.cases} />
+        </Col>
+        <Col span={4}>
+          <Statistic title="通过" value={sec.pass} valueStyle={{ color: '#52c41a' }} />
+        </Col>
+        <Col span={4}>
+          <Statistic
+            title="疑似问题"
+            value={sec.potential_issues}
+            valueStyle={{ color: '#cf1322' }}
+          />
+        </Col>
+        <Col span={4}>
+          <Statistic title="不确定" value={sec.inconclusive} />
+        </Col>
+        <Col span={4}>
+          <Statistic title="执行失败" value={sec.failed_execution} />
+        </Col>
+        <Col span={4}>
+          <Statistic title="跳过" value={sec.skipped} />
+        </Col>
+      </Row>
+      <Divider style={{ margin: '12px 0' }} />
+      <Flex gap="small" wrap>
+        {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'] as const).map((lv) => (
+          <Tag key={lv} color={severityColor[lv] ?? 'default'}>
+            {severityLabel[lv] ?? lv}：{sec.findings?.[lv] ?? 0}
+          </Tag>
+        ))}
+      </Flex>
+      {sec.top_findings && sec.top_findings.length > 0 && (
+        <>
+          <Typography.Text strong style={{ display: 'block', marginTop: 12 }}>
+            疑似问题 Top（不含证据正文）
+          </Typography.Text>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+            {sec.top_findings.map((f) => (
+              <li key={f.id} style={{ lineHeight: 1.7 }}>
+                <Tag color={severityColor[f.severity] ?? 'default'}>{severityLabel[f.severity] ?? f.severity}</Tag>
+                <Typography.Text>{f.title}</Typography.Text>
+                <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
+                  {f.mutation_type}
+                </Typography.Text>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginTop: 12 }}
+        message="疑似问题需人工确认，不等于已发现漏洞；证据请到「安全测试 · 疑似问题」查看。"
+      />
+    </Card>
   );
 }
 
@@ -453,6 +545,8 @@ export function ConsoleReportDetailPage() {
           message="统计字段由系统代码计算且不可变，AI 只负责总结、风险解释与失败聚类。"
         />
       </Card>
+
+      <SecuritySummaryCard summary={report.summary} />
 
       <Tabs
         items={[

@@ -596,3 +596,233 @@ class SecurityStrategyListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# --------------------------------------------------------------------------- 计划（Phase E）
+
+#: 单次 preview 允许选的策略上限。
+MAX_STRATEGY_IDS = 50
+
+
+class PlanPreviewRequest(BaseModel):
+    """生成安全计划预览：三者必须且只能给一个目标。"""
+
+    baseline_case_id: int | None = None
+    api_id: int | None = None
+    business_action_id: int | None = None
+    strategy_ids: list[int] = Field(..., min_length=1, max_length=MAX_STRATEGY_IDS)
+    environment_id: int | None = None
+    name: str | None = Field(None, max_length=200)
+
+    @field_validator("strategy_ids")
+    @classmethod
+    def _dedupe(cls, value: list[int]) -> list[int]:
+        return list(dict.fromkeys(value))
+
+
+class PlanPreviewItem(BaseModel):
+    """预览里的一条计划项，形状即 §16.3。"""
+
+    index: int
+    name: str
+    mutation_type: str
+    target_type: str = "API"
+    api_id: int | None = None
+    business_action_id: int | None = None
+    method: str | None = None
+    location: str | None = None
+    field: str | None = None
+    expectation: str = "EXPECTED_DENY"
+    expected_status_codes: list[int] | None = None
+    severity: str = "MEDIUM"
+    risk_level: str | None = None
+    confirmation_required: bool = False
+    blocked_reason: str | None = None
+    mutation_config: dict[str, Any] = Field(default_factory=dict)
+    source_rule_id: int | None = None
+    source_strategy_id: int | None = None
+
+
+class PlanPreviewResponse(BaseModel):
+    plan_id: int
+    status: str = "DRAFT"
+    estimated_count: int
+    truncated: bool = False
+    items: list[PlanPreviewItem] = Field(default_factory=list)
+    # 按 API / 业务动作目标生成时解析出的基线用例：计划 review 需要让用户看清
+    # 变异会在哪条基线上做，而不只是看到策略与算子。
+    baseline_case_id: int | None = None
+    baseline_case_name: str | None = None
+
+
+class PlanConfirmRequest(BaseModel):
+    """确认哪些预览项要落成用例；空列表表示一条都不要。"""
+
+    accepted_item_indexes: list[int] = Field(default_factory=list, max_length=200)
+    plan_name: str | None = Field(None, max_length=200)
+
+
+class PlanConfirmResponse(BaseModel):
+    plan_id: int
+    status: str
+    created_case_ids: list[int] = Field(default_factory=list)
+    created_count: int
+    skipped_count: int
+
+
+class SecurityPlanRead(_ORM):
+    """计划响应，含未落 TestCase 的预览快照。"""
+
+    id: int
+    project_id: int
+    name: str
+    target_type: str
+    api_id: int | None = None
+    baseline_case_id: int | None = None
+    business_action_id: int | None = None
+    strategy_ids: list[int] | None = None
+    status: str
+    preview_json: Any = None
+    estimated_count: int
+    environment_id: int | None = None
+    created_by: int | None = None
+    confirmed_by: int | None = None
+    confirmed_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    revision: int = 1
+
+
+# --------------------------------------------------------------------------- 用例（Phase E）
+
+
+class SecurityCaseRead(_ORM):
+    """安全用例扩展数据响应。"""
+
+    id: int
+    project_id: int
+    test_case_id: int
+    plan_id: int | None = None
+    baseline_case_id: int | None = None
+    strategy_id: int | None = None
+    rule_id: int | None = None
+    api_id: int | None = None
+    business_action_id: int | None = None
+    mutation_type: str
+    mutation_config: dict[str, Any] = Field(default_factory=dict)
+    security_expectation: str
+    risk_level: str | None = None
+    confirmation_required: bool
+    confirmed_by: int | None = None
+    confirmed_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SecurityCaseUpdate(BaseModel):
+    """只允许改启用状态，同步 test_case.enabled。"""
+
+    enabled: bool
+
+
+class SecurityCaseDetail(SecurityCaseRead):
+    """用例详情：带基线引用、最近一次执行与目标接口名。"""
+
+    enabled: bool = True
+    case_name: str | None = None
+    baseline_case_name: str | None = None
+    api_name: str | None = None
+    rule_name: str | None = None
+    latest_execution: SecurityExecutionRead | None = None
+
+
+class SecurityCaseListResponse(BaseModel):
+    items: list[SecurityCaseDetail]
+    total: int
+    page: int
+    page_size: int
+
+
+class SecurityRunRequest(BaseModel):
+    """安全用例批量执行：内部走既有 TestPlan + TestRun，不写第二套执行器。"""
+
+    security_case_ids: list[int] = Field(..., min_length=1, max_length=200)
+    environment_id: int | None = None
+    plan_name: str | None = Field(None, max_length=200)
+
+
+# --------------------------------------------------------------------------- 执行（Phase E）
+
+
+class SecurityExecutionRead(_ORM):
+    """一次安全执行记录。mutation_trace 与 evidence 都已脱敏。"""
+
+    id: int
+    project_id: int
+    test_run_id: int | None = None
+    case_execution_id: int | None = None
+    security_case_id: int
+    environment_id: int | None = None
+    actor_id: int | None = None
+    baseline_status: BaselineStatus | None = None
+    baseline_http_status: int | None = None
+    security_result: str
+    classification: str | None = None
+    mutation_trace: list[dict[str, Any]] = Field(default_factory=list)
+    replay_count: int = 1
+    actual_status_codes: list[int] = Field(default_factory=list)
+    evidence: dict[str, Any] | None = None
+    error_code: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+# --------------------------------------------------------------------------- Finding（Phase E）
+
+
+class SecurityFindingRead(_ORM):
+    """疑似问题响应。Phase 1 不写 bug_id。"""
+
+    id: int
+    project_id: int
+    test_run_id: int | None = None
+    case_execution_id: int | None = None
+    security_execution_id: int | None = None
+    api_id: int | None = None
+    business_action_id: int | None = None
+    strategy_id: int | None = None
+    security_case_id: int | None = None
+    mutation_type: str
+    severity: str
+    status: str
+    title: str
+    description: str | None = None
+    evidence: dict[str, Any] | None = None
+    recommendation: str | None = None
+    fingerprint: str
+    bug_id: int | None = None
+    created_by: int | None = None
+    resolved_by: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SecurityFindingUpdate(BaseModel):
+    """只允许改状态；非法迁移由服务层 400。"""
+
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def _check_status(cls, value: str) -> str:
+        if value not in FINDING_STATUSES:
+            raise ValueError(f"不支持的 Finding 状态：{value}")
+        return value
+
+
+class SecurityFindingListResponse(BaseModel):
+    items: list[SecurityFindingRead]
+    total: int
+    page: int
+    page_size: int

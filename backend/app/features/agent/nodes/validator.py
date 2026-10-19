@@ -19,6 +19,7 @@ Pydantic 校验已在 TestCaseDraft / 子实体 *Create 模型完成（枚举、
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -29,6 +30,34 @@ from app.features.agent.providers.sanitizer import sanitize_context
 from app.features.agent.schemas import TestCaseDraft, TestCaseDraftList
 from app.features.agent.state import AgentState, set_error
 from app.features.agent.tools.test_asset_tool import semantic_key
+
+
+#: LLM 结构化输出里禁止出现的字段名（§二十五：不生成脚本/SQL/shell/payload）。
+FORBIDDEN_LLM_KEYS = frozenset({"script", "sql", "shell", "payload"})
+
+
+def assert_no_forbidden_fields(result: Any) -> None:
+    """拒绝 LLM 结构化输出携带可执行内容（嵌套也算）。
+
+    出现 ``script`` / ``sql`` / ``shell`` / ``payload`` 键即抛 ``ValueError``——各节点
+    的 except 会转成 ``STRUCTURED_OUTPUT_INVALID``。这是「不重试」的硬拒绝：LLM 想
+    夹带脚本不是格式问题，多试几次也不会变合法。
+
+    Args:
+        result: LLM 返回的结构化 JSON。
+    """
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if str(key).lower() in FORBIDDEN_LLM_KEYS:
+                    raise ValueError(f"LLM 输出包含禁止字段 {key!r}：只输出测试资产结构，不接受脚本或载荷")
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(result)
 
 
 def _dump(obj) -> str:

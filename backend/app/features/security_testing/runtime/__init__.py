@@ -13,4 +13,6 @@
     trace.py           trace 生成与脱敏
     assertion.py       安全期望判定
     severity.py        严重级别规则表
+    baseline.py        生产环境闸门 + BaselineRequest 组装（纯函数）
+    runner.py          唯一的例外模块：查库、写 execution、调 ApiRequestExecutor
 """

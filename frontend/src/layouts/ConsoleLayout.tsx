@@ -24,6 +24,7 @@ import {
   LogoutOutlined,
   PartitionOutlined,
   ProjectOutlined,
+  SafetyOutlined,
   ScheduleOutlined,
   SendOutlined,
   ThunderboltOutlined,
@@ -75,6 +76,7 @@ const MENU_ITEMS: MenuItem[] = [
       { key: '/console/test-reports', icon: <FileTextOutlined />, label: '测试报告' },
       { key: '/console/notification-channels', icon: <SendOutlined />, label: '飞书通知' },
       { key: '/console/test-data', icon: <DatabaseOutlined />, label: '测试数据' },
+      { key: '/console/security-testing', icon: <SafetyOutlined />, label: '安全测试' },
     ],
   },
   { key: '/console/agent', icon: <RobotOutlined />, label: '接口测试 Agent' }, // 接口测试 Agent
@@ -107,6 +109,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/test-reports': '测试报告', // 测试报告
   '/console/notification-channels': '飞书通知', // 飞书通知
   '/console/test-data': '测试数据', // 测试数据
+  '/console/security-testing': '安全测试', // 安全测试
   '/console/agent': '接口测试 Agent', // 接口测试 Agent
   '/console/notifications': '通知中心', // 通知中心
   '/console/profile': '个人中心', // 个人中心

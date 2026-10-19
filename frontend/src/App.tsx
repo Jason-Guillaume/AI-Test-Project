@@ -44,6 +44,7 @@ import { ConsoleAgentPage } from '@/pages/console/Agent';
 import { ConsoleReportListPage, ConsoleReportDetailPage } from '@/pages/console/Reports';
 import { ConsoleNotificationChannelsPage } from '@/pages/console/NotificationChannels';
 import { ConsoleTestDataPage } from '@/pages/console/TestData';
+import { ConsoleSecurityTestingPage } from '@/pages/console/SecurityTesting';
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -166,6 +167,7 @@ function AppRoutes() {
         <Route path="test-reports/:reportId" element={<ConsoleReportDetailPage />} />
         <Route path="notification-channels" element={<ConsoleNotificationChannelsPage />} />
         <Route path="test-data" element={<ConsoleTestDataPage />} />
+        <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
         <Route path="agent" element={<ConsoleAgentPage />} />
         <Route path="notifications" element={<ConsoleNotificationsPage />} />
         <Route path="profile" element={<ConsoleProfilePage />} />

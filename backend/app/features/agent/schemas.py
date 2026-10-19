@@ -26,40 +26,52 @@ from app.features.test_management.schemas import (
 # --------------------------------------------------------------------------- 枚举字面量
 
 # Agent 意图：决定 router 节点跳到哪条边。
+# 安全类意图（Phase F）：LLM 只选目标与已加载策略，变异清单由 PlanService.preview 生成。
 AGENT_INTENTS = (
     "GENERATE_TEST_POINTS", "GENERATE_TEST_CASES", "GENERATE_AND_EXECUTE",
     "EXECUTE_EXISTING_CASES", "ANALYZE_RESULT", "QUERY_TEST_ASSET", "CLARIFY",
+    "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
+    "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
 )
 AgentIntent = Literal[
     "GENERATE_TEST_POINTS", "GENERATE_TEST_CASES", "GENERATE_AND_EXECUTE",
     "EXECUTE_EXISTING_CASES", "ANALYZE_RESULT", "QUERY_TEST_ASSET", "CLARIFY",
+    "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
+    "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
 ]
 
 # 工作流阶段：持久化在 agent_session.current_stage，下次请求据此由 router 跳过已完成段。
+# SECURITY_PLAN_REVIEW（Phase F）：安全计划已生成但未确认，用例还没落库。
 AGENT_STAGES = (
     "UNDERSTANDING", "CONTEXT_LOADING", "PLANNING", "TEST_POINT_REVIEW",
     "TEST_POINT_GENERATED", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
     "EXECUTING", "ANALYZING", "REPORT_GENERATING", "REPORT_REVIEW",
     "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
+    "SECURITY_PLAN_REVIEW",
 )
 AgentStage = Literal[
     "UNDERSTANDING", "CONTEXT_LOADING", "PLANNING", "TEST_POINT_REVIEW",
     "TEST_POINT_GENERATED", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
     "EXECUTING", "ANALYZING", "REPORT_GENERATING", "REPORT_REVIEW",
     "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
+    "SECURITY_PLAN_REVIEW",
 ]
 
 # sendMessage 入参 action：人工在 review 暂停点的快捷操作。
+# confirm_security_risk（Phase F）只由人工触发，LLM 工具里没有这个参数。
 AGENT_ACTIONS = (
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
     # Phase 2：报告 review 暂停点的快捷操作（confirm_report 触发飞书通知，skip 跳过）。
     "confirm_report", "skip_notification",
+    # Phase F：安全计划确认 / 高风险人工确认。
+    "confirm_security_plan", "confirm_security_risk",
 )
 AgentAction = Literal[
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
     "confirm_report", "skip_notification",
+    "confirm_security_plan", "confirm_security_risk",
 ]
 
 AGENT_SESSION_STATUSES = ("ACTIVE", "COMPLETED", "FAILED")
@@ -72,10 +84,13 @@ AGENT_MESSAGE_TYPES = (
     "TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY",
     # Phase 2：报告与通知产物消息（metadata 存脱敏 brief，不含 webhook/sign）。
     "REPORT", "NOTIFICATION",
+    # Phase F：安全计划（PlanService.preview 的代码生成结果，未落 TestCase）。
+    "SECURITY_PLAN",
 )
 AgentMessageType = Literal[
     "TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY",
     "REPORT", "NOTIFICATION",
+    "SECURITY_PLAN",
 ]
 
 # 错误码（§36）：节点失败时写入 state.error_code + 人类可读消息。
@@ -86,6 +101,8 @@ AGENT_ERROR_CODES = (
     "NO_ENVIRONMENT", "PERMISSION_DENIED",
     # Phase 2：报告生成 / 飞书发送失败（独立于 TestRun/Report 状态，§二十八）。
     "REPORT_GENERATION_FAILED", "FEISHU_SEND_FAILED",
+    # Phase F：安全上下文加载 / 安全计划生成或确认失败。
+    "SECURITY_CONTEXT_FAILED", "SECURITY_PLAN_FAILED",
 )
 
 # 结果分析 issue 严重度：区分疑似缺陷 / 测试数据问题 / 执行错误 / 断言失败 / 未知。
@@ -149,6 +166,12 @@ class SendMessageRequest(BaseModel):
     case_ids: list[int] | None = Field(None, description="确认/执行选中的用例ID子集")
     environment_id: int | None = Field(None, gt=0, description="执行环境ID（execute 时必填）")
     channel_id: int | None = Field(None, gt=0, description="飞书通知渠道ID（confirm_report 时可选，缺省取项目首个启用渠道）")
+    security_item_indexes: list[int] | None = Field(
+        None, description="confirm_security_plan 时接受的预览项 index（缺省 = 全部未阻断项）",
+    )
+    security_case_ids: list[int] | None = Field(
+        None, description="confirm_security_risk 时待确认高风险的安全用例 TestCase ID（缺省 = 全部待确认项）",
+    )
 
 
 class AgentWorkspace(BaseModel):
@@ -167,6 +190,9 @@ class AgentWorkspace(BaseModel):
     report_id: int | None = None
     report_brief: dict[str, Any] | None = None
     notification_brief: dict[str, Any] | None = None
+    # Phase F：安全计划（代码生成的预览项，未确认前不落 TestCase）与 Finding 摘要。
+    security_plan: dict[str, Any] | None = None
+    security_findings: list[dict[str, Any]] = []
     suggested_actions: list[str] = []
 
 
@@ -194,6 +220,10 @@ class IntentResult(BaseModel):
     target_description: str | None = None
     clarify_question: str | None = Field(
         None, description="无法确定意图/目标时的澄清提问（intent=CLARIFY 时使用，不猜危险操作）",
+    )
+    security_strategy_keys: list[str] = Field(
+        default_factory=list,
+        description="安全意图选中的策略 strategy_key，只能取自已加载策略清单（GENERATE_SECURITY_TEST 时用）",
     )
 
 

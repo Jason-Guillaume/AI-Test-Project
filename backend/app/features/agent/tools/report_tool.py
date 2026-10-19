@@ -48,5 +48,7 @@ def get_report_brief(db: Session, report_id: int, user: User) -> dict:
         "duration_ms": report.duration_ms,
         "ai_summary": ai or None,
         "test_run_id": report.test_run_id,
+        # 安全摘要只有计数与标题（无 evidence / 无响应体），可安全进提示词与前端卡片。
+        "security_summary": (report.summary or {}).get("security"),
     }
     return sanitize_context(brief)

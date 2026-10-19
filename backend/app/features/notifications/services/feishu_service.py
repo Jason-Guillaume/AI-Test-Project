@@ -174,6 +174,22 @@ class FeishuNotificationService:
             },
             {"tag": "div", "text": {"tag": "lark_md", "content": f"**执行耗时**：{report.duration_ms or 0} ms"}},
         ]
+        # 安全摘要（§14）：只带计数与标题，不带 Token、不带响应体——evidence 留在
+        # 平台 Finding 详情页按需拉取。沿用现有报告卡片，不新增安全专用 webhook。
+        security = (report.summary or {}).get("security") if isinstance(report.summary, dict) else None
+        if isinstance(security, dict) and security.get("cases"):
+            top_titles = [
+                sanitize_text(str(item.get("title") or ""))
+                for item in (security.get("top_findings") or [])[:3]
+                if item.get("title")
+            ]
+            content = (
+                f"**安全**\n{security.get('cases', 0)} 条安全用例，"
+                f"{security.get('potential_issues', 0)} 条疑似问题"
+                + (f"\n- " + "\n- ".join(top_titles) if top_titles else "")
+            )
+            elements.append({"tag": "hr"})
+            elements.append({"tag": "div", "text": {"tag": "lark_md", "content": content}})
         if overview:
             elements.append({"tag": "hr"})
             elements.append({"tag": "div", "text": {"tag": "lark_md", "content": f"**AI 总结**\n{overview}"}})
