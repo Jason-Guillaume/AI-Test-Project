@@ -102,7 +102,7 @@ class TestSchema:
     def test_head_is_0011_and_tables_present(self, db):
         from sqlalchemy import text
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0011"
+        assert head == "0012"
         tables = {
             row[0]
             for row in db.execute(

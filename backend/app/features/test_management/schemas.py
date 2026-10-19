@@ -35,8 +35,8 @@ TestStrategyCategory = Literal[
 TEST_PRIORITIES = ("P0", "P1", "P2", "P3")
 TestPriority = Literal["P0", "P1", "P2", "P3"]
 
-TEST_TARGET_TYPES = ("API", "BUSINESS_FLOW", "BUSINESS_ACTION")
-TestTargetType = Literal["API", "BUSINESS_FLOW", "BUSINESS_ACTION"]
+TEST_TARGET_TYPES = ("API", "BUSINESS_FLOW", "BUSINESS_ACTION", "WEB")
+TestTargetType = Literal["API", "BUSINESS_FLOW", "BUSINESS_ACTION", "WEB"]
 
 TEST_STATUSES = ("DRAFT", "ACTIVE", "DEPRECATED")
 TestStatus = Literal["DRAFT", "ACTIVE", "DEPRECATED"]

@@ -50,6 +50,7 @@ import {
   ConsoleMockEndpointPage,
   ConsoleMockExecutionListPage,
 } from '@/pages/console/MockManagement';
+import { ConsoleWebUIPage } from '@/pages/console/WebUI';
 import { ConsoleSecurityTestingPage } from '@/pages/console/SecurityTesting';
 
 /**
@@ -177,6 +178,7 @@ function AppRoutes() {
         <Route path="mock-management/services/:serviceId" element={<ConsoleMockServiceDetailPage />} />
         <Route path="mock-management/endpoints/:endpointId" element={<ConsoleMockEndpointPage />} />
         <Route path="mock-management/executions" element={<ConsoleMockExecutionListPage />} />
+        <Route path="web-ui" element={<ConsoleWebUIPage />} />
         <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
         <Route path="agent" element={<ConsoleAgentPage />} />
         <Route path="notifications" element={<ConsoleNotificationsPage />} />

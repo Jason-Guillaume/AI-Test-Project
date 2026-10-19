@@ -40,6 +40,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
+import { WebArtifacts } from '@/pages/console/WebUI/Artifacts';
 import { reportsApi } from '@/api/reports';
 import { notificationChannelsApi } from '@/api/notificationChannels';
 import { getErrorMessage } from '@/api/client';
@@ -293,6 +294,7 @@ function CaseModal({ ce, onClose }: { ce: CaseExecutionSummary | null; onClose: 
               ),
           },
           { key: 'request', label: '请求快照', children: <JsonView value={ce?.request_snapshot} /> },
+          { key: 'web', label: 'Web 步骤与附件', children: <WebArtifacts snapshot={ce?.response_snapshot} /> },
           { key: 'response', label: '响应快照', children: <JsonView value={ce?.response_snapshot} /> },
           { key: 'context', label: '上下文', children: <JsonView value={ce?.context_json} /> },
         ]}

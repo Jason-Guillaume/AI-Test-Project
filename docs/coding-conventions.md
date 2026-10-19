@@ -1077,3 +1077,20 @@ A：不能。必须对齐 §3.2 的约定，特别是 `['project', id, ...]` 这
 - 不变量 #17 明确指向顶层 `backend/scripts/seed_admin.py`，避免与已弃用的 `app/scripts/seed_admin.py` 混淆
 
 **维护者**：所有参与本仓库的工程师。**违反本文档的 PR 一律拒绝，除非先修文档**（且走 §7.2 讨论流程）。
+
+## 附录 C：Web UI Automation Phase 1 增量约定（2026-10-19）
+
+Web UI 是既有测试执行体系的扩展：`TestCase.target_type=WEB`，步骤仍存 `TestStep`，
+运行仍走 `RunService` / `TestCaseExecutor` / `TestRun` / `CaseExecution`。
+`web_ui` 内部按 `models/`、`services/`、`runtime/` 分层；不改变 JWT、错误信封、角色或事务 flag。
+
+Playwright 只充当 Chromium 驱动，pytest 仍是测试入口。固定操作白名单解释结构化步骤，
+禁止执行 LLM/用户原始脚本。Agent 生成草稿不等于确认，修改步骤、页面定位或登录态后须重新审核。
+密码、Cookie、LocalStorage/JWT 和浏览器附件复用 `shared.crypto` 加密，响应不回传凭据。
+浏览器资源只由 Web 模块独占，禁止连接或接管 ZAP 和用户浏览器。
+
+迁移 `0012` 必须兼容 `seed_admin` 的重复初始化；只显式创建 Web 扩展表，不将新模型加入
+`app/models/__init__.py`。附加 schema 类型 `WEB` 采用向后兼容扩展，旧 API/业务用例继续沿原路径执行。
+
+人工扫码发生在独立的人工浏览器，完成后仅导入目标测试环境的 storage_state。
+生产环境和项目外目标不应通过自动化模块扩大授权；执行时以项目出站白名单为准。

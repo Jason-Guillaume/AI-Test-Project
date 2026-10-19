@@ -287,3 +287,21 @@ AI 智能体编排 · 用例自动生成 · API 用例执行 · UI 自动化执�
 # AI-Test-Project
 # AI-Test-Project
 # AI-Test-Project
+
+## Web UI Automation Phase 1
+
+控制台入口：`/console/web-ui`。支持页面对象、结构化 UI 步骤、加密登录态、人工确认、
+Chromium 调试、API + WEB 混合业务执行，以及原有测试报告中的截图/Trace 查看。
+
+```bash
+cd backend
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m playwright install chromium
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python -m pytest tests/test_30_web_ui.py tests/test_31_web_ui_console.py -q
+```
+
+执行前在项目中授权目标 scheme/host/port，配置平台环境；创建用例并保存步骤，人工审核确认后执行。
+Fixture、Mock、测试套件/计划与原有测试用例共用。飞书扫码登录需人工完成后导入 storage_state。
+
+详见 [Web UI Automation Phase 1 交付报告](docs/Web%20UI%20Automation%20Phase%201%20交付报告.md)。

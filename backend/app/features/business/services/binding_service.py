@@ -90,6 +90,14 @@ def _binding_detail(db: Session, binding: BusinessBinding) -> BusinessBindingDet
                 valid = False
                 invalid_reason = "绑定接口已废弃"
 
+    if binding.binding_type == "WEB":
+        from app.features.test_management.models.test_case import TestCase
+        from app.features.web_ui.models import WebCase
+        case_id = (binding.config_json or {}).get("web_case_id")
+        case = db.get(TestCase, case_id) if isinstance(case_id, int) else None
+        valid = bool(case and case.project_id == resolve_binding_project_id(db, binding.id) and db.get(WebCase, case_id))
+        invalid_reason = None if valid else "绑定的 Web 用例已失效"
+
     mappings = (
         db.query(BusinessApiMapping)
         .filter(BusinessApiMapping.binding_id == binding.id)
@@ -122,6 +130,18 @@ def _ensure_api_in_project(db: Session, api_id: int | None, project_id: int) -> 
         raise bad_request("接口必须属于当前业务流程所在项目")
 
 
+def _ensure_web_in_project(db, config, api_id, project_id):
+    """WEB 通道只接受同项目 Web 用例引用，通用绑定入口也不能保存脚本配置。"""
+    if api_id is not None or not isinstance(config, dict) or set(config) != {"web_case_id"} or type(config["web_case_id"]) is not int:
+        raise bad_request("WEB 绑定只允许 config_json.web_case_id，不接受接口或脚本")
+    from app.features.test_management.models.test_case import TestCase
+    from app.features.web_ui.models import WebCase
+    case_id = config["web_case_id"]
+    case = db.get(TestCase, case_id)
+    if case is None or case.project_id != project_id or db.get(WebCase, case_id) is None:
+        raise not_found("Web 用例不存在")
+
+
 class BindingService:
     """业务绑定与 API 映射服务。无状态，路由层复用单例。"""
 
@@ -148,6 +168,8 @@ class BindingService:
     ) -> BusinessBindingDetailResponse:
         project = require_writable_project(db, resolve_action_project_id(db, action_id), actor)
         _ensure_api_in_project(db, body.api_id, project.id)
+        if body.binding_type == "WEB":
+            _ensure_web_in_project(db, body.config_json, body.api_id, project.id)
         # 多绑定支持：同一动作允许多个同通道绑定，但 is_default 唯一（部分唯一索引保障）。
         # 若新建 is_default=True，先将同 action+binding_type 的旧默认取消。
         if body.is_default:
@@ -204,6 +226,9 @@ class BindingService:
         data = {k: v for k, v in data.items() if v is not None or k not in ("binding_type",)}
         if not data:
             return _binding_detail(db, binding)
+        if data.get("binding_type", binding.binding_type) == "WEB":
+            _ensure_web_in_project(db, data.get("config_json", binding.config_json),
+                                   data.get("api_id", binding.api_id), resolve_binding_project_id(db, binding_id))
         if "api_id" in data:
             # api_id 变更时重新校验接口归属；None 表示解绑（允许）。
             _ensure_api_in_project(db, data["api_id"], resolve_binding_project_id(db, binding_id))

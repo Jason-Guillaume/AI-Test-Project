@@ -200,7 +200,7 @@ def _alembic(config=None):
 class TestMigration:
     def test_head_is_0011_and_tables_created(self, db):
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0011"
+        assert head == "0012"
         assert SECURITY_TABLES.issubset(_tables(db))
 
     def test_partial_unique_indexes(self, db):
@@ -268,7 +268,7 @@ class TestMigration:
             command.upgrade(config, "head")
 
         assert _tables(db) >= SECURITY_TABLES
-        assert db.execute(text("select version_num from alembic_version")).scalar() == "0011"
+        assert db.execute(text("select version_num from alembic_version")).scalar() == "0012"
 
 
 class TestBuiltinStrategies:

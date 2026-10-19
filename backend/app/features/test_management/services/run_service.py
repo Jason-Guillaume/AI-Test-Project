@@ -93,6 +93,23 @@ class RunService:
         ordered_cases = [case_map[cid] for cid in case_ids if cid in case_map]
         project_id = plan.project_id
 
+        return self._execute_cases(db, project_id, ordered_cases, environment, actor, plan_id=plan_id)
+
+    def execute_case(self, db: Session, case_id: int, environment_id: int, *, actor: User) -> TestRunResponse:
+        """单用例调试复用完整 Fixture/Mock/执行/清理流程，不创建临时计划或第二套执行记录。"""
+        case = db.get(TestCase, case_id)
+        if case is None:
+            raise not_found("测试用例不存在")
+        require_writable_project(db, case.project_id, actor)
+        if not case.enabled:
+            raise bad_request("测试用例已停用")
+        environment = db.get(Environment, environment_id)
+        if environment is None or not environment.is_active:
+            raise not_found("环境不存在或已停用")
+        return self._execute_cases(db, case.project_id, [case], environment, actor)
+
+    def _execute_cases(self, db, project_id, ordered_cases, environment, actor, *, plan_id=None):
+        """计划执行与单例调试共享原有编排；逐例提交结果，资源清理语义保持一致。"""
         # 3. 创建 TestRun。
         run = TestRun(
             project_id=project_id, plan_id=plan_id, environment_id=environment.id,

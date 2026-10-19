@@ -95,7 +95,7 @@ def test_business_tables_created_by_migration(db):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     head = ScriptDirectory.from_config(config).get_current_head()
-    assert head == "0011", f"迁移 head 应为 0011，实际 {head}"
+    assert head == "0012", f"迁移 head 应为 0012，实际 {head}"
 
     from sqlalchemy import inspect
 

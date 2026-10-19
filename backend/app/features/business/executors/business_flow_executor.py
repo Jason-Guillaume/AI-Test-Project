@@ -214,7 +214,7 @@ def _mask_context_for_storage(ctx: ExecutionContext) -> dict:
     if "actions" in data:
         for k, v in data["actions"].items():
             data["actions"][k] = SensitiveDataMasker.mask_body(v)
-    return data
+    return _mask_web_secrets(data, ctx)
 
 
 def _execute_action(
@@ -254,10 +254,10 @@ def _execute_action(
     # 原实现把列表原样赋上去（可能为空列表）：保持空列表而不是 NULL，
     # 避免 report / 前端把它当「未采集」而不是「采集到 0 条」。
     action_exec.unverified_preconditions = result.unverified_preconditions
-    action_exec.input_context = result.input_context
-    action_exec.output_context = result.output_context
-    action_exec.request_snapshot = result.request_snapshot
-    action_exec.response_snapshot = result.response_snapshot
+    action_exec.input_context = _mask_web_secrets(result.input_context, ctx)
+    action_exec.output_context = _mask_web_secrets(result.output_context, ctx)
+    action_exec.request_snapshot = _mask_web_secrets(result.request_snapshot, ctx)
+    action_exec.response_snapshot = _mask_web_secrets(result.response_snapshot, ctx)
     action_exec.finished_at = datetime.now()
     return action_exec
 
@@ -304,6 +304,19 @@ def _run_action_core(
             result.error_code = "PRECONDITION_FAILED"
             result.error_message = "前置条件不满足"
             return result
+
+        # 显式 WEB 默认绑定优先；API 路径及既有签名不变，浏览器会话由 Web 资源池独占。
+        web_binding = db.query(BusinessBinding).filter_by(
+            action_id=action.id, binding_type="WEB", is_default=True, enabled=True,
+        ).first()
+        if web_binding is not None:
+            from app.features.web_ui.runtime.adapter import run_web_binding
+            web_result = run_web_binding(db, web_binding, environment=environment, ctx=ctx, project_id=project_id)
+            ctx.set_action_output(action.action_key, web_result.outputs)
+            if flow_id is not None and web_result.status == "SUCCESS":
+                _apply_output_refs(db, flow_id, action, ctx)
+            web_result.unverified_preconditions = unverified_pcs
+            return web_result
 
         # 2. 加载默认 API Binding。
         binding = (
@@ -450,23 +463,9 @@ def _run_action_core(
         ctx.set_action_output(action.action_key, output_output)
         result.outputs = dict(output_output)
 
-        # 12. 执行 VariableRef 传递（单动作独立执行时没有 flow 级 Ref）。
+        # 12. API 与 Web 共用同一变量引用传递规则。
         if flow_id is not None:
-            refs = (
-                db.query(BusinessVariableRef)
-                .filter(BusinessVariableRef.flow_id == flow_id)
-                .all()
-            )
-            for ref in refs:
-                if ref.source_action_id == action.id and ref.target_action_id:
-                    # 模型列为 source_variable/target_variable（与 schemas 一致），此处必须同名读取。
-                    if ref.source_variable and ref.target_variable:
-                        # 优先从 action_output 命名空间查找，其次从 variables 查找。
-                        action_output = ctx.get_action_output(action.action_key)
-                        if action_output and ref.source_variable in action_output:
-                            ctx.set(ref.target_variable, action_output[ref.source_variable])
-                        elif ref.source_variable in ctx.variables:
-                            ctx.apply_ref(ref.source_variable, ref.target_variable)
+            _apply_output_refs(db, flow_id, action, ctx)
 
         # 13. 标记成功。
         result.status = "SUCCESS"
@@ -482,6 +481,38 @@ def _run_action_core(
         result.error_code = "EXECUTION_CANCELLED"
         result.error_message = f"执行异常：{exc}"
         return result
+
+
+def _mask_web_secrets(data, ctx):
+    """仅含 Web 动作时清除内存凭据登记并替换已知秘密值，API 原有路径不受影响。"""
+    secrets = ctx.get("__web_sensitive_values", [])
+    if not secrets:
+        return data
+    from app.features.web_ui.runtime.playwright_executor import scrub
+    if isinstance(data, dict):
+        data = dict(data)
+        if isinstance(data.get("variables"), dict):
+            data["variables"] = {k: v for k, v in data["variables"].items() if k != "__web_sensitive_values"}
+    return scrub(data, secrets)
+
+
+def _apply_output_refs(db, flow_id, action, ctx):
+    """将动作输出通过既有 VariableRef 传递给后续动作，不改变上下文契约。"""
+    refs = (
+        db.query(BusinessVariableRef)
+        .filter(BusinessVariableRef.flow_id == flow_id)
+        .all()
+    )
+    for ref in refs:
+        if ref.source_action_id == action.id and ref.target_action_id:
+            # 模型列为 source_variable/target_variable（与 schemas 一致），此处必须同名读取。
+            if ref.source_variable and ref.target_variable:
+                # 优先从 action_output 命名空间查找，其次从 variables 查找。
+                action_output = ctx.get_action_output(action.action_key)
+                if action_output and ref.source_variable in action_output:
+                    ctx.set(ref.target_variable, action_output[ref.source_variable])
+                elif ref.source_variable in ctx.variables:
+                    ctx.apply_ref(ref.source_variable, ref.target_variable)
 
 
 def _mask_context_variables(data: dict) -> dict:

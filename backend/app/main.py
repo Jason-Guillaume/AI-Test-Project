@@ -45,6 +45,7 @@ from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
 from app.features.users.auth import router as auth_router
+from app.features.web_ui.router import router as web_ui_router
 from app.shared.config import settings
 from app.shared.database import Base, engine
 from app.shared.errors import register_exception_handlers
@@ -192,6 +193,7 @@ def create_app() -> FastAPI:
     application.include_router(environments_router, prefix=API_PREFIX)
     application.include_router(dashboard_router, prefix=API_PREFIX)
     application.include_router(test_data_router, prefix=API_PREFIX)
+    application.include_router(web_ui_router, prefix=API_PREFIX)
     # Security Testing：只改请求与解释结果，执行仍走现有 RunService（开发计划 §16.1）。
     application.include_router(security_testing_router, prefix=API_PREFIX)
     # Mock Management：管理面（需平台 JWT）与执行面（X-Mock-Token）分离（§十四）。

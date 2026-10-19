@@ -202,8 +202,9 @@ class FlowService:
             db.query(BusinessBinding)
             .filter(
                 BusinessBinding.action_id.in_(action_ids),
-                BusinessBinding.binding_type == "API",
+                BusinessBinding.binding_type.in_(("API", "WEB")),
             )
+            .order_by(BusinessBinding.enabled.asc(), BusinessBinding.is_default.asc(), BusinessBinding.binding_type.asc(), BusinessBinding.id.asc())
             .all()
         ) if action_ids else []
         binding_by_action = {b.action_id: b for b in bindings}

@@ -29,5 +29,8 @@ langfuse>=3,<6
 # 开发机走 SOCKS 代理时 httpx（Langfuse SDK 内部）需要 socksio；无代理环境下无副作用
 socksio>=1,<2
 
+# Web UI 自动化：固定结构化操作，浏览器二进制用 python -m playwright install chromium 安装
+playwright==1.64.0
+
 # 测试
 pytest>=8.0,<10

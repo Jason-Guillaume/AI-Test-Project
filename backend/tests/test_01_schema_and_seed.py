@@ -41,7 +41,7 @@ def test_alembic_upgrades_empty_database_to_head(db):
     #（0005 业务执行引擎 + 0006 测试管理 + 0007 Agent + 0008 报告/通知
     #  + 0009 测试数据中心 + Data Factory + 0010 Mock Management
     #  + 0011 Security Testing）。
-    assert head == "0011"
+    assert head == "0012"
 
     tables = {
         row[0]

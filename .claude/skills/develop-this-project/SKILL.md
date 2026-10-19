@@ -62,7 +62,7 @@ backend/
                                  #   notifications, api_catalog, business, test_management,
                                  #   reports, agent, test_data
   scripts/                       # seed_admin.py、e2e_smoke.sh（唯一入口）
-  alembic/                       # 迁移（当前 head = 0009）
+  alembic/                       # 迁移（当前 head = 0012）
   tests/                         # pytest：test_01 … test_20，另有 test_api_catalog.py
 frontend/
   src/
@@ -142,7 +142,7 @@ cd backend
 
 - 测试**不依赖生产数据**，用独立的 `testplatform_test` 数据库
 - `conftest.py` 里 `ApiClient.register()` 会自动 seed 验证码（`_STORAGE[cid] = ...`），业务代码不用管
-- 断言 Alembic head：`assert head == "0009"`（`test_01`、`test_10`、`test_18`；新增迁移后三处一起改）
+- 断言 Alembic head：`assert head == "0012"`（`test_01`、`test_10`、`test_18`；新增迁移后三处一起改）
 
 ---
 
@@ -183,7 +183,7 @@ cd backend
 .venv/bin/python -m alembic upgrade head
 ```
 
-- head 当前是 `0009`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心。新增迁移把 `down_revision` 接 `0009`，并同步 `test_01`、`test_10`、`test_18` 的 head 断言
+- head 当前是 `0012`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心 → 0010 Mock → 0011 Security → 0012 Web UI。新增迁移把 `down_revision` 接 `0012`，并同步 `test_01`、`test_10`、`test_18` 的 head 断言
 - `--database-url` 可覆盖 `settings.DATABASE_URL`，别硬编码
 - 空库必须先 `stamp base` 再 `upgrade head`，否则 Alembic 认不出库
 
@@ -444,7 +444,7 @@ Fixture、数据资产、Provider、数据池、目标库连接都挂在 `/api/v
 | `SECRET_KEY` | `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'` | **必需**；import 时就 `RuntimeError`，别留占位符 |
 | `JWT_ACCESS_TOKEN_EXPIRE_DAYS` | `7` | |
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 逗号分隔，**不是** JSON |
-| `AUTO_CREATE_SCHEMA` | `True` | 配合 `?options=-csearch_path%3D...` 建 schema |
+| `AUTO_CREATE_SCHEMA` | `False` | 配合 `?options=-csearch_path%3D...` 建 schema |
 
 后端只有 `.env` / `.env.example` 两套；开发默认走 `.env.example`。`.venv` 不进 git。
 
@@ -623,7 +623,7 @@ git push origin develop
 - [docs/migration-plan.md](../../../docs/migration-plan.md) — 从旧项目迁移的路径
 - [docs/current-system-analysis.md](../../../docs/current-system-analysis.md) — 现状分析
 
-**版本**：v1.4（2026-10-15）——目录与事实对齐到当前 `develop`。Alembic head 为 `0009`。变更 head 后同步改本文 §2、§5、§6.2，以及 `test_01`、`test_10`、`test_18` 的断言。
+**版本**：v1.4（2026-10-15）——目录与事实对齐到当前 `develop`。Alembic head 为 `0012`。变更 head 后同步改本文 §2、§5、§6.2，以及 `test_01`、`test_10`、`test_18` 的断言。
 
 **v1.3 → v1.4 变更**：
 
@@ -657,3 +657,22 @@ git push origin develop
 - §9.3 限流：登录 5/min → 60/min（IP）+ 10/min（username）；注册 3/min → 10/**小时**；数字来自 `config.py`
 - §4 启动步骤：`/api/v1/healthz` → `/healthz`（根路径）
 - 路径参数命名约定统一为 `{xxx_id}` 后缀
+
+
+## 15. Web UI Automation Phase 1（2026-10-19）
+
+- 入口：`/console/web-ui`；实现：`backend/app/features/web_ui/`、`frontend/src/pages/console/WebUI/`。
+- 用例及步骤继续使用 `TestCase` / `TestStep`，`target_type=WEB`；`web_case` 只保存浏览器扩展配置与确认指纹，不另建执行体系。
+- 调试与计划都经过 `RunService` → Fixture / Mock 生命周期 → `TestCaseExecutor` → Playwright → `CaseExecution` → 原有报告。
+- 只允许 NAVIGATE / CLICK / FILL / SELECT / UPLOAD / WAIT / ASSERT。不得执行用户或 LLM 原始 Python/JavaScript。
+- 定位优先 TEST_ID / ROLE / LABEL / TEXT，CSS / XPath 仅显式兜底；新页面对象必须提供稳定元素 key。
+- 账号、Cookie、LocalStorage/JWT、人工扫码后导入的 storage_state 加密存储。敏感填入值必须引用变量，例如 `${data.auth_password}`。
+- 用例、页面元素或认证配置修改后必须重新人工确认；Agent 只能生成未确认草稿。执行器再次验证指纹，通用测试计划也不能绕过确认。
+- 每次执行独立 Chromium 进程和 BrowserContext；进程内 Web 专属并发上限 2，不连接用户浏览器或 ZAP 会话。
+- 只允许项目已授权的 scheme/host/port；拦截页面、子资源与重定向，禁用 Service Worker 和 WebSocket，冻结执行 DNS。
+- 0012 创建四张扩展表：web_page_object、web_auth_profile、web_case、web_artifact；迁移保持 seed_admin 重复初始化幂等。后续迁移接实际最新 head。
+- 浏览器安装：`cd backend && .venv/bin/python -m playwright install chromium`。
+- 定向验证：`cd backend && .venv/bin/python -m pytest tests/test_30_web_ui.py tests/test_31_web_ui_console.py -q`。
+- 头版本断言已扩展到 test_22 与 test_30；不要只按旧 test_01 / test_10 / test_18 清单更新。
+- 飞书真实租户扫码与外部真实 LLM 属于需要账号/配置的集成验证；一期提供人工完成登录后的 state 导入和平台模型生成入口，不虚报外部服务已验收。
+- 交付报告：`docs/Web UI Automation Phase 1 交付报告.md`。

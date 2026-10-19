@@ -1,0 +1,44 @@
+Web UI Automation Phase 1 测试证据
+日期：2026-10-19（Asia/Shanghai）
+
+整库命令：cd backend && .venv/bin/python -m pytest -q tests/ --tb=short
+27 failed, 828 passed, 45 warnings in 214.62s (0:03:34)
+
+27 项失败均位于未提交且进行中的 ZAP 测试文件；本次未修改这些文件。
+FAILED tests/test_28_zap_connector.py::TestTransport::test_api_key_sent_as_header_by_default
+FAILED tests/test_28_zap_connector.py::TestTransport::test_api_key_query_mode_puts_key_in_query
+FAILED tests/test_28_zap_connector.py::TestTransport::test_absolute_url_path_is_rejected
+FAILED tests/test_28_zap_connector.py::TestTransport::test_timeout_maps_to_transport_error
+FAILED tests/test_28_zap_connector.py::TestTransport::test_http_error_maps_to_transport_error
+FAILED tests/test_28_zap_connector.py::TestConnectorBasics::test_capabilities_reports_unsupported_components
+FAILED tests/test_28_zap_connector.py::TestConnectorBasics::test_capabilities_degrades_when_unreachable
+FAILED tests/test_28_zap_connector.py::TestScopeAndContext::test_scope_blocks_out_of_scope_requests
+FAILED tests/test_28_zap_connector.py::TestScopeAndContext::test_out_of_scope_spider_is_rejected
+FAILED tests/test_28_zap_connector.py::TestAuthentication::test_bearer_without_value_is_logged_out
+FAILED tests/test_28_zap_connector.py::TestAuthentication::test_verify_authentication_without_plugin_is_unverifiable
+FAILED tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_manual_mode_reports_unsupported
+FAILED tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_false_for_none
+FAILED tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_reset_after_cleanup
+FAILED tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_depth_limit
+FAILED tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_missing_component_raises_plugin_missing
+FAILED tests/test_28_zap_connector.py::TestSpidersAndPassive::test_wait_passive_scan_timeout_keeps_running_true
+FAILED tests/test_28_zap_connector.py::TestSpidersAndPassive::test_hung_spider_is_stoppable
+FAILED tests/test_28_zap_connector.py::TestActiveScan::test_active_scan_rejected_when_attack_disabled
+FAILED tests/test_28_zap_connector.py::TestActiveScan::test_active_scan_zero_duration_is_clamped
+FAILED tests/test_28_zap_connector.py::TestActiveScan::test_set_active_scan_limits_also_clamps
+FAILED tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_url_credentials_are_redacted
+FAILED tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_counts_group_by_severity
+FAILED tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_list_urls_redacts_credentials
+FAILED tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_openapi_import_missing_component_raises
+FAILED tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_openapi_import_records_upload
+FAILED tests/test_28_zap_connector.py::TestContracts::test_redact_url_keeps_non_credential_params
+
+Web + 既有 TestCaseExecutor 联合验收：44 passed, 13 warnings in 48.54s
+命令：pytest tests/test_30_web_ui.py tests/test_31_web_ui_console.py tests/test_15_test_executor.py -q
+其中 Web 验收 19 项，包含真实 Chromium 和控制台全链路。
+
+前端 typecheck/build：exit 0；Vite 单包体积提示为现有构建提示。
+
+平台全量（排除进行中 ZAP）：760 passed, 45 warnings in 215.17s
+命令：cd backend && .venv/bin/python -m pytest -q tests/ --ignore=tests/test_28_zap_connector.py --tb=short
+该命令在最后一次代码修改之后运行，exit 0。

@@ -108,12 +108,21 @@ def execute(
         )
         if security_result is not None:
             result = security_result
+        elif target == "WEB":
+            # Web 只增加独立分派，沿用 Fixture/Mock 与 CaseExecution 结果契约。
+            from app.features.web_ui.runtime.adapter import run_web_case
+            result = run_web_case(
+                db, test_case, environment=environment, actor=actor,
+                fixture_outputs=fixture_outputs,
+                variables=variables.variables if variables else {},
+                extra_headers=extra_headers, case_execution_id=case_execution_id,
+            )
         elif target == "API":
             result = _execute_api(
                 db, test_case, environment, actor, fixture_outputs, extra_headers
             )
         elif target == "BUSINESS_FLOW":
-            result = _execute_business_flow(db, test_case, environment, actor, fixture_outputs)
+            result = _execute_business_flow(db, test_case, environment, actor, fixture_outputs, extra_headers)
         elif target == "BUSINESS_ACTION":
             result = _execute_business_action(
                 db, test_case, environment, actor, fixture_outputs, extra_headers
@@ -274,6 +283,7 @@ def _execute_business_flow(
     environment: Environment,
     actor: User,
     fixture_outputs: dict[str, dict[str, Any]],
+    extra_headers: dict[str, str] | None = None,
 ) -> CaseExecutionResult:
     executor_type = "BUSINESS_FLOW"
     if test_case.business_flow_id is None:
@@ -287,6 +297,8 @@ def _execute_business_flow(
     # Fixture 输出先进入，test_case_data 覆盖同名键（用例作者显式绑定优先）。
     data_values, overrides = _load_data_values(db, test_case.id, environment, fixture_outputs)
     initial_variables = {**_fixture_flat(fixture_outputs), **data_values}
+    if extra_headers:
+        initial_variables["__web_headers"] = extra_headers
 
     execution = execute_flow(
         db, test_case.business_flow_id,
@@ -316,6 +328,15 @@ def _execute_business_flow(
             for ae in action_execs
         ],
     }
+
+    web_actions = [(ae, (ae.response_snapshot or {}).get("web")) for ae in action_execs]
+    web_actions = [(ae, web) for ae, web in web_actions if web]
+    if web_actions:
+        # 报告仍读取 CaseExecution，混合流程的 Web 附件在原响应快照内聚合。
+        response_snapshot["web"] = {
+            "steps": [{**entry, "action_id": ae.action_id} for ae, web in web_actions for entry in web.get("steps", [])],
+            "artifacts": [item for _, web in web_actions for item in web.get("artifacts", [])],
+        }
 
     status, error_code, error_message = _decide_flow_status(execution, assertion_results)
     return CaseExecutionResult(
@@ -350,6 +371,33 @@ def _execute_business_action(
     if flow is None or flow.project_id != test_case.project_id:
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
                                    error_code="ACTION_NOT_FOUND", error_message="业务动作不属于本项目")
+
+    web_binding = db.query(BusinessBinding).filter_by(
+        action_id=action.id, binding_type="WEB", is_default=True, enabled=True,
+    ).first()
+    if web_binding is not None:
+        from app.features.web_ui.runtime.adapter import run_web_binding
+        from app.features.web_ui.runtime.playwright_executor import scrub
+        data_values, _ = _load_data_values(db, test_case.id, environment, fixture_outputs)
+        ctx = ExecutionContext(variables={**_fixture_flat(fixture_outputs), **data_values})
+        result = run_web_binding(
+            db, web_binding, environment=environment, ctx=ctx,
+            project_id=test_case.project_id, extra_headers=extra_headers,
+        )
+        # 外层 BUSINESS_ACTION 用例仍必须评估自身断言，不能因 WEB 内部通过而跳过。
+        assertion_results = run_assertions(_load_assertions(db, test_case.id), {
+            "status_code": 200 if result.status == "SUCCESS" else 500,
+            "body": result.outputs, "raw_body": json.dumps(result.outputs, ensure_ascii=False),
+            "headers": {}, "response_time_ms": result.duration_ms or 0,
+        })
+        passed = result.status == "SUCCESS" and required_all_passed(assertion_results)
+        return CaseExecutionResult(
+            status="PASSED" if passed else "FAILED", executor_type="BUSINESS_ACTION",
+            request_snapshot=result.request_snapshot, response_snapshot=result.response_snapshot,
+            assertion_results=scrub(assertion_results, ctx.get("__web_sensitive_values", [])),
+            error_code=result.error_code or ("ASSERTION_FAILED" if not passed else None),
+            error_message=result.error_message or ("业务动作断言失败" if not passed else None),
+        )
 
     # 复用业务动作的默认 API 绑定 + INPUT 映射（§16）。
     binding = (
