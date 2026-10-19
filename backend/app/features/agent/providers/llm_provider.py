@@ -17,6 +17,7 @@ from typing import Any, Protocol
 import httpx
 from sqlalchemy.orm import Session
 
+from app.features.agent.providers.langfuse_tracer import llm_generation, update_generation
 from app.features.agent.providers.sanitizer import build_chat_messages
 from app.features.model_configuration.services.model_config_service import decrypt_api_key
 from app.models.configuration import ModelConfiguration
@@ -72,18 +73,26 @@ class ProductionLLMProvider:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         url = f"{(cfg.api_base or '').rstrip('/')}/chat/completions"
-        try:
-            resp = httpx.post(url, json=body, headers=headers, timeout=float(cfg.timeout or 60))
-        except httpx.HTTPError as exc:
-            raise LLMError("LLM_FAILED", f"模型服务请求失败：{exc}") from exc
-        if resp.status_code >= 400:
-            raise LLMError("LLM_FAILED", f"模型服务返回 {resp.status_code}：{resp.text[:300]}")
-        try:
-            data = resp.json()
-            content = data["choices"][0]["message"]["content"]
-        except (ValueError, KeyError, IndexError) as exc:
-            raise LLMError("STRUCTURED_OUTPUT_INVALID", f"模型响应解析失败：{exc}") from exc
-        return self._parse_json_content(content)
+        # Langfuse generation 埋点：关闭时为 no-op；LLMError 会被标记 ERROR 后原样抛出。
+        with llm_generation(
+            name=f"agent.generate_structured.{kind or 'unknown'}",
+            model=cfg.model_name,
+            input_messages=messages,
+            model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
+        ) as gen:
+            try:
+                resp = httpx.post(url, json=body, headers=headers, timeout=float(cfg.timeout or 60))
+            except httpx.HTTPError as exc:
+                raise LLMError("LLM_FAILED", f"模型服务请求失败：{exc}") from exc
+            if resp.status_code >= 400:
+                raise LLMError("LLM_FAILED", f"模型服务返回 {resp.status_code}：{resp.text[:300]}")
+            try:
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+            except (ValueError, KeyError, IndexError) as exc:
+                raise LLMError("STRUCTURED_OUTPUT_INVALID", f"模型响应解析失败：{exc}") from exc
+            update_generation(gen, output=content, usage=data.get("usage"))
+            return self._parse_json_content(content)
 
     def chat(
         self, system: str, user_content: str,
@@ -102,16 +111,26 @@ class ProductionLLMProvider:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         url = f"{(cfg.api_base or '').rstrip('/')}/chat/completions"
-        try:
-            resp = httpx.post(url, json=body, headers=headers, timeout=float(cfg.timeout or 60))
-        except httpx.HTTPError as exc:
-            raise LLMError("LLM_FAILED", f"模型服务请求失败：{exc}") from exc
-        if resp.status_code >= 400:
-            raise LLMError("LLM_FAILED", f"模型服务返回 {resp.status_code}：{resp.text[:300]}")
-        try:
-            return resp.json()["choices"][0]["message"]["content"]
-        except (ValueError, KeyError, IndexError) as exc:
-            raise LLMError("LLM_FAILED", f"模型响应解析失败：{exc}") from exc
+        # Langfuse generation 埋点：关闭时为 no-op；LLMError 会被标记 ERROR 后原样抛出。
+        with llm_generation(
+            name="agent.chat",
+            model=cfg.model_name,
+            input_messages=messages,
+            model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
+        ) as gen:
+            try:
+                resp = httpx.post(url, json=body, headers=headers, timeout=float(cfg.timeout or 60))
+            except httpx.HTTPError as exc:
+                raise LLMError("LLM_FAILED", f"模型服务请求失败：{exc}") from exc
+            if resp.status_code >= 400:
+                raise LLMError("LLM_FAILED", f"模型服务返回 {resp.status_code}：{resp.text[:300]}")
+            try:
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+            except (ValueError, KeyError, IndexError) as exc:
+                raise LLMError("LLM_FAILED", f"模型响应解析失败：{exc}") from exc
+            update_generation(gen, output=content, usage=data.get("usage"))
+            return content
 
     def _load_config(self) -> ModelConfiguration:
         cfg = (
