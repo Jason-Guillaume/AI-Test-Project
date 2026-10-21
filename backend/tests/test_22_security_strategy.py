@@ -1,7 +1,7 @@
 """验收项 22：Security Testing Phase A —— 迁移、系统模板、设置与策略/规则 CRUD。
 
 覆盖开发计划 §12 Phase A 与 §16.1：
-- 迁移：head==0011、7 张 feature-local 表、两个部分唯一索引、ORM 与建表逐列对齐
+- 迁移：head==0013、7 张 feature-local 表、两个部分唯一索引、ORM 与建表逐列对齐
 - 降级：只删安全表，Mock（0010）表与数据保留，Mock API 继续可用
 - 系统模板：8 套 SYSTEM 策略与规则由 0011 幂等插入，重复 upgrade 不重复插；
   预留攻击类不插可执行规则
@@ -198,9 +198,9 @@ def _alembic(config=None):
 
 
 class TestMigration:
-    def test_head_is_0011_and_tables_created(self, db):
+    def test_head_is_0013_and_tables_created(self, db):
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0012"
+        assert head == "0013"
         assert SECURITY_TABLES.issubset(_tables(db))
 
     def test_partial_unique_indexes(self, db):
@@ -253,7 +253,7 @@ class TestMigration:
             assert table not in init_source
 
     def test_downgrade_removes_only_security_tables(self, db):
-        """downgrade -1 只删 7 张安全表：Mock 表与数据保留，升级后 head 回到 0011。"""
+        """downgrade 到 0010 只删 0011 起的表：Mock 表与数据保留，升级后 head 回到 0013。"""
         from alembic import command
 
         config = _alembic()
@@ -268,7 +268,7 @@ class TestMigration:
             command.upgrade(config, "head")
 
         assert _tables(db) >= SECURITY_TABLES
-        assert db.execute(text("select version_num from alembic_version")).scalar() == "0012"
+        assert db.execute(text("select version_num from alembic_version")).scalar() == "0013"
 
 
 class TestBuiltinStrategies:

@@ -1,13 +1,14 @@
 // 用户控制台布局：左侧菜单 + 顶部组织/项目选择器与用户菜单。
 // 不在此处做鉴权（由 RequireAuth 守卫完成）；也不在此处请求项目/组织之外的数据。
+// 不做菜单级权限过滤：权限与路由逻辑保持现状，由路由守卫与页面自身控制。
 import {
   Avatar,
   Breadcrumb,
   Dropdown,
+  Flex,
   Layout,
   Menu,
   Select,
-  Space,
   theme,
 } from 'antd';
 import {
@@ -15,36 +16,42 @@ import {
   AppstoreOutlined,
   BellOutlined,
   BlockOutlined,
+  ChromeOutlined,
   CloudServerOutlined,
   BugOutlined,
   DatabaseOutlined,
   ExperimentOutlined,
+  FileSearchOutlined,
   FileTextOutlined,
-  RobotOutlined,
   HistoryOutlined,
   LogoutOutlined,
   PartitionOutlined,
+  PlayCircleOutlined,
   ProjectOutlined,
+  RobotOutlined,
   SafetyOutlined,
   ScheduleOutlined,
   SendOutlined,
   ThunderboltOutlined,
+  ToolOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { organizationsApi } from '@/api/organizations';
 import { projectsApi } from '@/api/projects';
+import { prefersDarkScheme } from '@/theme';
 
 // antd Layout 子部件解构：侧边栏、头部、内容区。
 const { Header, Sider, Content } = Layout;
 
 // 控制台左侧导航项：key 与 App.tsx 的路由 path 保持一致，
 // 用于 selectedKeys 高亮以及跳转目标。
-// 测试管理为分组（SubMenu）：父节点 key 无对应路由，仅展开；叶子项才包 Link 跳转。
+// 分组父 key 使用无对应路由的虚拟 key（/console/test-design 等），
+// 只作为可展开容器，绝不复用在册真实路由，避免被当成可点击链接。
 interface MenuLeaf {
   key: string;
   icon: ReactNode;
@@ -58,36 +65,66 @@ interface MenuGroup {
 }
 type MenuItem = MenuLeaf | MenuGroup;
 
+// 分组父 key 常量：与菜单结构共用，避免字符串重复定义后漂移。
+const GROUP_TEST_DESIGN = '/console/test-design'; // 测试设计
+const GROUP_TEST_EXECUTION = '/console/test-execution'; // 测试执行
+const GROUP_TEST_CAPABILITY = '/console/test-capability'; // 测试能力
+const GROUP_NOTIFICATION_CENTER = '/console/notification-center'; // 通知中心
+
 const MENU_ITEMS: MenuItem[] = [
   { key: '/console', icon: <AppstoreOutlined />, label: '工作台' }, // 工作台
-  { key: '/console/projects', icon: <ProjectOutlined />, label: '我的项目' }, // 我的项目
-  { key: '/console/defects', icon: <BugOutlined />, label: '缺陷管理' }, // 缺陷管理
-  { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' }, // 接口管理
-  { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' }, // 业务管理
+  { key: '/console/projects', icon: <ProjectOutlined />, label: '项目管理' }, // 项目管理
   {
-    key: '/console/test-management', // 测试管理（分组）
+    key: GROUP_TEST_DESIGN, // 测试设计（分组）
     icon: <ExperimentOutlined />,
-    label: '测试管理',
+    label: '测试设计',
     children: [
+      { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' },
+      { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' },
       { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
       { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
+    ],
+  },
+  {
+    key: GROUP_TEST_EXECUTION, // 测试执行（分组）
+    icon: <ThunderboltOutlined />,
+    label: '测试执行',
+    children: [
       { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
-      { key: '/console/execution-center', icon: <ThunderboltOutlined />, label: '执行中心' },
+      { key: '/console/execution-center', icon: <PlayCircleOutlined />, label: '执行中心' },
       { key: '/console/execution-history', icon: <HistoryOutlined />, label: '执行历史' },
-      { key: '/console/test-reports', icon: <FileTextOutlined />, label: '测试报告' },
-      { key: '/console/notification-channels', icon: <SendOutlined />, label: '飞书通知' },
+      { key: '/console/test-reports', icon: <FileSearchOutlined />, label: '测试报告' },
+    ],
+  },
+  {
+    key: GROUP_TEST_CAPABILITY, // 测试能力（分组）
+    icon: <ToolOutlined />,
+    label: '测试能力',
+    children: [
       { key: '/console/test-data', icon: <DatabaseOutlined />, label: '测试数据' },
+      // 接口 Mock 的执行记录页（/console/mock-management/executions）有意不占菜单位：
+      // 它从「接口 Mock」列表与端点详情里的链接进入，属于 Mock 模块内部路径，
+      // 不提升为一级入口以免稀释本分组的 IA。ROUTE_TITLES 里仍保留其标题以支持面包屑。
       { key: '/console/mock-management', icon: <CloudServerOutlined />, label: '接口 Mock' },
-      { key: '/console/web-ui', icon: <ExperimentOutlined />, label: 'Web UI 自动化' },
+      { key: '/console/web-ui', icon: <ChromeOutlined />, label: 'Web UI 自动化' },
       { key: '/console/security-testing', icon: <SafetyOutlined />, label: '安全测试' },
     ],
   },
-  { key: '/console/agent', icon: <RobotOutlined />, label: '接口测试 Agent' }, // 接口测试 Agent
-  { key: '/console/notifications', icon: <BellOutlined />, label: '通知中心' }, // 通知中心
-  { key: '/console/profile', icon: <UserOutlined />, label: '个人中心' }, // 个人中心
+  { key: '/console/agent', icon: <RobotOutlined />, label: 'AI Agent' }, // AI Agent
+  { key: '/console/defects', icon: <BugOutlined />, label: '缺陷管理' }, // 缺陷管理
+  {
+    key: GROUP_NOTIFICATION_CENTER, // 通知中心（分组）
+    icon: <BellOutlined />,
+    label: '通知中心',
+    children: [
+      { key: '/console/notifications', icon: <BellOutlined />, label: '通知记录' },
+      { key: '/console/notification-channels', icon: <SendOutlined />, label: '通知渠道' },
+    ],
+  },
 ];
 
-// 所有可命中菜单 key（含子菜单叶子），用于 selectedMenuKey 的精确/前缀匹配。
+// 所有可命中菜单 key（含分组父 key 与子菜单叶子），
+// 用于 selectedMenuKey 的精确/前缀匹配。
 const ALL_MENU_KEYS: string[] = (() => {
   const keys: string[] = [];
   for (const item of MENU_ITEMS) {
@@ -97,10 +134,55 @@ const ALL_MENU_KEYS: string[] = (() => {
   return keys;
 })();
 
-// 面包屑用的路由标题映射；不在表中的路径由 breadcrumbItems 单独兜底。
+// 叶子 key -> 分组父 key：路由变化时据此自动展开所属分组。
+const GROUP_OF_LEAF: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  for (const item of MENU_ITEMS) {
+    if ('children' in item) {
+      item.children.forEach((c) => {
+        map[c.key] = item.key;
+      });
+    }
+  }
+  return map;
+})();
+
+// 合法分组 key 集合：用于清洗 localStorage 里残留的已改名/已下线分组。
+const GROUP_KEYS: Set<string> = new Set(
+  MENU_ITEMS.filter((i): i is MenuGroup => 'children' in i).map((i) => i.key),
+);
+
+// 分组展开态在 localStorage 中的键名，沿用 useConsoleScope 的 console.* 前缀约定。
+const OPEN_KEYS_STORAGE = 'console.menu.open_keys';
+
+// 默认展开全部分组：与重构前「所有条目平铺可见」的信息量保持一致。
+const DEFAULT_OPEN_KEYS: string[] = [...GROUP_KEYS];
+
+// 从 localStorage 读取展开态；读取失败、数据损坏或全部为失效 key 时静默降级到默认值。
+function loadOpenKeys(): string[] {
+  try {
+    if (typeof window === 'undefined') return [...DEFAULT_OPEN_KEYS]; // SSR 无 localStorage
+    const raw = window.localStorage.getItem(OPEN_KEYS_STORAGE);
+    if (!raw) return [...DEFAULT_OPEN_KEYS];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...DEFAULT_OPEN_KEYS];
+    // 只保留仍然存在的分组 key，丢弃历史版本写入的脏数据。
+    const valid = parsed.filter(
+      (k): k is string => typeof k === 'string' && GROUP_KEYS.has(k),
+    );
+    return valid.length > 0 ? valid : [...DEFAULT_OPEN_KEYS];
+  } catch {
+    // localStorage 不可用（隐私模式、配额满）或数据非 JSON 时静默降级。
+    return [...DEFAULT_OPEN_KEYS];
+  }
+}
+
+// 面包屑用的路由标题映射；带 :param 的 key 是动态路由占位符，
+// 由 matchRouteTitle 按路径段数匹配，不用于精确查找。
 const ROUTE_TITLES: Record<string, string> = {
   '/console': '工作台', // 工作台
-  '/console/projects': '我的项目', // 我的项目
+  '/console/projects': '项目管理', // 项目管理
+  '/console/projects/:id': '项目详情', // 项目详情（动态）
   '/console/defects': '缺陷管理', // 缺陷管理
   '/console/api-catalog': '接口管理', // 接口管理
   '/console/business-management': '业务管理', // 业务管理
@@ -110,15 +192,40 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/execution-center': '执行中心', // 执行中心
   '/console/execution-history': '执行历史', // 执行历史
   '/console/test-reports': '测试报告', // 测试报告
-  '/console/notification-channels': '飞书通知', // 飞书通知
-  '/console/test-data': '测试数据', // 测试数据
+  '/console/test-reports/:reportId': '报告详情', // 报告详情（动态，与列表页区分）
   '/console/mock-management': '接口 Mock', // 接口 Mock
-  '/console/web-ui': 'Web UI 自动化',
+  '/console/mock-management/services/:serviceId': '服务详情', // 服务详情（动态）
+  '/console/mock-management/endpoints/:endpointId': '端点详情', // 端点详情（动态）
+  '/console/mock-management/executions': '接口 Mock 执行', // 接口 Mock 执行
+  '/console/web-ui': 'Web UI 自动化', // Web UI 自动化
   '/console/security-testing': '安全测试', // 安全测试
-  '/console/agent': '接口测试 Agent', // 接口测试 Agent
-  '/console/notifications': '通知中心', // 通知中心
+  '/console/test-data': '测试数据', // 测试数据
+  '/console/agent': 'AI Agent', // AI Agent
+  '/console/notifications': '通知记录', // 通知记录
+  '/console/notification-channels': '通知渠道', // 通知渠道
   '/console/profile': '个人中心', // 个人中心
 };
+
+/**
+ * 解析当前路径对应的标题。
+ *
+ * 先精确匹配；未命中再按「路径段数一致 + :param 段通配」匹配动态路由，
+ * 使 /console/test-reports/5 得到「报告详情」而不是列表页的「测试报告」。
+ *
+ * @param pathname 当前路径
+ * @returns 命中的标题；未命中返回 undefined
+ */
+function matchRouteTitle(pathname: string): string | undefined {
+  const exact = ROUTE_TITLES[pathname];
+  if (exact) return exact;
+  const segs = pathname.split('/').filter(Boolean);
+  for (const [pattern, title] of Object.entries(ROUTE_TITLES)) {
+    const pSegs = pattern.split('/').filter(Boolean);
+    if (pSegs.length !== segs.length) continue;
+    if (pSegs.every((s, i) => s.startsWith(':') || s === segs[i])) return title;
+  }
+  return undefined;
+}
 
 /**
  * 用户控制台布局：左侧导航 + 顶部作用域选择器 + 面包屑 + 路由出口。
@@ -134,6 +241,7 @@ export function ConsoleLayout() {
   const { currentOrgId, setOrgId, currentProjectId, setProjectId } =
     useConsoleScope(); // 当前组织/项目选择态与切换操作
   const { token: themeToken } = theme.useToken(); // antd 设计令牌，用于主题色
+  const darkMode = prefersDarkScheme(); // 侧栏主题与全局主题共用同一判定
 
   // 组织列表：不依赖任何作用域，作为组织下拉的候选项。
   const { data: orgsData } = useQuery({
@@ -169,8 +277,19 @@ export function ConsoleLayout() {
     }
   }, [currentOrgId, orgs, setOrgId]);
 
-  // 高亮当前菜单：先在全部 key（含子菜单叶子）中精确匹配，再退化为最长前缀匹配
-  // （最长前缀优先，避免 '/console' 抢占 '/console/projects/123' 的叶子项）。
+  // 分组展开态：惰性从 localStorage 恢复，用户折叠/展开后持久化。
+  const [openKeys, setOpenKeys] = useState<string[]>(() => loadOpenKeys());
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(OPEN_KEYS_STORAGE, JSON.stringify(openKeys));
+    } catch {
+      // 写入失败（隐私模式、配额满）时静默忽略，不影响菜单交互。
+    }
+  }, [openKeys]);
+
+  // 高亮当前菜单：先在全部 key（含分组父 key 与叶子）中精确匹配，
+  // 再退化为最长前缀匹配（最长前缀优先，避免 '/console' 抢占 '/console/projects/123'）。
   const selectedMenuKey = useMemo(() => {
     if (ALL_MENU_KEYS.includes(location.pathname)) return location.pathname;
     const prefixes = ALL_MENU_KEYS.filter((k) =>
@@ -183,22 +302,25 @@ export function ConsoleLayout() {
     return '/console';
   }, [location.pathname]);
 
-  // 面包屑：命中分组子项时展示「控制台 / 分组名 / 叶子名」三级；其余按标题表兜底。
+  // 路由变化时自动展开所属分组，保证深链进入子页时分组处于展开态。
+  // 已在展开列表中时返回原数组引用，避免无谓的重渲染。
+  useEffect(() => {
+    const groupKey = GROUP_OF_LEAF[selectedMenuKey];
+    if (!groupKey) return;
+    setOpenKeys((prev) => (prev.includes(groupKey) ? prev : [...prev, groupKey]));
+  }, [selectedMenuKey]);
+
+  // 面包屑：命中分组子项时展示「控制台 / 分组名 / 页面名」三级，其余两段。
+  // 页面名走 matchRouteTitle，动态子路由（报告详情等）与列表页标题可区分。
   const breadcrumbItems = useMemo(() => {
     const items: { title: string }[] = [{ title: '控制台' }];
+    const currentTitle = matchRouteTitle(location.pathname) ?? '工作台';
     const group = MENU_ITEMS.find(
       (i): i is MenuGroup =>
         'children' in i && i.children.some((c) => c.key === selectedMenuKey),
     );
-    if (group) {
-      const child = group.children.find((c) => c.key === selectedMenuKey);
-      items.push({ title: group.label });
-      if (child) items.push({ title: child.label });
-    } else if (location.pathname.startsWith('/console/projects/')) {
-      items.push({ title: '项目详情' });
-    } else {
-      items.push({ title: ROUTE_TITLES[selectedMenuKey] ?? '工作台' });
-    }
+    if (group) items.push({ title: group.label });
+    items.push({ title: currentTitle });
     return items;
   }, [location.pathname, selectedMenuKey]);
 
@@ -227,11 +349,13 @@ export function ConsoleLayout() {
   // 项目选择器额外 allowClear，清空后回到“不限定项目”的作用域。
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" width={220} breakpoint="lg">
+      <Sider theme={darkMode ? 'dark' : 'light'} width={220} breakpoint="lg">
         <div
           style={{
             height: 56,
-            color: '#fff',
+            // 深色侧栏用白色文字，浅色侧栏改用 token 正文色：
+            // 侧栏改浅底后若仍是 #fff 会白字压白底直接消失。
+            color: darkMode ? themeToken.colorTextLightSolid : themeToken.colorText,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -242,11 +366,11 @@ export function ConsoleLayout() {
           用户控制台
         </div>
         <Menu
-          theme="dark"
+          theme={darkMode ? 'dark' : 'light'}
           mode="inline"
           selectedKeys={[selectedMenuKey]}
-          // 测试管理分组默认展开；命中子项时 antd 会自动展开其父级。
-          defaultOpenKeys={['/console/test-management']}
+          openKeys={openKeys}
+          onOpenChange={setOpenKeys}
           items={MENU_ITEMS.map((item) => {
             if ('children' in item) {
               // 分组父节点：不包 Link（无对应路由），仅作为可展开容器；叶子项包 Link。
@@ -281,9 +405,10 @@ export function ConsoleLayout() {
             gap: 16,
           }}
         >
-          <Space size="large">
+          {/* 窄屏时两个选择器按视口宽度收窄（min()），并允许整体换行，避免挤爆顶部栏 */}
+          <Flex wrap="wrap" gap="middle" align="center" style={{ flex: 1, minWidth: 0 }}>
             <Select
-              style={{ width: 180 }}
+              style={{ width: 'min(180px, 36vw)' }}
               placeholder="选择组织"
               value={currentOrgId ?? undefined}
               onChange={(v) => {
@@ -295,7 +420,7 @@ export function ConsoleLayout() {
               optionFilterProp="label"
             />
             <Select
-              style={{ width: 220 }}
+              style={{ width: 'min(220px, 44vw)' }}
               placeholder="选择项目"
               value={currentProjectId ?? undefined}
               onChange={(v) => setProjectId(v)}
@@ -307,12 +432,12 @@ export function ConsoleLayout() {
               optionFilterProp="label"
               allowClear
             />
-          </Space>
+          </Flex>
           <Dropdown menu={userMenu} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
+            <Flex gap="small" style={{ cursor: 'pointer' }}>
               <Avatar icon={<UserOutlined />} />
               <span>{user?.username}</span>
-            </Space>
+            </Flex>
           </Dropdown>
         </Header>
         <Content style={{ background: themeToken.colorBgLayout }}>

@@ -72,6 +72,11 @@ class AgentState(TypedDict, total=False):
     security_finding_brief: list[dict[str, Any]]  # 未关闭 Finding 摘要（脱敏，最多 20 条）
     security_risk_pending: dict[str, Any] | None  # 待高风险确认的用例（{count, case_ids, message}）
 
+    # --- ZAP 安全扫描（Phase 2，§二十三）---
+    zap_scan_plan: dict[str, Any] | None  # job_service.plan 的计划预览（确认前不创建任务）
+    zap_scan_job_id: int | None  # 人工确认后创建的扫描任务ID
+    zap_scan_note: str | None  # 本轮给用户的扫描相关说明（人工可读）
+
     # --- 控制 ---
     current_stage: str
     error: dict[str, Any] | None  # {"code": ..., "message": ...}
@@ -118,6 +123,9 @@ def make_initial_state(project_id: int, user_id: int | None, session_id: int | N
         security_strategy_keys=[],
         security_finding_brief=[],
         security_risk_pending=None,
+        zap_scan_plan=None,
+        zap_scan_job_id=None,
+        zap_scan_note=None,
         current_stage="UNDERSTANDING",
         error=None,
         messages=[],
@@ -145,10 +153,11 @@ def is_review_stage(stage: str) -> bool:
 
     REPORT_REVIEW：报告已落库，人工确认后才触发飞书通知（不自动推送）。
     SECURITY_PLAN_REVIEW：安全计划已生成，人工确认后才写入 TestCase（不自动落库）。
+    ZAP_SCAN_REVIEW：ZAP 扫描计划已生成，人工确认后才创建扫描任务（§二十三）。
     """
     return stage in (
         "TEST_POINT_REVIEW", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
-        "REPORT_REVIEW", "SECURITY_PLAN_REVIEW",
+        "REPORT_REVIEW", "SECURITY_PLAN_REVIEW", "ZAP_SCAN_REVIEW",
     )
 
 

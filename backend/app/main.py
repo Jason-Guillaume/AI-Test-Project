@@ -41,6 +41,8 @@ from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
 from app.features.reports.router import router as reports_router
 from app.features.security_testing.router import router as security_testing_router
+from app.features.security_testing.zap.router import router as security_scan_router
+from app.features.security_testing.zap.worker import ScanWorker
 from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.features.users.admin import router as users_admin_router
@@ -92,9 +94,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.info("AUTO_CREATE_SCHEMA 已开启，create_all 完成（连接探测：%s）", probe)
         finally:
             session.close()
+    scan_worker = ScanWorker()
+    scan_worker.start()
     yield
-    # 停止期先把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
-    # 再回收连接池，避免 gunicorn worker 反复退出时留下半开连接
+    # 停止期先停掉扫描后台任务（已领取的任务会在下一个检查点看到取消位），
+    # 再把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
+    # 最后回收连接池，避免 gunicorn worker 反复退出时留下半开连接
+    scan_worker.stop()
     flush_langfuse()
     engine.dispose()
     logger.info("应用已停止")
@@ -196,6 +202,7 @@ def create_app() -> FastAPI:
     application.include_router(web_ui_router, prefix=API_PREFIX)
     # Security Testing：只改请求与解释结果，执行仍走现有 RunService（开发计划 §16.1）。
     application.include_router(security_testing_router, prefix=API_PREFIX)
+    application.include_router(security_scan_router, prefix=API_PREFIX)
     # Mock Management：管理面（需平台 JWT）与执行面（X-Mock-Token）分离（§十四）。
     # 执行面 router 自带 prefix=/mock，catch-all 挂在 /api/v1/mock 下，必须最后装配，
     # 避免其 {path:path} 吞掉其它路由（/mock/ 与 /mock-services/ 不冲突）。

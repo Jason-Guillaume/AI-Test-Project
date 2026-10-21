@@ -1,21 +1,11 @@
 // 执行历史页（用户视角）。
-// 分页列出项目内 TestRun（listRuns 返回分页信封 {items,total,page,page_size}），
-// 逐行「查看详情」抽屉展开该次运行的 CaseExecution 列表（listCaseExecutions 返回分页信封），
-// 每条用例执行可进一步查看断言结果与请求/响应/上下文快照。
+// 分页列出项目内 TestRun，逐行「查看详情」抽屉展开该次运行的 CaseExecution 列表，
+// 每条用例执行再打开宽屏抽屉查看步骤时间线 / 断言 / 截图 / Trace / 请求响应快照。
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；越权 404，前端不展示。
+// 颜色与状态语义统一走 shared/status 与 theme token，不在本页重复定义色板。
 import { useState } from 'react';
-import {
-  App,
-  Button,
-  Drawer,
-  Empty,
-  Modal,
-  Table,
-  Tabs,
-  Tag,
-  Typography,
-} from 'antd';
+import { App, Button, Empty, Table, theme, Typography } from 'antd';
 import { EyeOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -23,45 +13,24 @@ import type { TableColumnsType } from 'antd';
 import { getErrorMessage } from '@/api/client';
 import { reportsApi } from '@/api/reports';
 import { testManagementApi } from '@/api/testManagement';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { CaseExecutionDetail } from '@/components/exec/CaseExecutionDetail';
+import { DetailDrawer } from '@/components/DetailDrawer';
+import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/components/PageState';
+import { StatusBadge } from '@/components/StatusBadge';
+import { fmtDuration, fmtTime } from '@/shared/format';
+import {
+  CASE_EXECUTION_STATUS_COLOR,
+  CASE_EXECUTION_STATUS_LABEL,
+  TEST_RUN_STATUS_COLOR,
+} from '@/shared/status';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
-import { CASE_EXECUTION_STATUS_OPTIONS, TEST_RUN_STATUS_OPTIONS } from './constants';
+import { TEST_RUN_STATUS_OPTIONS } from './constants';
 import type { CaseExecution, TestRun } from '@/types';
-
-const RUN_STATUS_COLOR: Record<string, string> = {
-  PENDING: 'default',
-  RUNNING: 'processing',
-  SUCCESS: 'green',
-  FAILED: 'red',
-  CANCELLED: 'default',
-};
-const CASE_STATUS_COLOR: Record<string, string> = {
-  PENDING: 'default',
-  RUNNING: 'processing',
-  PASSED: 'green',
-  FAILED: 'red',
-  SKIPPED: 'default',
-  ERROR: 'warning',
-};
-
-const runStatusLabel = (v: string) =>
-  TEST_RUN_STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v;
-const caseStatusLabel = (v: string) =>
-  CASE_EXECUTION_STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v;
-
-/** JSON 快照只读视图。 */
-function JsonView({ value }: { value: unknown }) {
-  if (value == null) return <Empty description="无数据" />;
-  return (
-    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 320, overflow: 'auto', background: '#fafafa', padding: 8, borderRadius: 6, fontSize: 12 }}>
-      {JSON.stringify(value, null, 2)}
-    </pre>
-  );
-}
 
 /** 执行历史页。 */
 export function ConsoleExecutionHistoryPage() {
   const { currentProjectId } = useConsoleScope();
+  const { token } = theme.useToken();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [drawerRunId, setDrawerRunId] = useState<number | null>(null);
@@ -105,16 +74,33 @@ export function ConsoleExecutionHistoryPage() {
       title: '状态',
       dataIndex: 'status',
       width: 110,
-      render: (v: string) => <Tag color={RUN_STATUS_COLOR[v] ?? 'default'}>{runStatusLabel(v)}</Tag>,
+      render: (v: string) => (
+        <StatusBadge value={v} options={TEST_RUN_STATUS_OPTIONS} colors={TEST_RUN_STATUS_COLOR} />
+      ),
     },
     { title: '总数', dataIndex: 'total', width: 70 },
-    { title: '通过', dataIndex: 'passed', width: 70, render: (v: number) => <span style={{ color: '#52c41a' }}>{v}</span> },
-    { title: '失败', dataIndex: 'failed', width: 70, render: (v: number) => <span style={{ color: '#ff4d4f' }}>{v}</span> },
+    {
+      title: '通过',
+      dataIndex: 'passed',
+      width: 70,
+      render: (v: number) => <Typography.Text style={{ color: token.colorSuccess }}>{v}</Typography.Text>,
+    },
+    {
+      title: '失败',
+      dataIndex: 'failed',
+      width: 70,
+      render: (v: number) => <Typography.Text style={{ color: token.colorError }}>{v}</Typography.Text>,
+    },
     { title: '跳过', dataIndex: 'skipped', width: 70 },
-    { title: '错误', dataIndex: 'error', width: 70, render: (v: number) => <span style={{ color: '#faad14' }}>{v}</span> },
+    {
+      title: '错误',
+      dataIndex: 'error',
+      width: 70,
+      render: (v: number) => <Typography.Text style={{ color: token.colorWarning }}>{v}</Typography.Text>,
+    },
     { title: '计划ID', dataIndex: 'plan_id', width: 80, render: (v: number | null) => v ?? '-' },
-    { title: '开始', dataIndex: 'started_at', width: 150, render: (v: string | null) => v?.slice(0, 16).replace('T', ' ') ?? '-' },
-    { title: '结束', dataIndex: 'finished_at', width: 150, render: (v: string | null) => v?.slice(0, 16).replace('T', ' ') ?? '-' },
+    { title: '开始', dataIndex: 'started_at', width: 150, render: (v: string | null) => fmtTime(v) },
+    { title: '结束', dataIndex: 'finished_at', width: 150, render: (v: string | null) => fmtTime(v) },
     {
       title: '操作',
       width: 190,
@@ -145,6 +131,9 @@ export function ConsoleExecutionHistoryPage() {
 
       {runsQuery.isLoading ? (
         <LoadingState />
+      ) : runsQuery.isError ? (
+        /* 接口失败必须报错：否则 500 会渲染成「暂无执行记录」，用户会以为没有执行过 */
+        <ErrorState error={runsQuery.error} onRetry={runsQuery.refetch} />
       ) : runs.length === 0 ? (
         <EmptyState description="暂无执行记录" />
       ) : (
@@ -158,7 +147,10 @@ export function ConsoleExecutionHistoryPage() {
             pageSize,
             total,
             showSizeChanger: true,
-            onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
           }}
         />
       )}
@@ -166,9 +158,9 @@ export function ConsoleExecutionHistoryPage() {
       <RunDetailDrawer
         runId={drawerRunId}
         onClose={() => setDrawerRunId(null)}
-        selectedCe={selectedCe}
-        setSelectedCe={setSelectedCe}
+        onSelect={(ce) => setSelectedCe(ce)}
       />
+      <CaseExecutionDetail open={selectedCe !== null} execution={selectedCe} onClose={() => setSelectedCe(null)} />
     </PageContainer>
   );
 }
@@ -177,13 +169,11 @@ export function ConsoleExecutionHistoryPage() {
 function RunDetailDrawer({
   runId,
   onClose,
-  selectedCe,
-  setSelectedCe,
+  onSelect,
 }: {
   runId: number | null;
   onClose: () => void;
-  selectedCe: CaseExecution | null;
-  setSelectedCe: (v: CaseExecution | null) => void;
+  onSelect: (ce: CaseExecution) => void;
 }) {
   const caseExecQuery = useQuery({
     queryKey: ['case-executions', runId],
@@ -198,17 +188,28 @@ function RunDetailDrawer({
       title: '状态',
       dataIndex: 'status',
       width: 110,
-      render: (v: string) => <Tag color={CASE_STATUS_COLOR[v] ?? 'default'}>{caseStatusLabel(v)}</Tag>,
+      render: (v: string) => (
+        <StatusBadge
+          value={v}
+          labels={{ ...CASE_EXECUTION_STATUS_LABEL }}
+          colors={{ ...CASE_EXECUTION_STATUS_COLOR }}
+        />
+      ),
     },
     { title: '执行器', dataIndex: 'executor_type', width: 120, render: (v: string | null) => v ?? '-' },
-    { title: '耗时(ms)', dataIndex: 'duration_ms', width: 100, render: (v: number | null) => v ?? '-' },
+    {
+      title: '耗时',
+      dataIndex: 'duration_ms',
+      width: 100,
+      render: (v: number | null) => fmtDuration(v),
+    },
     { title: '错误码', dataIndex: 'error_code', width: 120, render: (v: string | null) => v ?? '-' },
     { title: '错误信息', dataIndex: 'error_message', ellipsis: true, render: (v: string | null) => v ?? '-' },
     {
       title: '操作',
       width: 110,
       render: (_, row) => (
-        <Button size="small" icon={<EyeOutlined />} onClick={() => setSelectedCe(row)}>
+        <Button size="small" icon={<EyeOutlined />} onClick={() => onSelect(row)}>
           查看
         </Button>
       ),
@@ -216,83 +217,23 @@ function RunDetailDrawer({
   ];
 
   return (
-    <Drawer title={runId != null ? `执行 #${runId}` : '执行详情'} width={760} open={runId != null} onClose={onClose} destroyOnClose>
+    <DetailDrawer
+      open={runId != null}
+      onClose={onClose}
+      title={runId != null ? `执行 #${runId}` : '执行详情'}
+      width={760}
+      loading={caseExecQuery.isLoading}
+      error={caseExecQuery.isError ? caseExecQuery.error : undefined}
+      empty={caseExecQuery.isSuccess && items.length === 0 ? '无用例执行记录' : null}
+    >
       <Table
         rowKey="id"
         size="small"
         columns={columns}
         dataSource={items}
         pagination={false}
-        loading={caseExecQuery.isLoading}
         locale={{ emptyText: <Empty description="无用例执行记录" /> }}
       />
-      <CaseExecutionModal ce={selectedCe} onClose={() => setSelectedCe(null)} />
-    </Drawer>
-  );
-}
-
-/** 用例执行详情弹窗：断言结果 + 请求/响应/上下文快照。 */
-function CaseExecutionModal({ ce, onClose }: { ce: CaseExecution | null; onClose: () => void }) {
-  if (ce == null) return null;
-  const assertionRows = ce.assertion_results ?? [];
-
-  const assertionColumns: TableColumnsType<Record<string, unknown>> = [
-    { title: '断言', dataIndex: 'path', render: (v) => String(v ?? '-') },
-    { title: '操作符', dataIndex: 'operator', width: 90, render: (v) => String(v ?? '-') },
-    { title: '期望', dataIndex: 'expected', ellipsis: true, render: (v) => String(v ?? '-') },
-    { title: '实际', dataIndex: 'actual', ellipsis: true, render: (v) => String(v ?? '-') },
-    {
-      title: '结果',
-      dataIndex: 'passed',
-      width: 80,
-      render: (v: unknown) =>
-        v ? <Tag color="green">通过</Tag> : <Tag color="red">失败</Tag>,
-    },
-  ];
-
-  return (
-    <Modal
-      title={ce != null ? `用例执行 #${ce.id}` : '用例执行'}
-      open={ce != null}
-      onCancel={onClose}
-      footer={<Button onClick={onClose}>关闭</Button>}
-      width={720}
-    >
-      <Tabs
-        items={[
-          {
-            key: 'assertions',
-            label: '断言结果',
-            children:
-              assertionRows.length === 0 ? (
-                <Empty description="无断言结果" />
-              ) : (
-                <Table
-                  rowKey={(_, idx) => String(idx)}
-                  size="small"
-                  columns={assertionColumns}
-                  dataSource={assertionRows as Record<string, unknown>[]}
-                  pagination={false}
-                />
-              ),
-          },
-          {
-            key: 'request',
-            label: '请求快照',
-            children: <JsonView value={ce.request_snapshot} />,
-          },
-          {
-            key: 'response',
-            label: '响应快照',
-            children: <JsonView value={ce.response_snapshot} />,
-          },
-          {
-            key: 'context',
-            label: '上下文',
-            children: <JsonView value={ce.context_json} />,
-          },
-        ]}
-      />
-    </Modal>
+    </DetailDrawer>
   );
 }

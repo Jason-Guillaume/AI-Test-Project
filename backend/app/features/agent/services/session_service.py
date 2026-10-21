@@ -174,6 +174,12 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
         # 安全上下文跨轮次保留（confirm_security_plan 时 materializer 需要重放 preview）
         state["security_context"] = sec_meta.get("context")
 
+    scan_meta = latest("SECURITY_SCAN_PLAN")
+    if scan_meta:
+        # 跨轮次保留计划：confirm_security_scan 需要重放 preview 复核扫描强度。
+        state["zap_scan_plan"] = scan_meta.get("plan")
+        state["zap_scan_job_id"] = scan_meta.get("job_id")
+
     result_meta = latest("RESULT")
     if result_meta:
         state["analysis"] = result_meta.get("analysis")
@@ -293,6 +299,33 @@ def persist_turn(
                     "target_ids": final.get("target_ids") or [],
                     # 持久化安全上下文，供跨轮次重建（confirm_security_plan 复用）
                     "context": final.get("security_context"),
+                },
+            )
+        )
+
+    # ZAP 扫描计划（Phase 2，§二十三）：计划预览先落一条待确认消息；人工确认后
+    # 同一个键更新为 confirmed=True + job_id，再落一条创建结果。approval_note 不
+    # 入这里——它只在扫描任务表上留痕，避免在对话消息里重复保存批准理由。
+    if _points_changed(initial, final, "zap_scan_plan") or (
+        final.get("zap_scan_job_id") != initial.get("zap_scan_job_id")
+    ):
+        plan = final.get("zap_scan_plan") or {}
+        job_id = final.get("zap_scan_job_id")
+        if job_id:
+            text = f"扫描任务 #{job_id} 已创建"
+        else:
+            target = (plan.get("target") or {}).get("name") or "目标"
+            intensity = "主动" if plan.get("is_active_scan") else "被动"
+            text = f"已生成扫描计划（{intensity}扫描，目标：{target}），待确认"
+        emitted.append(
+            append_message(
+                db, session.id, role="ASSISTANT", message_type="SECURITY_SCAN_PLAN",
+                content=text,
+                metadata={
+                    "plan": plan,
+                    "job_id": job_id,
+                    "target_id": plan.get("target_id"),
+                    "scan_profile_id": plan.get("scan_profile_id"),
                 },
             )
         )

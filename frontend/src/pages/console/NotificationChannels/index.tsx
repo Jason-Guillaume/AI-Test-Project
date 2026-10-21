@@ -42,17 +42,16 @@ import { notificationChannelsApi } from '@/api/notificationChannels';
 import { getErrorMessage } from '@/api/client';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
-import {
-  fmtTime,
-  NOTIFY_CONDITION_OPTIONS,
-  NOTIFY_STATUS_COLOR,
-  NOTIFY_STATUS_OPTIONS,
-} from '../Reports/constants';
+import { fmtTime } from '@/shared/format';
+import { NOTIFY_CONDITION_OPTIONS, NOTIFY_STATUS_COLOR, NOTIFY_STATUS_OPTIONS } from '@/shared/notify';
+import { labelOf } from '@/shared/options';
 import type {
   ChannelCreateRequest,
   ChannelUpdateRequest,
   NotificationChannel,
   NotificationRecord,
+  NotifyCondition,
+  NotifyStatus,
 } from '@/types';
 
 interface ChannelFormValues {
@@ -63,11 +62,6 @@ interface ChannelFormValues {
   notify_condition: NotificationChannel['notify_condition'];
   keyword?: string;
 }
-
-const conditionLabel = (v: string) =>
-  NOTIFY_CONDITION_OPTIONS.find((o) => o.value === v)?.label ?? v;
-const notifyStatusLabel = (v: string) =>
-  NOTIFY_STATUS_OPTIONS.find((o) => o.value === v)?.label ?? v;
 
 /** 新建 / 编辑渠道弹窗。编辑时 webhook 与 secret 留空即保持不变。 */
 function ChannelFormModal({
@@ -187,10 +181,8 @@ function RecordsDrawer({
       title: '状态',
       dataIndex: 'status',
       width: 110,
-      render: (v: string) => (
-        <Tag color={NOTIFY_STATUS_COLOR[v as keyof typeof NOTIFY_STATUS_COLOR] ?? 'default'}>
-          {notifyStatusLabel(v)}
-        </Tag>
+      render: (v: NotifyStatus) => (
+        <Tag color={NOTIFY_STATUS_COLOR[v] ?? 'default'}>{labelOf(NOTIFY_STATUS_OPTIONS, v)}</Tag>
       ),
     },
     {
@@ -329,7 +321,7 @@ export function ConsoleNotificationChannelsPage() {
       title: '通知条件',
       dataIndex: 'notify_condition',
       width: 190,
-      render: (v: string) => <Tag color="blue">{conditionLabel(v)}</Tag>,
+      render: (v: NotifyCondition) => <Tag color="blue">{labelOf(NOTIFY_CONDITION_OPTIONS, v)}</Tag>,
     },
     {
       title: 'Webhook（脱敏）',

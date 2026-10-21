@@ -152,6 +152,9 @@ def send_message(
         channel_id=body.channel_id,
         security_item_indexes=body.security_item_indexes,
         security_case_ids=body.security_case_ids,
+        zap_scan_target_id=body.zap_scan_target_id,
+        zap_scan_profile_id=body.zap_scan_profile_id,
+        approval_note=body.approval_note,
     )
 
     return {
@@ -183,6 +186,8 @@ _STAGE_ACTIONS: dict[str, list[str]] = {
     "CLARIFY": [],
     # Phase F：安全计划已生成但未确认（用例还没落库）。
     "SECURITY_PLAN_REVIEW": ["confirm_security_plan"],
+    # Phase 2：ZAP 扫描计划已生成但未确认（任务还没创建，§二十三）。
+    "ZAP_SCAN_REVIEW": ["confirm_security_scan"],
 }
 
 
@@ -209,5 +214,8 @@ def _build_workspace(state: AgentState, session) -> AgentWorkspace:
         error=state.get("error"),
         security_plan=state.get("security_plan"),
         security_findings=state.get("security_finding_brief", []),
+        zap_scan_plan=state.get("zap_scan_plan"),
+        zap_scan_job_id=state.get("zap_scan_job_id"),
+        zap_scan_note=state.get("zap_scan_note"),
         suggested_actions=actions,
     )

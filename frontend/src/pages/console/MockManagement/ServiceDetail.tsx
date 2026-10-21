@@ -40,7 +40,7 @@ import { getErrorMessage } from '@/api/client';
 import { buildRuntimeUrl, mockManagementApi } from '@/api/mockManagement';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
-import { fmtTime } from '../Reports/constants';
+import { fmtTime } from '@/shared/format';
 import type { ApiInterface, MockEndpoint } from '@/types';
 import { HTTP_METHOD_OPTIONS } from './constants';
 

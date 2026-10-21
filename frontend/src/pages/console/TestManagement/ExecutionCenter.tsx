@@ -16,7 +16,7 @@ import {
   Space,
   Statistic,
   Table,
-  Tag,
+  theme,
   Typography,
 } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
@@ -25,17 +25,13 @@ import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/api/testManagement';
 import { environmentsApi } from '@/api/environments';
 import { getErrorMessage } from '@/api/client';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/components/PageState';
+import { StatusBadge } from '@/components/StatusBadge';
+import { fmtTimeSec } from '@/shared/format';
+import { TEST_RUN_STATUS_COLOR } from '@/shared/status';
+import { TEST_RUN_STATUS_OPTIONS } from './constants';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import type { Environment, TestPlan, TestRun } from '@/types';
-
-const RUN_STATUS_COLOR: Record<string, string> = {
-  PENDING: 'default',
-  RUNNING: 'processing',
-  SUCCESS: 'green',
-  FAILED: 'red',
-  CANCELLED: 'default',
-};
 
 interface RunFormValues {
   environment_id?: number | null;
@@ -44,6 +40,7 @@ interface RunFormValues {
 /** 执行中心页。 */
 export function ConsoleExecutionCenterPage() {
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const navigate = useNavigate();
   const { currentProjectId } = useConsoleScope();
 
@@ -93,7 +90,7 @@ export function ConsoleExecutionCenterPage() {
       title: '状态',
       dataIndex: 'status',
       width: 90,
-      render: (v: string) => <Tag color={v === 'ACTIVE' ? 'green' : 'default'}>{v}</Tag>,
+      render: (v: string) => <StatusBadge value={v} color={v === 'ACTIVE' ? 'green' : 'default'} />,
     },
     { title: '执行模式', dataIndex: 'execution_mode', width: 100 },
     {
@@ -134,6 +131,9 @@ export function ConsoleExecutionCenterPage() {
 
       {plansQuery.isLoading ? (
         <LoadingState />
+      ) : plansQuery.isError ? (
+        /* 接口失败必须报错：否则 500 会提示「去测试计划页创建」，把服务端错误指向错误方向 */
+        <ErrorState error={plansQuery.error} onRetry={plansQuery.refetch} />
       ) : plans.length === 0 ? (
         <EmptyState description="暂无测试计划，请先在「测试计划」页创建" />
       ) : (
@@ -189,23 +189,25 @@ export function ConsoleExecutionCenterPage() {
         {resultRun && (
           <>
             <Space style={{ marginBottom: 12 }}>
-              <Tag color={RUN_STATUS_COLOR[resultRun.status] ?? 'default'} style={{ fontSize: 14, padding: '2px 12px' }}>
-                {resultRun.status}
-              </Tag>
+              <StatusBadge
+                value={resultRun.status}
+                options={TEST_RUN_STATUS_OPTIONS}
+                colors={TEST_RUN_STATUS_COLOR}
+              />
               <Typography.Text type="secondary">执行 #{resultRun.id}</Typography.Text>
             </Space>
             <Descriptions size="small" column={2} bordered>
               <Descriptions.Item label="计划ID">{resultRun.plan_id ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="环境ID">{resultRun.environment_id ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="开始">{resultRun.started_at?.slice(0, 19).replace('T', ' ') ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="结束">{resultRun.finished_at?.slice(0, 19).replace('T', ' ') ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="开始">{fmtTimeSec(resultRun.started_at)}</Descriptions.Item>
+              <Descriptions.Item label="结束">{fmtTimeSec(resultRun.finished_at)}</Descriptions.Item>
             </Descriptions>
             <Space style={{ marginTop: 16, width: '100%', justifyContent: 'space-around' }} wrap>
               <Statistic title="总数" value={resultRun.total} />
-              <Statistic title="通过" value={resultRun.passed} valueStyle={{ color: '#52c41a' }} />
-              <Statistic title="失败" value={resultRun.failed} valueStyle={{ color: '#ff4d4f' }} />
+              <Statistic title="通过" value={resultRun.passed} valueStyle={{ color: token.colorSuccess }} />
+              <Statistic title="失败" value={resultRun.failed} valueStyle={{ color: token.colorError }} />
               <Statistic title="跳过" value={resultRun.skipped} />
-              <Statistic title="错误" value={resultRun.error} valueStyle={{ color: '#faad14' }} />
+              <Statistic title="错误" value={resultRun.error} valueStyle={{ color: token.colorWarning }} />
             </Space>
           </>
         )}

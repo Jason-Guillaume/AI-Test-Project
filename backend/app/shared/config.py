@@ -147,6 +147,31 @@ class Settings(BaseSettings):
     # 默认关闭：表结构只通过 Alembic 变更，应用启动不自动改正式表结构。
     AUTO_CREATE_SCHEMA: bool = False
 
+    # OWASP ZAP 安全扫描（Security Testing Phase 2）。
+    # 部署形态：ZAP 官方 daemon 镜像与平台同网段运行，只在本机/内网监听；
+    # ZAP 管理 API 不对外暴露（§三、§三十四 第 11 条）。
+    # 未配置或 ZAP_ENABLED=False 时扫描入口可用但会明确返回「ZAP 服务未启用」，
+    # 不伪造扫描结果（§三十九）。
+    ZAP_ENABLED: bool = False
+    # ZAP daemon REST API 地址，例如 http://127.0.0.1:8090。
+    ZAP_BASE_URL: str | None = None
+    # API Key 只以密文形式存在（§三「API Key 加密保存」）：环境变量给明文，
+    # 落库/展示前一律先过 encrypt_secret；这里保存的是已加密的值。
+    ZAP_API_KEY_ENCRYPTED: str | None = None
+    # API Key 传递方式：header（推荐）或 query。query 模式会被代理日志记录，仅应急用。
+    ZAP_API_KEY_MODE: str = "header"
+    ZAP_VERIFY_TLS: bool = True
+    ZAP_TIMEOUT_SECONDS: float = 30.0
+    # 第一版同一 ZAP 实例同一时间只执行一个需要修改全局配置的任务（§八）。
+    ZAP_MAX_CONCURRENT_JOBS: int = 1
+    # Worker 轮询间隔与心跳：心跳超时用于判定「进程重启后残留的在跑任务」。
+    ZAP_WORKER_POLL_INTERVAL_SECONDS: float = 3.0
+    ZAP_HEARTBEAT_TIMEOUT_SECONDS: int = 180
+    # 单个任务总时长上限（超时判 TIMED_OUT）与被动扫描等待上限。
+    ZAP_MAX_JOB_DURATION_SECONDS: int = 7200
+    ZAP_PASSIVE_WAIT_SECONDS: int = 300
+    ZAP_REQUEST_BUDGET: int = 5000
+
     # 大小写敏感：环境变量名必须与字段名完全一致，避免 DATABASE_URL / database_url 双写歧义；
     # extra="ignore" 让 .env 里的历史遗留变量不报错，便于从旧项目平滑迁移。
     model_config = SettingsConfigDict(
@@ -216,3 +241,16 @@ def runtime_model_config_key() -> str:
     value = (os.getenv("MODEL_CONFIG_ENCRYPTION_KEY") or "").strip()
     # 降级路径：未单独配置模型加密密钥时回退 SECRET_KEY（旧项目同款规则），保证历史密文可继续解密。
     return value or runtime_secret_key()
+
+
+def zap_api_key() -> str:
+    """返回 ZAP 管理 API 的 API Key 明文；未配置或解密失败返回空串。
+
+    明文只在进程内传递（传给 ZAPTransport 一次性使用），不写日志、不进事件表、
+    不进 API 响应（§三「API Key 加密保存」、§三十四 第 8 条）。
+    函数内 import 是刻意的：crypto 反向依赖本模块的 runtime_model_config_key，
+    模块级 import 会形成循环。
+    """
+    from app.shared.crypto import decrypt_secret
+
+    return decrypt_secret(settings.ZAP_API_KEY_ENCRYPTED)

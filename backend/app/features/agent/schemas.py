@@ -32,12 +32,15 @@ AGENT_INTENTS = (
     "EXECUTE_EXISTING_CASES", "ANALYZE_RESULT", "QUERY_TEST_ASSET", "CLARIFY",
     "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
     "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
+    # Phase 2：发起 ZAP 安全扫描（先出计划，停在人工确认，LLM 不能创建任务）。
+    "REQUEST_SECURITY_SCAN",
 )
 AgentIntent = Literal[
     "GENERATE_TEST_POINTS", "GENERATE_TEST_CASES", "GENERATE_AND_EXECUTE",
     "EXECUTE_EXISTING_CASES", "ANALYZE_RESULT", "QUERY_TEST_ASSET", "CLARIFY",
     "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
     "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
+    "REQUEST_SECURITY_SCAN",
 ]
 
 # 工作流阶段：持久化在 agent_session.current_stage，下次请求据此由 router 跳过已完成段。
@@ -48,6 +51,8 @@ AGENT_STAGES = (
     "EXECUTING", "ANALYZING", "REPORT_GENERATING", "REPORT_REVIEW",
     "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
     "SECURITY_PLAN_REVIEW",
+    # Phase 2：ZAP 扫描计划已生成但未确认，任务还没创建。
+    "ZAP_SCAN_REVIEW",
 )
 AgentStage = Literal[
     "UNDERSTANDING", "CONTEXT_LOADING", "PLANNING", "TEST_POINT_REVIEW",
@@ -55,10 +60,12 @@ AgentStage = Literal[
     "EXECUTING", "ANALYZING", "REPORT_GENERATING", "REPORT_REVIEW",
     "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
     "SECURITY_PLAN_REVIEW",
+    "ZAP_SCAN_REVIEW",
 ]
 
 # sendMessage 入参 action：人工在 review 暂停点的快捷操作。
-# confirm_security_risk（Phase F）只由人工触发，LLM 工具里没有这个参数。
+# confirm_security_risk（Phase F）/ confirm_security_scan（Phase 2）只由人工触发，
+# LLM 工具里没有这个参数——这是「主动扫描必须校验真实人类批准」的落点（§二十三）。
 AGENT_ACTIONS = (
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
@@ -66,12 +73,15 @@ AGENT_ACTIONS = (
     "confirm_report", "skip_notification",
     # Phase F：安全计划确认 / 高风险人工确认。
     "confirm_security_plan", "confirm_security_risk",
+    # Phase 2：ZAP 扫描计划人工确认（唯一能创建扫描任务的入口）。
+    "confirm_security_scan",
 )
 AgentAction = Literal[
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
     "confirm_report", "skip_notification",
     "confirm_security_plan", "confirm_security_risk",
+    "confirm_security_scan",
 ]
 
 AGENT_SESSION_STATUSES = ("ACTIVE", "COMPLETED", "FAILED")
@@ -86,11 +96,14 @@ AGENT_MESSAGE_TYPES = (
     "REPORT", "NOTIFICATION",
     # Phase F：安全计划（PlanService.preview 的代码生成结果，未落 TestCase）。
     "SECURITY_PLAN",
+    # Phase 2：ZAP 扫描计划预览（job_service.plan 的结果，确认前不创建任务）。
+    "SECURITY_SCAN_PLAN",
 )
 AgentMessageType = Literal[
     "TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY",
     "REPORT", "NOTIFICATION",
     "SECURITY_PLAN",
+    "SECURITY_SCAN_PLAN",
 ]
 
 # 错误码（§36）：节点失败时写入 state.error_code + 人类可读消息。
@@ -103,6 +116,8 @@ AGENT_ERROR_CODES = (
     "REPORT_GENERATION_FAILED", "FEISHU_SEND_FAILED",
     # Phase F：安全上下文加载 / 安全计划生成或确认失败。
     "SECURITY_CONTEXT_FAILED", "SECURITY_PLAN_FAILED",
+    # Phase 2：ZAP 扫描计划生成 / 扫描任务创建失败（含缺少人工批准）。
+    "SECURITY_SCAN_PLAN_FAILED", "SECURITY_SCAN_NOT_AUTHORIZED",
 )
 
 # 结果分析 issue 严重度：区分疑似缺陷 / 测试数据问题 / 执行错误 / 断言失败 / 未知。
@@ -172,6 +187,17 @@ class SendMessageRequest(BaseModel):
     security_case_ids: list[int] | None = Field(
         None, description="confirm_security_risk 时待确认高风险的安全用例 TestCase ID（缺省 = 全部待确认项）",
     )
+    # Phase 2：ZAP 扫描计划人工确认。
+    zap_scan_target_id: int | None = Field(
+        None, gt=0, description="REQUEST_SECURITY_SCAN 时指定的扫描目标 ID（缺省 = 项目内唯一可用目标）",
+    )
+    zap_scan_profile_id: int | None = Field(
+        None, gt=0, description="REQUEST_SECURITY_SCAN 时指定的扫描策略 ID（缺省 = 项目内唯一可用策略）",
+    )
+    approval_note: str | None = Field(
+        None, max_length=500,
+        description="confirm_security_scan 且为主动扫描时的批准说明（人工填写，后端必填校验）",
+    )
 
 
 class AgentWorkspace(BaseModel):
@@ -193,6 +219,10 @@ class AgentWorkspace(BaseModel):
     # Phase F：安全计划（代码生成的预览项，未确认前不落 TestCase）与 Finding 摘要。
     security_plan: dict[str, Any] | None = None
     security_findings: list[dict[str, Any]] = []
+    # Phase 2：ZAP 扫描计划预览与确认结果（§二十三）。
+    zap_scan_plan: dict[str, Any] | None = None
+    zap_scan_job_id: int | None = None
+    zap_scan_note: str | None = None
     suggested_actions: list[str] = []
 
 

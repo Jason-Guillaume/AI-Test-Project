@@ -1,11 +1,13 @@
 // 安全测试页（用户控制台）。
 //
-// 四个 Tab：概览 / 策略与规则 / 安全用例 / 疑似问题。
+// 五个 Tab：概览 / 策略与规则 / 安全用例 / 疑似问题 / 安全扫描。
 //   - 概览：无后端 overview 端点，前端从 cases / findings / strategies / apis 聚合。
 //   - 策略与规则：系统模板只读；项目策略可建/改/删，规则可建/改/删（预留类强制停用）。
 //   - 安全用例：新建安全计划（预览 Modal）→ 确认生成 → 高风险确认 → 执行（测试环境）
 //     → 打开变异详情抽屉。confirm-risk / execute 都只能由人在本页触发。
 //   - 疑似问题：只改状态（标为误报等），不提供「转 Bug」；bug_id 恒为 null。
+//   - 安全扫描（ZAP）：扫描目标 / 扫描策略与认证 / 扫描任务 / 扫描结果；
+//     发起扫描必须走四步向导并先预览计划，主动扫描需人工勾选确认。
 //
 // 权限（服务端为准）：读 viewer+；策略规则与 Finding 状态 editor+；计划/用例/执行 member+。
 // 安全红线：本页不做注入 / 扫描器；不在生产环境发安全变异请求（allow_production 恒不生效，
@@ -27,9 +29,10 @@ import {
 import { StrategyTab } from './StrategyTab';
 import { CasesTab } from './CasesTab';
 import { FindingsTab } from './FindingsTab';
+import { ZapScanTab } from './ZapScanTab';
 
 /**
- * 安全测试页：项目作用域下的四个 Tab。
+ * 安全测试页：项目作用域下的五个 Tab。
  *
  * 不发请求做鉴权；数据由各 Tab 的 useQuery 触发。未选项目时整页空态。
  */
@@ -60,6 +63,11 @@ export function ConsoleSecurityTestingPage() {
             key: 'findings',
             label: '疑似问题',
             children: <FindingsTab projectId={currentProjectId} />,
+          },
+          {
+            key: 'zap',
+            label: '安全扫描',
+            children: <ZapScanTab projectId={currentProjectId} />,
           },
         ]}
       />

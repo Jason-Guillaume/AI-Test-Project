@@ -54,6 +54,11 @@ from app.features.agent.nodes.test_case_generator import test_case_generator_nod
 from app.features.agent.nodes.test_point_generator import test_point_generator_node
 from app.features.agent.nodes.test_planner import test_planner_node
 from app.features.agent.nodes.validator import validator_node
+from app.features.agent.nodes.zap_scan import (
+    zap_scan_job_creator_node,
+    zap_scan_planner_node,
+    zap_scan_review_node,
+)
 from app.features.agent.providers.llm_provider import LLMProvider
 from app.features.agent.providers.sanitizer import sanitize_text
 from app.features.agent.schemas import AgentAction
@@ -114,6 +119,10 @@ def build_graph(ctx: NodeContext):
     graph.add_node("security_case_materializer", partial(security_case_materializer_node, ctx))
     graph.add_node("security_case_loader", partial(security_case_loader_node, ctx))
     graph.add_node("security_risk_confirm", partial(security_risk_confirm_node, ctx))
+    # ZAP 安全扫描链（Phase 2，§二十三）：计划 →[暂停]计划 review → 人工确认才建任务。
+    graph.add_node("zap_scan_planner", partial(zap_scan_planner_node, ctx))
+    graph.add_node("zap_scan_review", partial(zap_scan_review_node, ctx))
+    graph.add_node("zap_scan_job_creator", partial(zap_scan_job_creator_node, ctx))
 
     graph.add_edge(START, "router")
 
@@ -128,6 +137,7 @@ def build_graph(ctx: NodeContext):
         "notification_sender": "notification_sender",
         "security_case_materializer": "security_case_materializer",
         "security_risk_confirm": "security_risk_confirm",
+        "zap_scan_job_creator": "zap_scan_job_creator",
     })
     # 意图路由：按识别出的意图选择下一节点。
     graph.add_conditional_edges("intent", partial(route_after_intent, ctx), {
@@ -137,6 +147,7 @@ def build_graph(ctx: NodeContext):
         "query": "query",
         "security_context_loader": "security_context_loader",
         "security_case_loader": "security_case_loader",
+        "zap_scan_planner": "zap_scan_planner",
         "clarify_end": END,
     })
 
@@ -192,6 +203,15 @@ def build_graph(ctx: NodeContext):
     )
     graph.add_edge("security_risk_confirm", END)
 
+    # ZAP 扫描链：planner 只出计划（多目标/多策略时澄清而不猜），停在 review 暂停点；
+    # 创建任务只能由人工 confirm_security_scan 触发（§二十三）。
+    graph.add_conditional_edges(
+        "zap_scan_planner", partial(_clarify_guard("zap_scan_review"), ctx),
+        {"zap_scan_review": "zap_scan_review", "end": END},
+    )
+    graph.add_edge("zap_scan_review", END)
+    graph.add_edge("zap_scan_job_creator", END)
+
     # 执行链：执行 → 分析 → 报告生成 →[暂停]报告 review → 通知发送
     # （报告为执行后的正式产物，自动生成；是否推送飞书由人工在 report_review 确认）
     graph.add_conditional_edges(
@@ -212,8 +232,10 @@ def build_graph(ctx: NodeContext):
 
     return graph.compile(
         # security_plan_review：安全计划已生成但未确认，用例还没落库（Phase F，§13.2）。
+        # zap_scan_review：ZAP 扫描计划已生成但未确认，任务还没创建（Phase 2，§二十三）。
         interrupt_before=[
-            "test_point_review", "test_case_review", "report_review", "security_plan_review",
+            "test_point_review", "test_case_review", "report_review",
+            "security_plan_review", "zap_scan_review",
         ],
     )
 
@@ -230,6 +252,7 @@ _ACTION_LABELS: dict[str, str] = {
     "skip_notification": "跳过飞书通知",
     "confirm_security_plan": "确认安全计划",
     "confirm_security_risk": "确认高风险用例",
+    "confirm_security_scan": "确认扫描计划并创建扫描任务",
 }
 
 
@@ -252,6 +275,9 @@ def run_agent(
     channel_id: int | None = None,
     security_item_indexes: list[int] | None = None,
     security_case_ids: list[int] | None = None,
+    zap_scan_target_id: int | None = None,
+    zap_scan_profile_id: int | None = None,
+    approval_note: str | None = None,
 ) -> tuple[AgentState, list[AgentMessage]]:
     """单次请求编排：重建 state → 注入输入 → invoke → 持久化 → 返回。
 
@@ -268,15 +294,26 @@ def run_agent(
 
     if action:
         initial["action"] = action
-        initial["action_payload"] = {
-            "point_ids": point_ids,
-            "case_ids": case_ids,
-            "environment_id": environment_id,
-            "channel_id": channel_id,
-            # Phase F：安全计划确认（预览项 index）与高风险确认（TestCase id）。
-            "security_item_indexes": security_item_indexes,
-            "security_case_ids": security_case_ids,
-        }
+
+    # action_payload 在无 action 时也可能带参数（如 REQUEST_SECURITY_SCAN 时指定
+    # 目标 / 策略），因此单独赋值；缺字段保持 None，节点侧按缺省处理。
+    initial["action_payload"] = {
+        "point_ids": point_ids,
+        "case_ids": case_ids,
+        "environment_id": environment_id,
+        "channel_id": channel_id,
+        # Phase F：安全计划确认（预览项 index）与高风险确认（TestCase id）。
+        "security_item_indexes": security_item_indexes,
+        "security_case_ids": security_case_ids,
+        # Phase 2：ZAP 扫描目标 / 策略选择与人工批准说明（§二十三）。
+        # approval_note 只用于创建任务，绝不写入消息历史——否则下次 LLM 能从
+        # history 里看到批准理由，等于把人类批准泄漏给模型。
+        "zap_scan_target_id": zap_scan_target_id,
+        "zap_scan_profile_id": zap_scan_profile_id,
+        "approval_note": approval_note,
+    }
+
+    if action:
         session_service.append_message(
             db, session.id, role="USER", message_type="TEXT",
             content=_ACTION_LABELS.get(action, action),
