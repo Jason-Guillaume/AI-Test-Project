@@ -1,8 +1,8 @@
 """验收项 22：Security Testing Phase A —— 迁移、系统模板、设置与策略/规则 CRUD。
 
 覆盖开发计划 §12 Phase A 与 §16.1：
-- 迁移：head==0013、7 张 feature-local 表、两个部分唯一索引、ORM 与建表逐列对齐
-- 降级：只删安全表，Mock（0010）表与数据保留，Mock API 继续可用
+- 迁移：head==0014、7 张 feature-local 表、两个部分唯一索引、ORM 与建表逐列对齐
+- 降级：只删 0011 起的安全表与 0014 的 Web 智能体表，Mock（0010）表与数据保留
 - 系统模板：8 套 SYSTEM 策略与规则由 0011 幂等插入，重复 upgrade 不重复插；
   预留攻击类不插可执行规则
 - 项目设置：没有行则返回默认值且不插库；allow_production 存了也不生效
@@ -40,6 +40,9 @@ SECURITY_TABLES = frozenset(
         "security_finding",
     }
 )
+
+# 0014 建的 Web 智能体表：降级到 0010 时它们被一并删掉，回迁后再出现。
+WEB_AGENT_TABLES = frozenset({"web_agent_session", "web_agent_step"})
 
 # 0010 建的 Mock 表：降级 0011 后必须原样保留。
 MOCK_TABLES = frozenset(
@@ -198,9 +201,9 @@ def _alembic(config=None):
 
 
 class TestMigration:
-    def test_head_is_0013_and_tables_created(self, db):
+    def test_head_is_0014_and_tables_created(self, db):
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0013"
+        assert head == "0014"
         assert SECURITY_TABLES.issubset(_tables(db))
 
     def test_partial_unique_indexes(self, db):
@@ -253,7 +256,7 @@ class TestMigration:
             assert table not in init_source
 
     def test_downgrade_removes_only_security_tables(self, db):
-        """downgrade 到 0010 只删 0011 起的表：Mock 表与数据保留，升级后 head 回到 0013。"""
+        """downgrade 到 0010 只删 0011 起的表：Mock 表与数据保留，升级后 head 回到 0014。"""
         from alembic import command
 
         config = _alembic()
@@ -261,6 +264,8 @@ class TestMigration:
             command.downgrade(config, "0010")
             tables = _tables(db)
             assert not (SECURITY_TABLES & tables), tables
+            # 0014 的 Web 智能体表同样在 0010 之下，必须被 0011→0014 的降级链一并删掉。
+            assert not (WEB_AGENT_TABLES & tables), tables
             assert MOCK_TABLES.issubset(tables), tables
             head = db.execute(text("select version_num from alembic_version")).scalar()
             assert head == "0010"
@@ -268,7 +273,8 @@ class TestMigration:
             command.upgrade(config, "head")
 
         assert _tables(db) >= SECURITY_TABLES
-        assert db.execute(text("select version_num from alembic_version")).scalar() == "0013"
+        assert WEB_AGENT_TABLES.issubset(_tables(db)), _tables(db)
+        assert db.execute(text("select version_num from alembic_version")).scalar() == "0014"
 
 
 class TestBuiltinStrategies:

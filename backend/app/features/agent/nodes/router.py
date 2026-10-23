@@ -33,6 +33,10 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
     - confirm_security_scan：确认 ZAP 扫描计划 → 创建扫描任务（人工按钮，唯一入口）
     - confirm_report / skip_notification：报告 review 暂停点的两个出口（确认推送飞书
       或跳过通知，报告本身已落库）
+    - confirm_web_step：确认 Web 智能体的步骤提案 → web_act 执行
+    - reject_web_step：驳回提案 → web_observe 重新取真实页面（清掉待确认项）
+      两者是 web_step_review 暂停点的两个出口
+    提升为正式 Web 用例通过 Web Agent 专用 HTTP 端点完成，不作为 Agent action 暴露。
     无 action（或 action=continue/query）= 新的自然语言消息，走 intent。
     """
     action = state.get("action")
@@ -52,6 +56,13 @@ def route_entry(ctx: NodeContext, state: AgentState) -> str:
         # 唯一能创建 ZAP 扫描任务的路径（§二十三）：LLM 工具里没有这个 action，
         # 因此这里进入的每一次调用都对应一次真实的人类点击。
         return "zap_scan_job_creator"
+    if action == "confirm_web_step":
+        # 人工确认 Web 智能体的步骤提案后才执行（沙箱内，仍不落 TestRun）。
+        return "web_act"
+    if action == "reject_web_step":
+        # 驳回当前提案：回到观测节点取一次**真实页面**，而不是复用落库时截断到 2000
+        # 字符的旧语义树——驳回往往发生在页面已变化之后，用旧树决策等于让 LLM 猜。
+        return "web_observe"
     if action == "execute":
         return "execution"
     if action == "analyze":
@@ -75,9 +86,12 @@ def route_after_intent(ctx: NodeContext, state: AgentState) -> str:
     - 执行安全测试 → security_case_loader（只列 case_type='SECURITY'，再停 test_case_review）
     - 分析安全结果 → result_analyzer；查询 Finding → query（只读摘要，不含 evidence）
     - 发起 ZAP 扫描 → zap_scan_planner（只出计划，停在人工确认，不创建任务）
+    - 交互式 Web 用例编写 → web_observe（先取一次真实页面观测，再进循环）
     - CLARIFY → END（澄清提问，不猜危险操作）
     """
     intent = state.get("intent")
+    if intent == "INTERACTIVE_WEB_AUTHORING":
+        return "web_observe"
     if intent in ("GENERATE_TEST_POINTS", "GENERATE_AND_EXECUTE"):
         return "context_loader"
     if intent == "GENERATE_TEST_CASES":

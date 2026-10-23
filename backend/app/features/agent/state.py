@@ -77,6 +77,17 @@ class AgentState(TypedDict, total=False):
     zap_scan_job_id: int | None  # 人工确认后创建的扫描任务ID
     zap_scan_note: str | None  # 本轮给用户的扫描相关说明（人工可读）
 
+    # --- Web 智能体（Phase 2，observe→decide→act 循环）---
+    web_agent_session_id: int | None  # 受控浏览器会话 ID（进程级 SessionRegistry 管理）
+    web_step_budget: int  # 本轮最大步骤数（防止无限循环）
+    web_current_observation: dict[str, Any] | None  # 当前页面脱敏观测（语义树+截图）
+    web_proposed_steps: list[dict[str, Any]]  # 已提议但未确认的步骤列表
+    web_current_step: dict[str, Any] | None  # 当前待执行的步骤提案
+    web_goal: str | None  # 用户描述的测试目标
+    web_last_decision: str | None  # 上一轮 LLM 决策（PROPOSE/OBSERVE/DONE），决定路由
+    web_observe_count: int  # 连续「只看不做」的观察轮次（防空转循环）
+    web_state_reset: bool  # 本轮作废了待确认步骤或重绑会话，需要写回状态快照
+
     # --- 控制 ---
     current_stage: str
     error: dict[str, Any] | None  # {"code": ..., "message": ...}
@@ -126,6 +137,15 @@ def make_initial_state(project_id: int, user_id: int | None, session_id: int | N
         zap_scan_plan=None,
         zap_scan_job_id=None,
         zap_scan_note=None,
+        web_agent_session_id=None,
+        web_step_budget=20,  # 与会话默认步数预算一致（SessionStartInput.step_budget 默认 20）
+        web_current_observation=None,
+        web_proposed_steps=[],
+        web_current_step=None,
+        web_goal=None,
+        web_last_decision=None,
+        web_observe_count=0,
+        web_state_reset=False,
         current_stage="UNDERSTANDING",
         error=None,
         messages=[],
@@ -154,10 +174,12 @@ def is_review_stage(stage: str) -> bool:
     REPORT_REVIEW：报告已落库，人工确认后才触发飞书通知（不自动推送）。
     SECURITY_PLAN_REVIEW：安全计划已生成，人工确认后才写入 TestCase（不自动落库）。
     ZAP_SCAN_REVIEW：ZAP 扫描计划已生成，人工确认后才创建扫描任务（§二十三）。
+    WEB_STEP_REVIEW：Web 智能体步骤提案待人工确认，确认前不执行下一步。
     """
     return stage in (
         "TEST_POINT_REVIEW", "TEST_CASE_REVIEW", "READY_TO_EXECUTE",
         "REPORT_REVIEW", "SECURITY_PLAN_REVIEW", "ZAP_SCAN_REVIEW",
+        "WEB_STEP_REVIEW",
     )
 
 

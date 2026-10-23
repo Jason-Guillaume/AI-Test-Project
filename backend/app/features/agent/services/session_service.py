@@ -5,12 +5,13 @@ checkpointer：每次 HTTP 请求由 router 重建完整 AgentState 后做一次
 跑到 `interrupt_before` 或 END 后把新增产物追加为 ASSISTANT 消息并回写 current_stage。
 进程重启 / 浏览器刷新后，load_state 从表里重建即可无损恢复（§15）。
 
-`agent_message.metadata_json` 只存脱敏后的结构化数据（§20）：发送前经
-`sanitizer.sanitize_context` 清洗，不保存完整敏感 prompt 内容。
+`agent_message.metadata_json` 存脱敏后的结构化数据（§20）；待确认 Web 步骤另以
+应用层密文保存。发送前经 `sanitizer.sanitize_context` 清洗，不保存完整敏感 prompt。
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -24,6 +25,7 @@ from app.features.test_management.services._access import (
     require_writable_project,
 )
 from app.models.identity import User
+from app.shared.crypto import decrypt_secret, encrypt_secret
 from app.shared.errors import not_found
 
 
@@ -106,6 +108,106 @@ def list_messages(db: Session, session_id: int) -> list[AgentMessage]:
     )
 
 
+def claim_web_proposal(db: Session, session_id: int) -> dict[str, Any] | None:
+    """原子领取待确认步骤；真实 WebStep 只从加密消息载荷中解密，不用脱敏投影执行。"""
+    message = (
+        db.query(AgentMessage)
+        .filter_by(session_id=session_id, message_type="WEB_AGENT_STEP")
+        .order_by(AgentMessage.id.desc())
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if message is None:
+        return None
+    metadata = dict(message.metadata_json or {})
+    if metadata.get("pending_status") != "PROPOSED":
+        return None
+    blob = metadata.get("pending_step_blob")
+    if not isinstance(blob, str) or not blob:
+        return None
+    try:
+        from app.features.web_ui.schemas import WebStep
+
+        step = json.loads(decrypt_secret(blob))
+        WebStep.model_validate(step)
+    except Exception as exc:  # noqa: BLE001 — 密文损坏时不能执行占位值
+        raise ValueError("待确认步骤无法安全读取，请重新提出步骤") from exc
+    metadata["pending_status"] = "EXECUTING"
+    metadata["pending_step_blob"] = None
+    message.metadata_json = metadata
+    db.commit()
+    return {"message_id": message.id, "step": step}
+
+
+def finish_web_proposal(db: Session, session_id: int, message_id: int, *, status: str) -> None:
+    """更新已领取提案的最终状态并清除密文副本。"""
+    if status not in {"ACCEPTED", "FAILED"}:
+        raise ValueError("非法的 Web 提案终态")
+    message = (
+        db.query(AgentMessage)
+        .filter_by(id=message_id, session_id=session_id, message_type="WEB_AGENT_STEP")
+        .with_for_update()
+        .populate_existing()
+        .one_or_none()
+    )
+    if message is None:
+        raise ValueError("待执行提案不存在")
+    metadata = dict(message.metadata_json or {})
+    if metadata.get("pending_status") != "EXECUTING":
+        raise ValueError("待执行提案已被处理")
+    metadata["pending_status"] = status
+    metadata["pending_step_blob"] = None
+    message.metadata_json = metadata
+    db.commit()
+
+
+def reject_web_proposal(db: Session, session_id: int) -> None:
+    """驳回当前待确认提案，避免刷新后再次出现或被重复确认。"""
+    message = (
+        db.query(AgentMessage)
+        .filter_by(session_id=session_id, message_type="WEB_AGENT_STEP")
+        .order_by(AgentMessage.id.desc())
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if message is None:
+        raise ValueError("待驳回步骤不存在")
+    metadata = dict(message.metadata_json or {})
+    if metadata.get("pending_status") != "PROPOSED":
+        raise ValueError("待驳回步骤不存在或已处理")
+    metadata["pending_status"] = "REJECTED"
+    metadata["pending_step_blob"] = None
+    message.metadata_json = metadata
+    db.commit()
+
+
+def discard_web_proposal(db: Session, session_id: int) -> bool:
+    """新消息到达时作废尚未确认的旧提案，避免旧动作跨目标继续执行。
+
+    返回是否实际作废；已领取或已处理的步骤保持其现有终态。
+    """
+    message = (
+        db.query(AgentMessage)
+        .filter_by(session_id=session_id, message_type="WEB_AGENT_STEP")
+        .order_by(AgentMessage.id.desc())
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if message is None:
+        return False
+    metadata = dict(message.metadata_json or {})
+    if metadata.get("pending_status") != "PROPOSED":
+        return False
+    metadata["pending_status"] = "REJECTED"
+    metadata["pending_step_blob"] = None
+    message.metadata_json = metadata
+    db.commit()
+    return True
+
+
 def next_generation_version(db: Session, session_id: int, *, message_type: str) -> int:
     """本轮生成版本号 = 该类型历史消息条数 + 1。
 
@@ -180,6 +282,34 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
         state["zap_scan_plan"] = scan_meta.get("plan")
         state["zap_scan_job_id"] = scan_meta.get("job_id")
 
+    step_meta = latest("WEB_AGENT_STEP")
+    if step_meta:
+        # Web 智能体二轮：会话绑定、目标与步数预算跨轮次恢复。提案列表供 promote
+        # 提升为正式用例，当前待确认提案决定 web_step_review 暂停点能否执行。
+        # 键名刻意不用 session_id：metadata 落库前经 sanitize_context 清洗，
+        # session_id 属敏感字段名会被掩成 ******，跨轮次就丢绑定。
+        state["web_agent_session_id"] = step_meta.get("browser_id")
+        state["web_goal"] = step_meta.get("goal")
+        state["web_step_budget"] = step_meta.get("budget") or 20  # 与会话默认一致
+        state["web_proposed_steps"] = step_meta.get("steps") or []
+        state["web_current_step"] = step_meta.get("current_step")
+        state["web_last_decision"] = step_meta.get("last_decision")
+        state["web_observe_count"] = step_meta.get("observe_count") or 0
+        # 对话消息里的 current_step 是脱敏投影，不能作为执行参数。刷新恢复时只从
+        # 应用层加密的载荷解密待确认步骤；旧消息或已领取提案一律不再显示为可执行。
+        if step_meta.get("pending_status") == "PROPOSED" and step_meta.get("pending_step_blob"):
+            try:
+                state["web_current_step"] = json.loads(decrypt_secret(step_meta["pending_step_blob"]))
+            except Exception:  # noqa: BLE001 — 损坏载荷关闭确认入口，不回退到脱敏占位值
+                state["web_current_step"] = None
+        elif state.get("web_current_step"):
+            state["web_current_step"] = None
+
+    obs_meta = latest("WEB_OBSERVATION")
+    if obs_meta:
+        # 只恢复语义树与元信息（不含截图）；执行下一步前会重新观测真实页面。
+        state["web_current_observation"] = obs_meta.get("observation")
+
     result_meta = latest("RESULT")
     if result_meta:
         state["analysis"] = result_meta.get("analysis")
@@ -209,6 +339,56 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
         for m in msgs if m.content
     ][-8:]
     return state
+
+
+# Web 步骤里承载真实值（含 ${data.auth_*} 一类敏感变量引用）的字段：只写不回显。
+_WEB_STEP_SECRET_FIELDS = ("value", "expected", "upload")
+_WEB_STEP_MASK = "[已脱敏]"
+
+
+def redact_web_steps(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把 Web 步骤里承载真实值的字段掩掉，供 agent_message.metadata_json 落库。
+
+    执行结果中的断言 actual / expected 也要掩，避免页面内容通过结果字段回显；运行日志
+    已在 Playwright 层按会话秘密清洗。遮罩后仍保留 operation / locator / status 供页面展示。
+    """
+    masked: list[dict[str, Any]] = []
+    for step in steps:
+        # 非 dict 条目原样保留：预算守卫只数长度，不因类型问题炸掉整轮留痕。
+        if not isinstance(step, dict):
+            masked.append(step)
+            continue
+        item = dict(step)
+        for field in _WEB_STEP_SECRET_FIELDS:
+            if item.get(field) not in (None, ""):
+                item[field] = _WEB_STEP_MASK
+        result = item.get("result")
+        if isinstance(result, dict) and any(result.get(k) for k in _WEB_STEP_SECRET_FIELDS):
+            result = dict(result)
+            for field in _WEB_STEP_SECRET_FIELDS:
+                if result.get(field) not in (None, ""):
+                    result[field] = _WEB_STEP_MASK
+        elif isinstance(result, dict):
+            result = dict(result)
+        if isinstance(result, dict):
+            # 断言实际值可能含页面个人信息，不能因字段名不是 value 而回显。
+            assertions = result.get("assertions")
+            if isinstance(assertions, list):
+                result["assertions"] = [
+                    {
+                        **assertion,
+                        **{
+                            key: _WEB_STEP_MASK
+                            for key in ("actual", "expected")
+                            if assertion.get(key) not in (None, "")
+                        },
+                    }
+                    if isinstance(assertion, dict) else assertion
+                    for assertion in assertions
+                ]
+            item["result"] = result
+        masked.append(item)
+    return masked
 
 
 def _points_changed(before: AgentState, after: AgentState, key: str) -> bool:
@@ -327,6 +507,78 @@ def persist_turn(
                     "target_id": plan.get("target_id"),
                     "scan_profile_id": plan.get("scan_profile_id"),
                 },
+            )
+        )
+
+    # Web 智能体二轮：步骤提案（含当前待确认项）与页面观测分两条消息留痕。
+    # 提案按「列表或待确认项变化」触发（首次提案时列表仍为空，靠 current_step 兜住）；
+    # 观测每次都会变，落库时截断语义树且不含截图。
+    #
+    # 加密边界：agent_message.metadata_json 对会话内所有 viewer 明文可读。这里仅保存
+    # 不带真实值的步骤投影；待确认步骤另存应用层密文，刷新恢复时必须解密后才能执行。
+    # 凭据类字段（value / expected / upload）与执行结果中的同名字段一律掩码。
+    # 已执行步骤仍写入加密的 web_agent_step；本轮 workspace 只供当前项目成员查看。
+    if (
+        initial.get("web_state_reset") or final.get("web_state_reset")
+        or initial.get("web_current_step") != final.get("web_current_step")
+        or any(
+            _points_changed(initial, final, key)
+            for key in (
+                "web_agent_session_id", "web_goal", "web_proposed_steps",
+                "web_observe_count",
+            )
+        )
+    ):
+        steps = redact_web_steps(final.get("web_proposed_steps") or [])
+        pending = redact_web_steps([final["web_current_step"]])[0] if final.get("web_current_step") else None
+        pending_step = final.get("web_current_step")
+        text = f"已执行 {len(steps)} 步"
+        if pending:
+            text += f"，另有 1 步待确认（{pending.get('operation') or '?'}）"
+        emitted.append(
+            append_message(
+                db, session.id, role="ASSISTANT", message_type="WEB_AGENT_STEP",
+                content=text,
+                metadata={
+                    # 键名不用 session_id：sanitize_context 会把敏感字段名掩码掉，
+                    # 跨轮次恢复时就拿不到真实会话 ID。
+                    "browser_id": final.get("web_agent_session_id"),
+                    "goal": final.get("web_goal"),
+                    "budget": final.get("web_step_budget"),
+                    "steps": steps,
+                    "steps_redacted": True,
+                    "current_step": pending,
+                    "pending_step_blob": encrypt_secret(json.dumps(
+                        pending_step, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                    )) if pending_step else None,
+                    "pending_status": "PROPOSED" if pending_step else None,
+                    "last_decision": final.get("web_last_decision"),
+                    "observe_count": final.get("web_observe_count"),
+                },
+            )
+        )
+
+    if _points_changed(initial, final, "web_current_observation") or (
+        (initial.get("web_state_reset") or final.get("web_state_reset"))
+        and final.get("web_current_observation") is None
+    ):
+        obs = final.get("web_current_observation") or {}
+        observation = None
+        if obs:
+            observation = {
+                "url": obs.get("url"),
+                "title": obs.get("title"),
+                "accessibility_tree": (obs.get("accessibility_tree") or "")[:2000],
+            }
+        emitted.append(
+            append_message(
+                db, session.id, role="ASSISTANT", message_type="WEB_OBSERVATION",
+                content=(
+                    f"页面观测：{obs.get('title') or obs.get('url') or '未知页面'}"
+                    if obs else "当前页面观测已清除"
+                ),
+                # 不含 screenshot_b64：体积大且无追溯价值，遮罩截图只在观测时实时返回。
+                metadata={"observation": observation},
             )
         )
 

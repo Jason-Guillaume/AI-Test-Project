@@ -638,7 +638,7 @@ src/api/securityTesting.ts                        新增 ZAP API 类型与调用
 ```
 docs/zap/README.md                    部署与验证
 docs/zap/zap_smoke_check.sh           冒烟检查脚本
-docs/Security Testing Phase 2 OWASP ZAP 集成交付报告.md    本文
+docs/security-testing-phase2-zap-delivery-report.md    本文
 ```
 
 ---

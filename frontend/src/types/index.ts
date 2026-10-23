@@ -1493,7 +1493,9 @@ export type AgentStage =
   | 'NOTIFYING'
   | 'COMPLETED'
   | 'FAILED'
-  | 'CLARIFY';
+  | 'CLARIFY'
+  // Web UI 智能体二期：步骤提案待人工确认的暂停点
+  | 'WEB_STEP_REVIEW';
 
 export type AgentAction =
   | 'confirm_points'
@@ -1506,7 +1508,10 @@ export type AgentAction =
   | 'continue'
   // Phase 2：报告 review 暂停点的两个出口
   | 'confirm_report'
-  | 'skip_notification';
+  | 'skip_notification'
+  // Web UI 智能体二期：沙箱步骤 review 暂停点的两个出口
+  | 'confirm_web_step'
+  | 'reject_web_step';
 
 export type AgentMessageRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 
@@ -1520,7 +1525,10 @@ export type AgentMessageType =
   | 'CLARIFY'
   // Phase 2：报告与通知产物消息（metadata_json 为脱敏 brief）
   | 'REPORT'
-  | 'NOTIFICATION';
+  | 'NOTIFICATION'
+  // Web UI 智能体二期：步骤提案留痕与页面观测留痕（metadata_json 已脱敏）
+  | 'WEB_AGENT_STEP'
+  | 'WEB_OBSERVATION';
 
 export interface AgentSession {
   id: number;
@@ -1556,6 +1564,8 @@ export interface SendMessageRequest {
   environment_id?: number | null;
   /** Phase 2：飞书通知渠道ID（confirm_report 时可选，缺省取项目首个启用渠道） */
   channel_id?: number | null;
+  /** Web UI 智能体二期：绑定的受控浏览器会话 ID（交互式编写时必填） */
+  web_session_id?: number | null;
 }
 
 export interface AgentWorkspace {
@@ -1575,6 +1585,18 @@ export interface AgentWorkspace {
   notification_brief: Record<string, unknown> | null;
   error: Record<string, unknown> | null;
   suggested_actions: string[];
+  /** Web UI 智能体二期：当前绑定的受控浏览器会话 */
+  web_agent_session_id: number | null;
+  /** Web UI 智能体二期：用户自然语言目标 */
+  web_goal: string | null;
+  /** Web UI 智能体二期：步数预算上限 */
+  web_step_budget: number;
+  /** Web UI 智能体二期：已执行的步骤（含执行结果） */
+  web_proposed_steps: Array<Record<string, unknown>>;
+  /** Web UI 智能体二期：当前待人工确认的提案 */
+  web_current_step: Record<string, unknown> | null;
+  /** Web UI 智能体二期：最近一次脱敏页面观测 */
+  web_observation: WebAgentObservation | null;
 }
 
 export interface AgentTurnResponse {
@@ -2981,6 +3003,40 @@ export interface WebExecution {
   response_snapshot: { web?: { steps?: Record<string, unknown>[]; artifacts?: WebArtifact[] } } | null; // 脱敏步骤及附件
   report_id: number | null; // 已生成报告
 }
+
+// Web UI 智能体二期：受控浏览器会话、脱敏页面观测、步骤提案与提升契约。
+export type WebAgentSessionStatus = 'ACTIVE' | 'CLOSED' | 'FAILED';
+export interface WebAgentSession {
+  id: number; // 会话 ID，也是进程内浏览器句柄的键
+  project_id: number; // 所属项目
+  environment_id: number; // 执行环境
+  auth_profile_id: number | null; // 加密登录态配置
+  base_url: string; // 环境基础地址
+  target_page_path: string; // 目标页相对路径
+  status: WebAgentSessionStatus; // 会话状态
+  step_budget: number; // 智能体步数预算上限
+  step_count: number; // 已执行步数
+  created_at: string | null; // 创建时间
+}
+/** 页面观测结果：只有脱敏后的语义树与遮罩截图，不含原始 DOM 或凭据。 */
+export interface WebAgentObservation {
+  url: string; // 当前页面地址
+  title: string; // 页面标题
+  accessibility_tree: string; // 已脱敏的 accessibility tree
+  screenshot_b64: string; // 已遮罩输入的 base64 截图
+}
+/** 智能体提案 / 已执行步骤：提案与执行结果一起保留，供人工采纳。 */
+export interface WebAgentStepProposal {
+  name: string; // 步骤名称
+  operation: WebOperation; // 白名单操作
+  locator?: WebLocator | null; // 定位器
+  value?: string | null; // 输入或导航值
+  assertion?: WebStep['assertion']; // 断言来源
+  expected?: string | null; // 断言期望值
+  status: string; // PROPOSED / ACCEPTED / FAILED
+  result?: Record<string, unknown> | null; // 执行结果摘要（已脱敏）
+}
+export type WebDecideDecision = 'PROPOSE' | 'OBSERVE' | 'DONE'; // 单轮决策结论
 
 // Web 调试环境候选只展示元信息，不暴露管理端请求头与凭据。
 export type WebEnvironment = Pick<Environment, 'id' | 'name' | 'display_name' | 'is_active'>;

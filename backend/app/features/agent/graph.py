@@ -59,6 +59,15 @@ from app.features.agent.nodes.zap_scan import (
     zap_scan_planner_node,
     zap_scan_review_node,
 )
+from app.features.agent.nodes.web_agent import (
+    route_after_web_act,
+    route_after_web_decide,
+    route_after_web_observe,
+    web_act_node,
+    web_decide_node,
+    web_observe_node,
+    web_step_review_node,
+)
 from app.features.agent.providers.llm_provider import LLMProvider
 from app.features.agent.providers.sanitizer import sanitize_text
 from app.features.agent.schemas import AgentAction
@@ -123,6 +132,11 @@ def build_graph(ctx: NodeContext):
     graph.add_node("zap_scan_planner", partial(zap_scan_planner_node, ctx))
     graph.add_node("zap_scan_review", partial(zap_scan_review_node, ctx))
     graph.add_node("zap_scan_job_creator", partial(zap_scan_job_creator_node, ctx))
+    # Web 智能体链（二轮）：observe→decide→act 循环 + web_step_review 人工确认暂停点。
+    graph.add_node("web_observe", partial(web_observe_node, ctx))
+    graph.add_node("web_decide", partial(web_decide_node, ctx))
+    graph.add_node("web_act", partial(web_act_node, ctx))
+    graph.add_node("web_step_review", partial(web_step_review_node, ctx))
 
     graph.add_edge(START, "router")
 
@@ -138,6 +152,11 @@ def build_graph(ctx: NodeContext):
         "security_case_materializer": "security_case_materializer",
         "security_risk_confirm": "security_risk_confirm",
         "zap_scan_job_creator": "zap_scan_job_creator",
+        # Web 智能体：确认执行步骤 / 驳回后重新观测 / 提升为正式用例（终态）
+        "web_act": "web_act",
+        "web_decide": "web_decide",
+        "web_observe": "web_observe",
+        "end": END,
     })
     # 意图路由：按识别出的意图选择下一节点。
     graph.add_conditional_edges("intent", partial(route_after_intent, ctx), {
@@ -148,6 +167,7 @@ def build_graph(ctx: NodeContext):
         "security_context_loader": "security_context_loader",
         "security_case_loader": "security_case_loader",
         "zap_scan_planner": "zap_scan_planner",
+        "web_observe": "web_observe",
         "clarify_end": END,
     })
 
@@ -212,6 +232,23 @@ def build_graph(ctx: NodeContext):
     graph.add_edge("zap_scan_review", END)
     graph.add_edge("zap_scan_job_creator", END)
 
+    # Web 智能体链（二轮）：observe → decide →(PROPOSE)→[暂停]step review →(人工确认)→
+    # act → observe 闭环；DONE 直接结束，OBSERVE 继续观察；步数预算或空转轮次耗尽时
+    # 强制停在 review，交人工决定是否提升已接受步骤为正式用例。
+    graph.add_conditional_edges(
+        "web_observe", partial(route_after_web_observe, ctx),
+        {"web_decide": "web_decide", "web_step_review": "web_step_review", "end": END},
+    )
+    graph.add_conditional_edges(
+        "web_decide", partial(route_after_web_decide, ctx),
+        {"web_observe": "web_observe", "web_step_review": "web_step_review", "end": END},
+    )
+    graph.add_conditional_edges(
+        "web_act", partial(route_after_web_act, ctx),
+        {"web_observe": "web_observe", "end": END},
+    )
+    graph.add_edge("web_step_review", END)
+
     # 执行链：执行 → 分析 → 报告生成 →[暂停]报告 review → 通知发送
     # （报告为执行后的正式产物，自动生成；是否推送飞书由人工在 report_review 确认）
     graph.add_conditional_edges(
@@ -233,9 +270,10 @@ def build_graph(ctx: NodeContext):
     return graph.compile(
         # security_plan_review：安全计划已生成但未确认，用例还没落库（Phase F，§13.2）。
         # zap_scan_review：ZAP 扫描计划已生成但未确认，任务还没创建（Phase 2，§二十三）。
+        # web_step_review：Web 智能体步骤提案已生成但未确认，确认前不执行下一步（二轮）。
         interrupt_before=[
             "test_point_review", "test_case_review", "report_review",
-            "security_plan_review", "zap_scan_review",
+            "security_plan_review", "zap_scan_review", "web_step_review",
         ],
     )
 
@@ -253,6 +291,8 @@ _ACTION_LABELS: dict[str, str] = {
     "confirm_security_plan": "确认安全计划",
     "confirm_security_risk": "确认高风险用例",
     "confirm_security_scan": "确认扫描计划并创建扫描任务",
+    "confirm_web_step": "确认执行 Web 智能体步骤",
+    "reject_web_step": "驳回 Web 智能体步骤提案",
 }
 
 
@@ -278,6 +318,7 @@ def run_agent(
     zap_scan_target_id: int | None = None,
     zap_scan_profile_id: int | None = None,
     approval_note: str | None = None,
+    web_session_id: int | None = None,
 ) -> tuple[AgentState, list[AgentMessage]]:
     """单次请求编排：重建 state → 注入输入 → invoke → 持久化 → 返回。
 
@@ -287,6 +328,15 @@ def run_agent(
     initial: AgentState = session_service.load_state(db, session)
 
     if content:
+        # 新消息代表新的人工意图；清除未确认提案，避免旧页面动作跨目标继续执行。
+        if initial.get("web_agent_session_id"):
+            session_service.discard_web_proposal(db, session.id)
+            initial["web_current_step"] = None
+            initial["web_goal"] = None
+            initial["web_current_observation"] = None
+            initial["web_last_decision"] = None
+            initial["web_observe_count"] = 0
+            initial["web_state_reset"] = True
         initial["user_message"] = sanitize_text(content)
         session_service.append_message(
             db, session.id, role="USER", message_type="TEXT", content=content,
@@ -294,6 +344,29 @@ def run_agent(
 
     if action:
         initial["action"] = action
+
+    # Web 智能体：显式绑定受控浏览器会话（项目归属校验在路由层完成）。更换浏览器
+    # 会话时清掉旧页面的待确认提案与步骤，避免把上一会话的动作带到新页面上执行。
+    # 会话缺失时由节点以 WEB_SESSION_CLOSED 报错，绝不猜测「最近一次会话」。
+    if web_session_id:
+        previous_web_session_id = initial.get("web_agent_session_id")
+        if previous_web_session_id and previous_web_session_id != web_session_id:
+            initial.update({
+                "web_goal": None,
+                "web_step_budget": 20,
+                "web_current_observation": None,
+                "web_proposed_steps": [],
+                "web_current_step": None,
+                "web_last_decision": None,
+                "web_observe_count": 0,
+                "web_state_reset": True,
+            })
+        initial["web_agent_session_id"] = web_session_id
+        if content:
+            # Web 页面中的每条自然语言消息都代表当前探索目标；新的目标重新开始
+            # 「只观察」轮次计数，确认按钮续轮则保留原目标。
+            initial["web_goal"] = None
+            initial["web_observe_count"] = 0
 
     # action_payload 在无 action 时也可能带参数（如 REQUEST_SECURITY_SCAN 时指定
     # 目标 / 策略），因此单独赋值；缺字段保持 None，节点侧按缺省处理。

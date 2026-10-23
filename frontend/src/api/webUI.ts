@@ -1,6 +1,27 @@
 // Web UI 管理客户端：统一使用平台 api 实例、JWT 和错误处理，不接收可执行脚本。
 import { api } from '@/api/client';
-import type { Paginated, TestRun, WebAuthProfile, WebEnvironment, WebCase, WebCaseInput, WebExecution, WebPage, WebPageInput } from '@/types';
+import type {
+  Paginated, TestRun, WebAgentObservation, WebAgentSession,
+  WebAuthProfile, WebCase, WebCaseInput, WebEnvironment, WebExecution, WebPage, WebPageInput,
+} from '@/types';
+
+/** 启动受控浏览器会话的入参：只选环境、登录态与目标页。 */
+export interface WebAgentStartBody {
+  environment_id: number;
+  auth_profile_id?: number | null;
+  target_page_path?: string;
+  step_budget?: number;
+}
+
+/** 把沙箱会话提升为正式用例的入参：提升只产出未确认草稿。
+ *  步骤不由前端提交——后端只取会话内已人工确认的 ACCEPTED 步骤，
+ *  前端传来的步骤会被严格模型拒绝（extra=forbid）。 */
+export interface WebAgentPromoteBody {
+  name?: string;
+  description?: string;
+  timeout_ms?: number;
+  total_timeout_ms?: number;
+}
 
 export const webUIApi = {
   /** 项目可见的环境元信息，支持服务端搜索。 */
@@ -43,4 +64,22 @@ export const webUIApi = {
   generate: (id: number, body: { instruction: string; flow_id?: number; page_object_ids: number[] }) => api.post<WebCase>(`/projects/${id}/web-agent/draft`, body, { timeout: 120000 }),
   /** 显式选择业务动作的 WEB 通道。 */
   bind: (actionId: number, web_case_id: number) => api.post(`/business-actions/${actionId}/web-binding`, { web_case_id }),
+};
+
+// Web UI 智能体二期：受控浏览器会话、脱敏观测与提升。
+// 会话只绑定平台环境（TargetPolicy 出站白名单在会话打开时生效）；
+// 观测返回脱敏语义树与遮罩截图，不返回原始 DOM；提升只产出未确认草稿。
+export const webAgentApi = {
+  /** 列出项目内的受控浏览器会话。 */
+  sessions: (id: number, page = 1) => api.get<Paginated<WebAgentSession>>(`/projects/${id}/web-agent/sessions`, { params: { page, page_size: 50 } }),
+  /** 启动受控会话：选环境、登录态与目标页后打开浏览器。 */
+  start: (id: number, body: WebAgentStartBody) => api.post<WebAgentSession>(`/projects/${id}/web-agent/sessions`, body, { timeout: 120000 }),
+  /** 读取会话元信息与当前步数。 */
+  detail: (id: number) => api.get<WebAgentSession>(`/web-agent/sessions/${id}`),
+  /** 观察当前页面：脱敏语义树与遮罩截图。 */
+  observe: (id: number) => api.post<WebAgentObservation>(`/web-agent/sessions/${id}/observe`, {}, { timeout: 66000 }),
+  /** 关闭会话并释放浏览器资源。 */
+  close: (id: number) => api.post<WebAgentSession>(`/web-agent/sessions/${id}/close`),
+  /** 提升为正式 Web 用例：产物始终未确认，正式执行仍需人工确认。 */
+  promote: (id: number, body: WebAgentPromoteBody) => api.post<WebCase>(`/web-agent/sessions/${id}/promote`, body),
 };

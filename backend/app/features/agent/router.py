@@ -33,7 +33,7 @@ from app.features.agent.state import AgentState
 from app.models.identity import User
 from app.shared.auth import get_current_user
 from app.shared.database import get_db
-from app.shared.errors import bad_request
+from app.shared.errors import bad_request, conflict, not_found
 
 router = APIRouter(tags=["接口测试 Agent"])
 
@@ -140,6 +140,19 @@ def send_message(
         raise bad_request("请提供 content（自然语言消息）或 action（快捷操作）")
 
     session = session_service.get_session_for_write(db, session_id, user)
+
+    # Web 智能体会话必须属于本 Agent 会话所在项目（跨项目统一 404，§33）；
+    # 只校验归属，是否 ACTIVE 由节点/运行时刻判定。
+    if body.web_session_id:
+        from app.features.web_ui.models import WebAgentSession
+        web_row = db.get(WebAgentSession, body.web_session_id)
+        if web_row is None or web_row.project_id != session.project_id:
+            raise not_found("Web 智能体会话不存在或不属于当前项目")
+        if body.action in ("confirm_web_step", "reject_web_step"):
+            previous = session_service.load_state(db, session).get("web_agent_session_id")
+            if previous and previous != body.web_session_id:
+                raise conflict("浏览器会话已更换，请先发送新的自然语言目标")
+
     provider = ProductionLLMProvider(db)
 
     final_state, emitted = run_agent(
@@ -155,6 +168,7 @@ def send_message(
         zap_scan_target_id=body.zap_scan_target_id,
         zap_scan_profile_id=body.zap_scan_profile_id,
         approval_note=body.approval_note,
+        web_session_id=body.web_session_id,
     )
 
     return {
@@ -188,6 +202,9 @@ _STAGE_ACTIONS: dict[str, list[str]] = {
     "SECURITY_PLAN_REVIEW": ["confirm_security_plan"],
     # Phase 2：ZAP 扫描计划已生成但未确认（任务还没创建，§二十三）。
     "ZAP_SCAN_REVIEW": ["confirm_security_scan"],
+    # Web 智能体二轮：步骤提案待确认。只给确认执行与驳回两个出口——
+    # 提升入口在前端提案面板上，直接调 /web-agent/sessions/{id}/promote。
+    "WEB_STEP_REVIEW": ["confirm_web_step", "reject_web_step"],
 }
 
 
@@ -195,6 +212,16 @@ def _build_workspace(state: AgentState, session) -> AgentWorkspace:
     """从最终 state 组装工作区快照（按 stage 决定 suggested_actions）。"""
     stage = state.get("current_stage") or session.current_stage
     actions = list(_STAGE_ACTIONS.get(stage, []))
+    # AgentState 保留可执行原值；API 工作区只回脱敏步骤，避免填写值和断言页面内容外泄。
+    web_steps = session_service.redact_web_steps(state.get("web_proposed_steps") or [])
+    current_step = state.get("web_current_step")
+    safe_current_step = (
+        session_service.redact_web_steps([current_step])[0]
+        if current_step else None
+    )
+    # 预算耗尽时也停在 WEB_STEP_REVIEW，但没有待执行提案；不要显示会触发失败的确认/驳回按钮。
+    if stage == "WEB_STEP_REVIEW" and not safe_current_step:
+        actions = []
     # 有待确认的高风险用例时才给「确认风险」按钮（否则点了只会提示没有待确认项）。
     pending = state.get("security_risk_pending") or {}
     if pending.get("count"):
@@ -217,5 +244,11 @@ def _build_workspace(state: AgentState, session) -> AgentWorkspace:
         zap_scan_plan=state.get("zap_scan_plan"),
         zap_scan_job_id=state.get("zap_scan_job_id"),
         zap_scan_note=state.get("zap_scan_note"),
+        web_agent_session_id=state.get("web_agent_session_id"),
+        web_goal=state.get("web_goal"),
+        web_step_budget=state.get("web_step_budget") or 20,
+        web_proposed_steps=web_steps,
+        web_current_step=safe_current_step,
+        web_observation=state.get("web_current_observation"),
         suggested_actions=actions,
     )

@@ -1,6 +1,8 @@
 # 项目开发日志（索引）
 
-分析日期：2026-10-12（Asia/Shanghai）。仓库当前**无 git**；Alembic head `0002`。本文件是本开发日志的**目录索引**；具体章节在 [`docs/development/`](development/) 目录下按 `NN-name-in-kebab-case.md` 拆分。
+分析日期：2026-10-12（Asia/Shanghai）。本文件是本开发日志的**目录索引**；具体章节在 [`docs/development/`](development/) 目录下按 `NN-name-in-kebab-case.md` 拆分。
+
+> 注：本日志写于 2026-10-12，当时仓库尚无 git、Alembic head 为 `0002`。当前仓库已接入 git（主干 `develop`），Alembic head 已推进至 `0014`，以下正文中的版本描述以当时状态为准。
 
 ✅ 本轮（2026-10-12）交付"团队协作基础设施"：编码规范 + 项目开发 skill + 本开发日志。不做业务功能新增，不做生产部署。
 

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.shared.auth import get_current_user
 from app.shared.dependencies import get_db
 from app.models.identity import User
-from app.features.web_ui.schemas import AuthInput, BindingInput, CaseInput, ConfirmInput, DebugInput, GenerateInput, PageInput, CaseResponse, PageResponse, AuthResponse
+from app.features.web_ui.schemas import AuthInput, BindingInput, CaseInput, ConfirmInput, DebugInput, GenerateInput, PageInput, PromoteInput, CaseResponse, PageResponse, AuthResponse, SessionStartInput, SessionResponse, SessionObserveResponse
 from app.features.web_ui.services.web_ui_service import WebUIService
 from app.features.test_management.schemas import TestRunResponse
 
@@ -126,6 +126,45 @@ def generate(project_id: int, body: GenerateInput, db: Session = Depends(get_db)
     """Agent 只能生成未确认草稿。"""
     from app.features.agent.tools.web_ui_tool import generate_draft
     return generate_draft(db, project_id, body, user)
+
+
+@router.post("/projects/{project_id}/web-agent/sessions", status_code=201, response_model=SessionResponse)
+def start_session(project_id: int, body: SessionStartInput, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """启动受控浏览器会话：验证环境、登录态与目标页后打开浏览器。"""
+    return service.start_session(db, project_id, body, user)
+
+
+@router.get("/projects/{project_id}/web-agent/sessions")
+def list_sessions(project_id: int, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=200), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出项目内的浏览器会话。"""
+    return service.list_sessions(db, project_id, user, page=page, page_size=page_size)
+
+
+@router.get("/web-agent/sessions/{session_id}", response_model=SessionResponse)
+def get_session(session_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """读取会话元信息与当前步数。"""
+    return service.get_session(db, session_id, user)
+
+
+@router.post("/web-agent/sessions/{session_id}/observe", response_model=SessionObserveResponse)
+def observe_session(session_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """观察会话当前页面：返回脱敏语义树与遮罩截图。"""
+    return service.observe_session(db, session_id, user)
+
+
+@router.post("/web-agent/sessions/{session_id}/close", response_model=SessionResponse)
+def close_session(session_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """关闭会话并释放浏览器资源。"""
+    return service.close_session(db, session_id, user)
+
+
+@router.post("/web-agent/sessions/{session_id}/promote", status_code=201, response_model=CaseResponse)
+def promote_session(session_id: int, body: PromoteInput, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """把会话中已接受的步骤提升为正式 Web 用例（未确认草稿）。
+
+    产物 confirmed=false：正式执行仍必须先 confirm 再 debug，门禁不在此处打开。
+    """
+    return service.promote_session(db, session_id, body, user)
 
 
 @router.post("/business-actions/{action_id}/web-binding", status_code=201)

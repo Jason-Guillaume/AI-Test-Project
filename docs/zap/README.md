@@ -1,7 +1,7 @@
 # OWASP ZAP 部署与验证（Security Testing Phase 2）
 
 本阶段平台**不内置** ZAP，只通过 REST API 调用外部实例。平台一侧的全部行为见
-[Security Testing Phase 2 OWASP ZAP 集成交付报告.md](Security%20Testing%20Phase%202%20OWASP%20ZAP%20集成交付报告.md)。
+[Security Testing Phase 2 OWASP ZAP 集成交付报告](../security-testing-phase2-zap-delivery-report.md)。
 
 > ## ⚠️ 先读：本阶段的验证边界
 >

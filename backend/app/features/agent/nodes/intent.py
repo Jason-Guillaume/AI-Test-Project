@@ -1,8 +1,13 @@
 """IntentNode：意图识别 + 目标解析。
 
-用 intent.md（system）把用户自然语言归类为 7 类意图之一，并解析被测目标。
+用 intent.md（system）把用户自然语言归类为下列意图之一，并解析被测目标。
 候选目标（接口 / 业务流程列表）作为**业务数据**放入 user content，LLM 只能从中
 选取 target_ids——未命中时返回 CLARIFY 提问，**不猜**危险操作（§35）。
+
+Web 智能体二轮补充：意图 `INTERACTIVE_WEB_AUTHORING` 是否需要触发，取决于本 Agent
+会话是否已绑定一个受控浏览器会话（state.web_agent_session_id）。该信号必须以**业务
+数据**形式写进 user content——否则模型手上只有候选接口与业务流程，永远看不出应该
+选它，observe→decide→act 链路即便写进 intent.md 也会在生产环境不可达。
 """
 
 from __future__ import annotations
@@ -37,6 +42,21 @@ def intent_node(ctx: NodeContext, state: AgentState) -> dict:
         strategies = security_tool.list_strategies(ctx.db, project_id, ctx.user)
 
         user_message = state.get("user_message") or ""
+        # Web 受控会话绑定信号：这是模型判断是否选 INTERACTIVE_WEB_AUTHORING 的唯一依据。
+        # state 里有 web_agent_session_id，但只写进 AGENT_INTENTS / 路由分支是不够的——
+        # 模型看不到它，就会一直落到 CLARIFY。见 intent.md 该意图条目的触发条件。
+        bound_session = state.get("web_agent_session_id")
+        web_binding = (
+            "## Web 受控会话绑定\n"
+            f"本会话已绑定一个受控浏览器会话（session_id={bound_session}），可以打开真实页面"
+            "并逐步探索、人工确认每一步。用户提出看页面 / 在页面上操作 / 交互式编写 Web 用例时，"
+            "选 INTERACTIVE_WEB_AUTHORING。\n"
+            if bound_session
+            else "## Web 受控会话绑定\n"
+            "本会话尚未绑定受控浏览器会话（浏览器会话需在控制台 Web UI 智能体页先启动并随消息"
+            "传入 web_session_id）。用户只是泛泛问 Web 用例怎么写、而不是要求现在打开页面时，"
+            "不要选 INTERACTIVE_WEB_AUTHORING——改用 CLARIFY 说明需要先启动浏览器会话。\n"
+        )
         user_content = (
             "## 候选接口（只能从下列 ID 中选取 target_ids）\n"
             f"{_dump(apis.get('items', []))}\n\n"
@@ -44,6 +64,7 @@ def intent_node(ctx: NodeContext, state: AgentState) -> dict:
             f"{_dump(flows.get('items', []))}\n\n"
             "## 候选安全策略（security_strategy_keys 只能从下列 strategy_key 中选取）\n"
             f"{_dump([{'strategy_key': s.get('strategy_key'), 'name': s.get('name'), 'category': s.get('category')} for s in strategies])}\n\n"
+            f"{web_binding}"
             f"## 用户消息\n{user_message}"
         )
         system = load_prompt("intent")
