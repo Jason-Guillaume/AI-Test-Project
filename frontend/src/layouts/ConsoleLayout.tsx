@@ -107,6 +107,7 @@ const MENU_ITEMS: MenuItem[] = [
       // 不提升为一级入口以免稀释本分组的 IA。ROUTE_TITLES 里仍保留其标题以支持面包屑。
       { key: '/console/mock-management', icon: <CloudServerOutlined />, label: '接口 Mock' },
       { key: '/console/web-ui', icon: <ChromeOutlined />, label: 'Web UI 自动化' },
+      { key: '/console/web-ui-agent', icon: <RobotOutlined />, label: 'Web UI 智能体' },
       { key: '/console/security-testing', icon: <SafetyOutlined />, label: '安全测试' },
     ],
   },
@@ -198,6 +199,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/mock-management/endpoints/:endpointId': '端点详情', // 端点详情（动态）
   '/console/mock-management/executions': '接口 Mock 执行', // 接口 Mock 执行
   '/console/web-ui': 'Web UI 自动化', // Web UI 自动化
+  '/console/web-ui-agent': 'Web UI 智能体', // Web UI 智能体交互式编写
   '/console/security-testing': '安全测试', // 安全测试
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI Agent', // AI Agent

@@ -179,7 +179,7 @@ cd backend
 - `backend/tests/test_22_security_strategy.py`
 - `backend/tests/test_30_web_ui.py`
 - `backend/tests/test_31_web_ui_console.py`
-- `docs/Web UI Automation Phase 1 交付报告.md`
+- `docs/web-ui-automation-phase1-delivery-report.md`
 - `docs/coding-conventions.md`
 - `docs/web-ui-phase1/report-browser-verification.png`
 - `frontend/src/App.tsx`

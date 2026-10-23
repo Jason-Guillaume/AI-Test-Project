@@ -62,7 +62,7 @@ backend/
                                  #   notifications, api_catalog, business, test_management,
                                  #   reports, agent, test_data
   scripts/                       # seed_admin.py、e2e_smoke.sh（唯一入口）
-  alembic/                       # 迁移（当前 head = 0012）
+  alembic/                       # 迁移（当前 head = 0014）
   tests/                         # pytest：test_01 … test_20，另有 test_api_catalog.py
 frontend/
   src/
@@ -142,7 +142,7 @@ cd backend
 
 - 测试**不依赖生产数据**，用独立的 `testplatform_test` 数据库
 - `conftest.py` 里 `ApiClient.register()` 会自动 seed 验证码（`_STORAGE[cid] = ...`），业务代码不用管
-- 断言 Alembic head：`assert head == "0012"`（`test_01`、`test_10`、`test_18`；新增迁移后三处一起改）
+- 断言 Alembic head：`assert head == "0014"`（`test_01`、`test_10`、`test_18`、`test_22`、`test_29`、`test_30`、`test_32`；新增迁移后全部一起改）
 
 ---
 
@@ -183,7 +183,7 @@ cd backend
 .venv/bin/python -m alembic upgrade head
 ```
 
-- head 当前是 `0012`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心 → 0010 Mock → 0011 Security → 0012 Web UI。新增迁移把 `down_revision` 接 `0012`，并同步 `test_01`、`test_10`、`test_18` 的 head 断言
+- head 当前是 `0014`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心 → 0010 Mock → 0011 Security → 0012 Web UI → 0013 ZAP 安全扫描 → 0014 Web UI 智能体二期（web_agent_session / web_agent_step）。新增迁移把 `down_revision` 接 `0014`，并同步所有 head 断言
 - `--database-url` 可覆盖 `settings.DATABASE_URL`，别硬编码
 - 空库必须先 `stamp base` 再 `upgrade head`，否则 Alembic 认不出库
 
@@ -623,7 +623,12 @@ git push origin develop
 - [docs/migration-plan.md](../../../docs/migration-plan.md) — 从旧项目迁移的路径
 - [docs/current-system-analysis.md](../../../docs/current-system-analysis.md) — 现状分析
 
-**版本**：v1.4（2026-10-15）——目录与事实对齐到当前 `develop`。Alembic head 为 `0012`。变更 head 后同步改本文 §2、§5、§6.2，以及 `test_01`、`test_10`、`test_18` 的断言。
+**版本**：v1.5（2026-10-23）——对齐 Web UI 智能体二期。Alembic head 为 `0014`。变更 head 后同步改本文 §2、§5、§6.2，以及 `test_01`、`test_10`、`test_18`、`test_22`、`test_29`、`test_30`、`test_32` 的断言。
+
+**v1.4 → v1.5 变更**：
+- 0014 创建两张表：web_agent_session（受控浏览器会话）、web_agent_step（步骤提案/结果，加密落库）。会话与步数预算上限分别为 2 与 100。
+- Agent 主图新增 web 节点组与循环边：observe→decide→act→observe，`web_step_review` 为新增 `interrupt_before` 暂停点；人工只经 confirm_web_step 执行单步。
+- 意图枚举新增 `INTERACTIVE_WEB_AUTHORING`（intent.md 升到 TEST_INTENT_PROMPT_V2）；该意图必须由 intent.py 把「Web 受控会话绑定」信号写进 user content，否则模型无依据可选。
 
 **v1.3 → v1.4 变更**：
 
@@ -670,9 +675,9 @@ git push origin develop
 - 用例、页面元素或认证配置修改后必须重新人工确认；Agent 只能生成未确认草稿。执行器再次验证指纹，通用测试计划也不能绕过确认。
 - 每次执行独立 Chromium 进程和 BrowserContext；进程内 Web 专属并发上限 2，不连接用户浏览器或 ZAP 会话。
 - 只允许项目已授权的 scheme/host/port；拦截页面、子资源与重定向，禁用 Service Worker 和 WebSocket，冻结执行 DNS。
-- 0012 创建四张扩展表：web_page_object、web_auth_profile、web_case、web_artifact；迁移保持 seed_admin 重复初始化幂等。后续迁移接实际最新 head。
+- 0012 创建四张扩展表：web_page_object、web_auth_profile、web_case、web_artifact；0013 建 ZAP 扫描表；0014 建 web_agent_session / web_agent_step。迁移保持 seed_admin 重复初始化幂等。后续迁移接实际最新 head。
 - 浏览器安装：`cd backend && .venv/bin/python -m playwright install chromium`。
 - 定向验证：`cd backend && .venv/bin/python -m pytest tests/test_30_web_ui.py tests/test_31_web_ui_console.py -q`。
 - 头版本断言已扩展到 test_22 与 test_30；不要只按旧 test_01 / test_10 / test_18 清单更新。
 - 飞书真实租户扫码与外部真实 LLM 属于需要账号/配置的集成验证；一期提供人工完成登录后的 state 导入和平台模型生成入口，不虚报外部服务已验收。
-- 交付报告：`docs/Web UI Automation Phase 1 交付报告.md`。
+- 交付报告：`docs/web-ui-automation-phase1-delivery-report.md`。

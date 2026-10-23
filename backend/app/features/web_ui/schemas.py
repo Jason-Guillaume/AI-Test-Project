@@ -162,3 +162,45 @@ class AuthResponse(StrictModel):
     name: str
     configured: bool
     expires_at: datetime
+
+
+class PromoteInput(StrictModel):
+    """把智能体沙箱会话里已接受的步骤提升为正式 Web 用例。
+
+    提升只产出**未确认**草稿（confirmed=false）：正式执行仍需走人工确认门禁。
+    名称与描述可省略，省略时按会话 ID 自动生成，便于批量提升。
+    """
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    timeout_ms: int = Field(default=30000, ge=100, le=60000)
+    total_timeout_ms: int = Field(default=120000, ge=1000, le=600000)
+
+
+class SessionStartInput(StrictModel):
+    """启动受控浏览器会话：选定环境、登录态与目标页。"""
+    environment_id: int = Field(ge=1)
+    auth_profile_id: int | None = Field(None, ge=1)
+    target_page_path: str = Field(default="", max_length=2000)
+    step_budget: int = Field(default=20, ge=1, le=100)
+
+
+class SessionResponse(StrictModel):
+    """会话元信息；不包含任何凭据或浏览器句柄。"""
+    id: int
+    project_id: int
+    environment_id: int
+    auth_profile_id: int | None
+    base_url: str
+    target_page_path: str
+    status: str
+    step_budget: int
+    step_count: int = 0
+    created_at: datetime | None = None
+
+
+class SessionObserveResponse(StrictModel):
+    """页面观测结果：脱敏语义树与遮罩截图，可直接供 LLM 或前端使用。"""
+    url: str
+    title: str
+    accessibility_tree: str
+    screenshot_b64: str

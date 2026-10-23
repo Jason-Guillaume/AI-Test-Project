@@ -34,6 +34,8 @@ AGENT_INTENTS = (
     "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
     # Phase 2：发起 ZAP 安全扫描（先出计划，停在人工确认，LLM 不能创建任务）。
     "REQUEST_SECURITY_SCAN",
+    # Phase 2：交互式 Web 用例编写（observe→decide→act 循环）。
+    "INTERACTIVE_WEB_AUTHORING",
 )
 AgentIntent = Literal[
     "GENERATE_TEST_POINTS", "GENERATE_TEST_CASES", "GENERATE_AND_EXECUTE",
@@ -41,6 +43,7 @@ AgentIntent = Literal[
     "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
     "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
     "REQUEST_SECURITY_SCAN",
+    "INTERACTIVE_WEB_AUTHORING",
 ]
 
 # 工作流阶段：持久化在 agent_session.current_stage，下次请求据此由 router 跳过已完成段。
@@ -53,6 +56,8 @@ AGENT_STAGES = (
     "SECURITY_PLAN_REVIEW",
     # Phase 2：ZAP 扫描计划已生成但未确认，任务还没创建。
     "ZAP_SCAN_REVIEW",
+    # Phase 2：Web 智能体步骤提案已生成但未确认，等待人工 review。
+    "WEB_STEP_REVIEW",
 )
 AgentStage = Literal[
     "UNDERSTANDING", "CONTEXT_LOADING", "PLANNING", "TEST_POINT_REVIEW",
@@ -61,6 +66,7 @@ AgentStage = Literal[
     "NOTIFYING", "COMPLETED", "FAILED", "CLARIFY",
     "SECURITY_PLAN_REVIEW",
     "ZAP_SCAN_REVIEW",
+    "WEB_STEP_REVIEW",
 ]
 
 # sendMessage 入参 action：人工在 review 暂停点的快捷操作。
@@ -75,6 +81,8 @@ AGENT_ACTIONS = (
     "confirm_security_plan", "confirm_security_risk",
     # Phase 2：ZAP 扫描计划人工确认（唯一能创建扫描任务的入口）。
     "confirm_security_scan",
+    # Phase 2：Web 智能体步骤提案确认 / 拒绝；提升通过 Web Agent 专用端点完成。
+    "confirm_web_step", "reject_web_step",
 )
 AgentAction = Literal[
     "confirm_points", "confirm_cases", "execute", "analyze",
@@ -82,6 +90,7 @@ AgentAction = Literal[
     "confirm_report", "skip_notification",
     "confirm_security_plan", "confirm_security_risk",
     "confirm_security_scan",
+    "confirm_web_step", "reject_web_step",
 ]
 
 AGENT_SESSION_STATUSES = ("ACTIVE", "COMPLETED", "FAILED")
@@ -98,12 +107,15 @@ AGENT_MESSAGE_TYPES = (
     "SECURITY_PLAN",
     # Phase 2：ZAP 扫描计划预览（job_service.plan 的结果，确认前不创建任务）。
     "SECURITY_SCAN_PLAN",
+    # Phase 2：Web 智能体步骤提案与页面观测。
+    "WEB_AGENT_STEP", "WEB_OBSERVATION",
 )
 AgentMessageType = Literal[
     "TEXT", "TEST_PLAN", "TEST_POINTS", "TEST_CASES", "EXECUTION", "RESULT", "CLARIFY",
     "REPORT", "NOTIFICATION",
     "SECURITY_PLAN",
     "SECURITY_SCAN_PLAN",
+    "WEB_AGENT_STEP", "WEB_OBSERVATION",
 ]
 
 # 错误码（§36）：节点失败时写入 state.error_code + 人类可读消息。
@@ -118,6 +130,9 @@ AGENT_ERROR_CODES = (
     "SECURITY_CONTEXT_FAILED", "SECURITY_PLAN_FAILED",
     # Phase 2：ZAP 扫描计划生成 / 扫描任务创建失败（含缺少人工批准）。
     "SECURITY_SCAN_PLAN_FAILED", "SECURITY_SCAN_NOT_AUTHORIZED",
+    # Web 智能体二轮：受控会话缺失 / 观测或执行失败 / 提案不合法 / 步数预算耗尽。
+    "WEB_SESSION_CLOSED", "WEB_OBSERVE_FAILED", "WEB_STEP_INVALID",
+    "WEB_BUDGET_EXCEEDED", "WEB_STEP_FAILED", "WEB_STEP_MISSING",
 )
 
 # 结果分析 issue 严重度：区分疑似缺陷 / 测试数据问题 / 执行错误 / 断言失败 / 未知。
@@ -198,6 +213,11 @@ class SendMessageRequest(BaseModel):
         None, max_length=500,
         description="confirm_security_scan 且为主动扫描时的批准说明（人工填写，后端必填校验）",
     )
+    # Web 智能体二轮：显式绑定受控浏览器会话（经 POST /projects/{id}/web-agent/sessions 创建）。
+    # 归属校验在后端做：会话不属于本 Agent 会话所在项目时统一 404。
+    web_session_id: int | None = Field(
+        None, gt=0, description="Web 智能体绑定的受控浏览器会话 ID（交互式编写时必填）",
+    )
 
 
 class AgentWorkspace(BaseModel):
@@ -223,6 +243,13 @@ class AgentWorkspace(BaseModel):
     zap_scan_plan: dict[str, Any] | None = None
     zap_scan_job_id: int | None = None
     zap_scan_note: str | None = None
+    # Web 智能体二轮：交互式编写的工作区快照（观测含遮罩截图，提案含执行结果）。
+    web_agent_session_id: int | None = None
+    web_goal: str | None = None
+    web_step_budget: int = 20  # 与会话默认步数预算一致（SessionStartInput.step_budget 默认 20）
+    web_proposed_steps: list[dict[str, Any]] = Field(default_factory=list)
+    web_current_step: dict[str, Any] | None = None
+    web_observation: dict[str, Any] | None = None
     suggested_actions: list[str] = []
 
 
@@ -357,3 +384,21 @@ class ResultAnalysis(BaseModel):
     summary: str
     issues: list[AnalysisIssue] = Field(default_factory=list)
     recommendation: str | None = None
+
+
+# --------------------------------------------------------------------------- Web 智能体（Phase 2）
+
+class WebDecideDraft(BaseModel):
+    """WebDecideNode 产出：LLM 对当前页面的决策（结构化输出）。
+
+    decision:
+        - PROPOSE：提出下一步操作（step 非空），进入 web_step_review 暂停点。
+        - OBSERVE：继续观察（不做操作），回到 web_decide。
+        - DONE：目标达成，结束循环。
+    step: WebStep 格式的操作提案（仅 decision=PROPOSE 时非空）。
+    rationale: 决策理由（人工可读，不直接入 prompt）。
+    """
+
+    decision: Literal["PROPOSE", "OBSERVE", "DONE"]
+    step: dict[str, Any] | None = None
+    rationale: str | None = Field(None, max_length=500)

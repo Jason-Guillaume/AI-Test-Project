@@ -13,11 +13,16 @@ _PROMPTS_DIR = Path(__file__).parent
 
 # prompt 版本号（写入 test_point/test_case.generation_version 用于追溯）。
 TEST_INTENT_PROMPT_V1 = "intent-v1"
+# V2：意图枚举加入 INTERACTIVE_WEB_AUTHORING（Web 智能体二期）。分类器契约变化，
+# 旧版 intent.md 不收录该意图，会让 observe→decide→act 链路在生产环境不可达。
+TEST_INTENT_PROMPT_V2 = "intent-v2"
 TEST_POINT_PROMPT_V1 = "point-v1"
 TEST_CASE_PROMPT_V1 = "case-v1"
 TEST_RESULT_ANALYSIS_PROMPT_V1 = "result-v1"
 # Phase 2：报告 AI 总结（reports.services.ai_summary + agent 报告节点共用）。
 REPORT_SUMMARY_PROMPT_V1 = "summary-v1"
+# Phase 2 二轮：Web 智能体页面决策（observe→decide→act 循环）。
+WEB_DECIDE_PROMPT_V1 = "web_decide-v1"
 
 _PROMPT_FILES = {
     "intent": "intent.md",
@@ -25,6 +30,7 @@ _PROMPT_FILES = {
     "test_case": "test_case.md",
     "result_analysis": "result_analysis.md",
     "report_summary": "report_summary.md",
+    "web_decide": "web_decide.md",
 }
 
 

@@ -106,10 +106,9 @@ def test_real_console_create_confirm_debug_report(api, admin, db, web_setup, tmp
             expect(page.get_by_role("dialog")).to_have_count(1)
             page.get_by_role("dialog").get_by_role("button", name="Close").click()
             page.get_by_role("button", name="查看报告").first.click()
-            page.get_by_role("tab", name="逐用例执行", exact=False).click()
-            page.get_by_role("button", name=re.compile(r"查\s*看"), exact=True).first.click()
-            page.get_by_role("tab", name="Web 步骤与附件").click()
-            expect(page.get_by_role("button", name="执行截图")).to_be_visible()
+            page.get_by_role("tab", name="用例结果", exact=False).click()
+            page.get_by_role("button", name="详情", exact=True).first.click()
+            expect(page.get_by_text("执行截图", exact=True)).to_be_visible()
             page.screenshot(path=str(tmp_path / "web-ui-report.png"), animations="disabled")
             assert not errors, errors
             browser.close()

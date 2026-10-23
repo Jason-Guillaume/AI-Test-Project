@@ -394,9 +394,9 @@ def _seed_alert_risks(db, project_id, job_id):
 
 
 class TestMigration:
-    def test_head_is_0013_and_tables_created(self, db):
+    def test_head_is_0014_and_tables_created(self, db):
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0013"
+        assert head == "0014"
         assert ZAP_TABLES.issubset(_tables(db))
 
     def test_orm_matches_migrated_schema(self, db):
@@ -453,7 +453,7 @@ class TestMigration:
 
         tables = _tables(db)
         assert ZAP_TABLES.issubset(tables)
-        assert db.execute(text("select version_num from alembic_version")).scalar() == "0013"
+        assert db.execute(text("select version_num from alembic_version")).scalar() == "0014"
 
 
 # --------------------------------------------------------------------------- 范围守卫（§四 / §五 / §十五）

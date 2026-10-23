@@ -33,6 +33,8 @@ ai-test-project/
 │       │   └── console/         /console/* 用户控制台
 │       └── api/ components/ hooks/ types/    请求客户端 · 基础组件 · hooks · 类型
 ├── docs/
+│   ├── README.md                    文档索引（全部文档分类导航）
+│   ├── getting-started.md           前后端本地联调启动指南
 │   ├── current-system-analysis.md   旧项目现状分析（逐模块、逐端点）
 │   ├── target-architecture.md       目标架构与阶段一设计
 │   └── migration-plan.md            旧→新 API 映射、字段与状态码差异
@@ -304,4 +306,4 @@ cd backend
 执行前在项目中授权目标 scheme/host/port，配置平台环境；创建用例并保存步骤，人工审核确认后执行。
 Fixture、Mock、测试套件/计划与原有测试用例共用。飞书扫码登录需人工完成后导入 storage_state。
 
-详见 [Web UI Automation Phase 1 交付报告](docs/Web%20UI%20Automation%20Phase%201%20交付报告.md)。
+详见 [Web UI Automation Phase 1 交付报告](docs/web-ui-automation-phase1-delivery-report.md)。

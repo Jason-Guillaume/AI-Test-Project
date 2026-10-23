@@ -281,5 +281,11 @@ _DEFAULT_FAKE: dict[str, dict[str, Any]] = {
         "recommendations": ["建议复核失败用例对应接口实现"],
         "risk_summary": "HIGH：存在 P0 用例失败，需优先处理。",
     },
+    # Phase 2：Web 智能体决策默认样例（decision=OBSERVE 表示继续观察）。
+    "web_decide": {
+        "decision": "OBSERVE",
+        "step": None,
+        "rationale": "继续观察页面，等待下一步决策。",
+    },
     "default": {"result": "ok"},
 }

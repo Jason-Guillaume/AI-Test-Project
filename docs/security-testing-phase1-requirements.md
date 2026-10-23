@@ -1,6 +1,6 @@
 # Security Testing Phase 1 需求说明
 
-给 Claude Code 的实现需求。架构、表结构、接口和文件清单以 `docs/Security Testing Phase 1 开发计划.md` 为准。本文只规定要做什么、不做什么、怎样算完成。两份文档冲突时，以开发计划里的复用边界和安全限制为准。
+给 Claude Code 的实现需求。架构、表结构、接口和文件清单以 `docs/security-testing-phase1-dev-plan.md` 为准。本文只规定要做什么、不做什么、怎样算完成。两份文档冲突时，以开发计划里的复用边界和安全限制为准。
 
 ---
 

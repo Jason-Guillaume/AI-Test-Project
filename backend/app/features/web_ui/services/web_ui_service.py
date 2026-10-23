@@ -9,14 +9,19 @@ import json
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from app.features.web_ui.models import PageObject, WebArtifact, WebAuthProfile, WebCase
-from app.features.web_ui.schemas import AuthInput, CaseInput, PageInput, WebStep
+from app.features.web_ui.models import PageObject, WebArtifact, WebAuthProfile, WebAgentSession, WebAgentStep, WebCase
+from app.features.web_ui.schemas import (
+    AuthInput, CaseInput, PageInput, PromoteInput, SessionStartInput, WebStep,
+)
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_step import TestStep
 from app.features.test_management.services._access import get_project_or_404, require_writable_project
 from app.models.configuration import Environment
 from app.shared.crypto import encrypt_secret, decrypt_secret
 from app.shared.errors import bad_request, conflict, not_found
+
+# 只有已经确认执行的结果写入步骤表；待确认与驳回提案保存在加密的 Agent 消息元数据中。
+AGENT_STEP_STATUSES = frozenset({"ACCEPTED", "FAILED"})
 
 
 def json_dump(value):
@@ -362,3 +367,173 @@ class WebUIService:
         rows = query.order_by(Environment.id.desc()).limit(200).all()
         return {"items": [{"id": e.id, "name": e.name, "display_name": e.display_name, "is_active": e.is_active} for e in rows],
                 "total": total, "page": 1, "page_size": 200}
+
+    # ---------------------------------------------------------- 智能体二轮：受控浏览器会话
+
+    def _session_response(self, row):
+        """将数据库行转换为会话响应，步数计数从活句柄读取。"""
+        from app.features.web_ui.runtime.session_manager import registry
+        browser = registry.get_session(row.id)
+        return {"id": row.id, "project_id": row.project_id, "environment_id": row.environment_id,
+                "auth_profile_id": row.auth_profile_id, "base_url": row.base_url,
+                "target_page_path": row.target_page_path, "status": row.status,
+                "step_budget": row.step_budget, "step_count": browser.step_count if browser else 0,
+                "created_at": row.created_at}
+
+    def _get_session_row(self, db, session_id, actor, *, write=False):
+        """按资源归属判权限；跨项目和不存在均返回 404。"""
+        return get_row(db, WebAgentSession, session_id, actor, write=write)
+
+    def start_session(self, db, project_id, body: SessionStartInput, actor):
+        """启动受控浏览器会话：验证环境、登录态与目标页，创建会话记录并打开浏览器。"""
+        require_writable_project(db, project_id, actor)
+        environment = db.get(Environment, body.environment_id)
+        if environment is None or not environment.is_active:
+            raise not_found("环境不存在或已停用")
+        from app.features.web_ui.runtime.policy import TargetPolicy
+        from app.features.business.executors.api_executor import ApiRequestExecutor
+        policy = TargetPolicy(db, project_id)
+        base_url = (environment.base_url or "").rstrip("/") + (environment.gateway_prefix or "")
+        policy.require(base_url)
+        state = {"cookies": [], "origins": []}
+        secret_values = []
+        if body.auth_profile_id:
+            profile = get_row(db, WebAuthProfile, body.auth_profile_id, actor)
+            if profile.project_id != project_id or profile.environment_id != environment.id:
+                raise bad_request("认证配置与项目或执行环境不匹配")
+            if profile.expires_at <= datetime.now(timezone.utc).replace(tzinfo=None):
+                raise bad_request("登录态已过期，请重新登录并导入")
+            raw = decrypt_secret(profile.secret_encrypted)
+            if not raw:
+                raise bad_request("认证密文无法解密，请重新配置")
+            from app.features.web_ui.runtime.adapter import validate_storage_state, _all_strings
+            auth = json.loads(raw)
+            state = validate_storage_state(auth.get("storage_state") or {}, policy, environment)
+            secret_values += _all_strings(auth)
+        session_row = WebAgentSession(project_id=project_id, environment_id=environment.id,
+            auth_profile_id=body.auth_profile_id, base_url=base_url,
+            target_page_path=body.target_page_path, status="ACTIVE",
+            step_budget=body.step_budget, created_by=actor.id)
+        db.add(session_row)
+        db.flush()
+        headers = ApiRequestExecutor.get_environment_headers(environment)
+        # 默认请求头会被注入 Chromium；把敏感头值也加入运行时脱敏集合，避免目标页面回显
+        # Authorization / API Key 等凭据后进入语义树、截图遮罩或 Agent prompt。
+        from app.features.business.executors.sensitive import is_sensitive_key
+        secret_values.extend(
+            value for key, value in headers.items()
+            if is_sensitive_key(key) and value
+        )
+        from app.features.web_ui.runtime.session_manager import registry
+        try:
+            registry.open_session(session_row.id, base_url=base_url, storage_state=state,
+                headers=headers, policy=policy, target_page_path=body.target_page_path,
+                step_budget=body.step_budget, initial_secrets=secret_values)
+        except Exception:
+            session_row.status = "FAILED"
+            db.commit()
+            raise
+        db.commit()
+        return self._session_response(session_row)
+
+    def get_session(self, db, session_id, actor):
+        """读取会话元信息与当前步数。"""
+        row = self._get_session_row(db, session_id, actor)
+        return self._session_response(row)
+
+    def list_sessions(self, db, project_id, actor, *, page=1, page_size=20):
+        """列出项目内的浏览器会话。"""
+        get_project_or_404(db, project_id, actor)
+        query = db.query(WebAgentSession).filter_by(project_id=project_id).order_by(WebAgentSession.id.desc())
+        return list_result(query, lambda row: self._session_response(row), page, page_size)
+
+    def observe_session(self, db, session_id, actor):
+        """观察会话当前页面：脱敏语义树与遮罩截图，不持久化（由 Phase B 决定落库时机）。
+
+        写权限：观测会推进共享浏览器上下文，并在句柄失效时改写会话状态为 FAILED，
+        因此 viewer 不能驱动别人的会话，也不能用观测把成员会话置为失败。
+        """
+        row = self._get_session_row(db, session_id, actor, write=True)
+        if row.status != "ACTIVE":
+            raise conflict("会话已关闭或失败，请先重新启动会话")
+        from app.features.web_ui.runtime.session_manager import registry
+        browser = registry.get_session(row.id)
+        if browser is None:
+            row.status = "FAILED"
+            row.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            raise conflict("浏览器会话已断开，请重新启动会话")
+        return browser.observe()
+
+    def record_agent_step(self, db, session_id, *, sort, step, result, status, actor):
+        """记录智能体已执行的一步：步骤与结果加密落库，供追溯与 promote 提升。
+
+        由 agent 节点调用（service 层负责 commit）；跨项目会话统一 404。
+        status 只允许 ACCEPTED / FAILED：提案未执行前不能创建步骤行，
+        在写入侧收窄词表，避免未执行的步骤被误标成已接受而进入正式用例。
+        """
+        if status not in AGENT_STEP_STATUSES:
+            raise bad_request(f"非法的智能体步骤状态：{status}")
+        row = self._get_session_row(db, session_id, actor, write=True)
+        db.add(WebAgentStep(
+            session_id=row.id, sort=sort,
+            step_encrypted=encrypt_secret(json_dump(step)),
+            observation_encrypted=encrypt_secret(json_dump(result)),
+            status=status, source="AI",
+        ))
+        db.commit()
+        return {"session_id": row.id, "sort": sort, "status": status}
+
+    def promote_session(self, db, session_id, body: PromoteInput, actor):
+        """把会话中已接受的步骤提升为正式 Web 用例（未确认草稿）。
+
+        只取 status=ACCEPTED 且来源为 AI 的已执行步骤——被驳回的提案不会进入
+        正式用例。会话目标页非空时补一条 NAVIGATE 作为用例首步，保证用例从
+        已知入口出发可重放。产物一律 confirmed=false：正式执行仍只走
+        save_case → confirm_case → debug，confirmed_digest 门禁不变。
+        敏感步骤沿用 WebStep 既有约束：凭据必须写成 ${data.auth_*} 一类变量引用，
+        否则在 load_steps 读取时会失败，这里提前拒绝而不是留下坏用例。
+        """
+        # 提升会在项目内创建用例，属于写操作：入口即按可写项目校验，
+        # 不依赖 save_case 内部的校验兜底（防止后续重构漏掉）。
+        row = self._get_session_row(db, session_id, actor, write=True)
+        steps = [
+            decrypt_secret(r.step_encrypted)
+            for r in db.query(WebAgentStep).filter_by(session_id=row.id, status="ACCEPTED", source="AI")
+                .order_by(WebAgentStep.sort, WebAgentStep.id).all()
+        ]
+        decoded: list[WebStep] = []
+        for raw in steps:
+            data = json.loads(raw) if raw else {}
+            if data:
+                try:
+                    decoded.append(WebStep.model_validate(data))
+                except (ValueError, Exception) as exc:  # noqa: BLE001
+                    raise bad_request(f"智能体步骤不符合用例约束，无法提升：{exc}") from exc
+        if not decoded:
+            raise bad_request("会话内还没有已接受的步骤，无法提升")
+
+        # 沙箱会话是相对路径导航；正式用例从项目目标页根路径可解析，补一条 NAVIGATE。
+        target = (row.target_page_path or "").strip()
+        if target and decoded[0].operation != "NAVIGATE":
+            decoded.insert(0, WebStep(name="打开目标页", operation="NAVIGATE", value=target))
+
+        name = (body.name or "").strip() or f"智能体会话 {row.id} 探索用例"
+        return self.save_case(
+            db, row.project_id,
+            CaseInput(name=name, description=body.description or "",
+                      auth_profile_id=row.auth_profile_id,
+                      timeout_ms=body.timeout_ms, total_timeout_ms=body.total_timeout_ms,
+                      steps=decoded),
+            actor, source_type="AI",
+        )
+
+    def close_session(self, db, session_id, actor):
+        """关闭会话并释放浏览器资源。"""
+        row = self._get_session_row(db, session_id, actor, write=True)
+        from app.features.web_ui.runtime.session_manager import registry
+        registry.close_session(row.id)
+        row.status = "CLOSED"
+        row.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+        return self._session_response(row)
