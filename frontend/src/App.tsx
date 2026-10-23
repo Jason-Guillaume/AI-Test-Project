@@ -2,7 +2,7 @@
 // - /admin/*  平台管理端（仅平台管理员，RequireAdmin + AdminLayout）
 // - /console/* 用户控制台（登录用户，RequireAuth + ConsoleLayout + 作用域上下文）
 // 两个入口共用登录、请求客户端、基础组件与类型定义。
-import { useCallback } from 'react';
+import { lazy, Suspense, useCallback, type ComponentType } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -13,46 +13,55 @@ import {
 import { Spin } from 'antd';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { ConsoleScopeProvider } from '@/hooks/useConsoleScope';
-import { AdminLayout } from '@/layouts/AdminLayout';
-import { ConsoleLayout } from '@/layouts/ConsoleLayout';
 import { GuestOnly, RequireAdmin, RequireAuth } from '@/components/RouteGuards';
 import { ForbiddenPage, NotFoundPage } from '@/components/ResultPages';
-import { LoginPage } from '@/pages/auth/Login';
-import { RegisterPage } from '@/pages/auth/Register';
-import { AdminDashboardPage } from '@/pages/admin/Dashboard';
-import { AdminUsersPage } from '@/pages/admin/Users';
-import { AdminOrganizationsPage } from '@/pages/admin/Organizations';
-import { AdminProjectsPage } from '@/pages/admin/Projects';
-import { AdminModelConfigsPage } from '@/pages/admin/ModelConfigs';
-import { AdminEnvironmentsPage } from '@/pages/admin/Environments';
-import { ConsoleWorkbenchPage } from '@/pages/console/Workbench';
-import { ConsoleProjectsPage } from '@/pages/console/Projects';
-import { ConsoleProjectDetailPage } from '@/pages/console/Projects/ProjectDetail';
-import { ConsoleNotificationsPage } from '@/pages/console/Notifications';
-import { ConsoleProfilePage } from '@/pages/console/Profile';
-import { ConsoleDefectsPage } from '@/pages/console/Defects';
-import { ConsoleApiCatalogPage } from '@/pages/console/ApiCatalog';
-import { ConsoleBusinessManagementPage } from '@/pages/console/BusinessManagement';
-import {
-  ConsoleTestAssetPage,
-  ConsoleTestSuitesPage,
-  ConsoleTestPlansPage,
-  ConsoleExecutionCenterPage,
-  ConsoleExecutionHistoryPage,
-} from '@/pages/console/TestManagement';
-import { ConsoleAgentPage } from '@/pages/console/Agent';
-import { ConsoleReportListPage, ConsoleReportDetailPage } from '@/pages/console/Reports';
-import { ConsoleNotificationChannelsPage } from '@/pages/console/NotificationChannels';
-import { ConsoleTestDataPage } from '@/pages/console/TestData';
-import {
-  ConsoleMockManagementPage,
-  ConsoleMockServiceDetailPage,
-  ConsoleMockEndpointPage,
-  ConsoleMockExecutionListPage,
-} from '@/pages/console/MockManagement';
-import { ConsoleWebUIPage } from '@/pages/console/WebUI';
-import { ConsoleWebUIAgentPage } from '@/pages/console/WebUIAgent';
-import { ConsoleSecurityTestingPage } from '@/pages/console/SecurityTesting';
+
+// 页面模块延迟到路由命中时再下载，减小应用启动时的代码体积。
+/**
+ * 把页面模块的具名导出包装成 React.lazy 可用的异步组件。
+ * 路由首次匹配时触发动态导入；加载错误会由 React.lazy 向上抛出。
+ */
+function lazyNamedPage<M, K extends keyof M>(loader: () => Promise<M>, exportName: K) {
+  return lazy(async () => ({
+    default: (await loader())[exportName] as ComponentType,
+  }));
+}
+
+const AdminLayout = lazyNamedPage(() => import('@/layouts/AdminLayout'), 'AdminLayout');
+const ConsoleLayout = lazyNamedPage(() => import('@/layouts/ConsoleLayout'), 'ConsoleLayout');
+const LoginPage = lazyNamedPage(() => import('@/pages/auth/Login'), 'LoginPage');
+const RegisterPage = lazyNamedPage(() => import('@/pages/auth/Register'), 'RegisterPage');
+const AdminDashboardPage = lazyNamedPage(() => import('@/pages/admin/Dashboard'), 'AdminDashboardPage');
+const AdminUsersPage = lazyNamedPage(() => import('@/pages/admin/Users'), 'AdminUsersPage');
+const AdminOrganizationsPage = lazyNamedPage(() => import('@/pages/admin/Organizations'), 'AdminOrganizationsPage');
+const AdminProjectsPage = lazyNamedPage(() => import('@/pages/admin/Projects'), 'AdminProjectsPage');
+const AdminModelConfigsPage = lazyNamedPage(() => import('@/pages/admin/ModelConfigs'), 'AdminModelConfigsPage');
+const AdminEnvironmentsPage = lazyNamedPage(() => import('@/pages/admin/Environments'), 'AdminEnvironmentsPage');
+const ConsoleWorkbenchPage = lazyNamedPage(() => import('@/pages/console/Workbench'), 'ConsoleWorkbenchPage');
+const ConsoleProjectsPage = lazyNamedPage(() => import('@/pages/console/Projects'), 'ConsoleProjectsPage');
+const ConsoleProjectDetailPage = lazyNamedPage(() => import('@/pages/console/Projects/ProjectDetail'), 'ConsoleProjectDetailPage');
+const ConsoleNotificationsPage = lazyNamedPage(() => import('@/pages/console/Notifications'), 'ConsoleNotificationsPage');
+const ConsoleProfilePage = lazyNamedPage(() => import('@/pages/console/Profile'), 'ConsoleProfilePage');
+const ConsoleDefectsPage = lazyNamedPage(() => import('@/pages/console/Defects'), 'ConsoleDefectsPage');
+const ConsoleApiCatalogPage = lazyNamedPage(() => import('@/pages/console/ApiCatalog'), 'ConsoleApiCatalogPage');
+const ConsoleBusinessManagementPage = lazyNamedPage(() => import('@/pages/console/BusinessManagement'), 'ConsoleBusinessManagementPage');
+const ConsoleTestAssetPage = lazyNamedPage(() => import('@/pages/console/TestManagement'), 'ConsoleTestAssetPage');
+const ConsoleTestSuitesPage = lazyNamedPage(() => import('@/pages/console/TestManagement'), 'ConsoleTestSuitesPage');
+const ConsoleTestPlansPage = lazyNamedPage(() => import('@/pages/console/TestManagement'), 'ConsoleTestPlansPage');
+const ConsoleExecutionCenterPage = lazyNamedPage(() => import('@/pages/console/TestManagement'), 'ConsoleExecutionCenterPage');
+const ConsoleExecutionHistoryPage = lazyNamedPage(() => import('@/pages/console/TestManagement'), 'ConsoleExecutionHistoryPage');
+const ConsoleAgentPage = lazyNamedPage(() => import('@/pages/console/Agent'), 'ConsoleAgentPage');
+const ConsoleReportListPage = lazyNamedPage(() => import('@/pages/console/Reports'), 'ConsoleReportListPage');
+const ConsoleReportDetailPage = lazyNamedPage(() => import('@/pages/console/Reports'), 'ConsoleReportDetailPage');
+const ConsoleNotificationChannelsPage = lazyNamedPage(() => import('@/pages/console/NotificationChannels'), 'ConsoleNotificationChannelsPage');
+const ConsoleTestDataPage = lazyNamedPage(() => import('@/pages/console/TestData'), 'ConsoleTestDataPage');
+const ConsoleMockManagementPage = lazyNamedPage(() => import('@/pages/console/MockManagement'), 'ConsoleMockManagementPage');
+const ConsoleMockServiceDetailPage = lazyNamedPage(() => import('@/pages/console/MockManagement'), 'ConsoleMockServiceDetailPage');
+const ConsoleMockEndpointPage = lazyNamedPage(() => import('@/pages/console/MockManagement'), 'ConsoleMockEndpointPage');
+const ConsoleMockExecutionListPage = lazyNamedPage(() => import('@/pages/console/MockManagement'), 'ConsoleMockExecutionListPage');
+const ConsoleWebUIPage = lazyNamedPage(() => import('@/pages/console/WebUI'), 'ConsoleWebUIPage');
+const ConsoleWebUIAgentPage = lazyNamedPage(() => import('@/pages/console/WebUIAgent'), 'ConsoleWebUIAgentPage');
+const ConsoleSecurityTestingPage = lazyNamedPage(() => import('@/pages/console/SecurityTesting'), 'ConsoleSecurityTestingPage');
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -110,87 +119,96 @@ function HomeRedirect() {
  */
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<HomeRedirect />} />
+    // 异步页面模块加载期间保留统一占位，避免切换路由时出现空白页。
+    <Suspense
+      fallback={
+        <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+          <Spin size="large" />
+        </div>
+      }
+    >
+      <Routes>
+        <Route path="/" element={<HomeRedirect />} />
 
-      <Route
-        path="/login"
-        element={
-          // 仅游客可见：已登录用户访问会被重定向回各自入口。
-          <GuestOnly>
-            <LoginPage />
-          </GuestOnly>
-        }
-      />
-      <Route
-        path="/register"
-        element={
-          <GuestOnly>
-            <RegisterPage />
-          </GuestOnly>
-        }
-      />
+        <Route
+          path="/login"
+          element={
+            // 仅游客可见：已登录用户访问会被重定向回各自入口。
+            <GuestOnly>
+              <LoginPage />
+            </GuestOnly>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <GuestOnly>
+              <RegisterPage />
+            </GuestOnly>
+          }
+        />
 
-      <Route
-        path="/admin"
-        element={
-          // 平台管理员专属分支；非 admin 命中 403 页。
-          <RequireAdmin>
-            <AdminLayout />
-          </RequireAdmin>
-        }
-      >
-        <Route index element={<Navigate to="/admin/dashboard" replace />} />
-        <Route path="dashboard" element={<AdminDashboardPage />} />
-        <Route path="users" element={<AdminUsersPage />} />
-        <Route path="organizations" element={<AdminOrganizationsPage />} />
-        <Route path="projects" element={<AdminProjectsPage />} />
-        <Route path="model-configs" element={<AdminModelConfigsPage />} />
-        <Route path="environments" element={<AdminEnvironmentsPage />} />
-      </Route>
+        <Route
+          path="/admin"
+          element={
+            // 平台管理员专属分支；非 admin 命中 403 页。
+            <RequireAdmin>
+              <AdminLayout />
+            </RequireAdmin>
+          }
+        >
+          <Route index element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboardPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="organizations" element={<AdminOrganizationsPage />} />
+          <Route path="projects" element={<AdminProjectsPage />} />
+          <Route path="model-configs" element={<AdminModelConfigsPage />} />
+          <Route path="environments" element={<AdminEnvironmentsPage />} />
+        </Route>
 
-      <Route
-        path="/console"
-        element={
-          // ConsoleScopeProvider 只提供“当前组织/项目”选择态，不做鉴权。
-          <RequireAuth>
-            <ConsoleScopeProvider>
-              <ConsoleLayout />
-            </ConsoleScopeProvider>
-          </RequireAuth>
-        }
-      >
-        <Route index element={<ConsoleWorkbenchPage />} />
-        <Route path="projects" element={<ConsoleProjectsPage />} />
-        <Route path="projects/:id" element={<ConsoleProjectDetailPage />} />
-        <Route path="defects" element={<ConsoleDefectsPage />} />
-        <Route path="api-catalog" element={<ConsoleApiCatalogPage />} />
-        <Route path="business-management" element={<ConsoleBusinessManagementPage />} />
-        <Route path="test-asset" element={<ConsoleTestAssetPage />} />
-        <Route path="test-suites" element={<ConsoleTestSuitesPage />} />
-        <Route path="test-plans" element={<ConsoleTestPlansPage />} />
-        <Route path="execution-center" element={<ConsoleExecutionCenterPage />} />
-        <Route path="execution-history" element={<ConsoleExecutionHistoryPage />} />
-        <Route path="test-reports" element={<ConsoleReportListPage />} />
-        <Route path="test-reports/:reportId" element={<ConsoleReportDetailPage />} />
-        <Route path="notification-channels" element={<ConsoleNotificationChannelsPage />} />
-        <Route path="test-data" element={<ConsoleTestDataPage />} />
-        <Route path="mock-management" element={<ConsoleMockManagementPage />} />
-        <Route path="mock-management/services/:serviceId" element={<ConsoleMockServiceDetailPage />} />
-        <Route path="mock-management/endpoints/:endpointId" element={<ConsoleMockEndpointPage />} />
-        <Route path="mock-management/executions" element={<ConsoleMockExecutionListPage />} />
-        <Route path="web-ui" element={<ConsoleWebUIPage />} />
-        <Route path="web-ui-agent" element={<ConsoleWebUIAgentPage />} />
-        <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
-        <Route path="agent" element={<ConsoleAgentPage />} />
-        <Route path="notifications" element={<ConsoleNotificationsPage />} />
-        <Route path="profile" element={<ConsoleProfilePage />} />
-      </Route>
+        <Route
+          path="/console"
+          element={
+            // ConsoleScopeProvider 只提供“当前组织/项目”选择态，不做鉴权。
+            <RequireAuth>
+              <ConsoleScopeProvider>
+                <ConsoleLayout />
+              </ConsoleScopeProvider>
+            </RequireAuth>
+          }
+        >
+          <Route index element={<ConsoleWorkbenchPage />} />
+          <Route path="projects" element={<ConsoleProjectsPage />} />
+          <Route path="projects/:id" element={<ConsoleProjectDetailPage />} />
+          <Route path="defects" element={<ConsoleDefectsPage />} />
+          <Route path="api-catalog" element={<ConsoleApiCatalogPage />} />
+          <Route path="business-management" element={<ConsoleBusinessManagementPage />} />
+          <Route path="test-asset" element={<ConsoleTestAssetPage />} />
+          <Route path="test-suites" element={<ConsoleTestSuitesPage />} />
+          <Route path="test-plans" element={<ConsoleTestPlansPage />} />
+          <Route path="execution-center" element={<ConsoleExecutionCenterPage />} />
+          <Route path="execution-history" element={<ConsoleExecutionHistoryPage />} />
+          <Route path="test-reports" element={<ConsoleReportListPage />} />
+          <Route path="test-reports/:reportId" element={<ConsoleReportDetailPage />} />
+          <Route path="notification-channels" element={<ConsoleNotificationChannelsPage />} />
+          <Route path="test-data" element={<ConsoleTestDataPage />} />
+          <Route path="mock-management" element={<ConsoleMockManagementPage />} />
+          <Route path="mock-management/services/:serviceId" element={<ConsoleMockServiceDetailPage />} />
+          <Route path="mock-management/endpoints/:endpointId" element={<ConsoleMockEndpointPage />} />
+          <Route path="mock-management/executions" element={<ConsoleMockExecutionListPage />} />
+          <Route path="web-ui" element={<ConsoleWebUIPage />} />
+          <Route path="web-ui-agent" element={<ConsoleWebUIAgentPage />} />
+          <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
+          <Route path="agent" element={<ConsoleAgentPage />} />
+          <Route path="notifications" element={<ConsoleNotificationsPage />} />
+          <Route path="profile" element={<ConsoleProfilePage />} />
+        </Route>
 
-      <Route path="/403" element={<ForbiddenPage />} />
-      <Route path="/404" element={<NotFoundPage />} />
-      <Route path="*" element={<NotFoundPage />} />
-    </Routes>
+        <Route path="/403" element={<ForbiddenPage />} />
+        <Route path="/404" element={<NotFoundPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </Suspense>
   );
 }
 
