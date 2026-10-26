@@ -55,6 +55,7 @@ const ROLE_LABEL: Record<string, string> = {
   REPORT_AGENT: '报告 Agent',
 };
 const TERMINAL = new Set(['SUCCEEDED', 'SUCCEEDED_WITH_ISSUES', 'FAILED', 'CANCELLED', 'SUPERSEDED']);
+const STOP_POLLING = new Set([...TERMINAL, 'RECONCILIATION_REQUIRED']);
 
 /** 展示用户有权查看的任务与最近一次持久化运行。 */
 export function ConsoleTasksPage() {
@@ -129,33 +130,46 @@ export function ConsoleTaskDetailPage() {
     queryKey: ['tasks', taskId],
     queryFn: () => tasksApi.get(taskId!),
     enabled: taskId != null,
-    refetchInterval: 3000,
+    refetchInterval: 5000,
   });
   const runId = taskQuery.data?.latest_run?.id ?? null;
   const runQuery = useQuery({
     queryKey: ['task-run', runId],
     queryFn: () => tasksApi.getRun(runId!),
     enabled: runId != null,
-    refetchInterval: 3000,
+    refetchInterval: (query) => STOP_POLLING.has(query.state.data?.run.status ?? '') ? false : 3000,
   });
+  const pollRunDetails = !STOP_POLLING.has(runQuery.data?.run.status ?? taskQuery.data?.latest_run?.status ?? '');
   const messagesQuery = useQuery({
     queryKey: ['task-messages', runId],
     queryFn: () => tasksApi.messages(runId!),
     enabled: runId != null,
-    refetchInterval: 3000,
+    refetchInterval: pollRunDetails ? 5000 : false,
   });
   const eventsQuery = useQuery({
     queryKey: ['task-events', runId],
-    queryFn: () => tasksApi.events(runId!),
+    queryFn: async () => {
+      // 按缓存尾部游标续读并限制本地历史，避免重复传输完整事件流。
+      const previous = queryClient.getQueryData<TaskEvent[]>(['task-events', runId]) ?? [];
+      const next = await tasksApi.events(runId!, previous[previous.length - 1]?.event_seq ?? 0);
+      return [...previous, ...next].slice(-200);
+    },
     enabled: runId != null,
-    refetchInterval: 3000,
+    refetchInterval: pollRunDetails ? 3000 : false,
   });
   const resourcesQuery = useQuery({
     queryKey: ['task-resources', runId],
     queryFn: () => tasksApi.resources(runId!),
     enabled: runId != null,
-    refetchInterval: 3000,
+    refetchInterval: pollRunDetails ? 5000 : false,
   });
+  useEffect(() => {
+    if (pollRunDetails || runId == null) return;
+    // 停止轮询前补齐终态提交的最后一批消息、事件与产物。
+    void Promise.all(['task-messages', 'task-events', 'task-resources'].map((key) =>
+      queryClient.invalidateQueries({ queryKey: [key, runId] }),
+    ));
+  }, [pollRunDetails, queryClient, runId]);
   const detail = runQuery.data;
   const agents = detail?.agents ?? [];
   const workItems = detail?.work_items ?? [];
