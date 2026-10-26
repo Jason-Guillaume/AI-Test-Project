@@ -38,6 +38,7 @@ class Task(Base):
     goal = Column(Text, nullable=False)
     environment_id = Column(Integer, ForeignKey("environment.id", ondelete="SET NULL"), nullable=True)
     input_case_ids = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    security_scan_json = Column(JSON, nullable=True, comment="可选 ZAP 扫描目标与策略；批准说明只在确认命令中提交")
     request_key = Column(String(100), nullable=True)
     status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
     archived = Column(Boolean, nullable=False, default=False, server_default=text("false"))
@@ -143,6 +144,7 @@ class TaskWorkItem(Base):
     error_code = Column(String(80), nullable=True)
     error_message = Column(Text, nullable=True)
     claimed_at = Column(DateTime, nullable=True)
+    available_at = Column(DateTime, nullable=True, index=True, comment="外部任务轮询或延迟重试的最早领取时间")
     finished_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 

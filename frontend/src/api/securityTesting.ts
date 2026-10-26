@@ -537,6 +537,7 @@ export interface ScanJobCreate {
   test_run_id?: number | null;
   confirmed?: boolean;
   approval_note?: string | null;
+  idempotency_key?: string | null;
 }
 
 export interface ScanJob {

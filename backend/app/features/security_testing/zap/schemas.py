@@ -336,6 +336,7 @@ class ScanJobCreate(BaseModel):
     test_run_id: int | None = None
     confirmed: bool = False
     approval_note: str | None = Field(None, max_length=500)
+    idempotency_key: str | None = Field(None, min_length=1, max_length=160)
 
     @field_validator("target_id", "scan_profile_id")
     @classmethod

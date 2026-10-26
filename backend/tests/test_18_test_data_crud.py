@@ -7,7 +7,7 @@
 - 测试数据目录 value_json 脱敏；数据池 payload 脱敏 + 占用/释放（service 层）
 - 被测库连接：password 不回显；ping 只 SELECT 1；member 创建 403
 - 数据库策略：PRODUCTION enabled=true → 400 DATABASE_ENVIRONMENT_FORBIDDEN
-- 执行记录只读列表为空；head==0015
+- 执行记录只读列表为空；head==0016
 
 权限约定：读 viewer+，写 member+，DB 连接/策略写仅平台管理员；越权与不存在共用 404。
 """
@@ -99,10 +99,10 @@ def _get_or_create_env(db, name, admin_id):
 
 
 class TestSchema:
-    def test_head_is_0015_and_tables_present(self, db):
+    def test_head_is_0016_and_tables_present(self, db):
         from sqlalchemy import text
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0015"
+        assert head == "0016"
         tables = {
             row[0]
             for row in db.execute(

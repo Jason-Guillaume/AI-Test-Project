@@ -37,6 +37,7 @@ class SecurityScanJob(Base):
         Index("ix_security_scan_job_project_status", "project_id", "status"),
         Index("ix_security_scan_job_inflight_heartbeat", "status", "heartbeat_at"),
         Index("ix_security_scan_job_target", "target_id"),
+        Index("uq_security_scan_job_idempotency", "project_id", "idempotency_key", unique=True),
         {"comment": "OWASP ZAP 扫描任务：DB 支撑的异步执行，不由 FastAPI 后台任务承担"},
     )
 
@@ -87,6 +88,7 @@ class SecurityScanJob(Base):
         comment="主动扫描批准人ID（被动扫描为空）",
     )
     approval_note = Column(String(500), nullable=True, comment="批准说明（主动扫描用）")
+    idempotency_key = Column(String(160), nullable=True, comment="调用方提供的幂等键；统一任务用其工具回执键恢复")
     zap_scan_reference = Column(
         String(100), nullable=True, comment="ZAP 侧扫描引用（scanId / contextId）",
     )

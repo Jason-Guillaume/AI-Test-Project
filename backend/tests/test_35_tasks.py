@@ -1,4 +1,4 @@
-"""统一任务 P0–P3 真实 API 集成验收。
+"""统一任务 P0–P4 真实 API 集成验收。
 
 本测试通过鉴权 HTTP API 创建任务、确认方案并观察持久化调度；测试用例、出站白名单、RunService、HTTP 执行器与 ReportService 均使用真实实现。
 仅模型边界返回可重复的结构化内容，避免依赖外部 LLM 凭据；因此不作为生产模型质量验收。
@@ -10,6 +10,7 @@ import json
 import time
 
 import pytest
+from sqlalchemy import inspect, text
 
 from app.features.test_management.models.test_case import TestCase as CaseEntity
 from app.models.configuration import ModelConfiguration
@@ -39,7 +40,7 @@ class DeterministicTaskLLM:
         """按任务角色返回最小合法结构化文本。"""
         if kind == "task_planner":
             return {"summary": "执行已确认的健康检查 API 用例。", "acceptance_criteria": ["产生真实 TestRun 和正式报告"]}
-        if kind == "task_api_worker":
+        if kind in {"task_api_worker", "task_ui_worker"}:
             payload = json.loads(user_content)
             return {"case_ids": payload["allowed_case_ids"], "explanation": "只选择已批准用例"}
         if kind == "task_reviewer":
@@ -74,6 +75,17 @@ def _seed_default_model(db, admin_id):
     db.commit()
     db.refresh(row)
     return row
+
+
+def test_p4_migration_adds_scan_polling_and_idempotency_contract(db):
+    """0016 保持旧任务/扫描记录可空兼容，并为延迟调度与 ZAP 恢复提供持久字段。"""
+    inspector = inspect(db.bind)
+    assert db.execute(text("select version_num from alembic_version")).scalar() == "0016"
+    assert "security_scan_json" in {item["name"] for item in inspector.get_columns("task")}
+    assert "available_at" in {item["name"] for item in inspector.get_columns("task_work_item")}
+    assert "idempotency_key" in {item["name"] for item in inspector.get_columns("security_scan_job")}
+    assert "ix_task_work_item_available_at" in {item["name"] for item in inspector.get_indexes("task_work_item")}
+    assert "uq_security_scan_job_idempotency" in {item["name"] for item in inspector.get_indexes("security_scan_job")}
 
 
 def test_task_api_runs_existing_executor_report_and_reverse_links(api, admin, db, monkeypatch):
@@ -347,3 +359,166 @@ def test_task_model_binding_obeys_organization_grants(db):
     db.commit()
     with pytest.raises(RuntimeError, match="授权已撤销"):
         TaskService.assert_agent_model_access(db, project.id, actor, model.id)
+
+
+def test_task_ui_worker_reuses_confirmed_web_testrun(api, admin, db, monkeypatch):
+    """已确认 Web 用例由独立 UI Worker 走真实 TestRun/Playwright/ReportService 链。"""
+    from app.features.tasks.runtime import worker as task_worker_module
+
+    monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
+    admin_id = _admin_id(db)
+    _seed_default_model(db, admin_id)
+
+    with StubServer() as stub:
+        stub.add("GET", "/health", 200, {"status": "ok"})
+        environment_id = _make_env(db, stub.base_url, admin_id)
+        project_id = _create_project(api, admin)
+        _whitelist(db, project_id, stub.port, admin_id)
+        created_case = api.post(
+            f"/projects/{project_id}/web-cases", username=admin,
+            json={"name": unique("confirmed-web-case"), "steps": [
+                {"name": "打开健康页", "operation": "NAVIGATE", "value": "/health"},
+            ]},
+        )
+        assert created_case.status_code == 201, created_case.text
+        web_case_id = created_case.json()["id"]
+        confirmed = api.post(
+            f"/web-cases/{web_case_id}/confirm", username=admin,
+            json={"revision": created_case.json()["revision"]},
+        )
+        assert confirmed.status_code == 200 and confirmed.json()["confirmed"]
+
+        created = api.post(
+            f"/projects/{project_id}/tasks", username=admin,
+            json={"goal": "执行已确认的 Web 健康页用例并产出报告", "environment_id": environment_id, "case_ids": [web_case_id]},
+        )
+        assert created.status_code == 201, created.text
+        run_id = created.json()["latest_run"]["id"]
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            detail_response = api.get(f"/task-runs/{run_id}", username=admin)
+            detail = detail_response.json()
+            if detail["plans"] and detail["run"]["status"] == "WAITING_CONFIRMATION":
+                break
+            time.sleep(0.05)
+        assert {agent["role"] for agent in detail["agents"]} >= {"MAIN", "PLANNER", "UI_WORKER", "REPORT_AGENT", "REVIEWER"}
+        assert "API_WORKER" not in {agent["role"] for agent in detail["agents"]}
+
+        accepted = api.post(
+            f"/task-runs/{run_id}/commands", username=admin,
+            json={"command_type": "APPROVE_PLAN", "idempotency_key": unique("web-approve")},
+        )
+        assert accepted.status_code == 200, accepted.text
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            detail = api.get(f"/task-runs/{run_id}", username=admin).json()
+            if detail["run"]["status"] in {"SUCCEEDED", "SUCCEEDED_WITH_ISSUES", "FAILED"}:
+                break
+            time.sleep(0.05)
+        assert detail["run"]["status"] == "SUCCEEDED", detail
+        assert any(item["kind"] == "EXECUTE_WEB" and item["status"] == "SUCCEEDED" for item in detail["work_items"])
+        resources = api.get(f"/task-runs/{run_id}/resources", username=admin).json()
+        assert any(item["resource_type"] == "TEST_RUN" for item in resources)
+
+
+def test_task_security_worker_waits_for_existing_zap_job_before_report(api, admin, db, monkeypatch):
+    """安全确认写入真实 ZAP job_service；报告依赖扫描终态并且不替代原 ScanWorker。"""
+    from app.features.security_testing.zap.models.job import SecurityScanJob
+    from app.features.tasks.models import TaskToolInvocation
+    from app.features.tasks.runtime import worker as task_worker_module
+    from app.shared.config import settings
+
+    monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
+    # ZAP 的原后台 Worker 在共享 TestClient 启动时保持关闭；这里验证真实 job_service 登记与调度等待，
+    # 不连接 ZAP 服务或模拟扫描结果。
+    monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "ZAP_BASE_URL", "http://1.2.3.4", raising=False)
+    admin_id = _admin_id(db)
+    _seed_default_model(db, admin_id)
+
+    with StubServer() as stub:
+        stub.add("GET", "/health", 200, {"status": "ok"})
+        environment_id = _make_env(db, stub.base_url, admin_id)
+        project_id = _create_project(api, admin)
+        _whitelist(db, project_id, stub.port, admin_id)
+        api_id = _make_iface(db, project_id, "GET", "/health", "含安全扫描的健康检查")
+        case_id = _create_case(api, admin, project_id, name=unique("scan-case"), api_id=api_id)
+        case = db.get(CaseEntity, case_id)
+        case.status = "ACTIVE"
+        db.commit()
+
+        target = api.post(
+            f"/projects/{project_id}/security/scan-targets", username=admin,
+            json={
+                "name": unique("task-scan-target"), "target_type": "API",
+                "base_url": "http://1.2.3.4", "allowed_hosts": ["1.2.3.4"],
+                "environment_id": environment_id, "authorization_status": "AUTHORIZED",
+            },
+        )
+        assert target.status_code == 201, target.text
+        from tests.test_29_zap_scan import _profile
+        profile_id = _profile(db, project_id, scan_mode="API_PASSIVE")
+
+        created = api.post(
+            f"/projects/{project_id}/tasks", username=admin,
+            json={
+                "goal": "运行健康检查并等待关联的被动安全扫描完成",
+                "environment_id": environment_id,
+                "case_ids": [case_id],
+                "security_scan": {"target_id": target.json()["id"], "scan_profile_id": profile_id},
+            },
+        )
+        assert created.status_code == 201, created.text
+        run_id = created.json()["latest_run"]["id"]
+        deadline = time.monotonic() + 15
+        detail = None
+        while time.monotonic() < deadline:
+            detail = api.get(f"/task-runs/{run_id}", username=admin).json()
+            if detail["plans"] and detail["run"]["status"] == "WAITING_CONFIRMATION":
+                break
+            time.sleep(0.05)
+        assert detail and detail["run"]["status"] == "WAITING_CONFIRMATION", detail
+        assert "SECURITY_WORKER" in {agent["role"] for agent in detail["agents"]}
+        plan = detail["plans"][-1]["plan_json"]
+        assert any(item["role"] == "SECURITY_WORKER" for item in plan["work_items"])
+
+        missing_confirmation = api.post(
+            f"/task-runs/{run_id}/commands", username=admin,
+            json={"command_type": "APPROVE_PLAN", "idempotency_key": unique("scan-no-approval")},
+        )
+        assert missing_confirmation.status_code == 409, missing_confirmation.text
+        approved_body = {
+            "command_type": "APPROVE_PLAN", "idempotency_key": unique("scan-approval"),
+            "security_scan_confirmed": True,
+        }
+        approved = api.post(f"/task-runs/{run_id}/commands", username=admin, json=approved_body)
+        assert approved.status_code == 200, approved.text
+        duplicate = api.post(f"/task-runs/{run_id}/commands", username=admin, json=approved_body)
+        assert duplicate.status_code == 200 and duplicate.json()["id"] == approved.json()["id"]
+
+        deadline = time.monotonic() + 30
+        detail = None
+        while time.monotonic() < deadline:
+            detail = api.get(f"/task-runs/{run_id}", username=admin).json()
+            scan_work = next((item for item in detail["work_items"] if item["kind"] == "SECURITY_SCAN"), None)
+            if scan_work and scan_work["status"] == "PENDING" and (scan_work.get("output_json") or {}).get("scan_job_id"):
+                break
+            time.sleep(0.05)
+        assert detail and scan_work is not None, detail
+        assert scan_work["status"] == "PENDING"
+        assert scan_work["output_json"]["scan_status"] == "PENDING"
+        assert detail["run"]["stage"] == "SECURITY_SCAN"
+        assert not any(item["kind"] == "REPORT" for item in detail["work_items"])
+
+        scan_job = db.query(SecurityScanJob).filter(SecurityScanJob.id == scan_work["output_json"]["scan_job_id"]).one()
+        assert scan_job.status == "PENDING"
+        assert scan_job.test_run_id is not None
+        assert scan_job.idempotency_key == f"task-run:{run_id}:security-scan:{scan_job.test_run_id}"
+        assert scan_job.approved_by is None  # 被动扫描不伪造主动扫描批准人
+        invocation = db.query(TaskToolInvocation).filter(
+            TaskToolInvocation.task_run_id == run_id,
+            TaskToolInvocation.invocation_key == f"security_scan:{scan_job.test_run_id}",
+        ).one()
+        assert invocation.status == "STARTED"  # 报告等待既有 ScanWorker 给出终态
+        resources = api.get(f"/task-runs/{run_id}/resources", username=admin).json()
+        assert any(item["resource_type"] == "SECURITY_SCAN_JOB" for item in resources)

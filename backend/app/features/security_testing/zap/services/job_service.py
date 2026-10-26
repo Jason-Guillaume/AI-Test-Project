@@ -328,6 +328,22 @@ def create(db: Session, project_id: int, user: User, payload: ScanJobCreate) -> 
     else:
         _access.require_member(db, project, user)
 
+    if payload.idempotency_key:
+        prior = db.query(SecurityScanJob).filter(
+            SecurityScanJob.project_id == project_id,
+            SecurityScanJob.idempotency_key == payload.idempotency_key,
+        ).first()
+        if prior is not None:
+            if (
+                prior.target_id != target.id
+                or prior.scan_profile_id != profile.id
+                or prior.test_run_id != payload.test_run_id
+                or prior.initiated_by != user.id
+                or prior.approval_note != ((payload.approval_note or "").strip()[:500] if active else None)
+            ):
+                raise AppError("相同 idempotency_key 已用于不同扫描内容", status_code=409)
+            return prior
+
     if not (settings.ZAP_ENABLED and (settings.ZAP_BASE_URL or "").strip()):
         raise AppError(
             "ZAP 服务未启用或未配置，请先在部署侧设置 ZAP_ENABLED 与 ZAP_BASE_URL",
@@ -368,6 +384,7 @@ def create(db: Session, project_id: int, user: User, payload: ScanJobCreate) -> 
         initiated_by=user.id,
         approved_by=user.id if active else None,
         approval_note=(payload.approval_note or "").strip()[:500] if active else None,
+        idempotency_key=payload.idempotency_key,
         test_run_id=payload.test_run_id,
         cancel_requested=False,
     )

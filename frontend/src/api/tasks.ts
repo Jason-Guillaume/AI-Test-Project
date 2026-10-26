@@ -124,6 +124,7 @@ export interface TaskCreateRequest {
   goal: string;
   environment_id: number;
   case_ids: number[];
+  security_scan?: { target_id: number; scan_profile_id: number };
   request_key?: string;
 }
 
@@ -138,6 +139,8 @@ export interface TaskCommandRequest {
   command_type: 'APPROVE_PLAN' | 'PAUSE' | 'RESUME' | 'CANCEL' | 'RETRY';
   idempotency_key: string;
   work_item_id?: number;
+  security_scan_confirmed?: boolean;
+  security_scan_approval_note?: string;
 }
 
 export const tasksApi = {

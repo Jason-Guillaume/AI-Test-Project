@@ -103,7 +103,7 @@ def confirm(api, admin, case):
 def test_migration_and_web_asset_storage(api, admin, db, web_setup):
     """0012 新表存在，用例和步骤使用旧表；原始脚本和非法操作被拒绝。"""
     project, _ = web_setup
-    assert db.execute(text("select version_num from alembic_version")).scalar() == "0015"
+    assert db.execute(text("select version_num from alembic_version")).scalar() == "0016"
     case = create_case(api, admin, project)
     from app.features.test_management.models.test_case import TestCase
     from app.features.test_management.models.test_step import TestStep
@@ -385,7 +385,7 @@ def test_migration_downgrade_preserves_existing_contracts(db):
         assert {"test_case", "test_step", "case_execution", "test_run", "test_report", "security_case", "mock_service"} <= tables
     finally:
         command.upgrade(config, "head")
-    assert db.execute(text("select version_num from alembic_version")).scalar() == "0015"
+    assert db.execute(text("select version_num from alembic_version")).scalar() == "0016"
 
 
 def test_cookie_and_jwt_are_used_by_real_browser(api, admin, web_setup, target_server):

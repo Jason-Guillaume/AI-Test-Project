@@ -56,6 +56,9 @@ ADMIN_DSN = (
 os.environ["TEST_DATABASE_NAME"] = TEST_DATABASE_NAME
 os.environ["DATABASE_URL"] = TEST_DSN
 os.environ["AUTO_CREATE_SCHEMA"] = "false"
+# 测试进程绝不启动 ZAP 扫描 Worker；需要验证 job_service 的用例会在应用 lifespan
+# 启动后单独切换设置，因此不会对外部扫描器发出网络请求。
+os.environ["ZAP_ENABLED"] = "false"
 os.environ["SECRET_KEY"] = os.environ.get(
     "TEST_SECRET_KEY", "unit-test-secret-not-for-production"
 )
