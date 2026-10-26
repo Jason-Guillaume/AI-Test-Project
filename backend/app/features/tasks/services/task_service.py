@@ -851,16 +851,14 @@ class TaskService:
 
     @staticmethod
     def _latest_runs(db: Session, task_ids: list[int]) -> dict[int, TaskRun]:
-        """批量取每个任务最新运行，避免列表页对每行单独查库。"""
+        """数据库侧聚合每个任务的最新运行，避免读取并遍历完整历史。"""
         if not task_ids:
             return {}
-        rows = (
-            db.query(TaskRun)
-            .filter(TaskRun.task_id.in_(task_ids))
-            .order_by(TaskRun.task_id.asc(), TaskRun.run_number.desc())
-            .all()
-        )
-        result: dict[int, TaskRun] = {}
-        for row in rows:
-            result.setdefault(row.task_id, row)
-        return result
+        latest = db.query(TaskRun.task_id, func.max(TaskRun.run_number).label("run_number")).filter(
+            TaskRun.task_id.in_(task_ids)
+        ).group_by(TaskRun.task_id).subquery()
+        return {
+            run.task_id: run for run in db.query(TaskRun).join(
+                latest, and_(TaskRun.task_id == latest.c.task_id, TaskRun.run_number == latest.c.run_number)
+            ).all()
+        }

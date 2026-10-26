@@ -109,10 +109,10 @@ class TaskWorker:
         *,
         db_factory: Callable[[], Session] = SessionLocal,
         owner: str | None = None,
-        poll_interval_seconds: float = 0.5,
+        poll_interval_seconds: float = 1.0,
         lease_seconds: int = _RECOVERY_SECONDS,
     ) -> None:
-        """初始化进程内轮询器；工作所有权、并发额度与恢复数据保存在数据库。"""
+        """初始化进程内轮询器；空闲时按秒轮询以降低数据库空查，所有权与恢复数据保存在数据库。"""
         self._db_factory = db_factory
         self._owner = owner or f"{platform.node() or 'unknown'}:{os.getpid()}:{secrets.token_hex(4)}"
         self._poll_interval = max(0.2, poll_interval_seconds)
