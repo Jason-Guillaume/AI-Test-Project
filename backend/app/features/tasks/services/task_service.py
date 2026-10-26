@@ -524,6 +524,7 @@ class TaskService:
             "temperature": model.temperature,
             "max_tokens": model.max_tokens,
             "timeout": model.timeout,
+            "fallback_model_config_ids": list(model.fallback_model_ids or []),
         }
 
     @staticmethod
@@ -649,6 +650,25 @@ class TaskService:
         if run.stage == "PLAN_REVIEW":
             run.status = "WAITING_CONFIRMATION"
         elif has_pending:
+            if run.stage == "WAITING_MODEL":
+                # 管理员修复模型路由后显式恢复，才刷新冻结快照并开启新一轮有限重试额度。
+                agents = db.query(TaskAgentInstance).filter(TaskAgentInstance.task_run_id == run.id).all()
+                for agent in agents:
+                    model_id = agent.model_config_id or (agent.config_snapshot or {}).get("model_config_id")
+                    model = db.get(ModelConfiguration, model_id) if model_id else None
+                    if model is not None:
+                        agent.config_snapshot = self._model_snapshot(model)
+                pending = db.query(TaskWorkItem).filter(
+                    TaskWorkItem.task_run_id == run.id, TaskWorkItem.status == "PENDING",
+                ).all()
+                for work in pending:
+                    work.max_attempts = max(work.max_attempts, work.attempt_count + 3)
+                    work.available_at = None
+                    work.error_code = None
+                    work.error_message = None
+                run.error_code = None
+                run.error_message = None
+                run.stage = "MODEL_RETRY"
             run.status = "QUEUED"
         else:
             raise conflict("当前运行没有可继续的工作项")

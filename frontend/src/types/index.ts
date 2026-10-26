@@ -148,6 +148,7 @@ export interface ModelConfiguration {
   cost_per_1k_output: number; // 每 1k 输出 token 成本
   is_enabled: boolean; // 是否启用（停用后不出现在可选模型中）
   is_default: boolean; // 是否为该域默认模型
+  fallback_model_ids: number[]; // 按顺序尝试的备用模型配置 ID
   sort_order: number; // 排序权重，越小越靠前
   has_api_key: boolean; // 是否已配置密钥（前端只读，不回传密钥明文）
   masked_api_key: string; // 掩码后的密钥，仅用于展示已配置状态

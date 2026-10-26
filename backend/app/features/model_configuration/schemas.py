@@ -54,6 +54,7 @@ class ModelConfigurationBase(BaseModel):
     cost_per_1k_output: float = Field(default=0.0, ge=0, description="千输出 Token 成本")
     is_enabled: bool = True
     is_default: bool = False
+    fallback_model_ids: list[int] = Field(default_factory=list, max_length=3, description="按顺序尝试的备用模型配置 ID")
     sort_order: int = 0
 
     @field_validator("domain_id", "label", "api_base", "model_name", "provider", mode="before")
@@ -89,6 +90,7 @@ class ModelConfigurationUpdate(BaseModel):
     cost_per_1k_output: float | None = Field(None, ge=0)
     is_enabled: bool | None = None
     is_default: bool | None = None
+    fallback_model_ids: list[int] | None = Field(None, max_length=3)
     sort_order: int | None = None
 
     @field_validator(
@@ -116,6 +118,7 @@ class ModelConfigurationResponse(BaseModel):
     cost_per_1k_output: float
     is_enabled: bool
     is_default: bool
+    fallback_model_ids: list[int]
     sort_order: int
     # 只有布尔位，前端用它判断「是否需要填写密钥」，而不是拿到真实值。
     has_api_key: bool = False

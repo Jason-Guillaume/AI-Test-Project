@@ -7,6 +7,10 @@ import { useNavigate } from 'react-router-dom';
 import { tasksApi, type Task } from '@/api/tasks';
 import { TaskCreateModal } from './TaskCreateModal';
 
+const STAGE_LABEL: Record<string, string> = {
+  MODEL_RETRY: '模型重试中', WAITING_MODEL: '等待修复模型配置',
+};
+
 /** 在右侧显示持久化任务状态；抽屉关闭不会停止后台运行。 */
 export function TaskSchedulerDrawer() {
   const [open, setOpen] = useState(false);
@@ -50,7 +54,7 @@ export function TaskSchedulerDrawer() {
               <List.Item
                 onClick={() => openTask(task)}
                 style={{ cursor: 'pointer', paddingInline: 4 }}
-                actions={[<Tag key="status">{task.latest_run?.stage || task.status}</Tag>]}
+                actions={[<Tag key="status">{STAGE_LABEL[task.latest_run?.stage ?? ''] ?? task.latest_run?.stage ?? task.status}</Tag>]}
               >
                 <List.Item.Meta
                   title={<Typography.Link>{task.title}</Typography.Link>}

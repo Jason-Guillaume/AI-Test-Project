@@ -53,7 +53,7 @@ from app.features.test_management.models.test_plan import TestPlanSuite
 from app.features.reports.models.report import TestReport
 from app.features.security_testing.zap.contracts import JOB_TERMINAL_STATUSES
 from app.features.security_testing.zap.models.job import SecurityScanJob
-from app.models.configuration import Environment
+from app.models.configuration import Environment, ModelConfiguration
 from app.models.identity import User
 from app.models.project import Project
 from app.shared.database import SessionLocal
@@ -279,8 +279,6 @@ class TaskWorker:
             if task is None or actor is None or not actor.is_active:
                 raise RuntimeError("任务发起账号不可用，已停止新的业务操作")
             self._assert_current_project_write(db, task.project_id, actor)
-            if agent is not None and work.kind != "SECURITY_SCAN":
-                TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
             if work.kind == "PLAN":
                 self._handle_plan(db, task, run, work, attempt, agent, actor)
             elif work.kind in {"EXECUTE_API", "EXECUTE_WEB"}:
@@ -308,6 +306,41 @@ class TaskWorker:
             heartbeat_stop.set()
             heartbeat.join(timeout=2.0)
             db.close()
+
+    def _provider_for_agent(
+        self, db: Session, task: Task, run: TaskRun, work: TaskWorkItem,
+        attempt: TaskAttempt, agent: TaskAgentInstance, actor: User,
+    ) -> ProductionLLMProvider:
+        """构造已授权的有序模型路由，并把每次调用记录到当前工作项检查点。"""
+        snapshot = agent.config_snapshot or {}
+        primary_id = agent.model_config_id or snapshot.get("model_config_id")
+        configured_ids = [primary_id, *(snapshot.get("fallback_model_config_ids") or [])]
+        candidate_ids: list[int] = []
+        denied = False
+        for config_id in dict.fromkeys(item for item in configured_ids if item is not None):
+            model = db.get(ModelConfiguration, int(config_id))
+            if model is None or not model.is_enabled:
+                continue
+            try:
+                # 备用模型也必须在当前组织授权集合内，不能因主模型故障扩大模型权限。
+                TaskService.assert_agent_model_access(db, task.project_id, actor, model.id)
+            except RuntimeError as exc:
+                if any(word in str(exc) for word in ("组织", "授权", "开放")):
+                    denied = True
+                    continue
+                raise
+            candidate_ids.append(model.id)
+        if not candidate_ids:
+            if denied:
+                raise RuntimeError("当前任务没有仍获授权的模型，已停止新的模型调用")
+            raise LLMError("MODEL_UNAVAILABLE", "主模型及备用模型均未启用", retryable=True)
+
+        def record_model_attempt(item: dict[str, object]) -> None:
+            """将不含提示词和密钥的模型尝试持久化到当前执行检查点。"""
+            history = [*(attempt.checkpoint_json or {}).get("model_attempts", []), item]
+            attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "model_attempts": history}
+
+        return ProductionLLMProvider(db, model_config_ids=candidate_ids, attempt_callback=record_model_attempt)
 
     def _heartbeat_loop(self, claim: ClaimedWork, stop_event: threading.Event) -> None:
         """每隔一段时间续租 run 与 attempt；所有者不匹配时停止覆盖新租约。"""
@@ -360,9 +393,10 @@ class TaskWorker:
         )
         # LLM 调用前结束只读事务；模型请求失败会作为可重试的 Planner 失败记录。
         db.commit()
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
-        output = ProductionLLMProvider(db, model_config_id=agent.model_config_id).generate_structured(
-            _PLANNER_SYSTEM, prompt, schema=TaskPlanOutput.model_json_schema(), kind="task_planner",
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
+        output = provider.generate_structured(
+            _PLANNER_SYSTEM, prompt, schema=TaskPlanOutput.model_json_schema(),
+            kind="task_planner", validator=TaskPlanOutput.model_validate,
         )
         plan_output = TaskPlanOutput.model_validate(output)
         db.refresh(run, with_for_update=True)
@@ -507,14 +541,15 @@ class TaskWorker:
             ensure_ascii=False,
             default=str,
         )
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
         worker_system = _API_WORKER_SYSTEM if target_type == "API" else _UI_WORKER_SYSTEM
         model_kind = "task_api_worker" if target_type == "API" else "task_ui_worker"
-        selection_raw = ProductionLLMProvider(db, model_config_id=agent.model_config_id).generate_structured(
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
+        selection_raw = provider.generate_structured(
             worker_system,
             prompt,
             schema=ApiWorkerSelection.model_json_schema(),
             kind=model_kind,
+            validator=ApiWorkerSelection.model_validate,
         )
         selection = ApiWorkerSelection.model_validate(selection_raw)
         selected_ids = list(dict.fromkeys(selection.case_ids))
@@ -524,6 +559,11 @@ class TaskWorker:
         db.refresh(run, with_for_update=True)
         if self._defer_at_control_boundary(db, run, work, attempt, agent, messages=pending_messages):
             return
+
+        self._assert_current_project_write(db, task.project_id, actor)
+        TaskService.assert_agent_model_access(
+            db, task.project_id, actor, getattr(provider, "last_model_config_id", agent.model_config_id),
+        )
 
         invocation = TaskToolInvocation(
             task_run_id=run.id,
@@ -537,8 +577,6 @@ class TaskWorker:
         db.add(invocation)
         db.commit()
         # API 与 Web 共用真实 TestRun 编排，但 Web 再经独立适配器复核确认指纹、目标策略和浏览器出站边界。
-        self._assert_current_project_write(db, task.project_id, actor)
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
         execute = execute_api_cases if target_type == "API" else execute_confirmed_web_cases
         result = execute(db, task.project_id, actor, case_ids=selected_ids, environment_id=environment.id, task_run_id=run.id)
         # 既有执行服务会自行提交；重读运行以避开旧事件序号和并发控制命令。
@@ -859,8 +897,7 @@ class TaskWorker:
             )
             db.add(existing)
             db.commit()
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
-        provider = ProductionLLMProvider(db, model_config_id=agent.model_config_id)
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
         result = build_test_report(db, test_run_id, actor, provider=provider)
         db.refresh(run, with_for_update=True)
         report_id = int(result["report_id"])
@@ -938,12 +975,13 @@ class TaskWorker:
             ).order_by(TaskWorkItem.id.desc()).first()
             facts["security_scan"] = dict(scan_work.output_json or {}) if scan_work else {"scan_status": "MISSING"}
         db.commit()
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
-        output = ProductionLLMProvider(db, model_config_id=agent.model_config_id).generate_structured(
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
+        output = provider.generate_structured(
             _REVIEWER_SYSTEM,
             json.dumps(sanitize_context(facts), ensure_ascii=False, default=str),
             schema=TaskReviewOutput.model_json_schema(),
             kind="task_reviewer",
+            validator=TaskReviewOutput.model_validate,
         )
         review = TaskReviewOutput.model_validate(output)
         security_fact = facts.get("security_scan")
@@ -1033,8 +1071,8 @@ class TaskWorker:
         ).order_by(TaskMessage.id.desc()).first()
         review = review_message.metadata_json if review_message else {"approved": False, "findings": ["缺少审阅结论"]}
         facts["review"] = review
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
-        reply = ProductionLLMProvider(db, model_config_id=agent.model_config_id).chat(
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
+        reply = provider.chat(
             _MAIN_SYSTEM,
             json.dumps(sanitize_context(facts), ensure_ascii=False, default=str),
         )
@@ -1093,8 +1131,8 @@ class TaskWorker:
             "current_plan_version": run.current_plan_version,
             "question": user_message.content,
         }
-        TaskService.assert_agent_model_access(db, task.project_id, actor, agent.model_config_id)
-        answer = ProductionLLMProvider(db, model_config_id=agent.model_config_id).chat(
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
+        answer = provider.chat(
             _MAIN_SYSTEM,
             json.dumps(sanitize_context(context), ensure_ascii=False, default=str),
             history=history,
@@ -1154,6 +1192,14 @@ class TaskWorker:
                 run.status = prior_status if prior_status not in {None, "QUEUED", "RUNNING"} else "QUEUED"
             elif work.kind in {"EXECUTE_API", "EXECUTE_WEB", "SECURITY_SCAN", "REPORT", "REVIEW"}:
                 run.status = "QUEUED"
+        model_attempts = (attempt.checkpoint_json or {}).get("model_attempts", [])
+        if model_attempts:
+            event_type = "llm.fallback_succeeded" if any(item.get("candidate_index", 0) > 0 for item in model_attempts) else "llm.primary_succeeded"
+            TaskService._append_event(
+                db, run, event_type,
+                {"work_item_id": work.id, "model_attempts": model_attempts},
+                agent_instance_id=agent.id if agent else None,
+            )
         run.lease_owner = None
         run.lease_expires_at = None
         TaskService._sync_task_status(db, task, run)
@@ -1211,6 +1257,55 @@ class TaskWorker:
             invocation = None
             if work.kind in {"EXECUTE_API", "EXECUTE_WEB"}:
                 invocation = db.query(TaskToolInvocation).filter(TaskToolInvocation.work_item_id == work.id).with_for_update().first()
+            # 只有纯模型调用且尚未开始业务副作用时才能自动重试，避免重复创建 TestRun。
+            can_retry_model = isinstance(error, LLMError) and error.retryable and (
+                work.kind not in {"EXECUTE_API", "EXECUTE_WEB"} or invocation is None
+            )
+            if can_retry_model:
+                attempts = list(getattr(error, "attempts", []) or [])
+                attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "model_attempts": attempts}
+                work.status = "PENDING"
+                work.finished_at = None
+                work.error_code = str(code)[:80]
+                attempt.status = "FAILED"
+                attempt.error_code = str(code)[:80]
+                attempt.error_message = message
+                attempt.finished_at = now
+                if work.attempt_count < work.max_attempts:
+                    delay = min(30 * (2 ** max(0, work.attempt_count - 1)), 300)
+                    work.available_at = now + timedelta(seconds=delay)
+                    run.status = "QUEUED"
+                    run.stage = "MODEL_RETRY"
+                    run.error_code = "LLM_FALLBACK_EXHAUSTED"
+                    run.error_message = f"本轮模型路由不可用，任务将在 {delay} 秒后自动重试。"
+                    event_type = "llm.retry_scheduled"
+                    if agent is not None:
+                        agent.status = "READY"
+                else:
+                    work.available_at = None
+                    run.status = "PAUSED"
+                    run.stage = "WAITING_MODEL"
+                    run.error_code = "LLM_FALLBACK_EXHAUSTED"
+                    run.error_message = "主模型及备用模型多次不可用，任务已暂停；修复模型路由后可恢复。"
+                    event_type = "llm.fallback_exhausted"
+                    if agent is not None:
+                        agent.status = "PAUSED"
+                TaskService._append_event(
+                    db, run, event_type,
+                    {"work_item_id": work.id, "attempt": work.attempt_count, "model_attempts": attempts},
+                    agent_instance_id=agent.id if agent else None,
+                )
+                db.query(TaskMessage).filter(
+                    TaskMessage.task_run_id == run.id,
+                    TaskMessage.agent_instance_id == (agent.id if agent else -1),
+                    TaskMessage.status == "PROCESSING",
+                ).update({TaskMessage.status: "RECEIVED"}, synchronize_session=False)
+                run.lease_owner = None
+                run.lease_expires_at = None
+                if task is not None:
+                    TaskService._sync_task_status(db, task, run)
+                db.commit()
+                return
             if invocation is not None and invocation.status == "STARTED":
                 invocation.status = "NEEDS_RECONCILIATION"
                 invocation.error_code = str(code)[:80]

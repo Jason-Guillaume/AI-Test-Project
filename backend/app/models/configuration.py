@@ -49,6 +49,7 @@ class ModelConfiguration(Base):
     # is_enabled 与 is_default 都建了索引：列表页按启用态过滤、调用链按默认态挑选，都是高频路径。
     is_default = Column(Boolean, nullable=False, default=False, server_default=text("false"), index=True,
                         comment="是否默认模型")
+    fallback_model_ids = Column(JSON, nullable=False, default=list, server_default=text("'[]'"), comment="有序备用模型配置 ID")
     # 平台级「默认模型」标记，语义上应保证最多只有一个为真——写入方负责维护该不变量。
     sort_order = Column(Integer, nullable=False, default=0, server_default=text("0"), comment="展示顺序")
     created_by = Column(Integer, ForeignKey("user.id"), nullable=True, comment="创建人ID")

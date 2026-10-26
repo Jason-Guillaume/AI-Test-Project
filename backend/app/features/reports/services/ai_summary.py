@@ -70,6 +70,7 @@ def generate_summary(provider: Any, payload: dict[str, Any]) -> dict[str, Any] |
     try:
         raw = provider.generate_structured(
             system, user_content, _AI_SUMMARY_SCHEMA, kind="report_summary",
+            validator=AISummary.model_validate,
         )
     except Exception as exc:  # noqa: BLE001 — LLMError 等一律兜底为 None，不外抛。
         logger.warning("报告 AI 总结 LLM 调用失败：%s", exc)

@@ -1,20 +1,20 @@
 """LLM Provider：自写 httpx 调 OpenAI 兼容接口（§29/§30）。
 
-- ProductionLLMProvider：从 ModelConfiguration 取 is_default+is_enabled 配置，
-  decrypt_api_key 解密，httpx POST {api_base}/chat/completions。
-  结构化输出用 response_format={"type":"json_object"}，解析后由节点做 Pydantic 校验。
+- ProductionLLMProvider：从 ModelConfiguration 取启用配置，解密密钥并调用兼容接口；
+  统一任务显式传入已授权候选链，结构化响应在切换下一候选前可执行 Pydantic 校验。
 - FakeLLMProvider：按 kind 返回固定结构化 JSON，测试用，不依赖网络/密钥。
 
 密钥不入源码（§20/§29）：base_url/key 全部来自 ModelConfiguration，节点层不写。
-无默认模型配置时友好报错 NO_DEFAULT_MODEL。
+无默认模型配置时报 NO_DEFAULT_MODEL；旧 Agent 仍保持单模型行为。
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import httpx
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.features.agent.providers.langfuse_tracer import llm_generation, update_generation
@@ -26,9 +26,12 @@ from app.models.configuration import ModelConfiguration
 class LLMError(Exception):
     """LLM 调用失败。code 用于写入 state.error_code（§36）。"""
 
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, retryable: bool = False, attempts: list[dict[str, Any]] | None = None):
+        """保存可展示错误、是否可恢复及不含请求正文的模型尝试记录。"""
         super().__init__(message)
         self.code = code
+        self.retryable = retryable
+        self.attempts = attempts or []
 
 
 class LLMProvider(Protocol):
@@ -37,6 +40,7 @@ class LLMProvider(Protocol):
     def generate_structured(
         self, system: str, user_content: str, schema: dict[str, Any] | None = None,
         *, kind: str | None = None, history: list[dict[str, str]] | None = None,
+        validator: Callable[[dict[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
         """结构化产出：返回 JSON dict（由节点用 Pydantic 二次校验）。"""
         ...
@@ -52,99 +56,136 @@ class LLMProvider(Protocol):
 class ProductionLLMProvider:
     """生产 LLM Provider：按显式配置或默认配置调用 OpenAI 兼容接口。"""
 
-    def __init__(self, db: Session, model_config_id: int | None = None) -> None:
-        """保存数据库会话与可选显式模型绑定；不复制或输出加密凭据。"""
+    def __init__(
+        self, db: Session, model_config_id: int | None = None, *,
+        model_config_ids: list[int] | None = None,
+        attempt_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> None:
+        """保存数据库会话、授权后的候选模型和审计回调；不复制或输出加密凭据。"""
         self.db = db
-        # 新任务运行快照显式绑定模型；旧 Agent 调用继续使用平台默认项。
         self.model_config_id = model_config_id
+        self.explicit_route = model_config_ids is not None
+        self.model_config_ids = list(dict.fromkeys(model_config_ids or []))
+        self.attempt_callback = attempt_callback
+        self.last_attempts: list[dict[str, Any]] = []
+        self.last_model_config_id: int | None = None
 
     def generate_structured(
         self, system: str, user_content: str, schema: dict[str, Any] | None = None,
         *, kind: str | None = None, history: list[dict[str, str]] | None = None,
+        validator: Callable[[dict[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
-        cfg = self._load_config()
-        api_key = decrypt_api_key(cfg.api_key_encrypted)
+        """请求 JSON 结构化结果，并在候选模型之间复用同一提示与类型校验。"""
         messages = build_chat_messages(system, user_content, history=history)
-        body: dict[str, Any] = {
-            "model": cfg.model_name,
-            "messages": messages,
-            "temperature": float(cfg.temperature or 0.2),
-            "max_tokens": int(cfg.max_tokens or 4096),
-            "response_format": {"type": "json_object"},
-        }
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        url = f"{(cfg.api_base or '').rstrip('/')}/chat/completions"
-        # Langfuse generation 埋点：关闭时为 no-op；LLMError 会被标记 ERROR 后原样抛出。
-        with llm_generation(
-            name=f"agent.generate_structured.{kind or 'unknown'}",
-            model=cfg.model_name,
-            input_messages=messages,
-            model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
-        ) as gen:
-            try:
-                resp = httpx.post(url, json=body, headers=headers, timeout=float(cfg.timeout or 60))
-            except httpx.HTTPError as exc:
-                raise LLMError("LLM_FAILED", f"模型服务请求失败：{exc}") from exc
-            if resp.status_code >= 400:
-                raise LLMError("LLM_FAILED", f"模型服务返回 {resp.status_code}：{resp.text[:300]}")
-            try:
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-            except (ValueError, KeyError, IndexError) as exc:
-                raise LLMError("STRUCTURED_OUTPUT_INVALID", f"模型响应解析失败：{exc}") from exc
-            update_generation(gen, output=content, usage=data.get("usage"))
-            return self._parse_json_content(content)
+        return self._call_candidates(messages, f"generate_structured.{kind or 'unknown'}", structured=True, validator=validator)
 
     def chat(
         self, system: str, user_content: str,
         *, history: list[dict[str, str]] | None = None,
     ) -> str:
-        cfg = self._load_config()
-        api_key = decrypt_api_key(cfg.api_key_encrypted)
+        """请求普通文本；显式任务路由失败时按候选顺序切换模型。"""
         messages = build_chat_messages(system, user_content, history=history)
-        body = {
-            "model": cfg.model_name,
-            "messages": messages,
-            "temperature": float(cfg.temperature or 0.2),
-            "max_tokens": int(cfg.max_tokens or 4096),
-        }
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        url = f"{(cfg.api_base or '').rstrip('/')}/chat/completions"
-        # Langfuse generation 埋点：关闭时为 no-op；LLMError 会被标记 ERROR 后原样抛出。
-        with llm_generation(
-            name="agent.chat",
-            model=cfg.model_name,
-            input_messages=messages,
-            model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
-        ) as gen:
-            try:
-                resp = httpx.post(url, json=body, headers=headers, timeout=float(cfg.timeout or 60))
-            except httpx.HTTPError as exc:
-                raise LLMError("LLM_FAILED", f"模型服务请求失败：{exc}") from exc
-            if resp.status_code >= 400:
-                raise LLMError("LLM_FAILED", f"模型服务返回 {resp.status_code}：{resp.text[:300]}")
-            try:
-                data = resp.json()
-                content = data["choices"][0]["message"]["content"]
-            except (ValueError, KeyError, IndexError) as exc:
-                raise LLMError("LLM_FAILED", f"模型响应解析失败：{exc}") from exc
-            update_generation(gen, output=content, usage=data.get("usage"))
-            return content
+        return self._call_candidates(messages, "chat", structured=False)
 
-    def _load_config(self) -> ModelConfiguration:
-        """优先解析实例绑定的启用模型；未绑定时沿用旧 Agent 的平台默认模型。"""
+    def _call_candidates(
+        self, messages: list[dict[str, str]], kind: str, *, structured: bool,
+        validator: Callable[[dict[str, Any]], Any] | None = None,
+    ) -> Any:
+        """逐个尝试已授权模型；候选结果解析或类型校验失败时继续降级。"""
+        failures: list[dict[str, Any]] = []
+        last_error: LLMError | None = None
+        candidates = self._candidate_model_ids()
+        for index, model_id in enumerate(candidates):
+            cfg = None
+            try:
+                cfg = self._load_config(model_id)
+                api_key = decrypt_api_key(cfg.api_key_encrypted)
+                body: dict[str, Any] = {
+                    "model": cfg.model_name,
+                    "messages": messages,
+                    "temperature": float(cfg.temperature or 0.2),
+                    "max_tokens": int(cfg.max_tokens or 4096),
+                }
+                if structured:
+                    body["response_format"] = {"type": "json_object"}
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                # 每个模型单独建 generation，便于追踪实际接手者且不混淆失败尝试。
+                with llm_generation(
+                    name=f"agent.{kind}", model=cfg.model_name, input_messages=messages,
+                    model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
+                ) as gen:
+                    try:
+                        resp = httpx.post(
+                            f"{cfg.api_base.rstrip('/')}/chat/completions", json=body, headers=headers,
+                            timeout=float(cfg.timeout or 60),
+                        )
+                    except httpx.HTTPError as exc:
+                        raise LLMError("LLM_TRANSPORT_ERROR", f"模型服务请求失败：{type(exc).__name__}", retryable=True) from exc
+                    if resp.status_code >= 400:
+                        retryable = resp.status_code == 429 or resp.status_code >= 500
+                        raise LLMError(
+                            "LLM_RATE_LIMITED" if resp.status_code == 429 else "LLM_PROVIDER_ERROR",
+                            f"模型服务返回 HTTP {resp.status_code}", retryable=retryable,
+                        )
+                    try:
+                        data = resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                    except (ValueError, KeyError, IndexError, TypeError) as exc:
+                        raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应格式无法解析", retryable=True) from exc
+                    output = self._parse_json_content(content) if structured else content
+                    if structured and validator is not None:
+                        try:
+                            validator(output)
+                        except ValidationError as exc:
+                            raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型输出未通过任务结构校验", retryable=True) from exc
+                    update_generation(gen, output=content, usage=data.get("usage"))
+                self._record_attempt(failures, model_id, cfg.model_name, index, "SUCCEEDED", None)
+                self.last_attempts = failures
+                self.last_model_config_id = cfg.id
+                return output
+            except LLMError as exc:
+                last_error = exc
+                self._record_attempt(failures, model_id, cfg.model_name if cfg else None, index, "FAILED", exc.code)
+
+        self.last_attempts = failures
+        # 显式任务路由只在所有候选均失败后返回可恢复错误，由持久化调度器安排下一轮。
+        # 旧 Agent/报告调用未提供授权路由，保持其单模型错误码与原有失败语义。
+        if not self.explicit_route and last_error is not None:
+            raise last_error
+        raise LLMError("LLM_FALLBACK_EXHAUSTED", "主模型及已配置备用模型均不可用", retryable=True, attempts=failures)
+
+    def _record_attempt(
+        self, failures: list[dict[str, Any]], model_id: int, model_name: str | None,
+        index: int, status: str, error_code: str | None,
+    ) -> None:
+        """只记录模型身份、顺序和结果，避免把提示词或密钥写入任务事件。"""
+        item = {
+            "model_config_id": model_id, "model_name": model_name,
+            "candidate_index": index, "status": status, "error_code": error_code,
+        }
+        failures.append(item)
+        if self.attempt_callback is not None:
+            self.attempt_callback(item)
+
+    def _candidate_model_ids(self) -> list[int | None]:
+        """返回调用方筛选并授权的模型顺序；兼容旧 Agent 的单模型绑定。"""
+        if self.model_config_ids:
+            return list(self.model_config_ids)
+        return [self.model_config_id]
+
+    def _load_config(self, model_config_id: int | None) -> ModelConfiguration:
+        """解析单个已启用候选；任务层会在进入 Provider 前完成逐模型授权。"""
         query = self.db.query(ModelConfiguration).filter(ModelConfiguration.is_enabled.is_(True))
-        if self.model_config_id is not None:
-            cfg = query.filter(ModelConfiguration.id == self.model_config_id).first()
+        if model_config_id is not None:
+            cfg = query.filter(ModelConfiguration.id == model_config_id).first()
         else:
             cfg = query.filter(ModelConfiguration.is_default.is_(True)).first()
         if cfg is None:
-            message = "绑定的模型配置不存在或已停用" if self.model_config_id is not None else "未配置启用的默认模型，无法调用 LLM"
-            raise LLMError("NO_DEFAULT_MODEL", message)
+            if model_config_id is None:
+                raise LLMError("NO_DEFAULT_MODEL", "未配置启用的默认模型，无法调用 LLM")
+            raise LLMError("MODEL_UNAVAILABLE", "模型配置不存在或已停用", retryable=True)
         return cfg
 
     @staticmethod
@@ -154,7 +195,9 @@ class ProductionLLMProvider:
         if not text:
             raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型返回空内容")
         try:
-            return json.loads(text)
+            value = json.loads(text)
+            if isinstance(value, dict):
+                return value
         except json.JSONDecodeError:
             pass
         # 退而抽取首个 {...} 片段。
@@ -162,7 +205,9 @@ class ProductionLLMProvider:
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
             try:
-                return json.loads(text[start : end + 1])
+                value = json.loads(text[start : end + 1])
+                if isinstance(value, dict):
+                    return value
             except json.JSONDecodeError as exc:
                 raise LLMError("STRUCTURED_OUTPUT_INVALID", f"模型输出非合法 JSON：{exc}") from exc
         raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型输出未包含 JSON 对象")
@@ -185,11 +230,17 @@ class FakeLLMProvider:
     def generate_structured(
         self, system: str, user_content: str, schema: dict[str, Any] | None = None,
         *, kind: str | None = None, history: list[dict[str, str]] | None = None,
+        validator: Callable[[dict[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
+        """返回测试用结构化内容，并复用生产 Provider 的类型校验回调。"""
         self.calls.append({"system": system, "user": user_content, "kind": kind, "history": history or []})
         if kind and kind in self._responses:
-            return self._responses[kind]
-        return _DEFAULT_FAKE.get(kind or "default", {"result": "ok"})
+            output = self._responses[kind]
+        else:
+            output = _DEFAULT_FAKE.get(kind or "default", {"result": "ok"})
+        if validator is not None:
+            validator(output)
+        return output
 
     def chat(
         self, system: str, user_content: str,

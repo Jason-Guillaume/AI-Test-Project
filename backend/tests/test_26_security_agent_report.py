@@ -148,11 +148,11 @@ class ExplodingProvider(FakeLLMProvider):
     """只让报告 AI 总结失败：其余 kind 正常返回，验证 summary.security 不受影响。"""
 
     def generate_structured(self, system, user_content, schema=None, *,
-                            kind=None, history=None):
+                            kind=None, history=None, validator=None):
         if kind == "report_summary":
             raise RuntimeError("LLM 不可用")
         return super().generate_structured(
-            system, user_content, schema, kind=kind, history=history,
+            system, user_content, schema, kind=kind, history=history, validator=validator,
         )
 
 

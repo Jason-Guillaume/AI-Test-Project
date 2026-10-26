@@ -33,7 +33,7 @@ import { getErrorMessage } from '@/api/client';
 /**
  * 模型配置管理页。
  *
- * 用途：维护全局「模型配置」列表，包含 domain_id、供应商、API Base、采样参数与成本。
+ * 用途：维护全局模型连接、采样参数、成本与有序备用模型路由。
  * 数据来源：modelConfigsApi.list 分页 + 关键词搜索；providers 只在弹窗内单独请求。
  * 是否发请求：是，列表查询 + 各 mutation；providers 独立查询（弹窗打开时按需拉取）。
  * 权限：所有写操作仅平台管理员可用；后端保证「启用状态必须有 API Key」。
@@ -268,6 +268,10 @@ function ModelFormModal({
     queryKey: ['model-configs', 'providers'],
     queryFn: () => modelConfigsApi.providers(),
   });
+  const { data: modelOptions } = useQuery({
+    queryKey: ['model-configs', 'fallback-options'],
+    queryFn: () => modelConfigsApi.list({ page: 1, page_size: 200 }),
+  });
 
   return (
     <Modal
@@ -297,6 +301,7 @@ function ModelFormModal({
                 cost_per_1k_output: editing.cost_per_1k_output,
                 is_enabled: editing.is_enabled,
                 is_default: editing.is_default,
+                fallback_model_ids: editing.fallback_model_ids ?? [],
                 sort_order: editing.sort_order,
               }
             : {
@@ -306,6 +311,7 @@ function ModelFormModal({
                 timeout: 60,
                 is_enabled: true,
                 is_default: false,
+                fallback_model_ids: [],
                 sort_order: 0,
               }
         }
@@ -359,6 +365,21 @@ function ModelFormModal({
         </Form.Item>
         <Form.Item name="model_name" label="模型名称" rules={[{ required: true }]}>
           <Input />
+        </Form.Item>
+        <Form.Item
+          name="fallback_model_ids"
+          label="备用模型（按顺序尝试，最多三个）"
+          extra="任务切换前会重新检查启用状态和组织授权；未获授权的候选会跳过。"
+        >
+          <Select
+            mode="multiple"
+            maxCount={3}
+            allowClear
+            placeholder="主模型失败后依次接手"
+            options={(modelOptions?.items ?? [])
+              .filter((model) => model.id !== editing?.id)
+              .map((model) => ({ value: model.id, label: `${model.label}（${model.model_name}）` }))}
+          />
         </Form.Item>
         <Space wrap>
           <Form.Item name="temperature" label="采样温度">

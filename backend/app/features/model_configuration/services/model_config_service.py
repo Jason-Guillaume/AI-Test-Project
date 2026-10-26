@@ -100,6 +100,7 @@ def response_for(row: ModelConfiguration) -> dict:
         "cost_per_1k_output": row.cost_per_1k_output,
         "is_enabled": bool(row.is_enabled),
         "is_default": bool(row.is_default),
+        "fallback_model_ids": list(row.fallback_model_ids or []),
         "sort_order": row.sort_order,
         # 密钥状态只回布尔位与脱敏前缀，明文与 api_key_encrypted 都永不回传。
         "has_api_key": bool(api_key),
@@ -133,6 +134,17 @@ def _unique_domain(db: Session, domain_id: str, *, exclude_id: int | None = None
         query = query.filter(ModelConfiguration.id != exclude_id)
     if query.first() is not None:
         raise bad_request("该 domain_id 已存在")
+
+
+def _validate_fallback_models(db: Session, model_ids: list[int], *, primary_id: int | None = None) -> list[int]:
+    """验证备用模型引用存在、保序且不重复，避免配置错误形成无效路由。"""
+    ids = list(model_ids or [])
+    if len(ids) > 3 or len(ids) != len(set(ids)) or (primary_id is not None and primary_id in ids):
+        raise bad_request("备用模型最多三个，不能重复或引用自身")
+    found = {row.id for row in db.query(ModelConfiguration.id).filter(ModelConfiguration.id.in_(ids or [-1])).all()}
+    if found != set(ids):
+        raise bad_request("备用模型配置不存在")
+    return ids
 
 
 def _validate_payload(
@@ -214,6 +226,7 @@ def create_configuration(db: Session, body: ModelConfigurationCreate, *, actor: 
         cost_per_1k_output=body.cost_per_1k_output,
         is_enabled=is_enabled,
         is_default=False,
+        fallback_model_ids=_validate_fallback_models(db, body.fallback_model_ids),
         sort_order=body.sort_order,
         created_by=actor.id,
     )
@@ -243,6 +256,8 @@ def update_configuration(
     data = body.model_dump(exclude_unset=True)
     if not data:
         return row
+    if data.get("fallback_model_ids", []) is None:
+        raise bad_request("备用模型列表不能为 null")
 
     if "provider" in data and data["provider"] is not None:
         data["provider"] = normalize_provider(data["provider"])
@@ -263,6 +278,9 @@ def update_configuration(
 
     for field, value in data.items():
         setattr(row, field, value)
+
+    if "fallback_model_ids" in data and data["fallback_model_ids"] is not None:
+        row.fallback_model_ids = _validate_fallback_models(db, data["fallback_model_ids"], primary_id=row.id)
 
     # 未替换密钥时沿用库里的旧密文判定 has_api_key。
     has_api_key = bool(next_api_key) if next_api_key is not None else bool(decrypt_api_key(row.api_key_encrypted))

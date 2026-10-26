@@ -49,13 +49,22 @@ const STATUS_LABEL: Record<string, string> = {
   SUCCEEDED: '已完成', SUCCEEDED_WITH_ISSUES: '完成但有问题', FAILED: '失败',
   CANCELLED: '已取消', SUPERSEDED: '已被新目标替代', RECONCILIATION_REQUIRED: '待核对',
 };
+const STAGE_LABEL: Record<string, string> = {
+  MODEL_RETRY: '模型重试中', WAITING_MODEL: '等待修复模型配置',
+};
+const EVENT_LABEL: Record<string, string> = {
+  'llm.primary_succeeded': '主模型调用成功',
+  'llm.fallback_succeeded': '备用模型接手成功',
+  'llm.retry_scheduled': '模型路由失败，已安排自动重试',
+  'llm.fallback_exhausted': '模型路由耗尽，任务等待配置修复',
+};
 const ROLE_LABEL: Record<string, string> = {
   MAIN: '任务主 Agent', PLANNER: 'Planner', API_WORKER: 'API Worker',
   UI_WORKER: 'UI Worker', SECURITY_WORKER: '安全 Worker', REVIEWER: '审阅 Agent',
   REPORT_AGENT: '报告 Agent',
 };
 const TERMINAL = new Set(['SUCCEEDED', 'SUCCEEDED_WITH_ISSUES', 'FAILED', 'CANCELLED', 'SUPERSEDED']);
-const STOP_POLLING = new Set([...TERMINAL, 'RECONCILIATION_REQUIRED']);
+const STOP_POLLING = new Set([...TERMINAL, 'RECONCILIATION_REQUIRED', 'PAUSED']);
 
 /** 展示用户有权查看的任务与最近一次持久化运行。 */
 export function ConsoleTasksPage() {
@@ -290,7 +299,7 @@ export function ConsoleTaskDetailPage() {
           <Typography.Paragraph type="secondary" style={{ maxWidth: 860, marginBottom: 8 }}>{task.goal}</Typography.Paragraph>
           <Space wrap>
             <Tag>{STATUS_LABEL[run.status] ?? run.status}</Tag>
-            <Tag color="blue">{run.stage}</Tag>
+            <Tag color="blue">{STAGE_LABEL[run.stage] ?? run.stage}</Tag>
             <Typography.Text type="secondary">运行 #{run.run_number} · 项目 #{task.project_id}</Typography.Text>
           </Space>
         </div>
@@ -301,6 +310,16 @@ export function ConsoleTaskDetailPage() {
           {canCancel && <Button danger icon={<StopOutlined />} onClick={() => requestCommand('CANCEL')}>取消运行</Button>}
         </Space>
       </Flex>
+
+      {run.stage === 'WAITING_MODEL' && run.error_message && (
+        <Alert
+          style={{ marginTop: 16 }}
+          type="warning"
+          showIcon
+          message="任务等待模型恢复"
+          description={`${run.error_message}请在模型配置中修复备用路由后点击“继续”。`}
+        />
+      )}
 
       {taskQuery.isError && <Alert type="error" message="刷新任务失败" />}
       <Flex gap={12} style={{ margin: '18px 0' }} wrap="wrap">
@@ -478,7 +497,7 @@ function EventTimeline({ events }: { events: TaskEvent[] }) {
       renderItem={(event) => (
         <List.Item>
           <List.Item.Meta
-            title={<Space><Tag color="blue">#{event.event_seq}</Tag><span>{event.event_type}</span></Space>}
+            title={<Space><Tag color="blue">#{event.event_seq}</Tag><span>{EVENT_LABEL[event.event_type] ?? event.event_type}</span></Space>}
             description={`${fmtTime(event.created_at)} · ${JSON.stringify(event.payload)}`}
           />
         </List.Item>

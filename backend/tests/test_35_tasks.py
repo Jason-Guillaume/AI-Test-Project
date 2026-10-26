@@ -31,23 +31,29 @@ API = "/api/v1"
 class DeterministicTaskLLM:
     """只替代外部模型 HTTP 边界，工具、业务服务和数据库链路继续真实执行。"""
 
-    def __init__(self, db, model_config_id=None):
+    def __init__(self, db, model_config_id=None, *, model_config_ids=None, attempt_callback=None):
         """兼容生产 Provider 构造签名，不读取模型密钥。"""
         self.db = db
         self.model_config_id = model_config_id
+        self.model_config_ids = model_config_ids or []
+        self.attempt_callback = attempt_callback
 
-    def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None):
+    def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None, validator=None):
         """按任务角色返回最小合法结构化文本。"""
         if kind == "task_planner":
-            return {"summary": "执行已确认的健康检查 API 用例。", "acceptance_criteria": ["产生真实 TestRun 和正式报告"]}
-        if kind in {"task_api_worker", "task_ui_worker"}:
+            output = {"summary": "执行已确认的健康检查 API 用例。", "acceptance_criteria": ["产生真实 TestRun 和正式报告"]}
+        elif kind in {"task_api_worker", "task_ui_worker"}:
             payload = json.loads(user_content)
-            return {"case_ids": payload["allowed_case_ids"], "explanation": "只选择已批准用例"}
-        if kind == "task_reviewer":
-            return {"approved": True, "findings": []}
-        if kind == "report_summary":
-            return {"overview": "测试执行完成。", "key_findings": [], "recommendations": [], "risk_summary": "按正式报告统计。"}
-        raise AssertionError(f"未覆盖的模型角色: {kind}")
+            output = {"case_ids": payload["allowed_case_ids"], "explanation": "只选择已批准用例"}
+        elif kind == "task_reviewer":
+            output = {"approved": True, "findings": []}
+        elif kind == "report_summary":
+            output = {"overview": "测试执行完成。", "key_findings": [], "recommendations": [], "risk_summary": "按正式报告统计。"}
+        else:
+            raise AssertionError(f"未覆盖的模型角色: {kind}")
+        if validator is not None:
+            validator(output)
+        return output
 
     def chat(self, system, user_content, *, history=None):
         """为主 Agent 生成与报告事实一致的简短摘要。"""
@@ -78,14 +84,149 @@ def _seed_default_model(db, admin_id):
 
 
 def test_p4_migration_adds_scan_polling_and_idempotency_contract(db):
-    """0016 保持旧任务/扫描记录可空兼容，并为延迟调度与 ZAP 恢复提供持久字段。"""
+    """0016 的调度字段与 0017 的备用路由字段均已持久化。"""
     inspector = inspect(db.bind)
-    assert db.execute(text("select version_num from alembic_version")).scalar() == "0016"
+    assert db.execute(text("select version_num from alembic_version")).scalar() == "0017"
     assert "security_scan_json" in {item["name"] for item in inspector.get_columns("task")}
     assert "available_at" in {item["name"] for item in inspector.get_columns("task_work_item")}
     assert "idempotency_key" in {item["name"] for item in inspector.get_columns("security_scan_job")}
     assert "ix_task_work_item_available_at" in {item["name"] for item in inspector.get_indexes("task_work_item")}
     assert "uq_security_scan_job_idempotency" in {item["name"] for item in inspector.get_indexes("security_scan_job")}
+    assert "fallback_model_ids" in {item["name"] for item in inspector.get_columns("model_configuration")}
+
+
+def test_production_provider_falls_back_after_primary_http_error(db, monkeypatch):
+    """主模型 HTTP 故障时按快照顺序调用备用模型，并校验其结构化结果。"""
+    import httpx
+
+    from app.features.agent.providers import llm_provider
+    from app.features.tasks.schemas import TaskPlanOutput
+
+    backup = ModelConfiguration(
+        domain_id=unique("fallback"), label="备用模型", provider="openai-compatible",
+        api_base="http://backup.invalid/v1", model_name="backup-model", is_enabled=True,
+    )
+    db.add(backup)
+    db.flush()
+    primary = ModelConfiguration(
+        domain_id=unique("primary"), label="主模型", provider="openai-compatible",
+        api_base="http://primary.invalid/v1", model_name="primary-model", is_enabled=True,
+        fallback_model_ids=[backup.id],
+    )
+    db.add(primary)
+    db.commit()
+    calls: list[str] = []
+
+    def post(url, *, json, headers, timeout):
+        """按请求模型模拟主模型故障和备用模型成功响应。"""
+        calls.append(json["model"])
+        if json["model"] == "primary-model":
+            return httpx.Response(503, json={"error": "unavailable"})
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": '{"summary":"备用接手","acceptance_criteria":["完成验证"]}'}}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 5},
+        })
+
+    monkeypatch.setattr(llm_provider.httpx, "post", post)
+    events: list[dict] = []
+    provider = llm_provider.ProductionLLMProvider(
+        db, model_config_ids=[primary.id, backup.id], attempt_callback=events.append,
+    )
+    result = provider.generate_structured(
+        "系统", "目标", schema=TaskPlanOutput.model_json_schema(),
+        kind="task_planner", validator=TaskPlanOutput.model_validate,
+    )
+
+    assert result["summary"] == "备用接手"
+    assert calls == ["primary-model", "backup-model"]
+    assert provider.last_model_config_id == backup.id
+    assert [event["status"] for event in events] == ["FAILED", "SUCCEEDED"]
+    assert events[0]["error_code"] == "LLM_PROVIDER_ERROR"
+
+
+def test_production_provider_exhaustion_is_retryable_and_redacts_response(db, monkeypatch):
+    """候选模型全部超时后返回可恢复错误，不把服务端响应正文泄入事件。"""
+    import httpx
+
+    from app.features.agent.providers.llm_provider import LLMError, ProductionLLMProvider
+
+    primary = ModelConfiguration(
+        domain_id=unique("unavailable"), label="不可用模型", provider="openai-compatible",
+        api_base="http://unavailable.invalid/v1", model_name="down-model", is_enabled=True,
+    )
+    db.add(primary)
+    db.commit()
+    monkeypatch.setattr(
+        "app.features.agent.providers.llm_provider.httpx.post",
+        lambda *args, **kwargs: httpx.Response(503, text="sensitive upstream body"),
+    )
+    provider = ProductionLLMProvider(db, model_config_ids=[primary.id])
+
+    with pytest.raises(LLMError) as raised:
+        provider.chat("系统", "问题")
+
+    assert raised.value.code == "LLM_FALLBACK_EXHAUSTED"
+    assert raised.value.retryable is True
+    assert "sensitive upstream body" not in str(raised.value)
+    assert provider.last_attempts[0]["error_code"] == "LLM_PROVIDER_ERROR"
+
+
+def test_retryable_llm_failure_requeues_task_instead_of_failing(api, admin, db, monkeypatch):
+    """真实任务的模型路由耗尽会持久化延迟重试，不把运行直接终止为 FAILED。"""
+    from app.features.agent.providers.llm_provider import LLMError
+    from app.features.tasks.runtime import worker as task_worker_module
+
+    class UnavailableTaskLLM:
+        """只模拟外部 LLM 边界连续不可用，实际调度仍由 TaskWorker 完成。"""
+
+        def __init__(self, db, model_config_ids=None, attempt_callback=None, **kwargs):
+            """保存 Worker 注入的授权候选与审计回调。"""
+            self.attempt_callback = attempt_callback
+            self.model_config_id = (model_config_ids or [None])[0]
+
+        def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None, validator=None):
+            """模拟全部模型候选失败，并将同一错误交给 Worker 的恢复状态机。"""
+            entry = {"model_config_id": self.model_config_id, "model_name": "down", "candidate_index": 0, "status": "FAILED", "error_code": "LLM_PROVIDER_ERROR"}
+            if self.attempt_callback:
+                self.attempt_callback(entry)
+            raise LLMError("LLM_FALLBACK_EXHAUSTED", "模型路由不可用", retryable=True, attempts=[entry])
+
+        def chat(self, system, user_content, *, history=None):
+            """模拟主 Agent 会话的模型路由耗尽。"""
+            raise LLMError("LLM_FALLBACK_EXHAUSTED", "模型路由不可用", retryable=True)
+
+    monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", UnavailableTaskLLM)
+    admin_id = _admin_id(db)
+    _seed_default_model(db, admin_id)
+    project_id = _create_project(api, admin)
+    environment_id = _make_env(db, "http://127.0.0.1", admin_id)
+    api_id = _make_iface(db, project_id, "GET", "/health", "模型降级验证接口")
+    case_id = _create_case(api, admin, project_id, name=unique("fallback-case"), api_id=api_id)
+    case = db.get(CaseEntity, case_id)
+    case.status = "ACTIVE"
+    db.commit()
+    created = api.post(
+        f"/projects/{project_id}/tasks", username=admin,
+        json={"goal": "模型服务暂不可用时保留任务并重试", "environment_id": environment_id, "case_ids": [case_id]},
+    )
+    assert created.status_code == 201, created.text
+    run_id = created.json()["latest_run"]["id"]
+
+    deadline = time.monotonic() + 10
+    detail = None
+    while time.monotonic() < deadline:
+        detail = api.get(f"/task-runs/{run_id}", username=admin).json()
+        if detail["run"]["stage"] == "MODEL_RETRY":
+            break
+        time.sleep(0.05)
+
+    assert detail["run"]["status"] == "QUEUED", detail
+    assert detail["run"]["stage"] == "MODEL_RETRY", detail
+    plan_work = next(item for item in detail["work_items"] if item["kind"] == "PLAN")
+    assert plan_work["status"] == "PENDING"
+    assert plan_work["error_code"] == "LLM_FALLBACK_EXHAUSTED"
+    events = api.get(f"/task-runs/{run_id}/events", username=admin).json()
+    assert any(event["event_type"] == "llm.retry_scheduled" for event in events)
 
 
 def test_task_api_runs_existing_executor_report_and_reverse_links(api, admin, db, monkeypatch):
@@ -241,12 +382,12 @@ def test_task_planner_retry_and_cancel_are_persisted(api, admin, db, monkeypatch
 
         planner_calls = 0
 
-        def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None):
+        def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None, validator=None):
             """模拟一次可恢复的模型边界故障，不替代调度或业务服务。"""
             if kind == "task_planner" and type(self).planner_calls == 0:
                 type(self).planner_calls += 1
                 raise RuntimeError("可重试的模型边界中断")
-            return super().generate_structured(system, user_content, schema, kind=kind, history=history)
+            return super().generate_structured(system, user_content, schema, kind=kind, history=history, validator=validator)
 
     monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", FailFirstPlanner)
     admin_id = _admin_id(db)

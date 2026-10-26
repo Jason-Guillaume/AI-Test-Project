@@ -37,12 +37,12 @@ def test_alembic_upgrades_empty_database_to_head(db):
     - 连接对象是全新 Session（db fixture），说明写进的是数据库而不是内存。
     """
     head = db.execute(text("select version_num from alembic_version")).scalar()
-    # head 随版本链演进；当前 head 为 0016
+    # head 随版本链演进；当前 head 为 0017
     #（0005 业务执行引擎 + 0006 测试管理 + 0007 Agent + 0008 报告/通知
     #  + 0009 测试数据中心 + Data Factory + 0010 Mock Management
     #  + 0011 Security Testing + 0012 Web UI 自动化一期 + 0013 ZAP 安全扫描
     #  + 0014 Web UI 智能体二期 + 0015 统一任务调度）。
-    assert head == "0016"
+    assert head == "0017"
 
     tables = {
         row[0]
