@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { securityApi } from '@/api/securityTesting';
 import type { ScanJob } from '@/api/securityTesting';
 import { ErrorState } from '@/components/PageState';
+import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
 import {
   authModeLabel,
   authResultColor,
@@ -37,14 +38,13 @@ export function ScanJobDetailDrawer({
   job: ScanJob;
   onClose: () => void;
 }) {
-  const running = isRunningJob(job.status);
-
   // 运行中才轮询进度；结束后一次即可（仍拉一次拿到最终计数）。
   const progressQuery = useQuery({
     queryKey: ['zap-progress', projectId, job.id],
     queryFn: () => securityApi.getScanProgress(projectId, job.id),
-    refetchInterval: running ? 5000 : false,
+    refetchInterval: (query) => isRunningJob(query.state.data?.status ?? job.status) ? 5000 : false,
   });
+  const running = isRunningJob(progressQuery.data?.status ?? job.status);
 
   const progress = progressQuery.data ?? {
     progress: job.progress,
@@ -157,6 +157,9 @@ export function ScanJobDetailDrawer({
           任务基本信息
         </Typography.Title>
         <BasicInfo job={job} browserMode={browserMode} />
+        <div style={{ marginTop: 12 }}>
+          <TaskSourceLinks resourceType="SECURITY_SCAN_JOB" resourceId={job.id} />
+        </div>
       </div>
     </Drawer>
   );

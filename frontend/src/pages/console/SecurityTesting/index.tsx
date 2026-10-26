@@ -16,6 +16,7 @@
 // 依赖当前项目作用域：未选项目时整页空态。切换项目由 useConsoleScope 失效相关缓存。
 import { Card, Col, Empty, Row, Spin, Statistic, Tabs, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { securityApi } from '@/api/securityTesting';
 import { EmptyState, PageContainer } from '@/components/PageState';
@@ -38,6 +39,12 @@ import { ZapScanTab } from './ZapScanTab';
  */
 export function ConsoleSecurityTestingPage() {
   const { currentProjectId } = useConsoleScope();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab = ['overview', 'strategies', 'cases', 'findings', 'zap'].includes(requestedTab ?? '')
+    ? requestedTab!
+    : 'overview';
+  const initialJobId = Number(searchParams.get('jobId')) || undefined;
 
   if (currentProjectId == null) {
     return (
@@ -50,7 +57,12 @@ export function ConsoleSecurityTestingPage() {
   return (
     <PageContainer>
       <Tabs
-        defaultActiveKey="overview"
+        activeKey={activeTab}
+        onChange={(key) => {
+          const next = new URLSearchParams(searchParams);
+          next.set('tab', key);
+          setSearchParams(next, { replace: true });
+        }}
         items={[
           { key: 'overview', label: '概览', children: <OverviewTab projectId={currentProjectId} /> },
           {
@@ -67,7 +79,7 @@ export function ConsoleSecurityTestingPage() {
           {
             key: 'zap',
             label: '安全扫描',
-            children: <ZapScanTab projectId={currentProjectId} />,
+            children: <ZapScanTab projectId={currentProjectId} initialJobId={initialJobId} />,
           },
         ]}
       />

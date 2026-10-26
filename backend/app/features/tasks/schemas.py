@@ -12,13 +12,21 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class TaskSecurityScanSelection(BaseModel):
+    """可选 ZAP 扫描配置；批准说明只允许从人工方案确认命令进入。"""
+
+    target_id: int = Field(gt=0)
+    scan_profile_id: int = Field(gt=0)
+
+
 class TaskCreate(BaseModel):
-    """创建 API 测试任务并登记首个异步运行。"""
+    """创建 API / Web 测试任务并登记首个异步运行。"""
 
     title: str | None = Field(None, max_length=200)
     goal: str = Field(min_length=3, max_length=8000)
     environment_id: int = Field(gt=0)
     case_ids: list[int] = Field(min_length=1, max_length=100)
+    security_scan: TaskSecurityScanSelection | None = None
     request_key: str | None = Field(None, max_length=100)
 
 
@@ -167,6 +175,8 @@ class TaskCommandCreate(BaseModel):
     command_type: Literal["APPROVE_PLAN", "PAUSE", "RESUME", "CANCEL", "RETRY"]
     idempotency_key: str = Field(min_length=1, max_length=100)
     work_item_id: int | None = Field(None, gt=0)
+    security_scan_confirmed: bool = False
+    security_scan_approval_note: str | None = Field(None, max_length=500)
 
 
 class TaskCommandResponse(BaseModel):

@@ -32,6 +32,7 @@ import {
   type Task,
   type TaskAgentInstance,
   type TaskEvent,
+  type TaskCommandRequest,
   type TaskMessage,
   type TaskResourceRef,
   type TaskWorkItem,
@@ -44,6 +45,7 @@ import { useConsoleScope } from '@/hooks/useConsoleScope';
 const STATUS_LABEL: Record<string, string> = {
   QUEUED: '排队中', RUNNING: '运行中', WAITING_CONFIRMATION: '待确认',
   PAUSE_REQUESTED: '暂停中', PAUSED: '已暂停', CANCEL_REQUESTED: '取消中',
+  WAITING_EXTERNAL: '等待外部扫描',
   SUCCEEDED: '已完成', SUCCEEDED_WITH_ISSUES: '完成但有问题', FAILED: '失败',
   CANCELLED: '已取消', SUPERSEDED: '已被新目标替代', RECONCILIATION_REQUIRED: '待核对',
 };
@@ -85,9 +87,9 @@ export function ConsoleTasksPage() {
       <Flex justify="space-between" align="start" wrap="wrap" gap={12}>
         <div>
           <Typography.Title level={4} style={{ marginTop: 0 }}>统一任务</Typography.Title>
-          <Typography.Text type="secondary">任务在后台持久运行，关闭页面不会中断；输入范围仍来自现有 API 测试资产。</Typography.Text>
+          <Typography.Text type="secondary">任务在后台持久运行，关闭页面不会中断；输入范围来自已确认的 API 或 Web 测试资产，可选关联 ZAP 扫描。</Typography.Text>
         </div>
-        <Button type="primary" onClick={() => setCreateOpen(true)}>创建 API 测试任务</Button>
+        <Button type="primary" onClick={() => setCreateOpen(true)}>创建统一任务</Button>
       </Flex>
       {tasksQuery.isLoading ? <LoadingState /> : tasksQuery.isError ? (
         <ErrorState error={tasksQuery.error} onRetry={tasksQuery.refetch} />
@@ -171,7 +173,7 @@ export function ConsoleTaskDetailPage() {
     ]);
   };
   const commandMutation = useMutation({
-    mutationFn: (command: { command_type: 'APPROVE_PLAN' | 'PAUSE' | 'RESUME' | 'CANCEL' | 'RETRY'; work_item_id?: number }) =>
+    mutationFn: (command: Omit<TaskCommandRequest, 'idempotency_key'>) =>
       tasksApi.command(runId!, { ...command, idempotency_key: `task-ui-${command.command_type}-${command.work_item_id ?? 'run'}-${Date.now()}` }),
     onSuccess: async () => { toast.success('任务命令已记录'); await refreshTask(); },
     onError: (error) => toast.error(getErrorMessage(error, '任务命令失败')),
@@ -192,7 +194,7 @@ export function ConsoleTaskDetailPage() {
   });
 
   const activeWork = useMemo(
-    () => workItems.filter((item) => ['PENDING', 'RUNNING'].includes(item.status)).length,
+    () => workItems.filter((item) => ['PENDING', 'RUNNING', 'WAITING_EXTERNAL'].includes(item.status)).length,
     [workItems],
   );
 
@@ -201,20 +203,57 @@ export function ConsoleTaskDetailPage() {
   const task = taskQuery.data;
   const run = detail?.run;
   if (!runId || !run) return <PageContainer><Empty description="任务还没有可恢复的运行记录" /></PageContainer>;
+  const securityScanSelection = run.input_snapshot.security_scan as { target_id?: number; scan_profile_id?: number } | null | undefined;
   const latestPlan = detail?.plans.at(-1);
+  const scanPreview = latestPlan?.plan_json.security_scan_preview as {
+    target?: { name?: string; base_url?: string };
+    profile?: { name?: string; scan_mode?: string };
+    is_active_scan?: boolean;
+    zap_available?: boolean;
+    estimated_requests?: number | null;
+    max_duration_minutes?: number;
+    exclude_paths?: string[];
+    limitations?: string[];
+  } | null | undefined;
   const canPause = ['QUEUED', 'RUNNING', 'WAITING_CONFIRMATION'].includes(run.status);
   const canCancel = !TERMINAL.has(run.status) && run.status !== 'CANCEL_REQUESTED';
   const canResume = run.status === 'PAUSED';
   const mainSelected = selectedAgent?.role === 'MAIN';
-  const canMessageWorker = selectedAgent?.role === 'API_WORKER' && workItems.some(
+  const canMessageWorker = selectedAgent != null && ['API_WORKER', 'UI_WORKER'].includes(selectedAgent.role) && workItems.some(
     (item) => item.agent_instance_id === selectedAgent.id && ['PENDING', 'FAILED'].includes(item.status),
   );
 
   const requestCommand = (type: 'APPROVE_PLAN' | 'PAUSE' | 'RESUME' | 'CANCEL') => {
+    if (type === 'APPROVE_PLAN' && securityScanSelection) {
+      let approvalNote = '';
+      modal.confirm({
+        title: '确认测试方案并附加 ZAP 扫描？',
+        content: (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Typography.Text>
+              已选择扫描目标 #{securityScanSelection.target_id} 和策略 #{securityScanSelection.scan_profile_id}。确认后安全 Worker 会在 TestRun 创建后调用现有 ZAP 队列；主动扫描仍会由后端再次校验项目角色、目标授权和执行环境。
+            </Typography.Text>
+            <Input.TextArea
+              rows={3}
+              maxLength={500}
+              placeholder="主动扫描必填批准说明；被动扫描可留空"
+              onChange={(event) => { approvalNote = event.target.value; }}
+            />
+          </Space>
+        ),
+        okText: '确认方案并请求扫描',
+        onOk: () => commandMutation.mutateAsync({
+          command_type: 'APPROVE_PLAN',
+          security_scan_confirmed: true,
+          security_scan_approval_note: approvalNote,
+        }),
+      });
+      return;
+    }
     if (type === 'CANCEL') {
       modal.confirm({
         title: '取消当前运行？',
-        content: '系统会在安全边界停止后续调度；已经发出的 HTTP 请求不会被自动撤销。',
+        content: '系统会在安全边界停止后续调度；已发出的 HTTP 请求不会被撤销，关联 ZAP 扫描会收到取消请求。',
         okButtonProps: { danger: true },
         onOk: () => commandMutation.mutateAsync({ command_type: type }),
       });
@@ -242,7 +281,7 @@ export function ConsoleTaskDetailPage() {
           </Space>
         </div>
         <Space wrap>
-          {run.status === 'WAITING_CONFIRMATION' && <Button type="primary" icon={<CheckOutlined />} onClick={() => requestCommand('APPROVE_PLAN')}>确认方案并执行</Button>}
+          {run.status === 'WAITING_CONFIRMATION' && <Button type="primary" icon={<CheckOutlined />} onClick={() => requestCommand('APPROVE_PLAN')}>{securityScanSelection ? '确认方案并请求 ZAP 扫描' : '确认方案并执行'}</Button>}
           {canPause && <Button icon={<PauseOutlined />} onClick={() => requestCommand('PAUSE')}>暂停</Button>}
           {canResume && <Button icon={<PlayCircleOutlined />} onClick={() => requestCommand('RESUME')}>继续</Button>}
           {canCancel && <Button danger icon={<StopOutlined />} onClick={() => requestCommand('CANCEL')}>取消运行</Button>}
@@ -308,14 +347,14 @@ export function ConsoleTaskDetailPage() {
                               <Button size="small" type={messageType === 'TEXT' ? 'primary' : 'default'} onClick={() => setMessageType('TEXT')}>发消息</Button>
                               <Button size="small" type={messageType === 'GOAL_UPDATE' ? 'primary' : 'default'} onClick={() => setMessageType('GOAL_UPDATE')}>调整整体目标</Button>
                             </>
-                          ) : <Tag color="purple">补充给指定 API Worker</Tag>}
+                          ) : <Tag color="purple">补充给指定 {selectedAgent.display_name}</Tag>}
                         </Space>
                         <Input.TextArea
                           value={draft}
                           onChange={(event) => setDraft(event.target.value)}
                           rows={3}
                           maxLength={8000}
-                          placeholder={mainSelected ? (messageType === 'GOAL_UPDATE' ? '输入新的整体目标，将建立新的运行版本' : '向任务主 Agent 发送消息') : '向当前 API Worker 提供补充要求'}
+                          placeholder={mainSelected ? (messageType === 'GOAL_UPDATE' ? '输入新的整体目标，将建立新的运行版本' : '向任务主 Agent 发送消息') : `向当前${selectedAgent?.display_name}提供补充要求`}
                         />
                         <Flex justify="flex-end" style={{ marginTop: 8 }}>
                           <Button
@@ -331,7 +370,7 @@ export function ConsoleTaskDetailPage() {
                         </Flex>
                       </div>
                     )}
-                    {selectedAgent && !mainSelected && !canMessageWorker && <Alert type="info" showIcon message="API Worker 当前没有可接收补充要求的工作项" />}
+                    {selectedAgent && !mainSelected && !canMessageWorker && <Alert type="info" showIcon message={`${selectedAgent.display_name} 当前没有可接收补充要求的工作项`} />}
                   </>
                 ),
               },
@@ -347,13 +386,30 @@ export function ConsoleTaskDetailPage() {
                         <Typography.Text type="secondary">用例范围：{((latestPlan.plan_json.case_ids as number[] | undefined) ?? []).map((id) => `#${id}`).join('、')}</Typography.Text>
                       </Card>
                     )}
+                    {securityScanSelection && (
+                      <Alert
+                        type={scanPreview?.zap_available ? 'warning' : 'error'}
+                        showIcon
+                        message={`ZAP 扫描计划预览 · ${scanPreview?.is_active_scan ? '主动扫描' : '被动扫描'}`}
+                        description={scanPreview ? (
+                          <Space direction="vertical">
+                            <span>目标：{scanPreview.target?.name ?? `#${securityScanSelection.target_id}`} · {scanPreview.target?.base_url ?? '地址未知'}</span>
+                            <span>策略：{scanPreview.profile?.name ?? `#${securityScanSelection.scan_profile_id}`} · {scanPreview.profile?.scan_mode ?? '模式未知'}</span>
+                            <span>请求预算：{scanPreview.estimated_requests ?? '未知'} · 最长时长：{scanPreview.max_duration_minutes ?? '未知'} 分钟</span>
+                            {scanPreview.exclude_paths?.length ? <span>排除路径：{scanPreview.exclude_paths.join('、')}</span> : null}
+                            {scanPreview.limitations?.map((item) => <span key={item}>限制：{item}</span>)}
+                            {!scanPreview.zap_available && <span>当前部署未配置可用 ZAP；确认后安全扫描无法启动。</span>}
+                          </Space>
+                        ) : '正在读取扫描目标与策略的最新范围；确认前请核对完整预览。'}
+                      />
+                    )}
                     <Table<TaskWorkItem>
                       size="small"
                       rowKey="id"
                       pagination={false}
                       dataSource={workItems}
                       columns={[
-                        { title: '职责', dataIndex: 'kind', render: (kind: string) => ROLE_LABEL[{ PLAN: 'PLANNER', EXECUTE_API: 'API_WORKER', REPORT: 'REPORT_AGENT', REVIEW: 'REVIEWER', FINALIZE: 'MAIN' }[kind] ?? kind] ?? kind },
+                        { title: '职责', dataIndex: 'kind', render: (kind: string) => ROLE_LABEL[{ PLAN: 'PLANNER', EXECUTE_API: 'API_WORKER', EXECUTE_WEB: 'UI_WORKER', SECURITY_SCAN: 'SECURITY_WORKER', REPORT: 'REPORT_AGENT', REVIEW: 'REVIEWER', FINALIZE: 'MAIN' }[kind] ?? kind] ?? kind },
                         { title: '状态', dataIndex: 'status', render: (state: string) => STATUS_LABEL[state] ?? state },
                         { title: '尝试', dataIndex: 'attempt_count', width: 80 },
                         { title: '结果/错误', render: (_, row) => row.error_message ?? JSON.stringify(row.output_json ?? {}) },
@@ -431,6 +487,8 @@ function ResourceList({ resources }: { resources: TaskResourceRef[] }) {
             ? `/console/execution-history?runId=${id}`
             : resource.resource_type === 'TEST_CASE'
               ? `/console/test-asset?caseId=${id}`
+              : resource.resource_type === 'SECURITY_SCAN_JOB'
+                ? `/console/security-testing?tab=zap&jobId=${id}`
               : undefined;
         return (
           <List.Item>

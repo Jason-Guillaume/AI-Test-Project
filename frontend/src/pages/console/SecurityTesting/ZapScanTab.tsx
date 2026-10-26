@@ -15,12 +15,12 @@ import { ResultsSubTab } from './zap/results';
 import { TargetsSubTab } from './zap/targets';
 
 /** 安全扫描 Tab。projectId 由父页传入（已确保非空）。 */
-export function ZapScanTab({ projectId }: { projectId: number }) {
+export function ZapScanTab({ projectId, initialJobId }: { projectId: number; initialJobId?: number }) {
   return (
     <Tabs
       type="card"
       size="small"
-      defaultActiveKey="targets"
+      defaultActiveKey={initialJobId ? 'jobs' : 'targets'}
       items={[
         {
           key: 'targets',
@@ -35,7 +35,7 @@ export function ZapScanTab({ projectId }: { projectId: number }) {
         {
           key: 'jobs',
           label: '扫描任务',
-          children: <JobsSubTab projectId={projectId} />,
+          children: <JobsSubTab projectId={projectId} initialJobId={initialJobId} />,
         },
         {
           key: 'results',

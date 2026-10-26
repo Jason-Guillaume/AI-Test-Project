@@ -3,7 +3,7 @@
 // 任务列表 + 发起扫描四步向导 + 取消任务。
 // 有运行中任务时 10 秒轮询一次列表；全部结束后停止轮询，避免空转。
 // 取消只置持久化取消位，由 Worker 在下一个检查点真正停止（不是立即中断）。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   App,
@@ -36,7 +36,7 @@ import { ScanWizardModal } from './wizard';
 const PAGE_SIZE = 10;
 
 /** 扫描任务子 Tab。projectId 由父页传入（已确保非空）。 */
-export function JobsSubTab({ projectId }: { projectId: number }) {
+export function JobsSubTab({ projectId, initialJobId }: { projectId: number; initialJobId?: number }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
 
@@ -44,6 +44,14 @@ export function JobsSubTab({ projectId }: { projectId: number }) {
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailJob, setDetailJob] = useState<ScanJob | null>(null);
+  const initialJobQuery = useQuery({
+    queryKey: ['zap-job-from-task', projectId, initialJobId],
+    queryFn: () => securityApi.getScanJob(projectId, initialJobId!),
+    enabled: initialJobId != null,
+  });
+  useEffect(() => {
+    if (initialJobQuery.data) setDetailJob(initialJobQuery.data);
+  }, [initialJobQuery.data]);
 
   const listQuery = useQuery({
     queryKey: ['zap-jobs', projectId, { status: statusFilter, page }],

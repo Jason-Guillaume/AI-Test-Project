@@ -49,23 +49,61 @@ class TaskService:
     """统一任务服务；实例无状态，可在路由间安全复用。"""
 
     def create_task(self, db: Session, project_id: int, body: TaskCreate, *, actor: User) -> dict[str, Any]:
-        """校验已确认 API 用例并创建任务、首个运行、独立角色会话与规划工作项。"""
+        """校验同类型已确认用例并创建任务、首个运行与按需 Worker。"""
         project = self._get_project_for_write(db, project_id, actor)
         case_ids = list(dict.fromkeys(body.case_ids))
         cases = db.query(TestCase).filter(TestCase.id.in_(case_ids)).all()
         if len(cases) != len(case_ids):
             raise not_found("部分测试用例不存在")
         case_by_id = {case.id: case for case in cases}
+        target_types: set[str] = set()
         for case_id in case_ids:
             case = case_by_id[case_id]
-            # 任务只允许显式引用已确认的 API 用例，避免把草稿或其它执行器类型误送入 API Worker。
             if case.project_id != project.id:
                 raise not_found("测试用例不存在")
-            if not case.enabled or case.status != "ACTIVE" or case.target_type != "API" or case.api_id is None:
-                raise bad_request("任务仅支持已启用且已确认的 API 测试用例")
+            if not case.enabled or case.status != "ACTIVE" or case.target_type not in {"API", "WEB"}:
+                raise bad_request("任务仅支持已启用且已确认的 API 或 Web 用例")
+            target_types.add(case.target_type)
+            if case.target_type == "API" and case.api_id is None:
+                raise bad_request("API 用例缺少接口定义")
+            if case.target_type == "WEB":
+                # Web 用例确认指纹覆盖步骤、页面对象和认证配置；通过既有服务契约复核，不能只看 ACTIVE 状态。
+                from app.features.web_ui.models import WebCase
+                from app.features.web_ui.services.web_ui_service import case_response
+                if db.get(WebCase, case.id) is None or not case_response(db, case).get("confirmed"):
+                    raise bad_request("Web 用例必须先在 Web 管理页确认当前版本")
+        if len(target_types) != 1:
+            raise bad_request("一个任务运行需选择同一执行器类型的用例；API 与 Web 请分别创建任务")
+        target_type = next(iter(target_types))
         environment = db.get(Environment, body.environment_id)
         if environment is None or not environment.is_active:
             raise not_found("环境不存在或已停用")
+
+        security_scan = body.security_scan.model_dump() if body.security_scan else None
+        if security_scan:
+            # 复用 ZAP 的只读计划服务校验项目可见、目标/策略归属与部署限制；这里不创建扫描任务。
+            from app.features.security_testing.zap.schemas import ScanJobCreate
+            from app.features.security_testing.zap.services import job_service, profile_service, target_service
+
+            target = target_service.get_or_none(db, project.id, security_scan["target_id"])
+            profile = profile_service.get_or_none(db, project.id, security_scan["scan_profile_id"])
+            if target is None or profile is None:
+                raise not_found("安全扫描目标或策略不存在")
+            if not target.enabled or not profile.enabled:
+                raise bad_request("安全扫描目标或策略已停用")
+            from app.features.security_testing.zap.contracts import API_SCAN_MODES, WEB_CRAWL_MODES
+            expected_type = "WEB" if target_type == "WEB" else "API"
+            if target.target_type not in {expected_type, "HYBRID"}:
+                raise bad_request("安全扫描目标类型与任务执行类型不匹配")
+            compatible_modes = WEB_CRAWL_MODES if target_type == "WEB" else API_SCAN_MODES
+            if profile.scan_mode not in compatible_modes:
+                raise bad_request("安全扫描策略与任务执行类型不匹配")
+            if target.environment_id != environment.id:
+                raise bad_request("安全扫描目标必须绑定当前任务选择的执行环境")
+            job_service.plan(
+                db, project.id, actor,
+                ScanJobCreate(target_id=target.id, scan_profile_id=profile.id),
+            )
 
         goal = sanitize_text(body.goal).strip()
         title = sanitize_text(body.title or "").strip() or goal[:80]
@@ -83,6 +121,7 @@ class TaskService:
                     or existing.title != title[:200]
                     or existing.environment_id != environment.id
                     or existing.input_case_ids != case_ids
+                    or (existing.security_scan_json or None) != security_scan
                 ):
                     raise conflict("相同 request_key 已用于不同任务内容")
                 return self._task_detail(db, existing)
@@ -94,11 +133,12 @@ class TaskService:
             goal=goal,
             environment_id=environment.id,
             input_case_ids=case_ids,
+            security_scan_json=security_scan,
             request_key=body.request_key,
         )
         db.add(task)
         db.flush()
-        run = self._create_run(db, task, actor, run_number=1)
+        run = self._create_run(db, task, actor, run_number=1, target_type=target_type)
         task.status = run.status
         try:
             db.commit()
@@ -115,6 +155,7 @@ class TaskService:
                     and existing.title == title[:200]
                     and existing.environment_id == environment.id
                     and existing.input_case_ids == case_ids
+                    and (existing.security_scan_json or None) == security_scan
                 ):
                     return self._task_detail(db, existing)
             raise
@@ -195,16 +236,16 @@ class TaskService:
             if body.recipient_instance_id is None:
                 raise bad_request("补充要求必须指定接收的 Worker")
             recipient = db.get(TaskAgentInstance, body.recipient_instance_id)
-            if recipient is None or recipient.task_run_id != run.id or recipient.role != "API_WORKER":
-                raise not_found("指定的 API Worker 不存在")
+            if recipient is None or recipient.task_run_id != run.id or recipient.role not in {"API_WORKER", "UI_WORKER"}:
+                raise not_found("指定的执行 Worker 不存在")
             accepting_work = db.query(TaskWorkItem.id).filter(
                 TaskWorkItem.task_run_id == run.id,
                 TaskWorkItem.agent_instance_id == recipient.id,
-                TaskWorkItem.kind == "EXECUTE_API",
+                TaskWorkItem.kind.in_(("EXECUTE_API", "EXECUTE_WEB")),
                 TaskWorkItem.status.in_(("PENDING", "FAILED")),
             ).first()
             if accepting_work is None:
-                raise conflict("指定的 API Worker 当前没有可接收要求的执行工作")
+                raise conflict("指定的 Worker 当前没有可接收要求的执行工作")
 
         created_run_id = None
         message = TaskMessage(
@@ -233,7 +274,9 @@ class TaskService:
                     TaskWorkItem.status == "PENDING",
                 ).update({TaskWorkItem.status: "CANCELLED"}, synchronize_session=False)
             next_number = int(db.query(func.max(TaskRun.run_number)).filter(TaskRun.task_id == task.id).scalar() or 0) + 1
-            new_run = self._create_run(db, task, actor, run_number=next_number)
+            case = db.query(TestCase).filter(TestCase.id.in_(task.input_case_ids or [])).first()
+            target_type = case.target_type if case is not None else "API"
+            new_run = self._create_run(db, task, actor, run_number=next_number, target_type=target_type)
             task.status = new_run.status
             created_run_id = new_run.id
             message.status = "PROCESSED"
@@ -261,13 +304,17 @@ class TaskService:
         self, db: Session, run_id: int, body: TaskCommandCreate, *, actor: User,
     ) -> TaskCommand:
         """持久化并原子应用幂等控制命令。"""
+        if body.command_type != "APPROVE_PLAN" and (
+            body.security_scan_confirmed or body.security_scan_approval_note
+        ):
+            raise bad_request("安全扫描确认字段只能用于方案确认命令")
         run, task = self._get_run_for_write(db, run_id, actor, lock=True)
         prior = db.query(TaskCommand).filter(
             TaskCommand.task_run_id == run.id,
             TaskCommand.idempotency_key == body.idempotency_key,
         ).first()
         if prior is not None:
-            expected_payload = {"work_item_id": body.work_item_id} if body.work_item_id else {}
+            expected_payload = self._command_payload(body)
             if prior.command_type != body.command_type or prior.payload != expected_payload:
                 raise conflict("相同 idempotency_key 已用于不同命令")
             return prior
@@ -277,13 +324,17 @@ class TaskService:
             requested_by=actor.id,
             command_type=body.command_type,
             idempotency_key=body.idempotency_key,
-            payload={"work_item_id": body.work_item_id} if body.work_item_id else {},
+            payload=self._command_payload(body),
         )
         db.add(command)
         db.flush()
 
         if body.command_type == "APPROVE_PLAN":
-            self._approve_plan(db, run, actor)
+            self._approve_plan(
+                db, run, actor,
+                security_scan_confirmed=body.security_scan_confirmed,
+                security_scan_approval_note=body.security_scan_approval_note,
+            )
         elif body.command_type == "PAUSE":
             self._pause(db, run, actor)
         elif body.command_type == "RESUME":
@@ -336,7 +387,7 @@ class TaskService:
 
     # ------------------------------------------------------------------ 任务与运行构造
 
-    def _create_run(self, db: Session, task: Task, actor: User, *, run_number: int) -> TaskRun:
+    def _create_run(self, db: Session, task: Task, actor: User, *, run_number: int, target_type: str) -> TaskRun:
         """创建一个隔离运行及其角色实例；模型凭据不会进入角色配置快照。"""
         model = self._resolve_authorized_model(db, task.project_id, actor)
         model_snapshot = self._model_snapshot(model)
@@ -347,18 +398,30 @@ class TaskService:
             status="QUEUED",
             stage="PLANNING",
             goal_snapshot=task.goal,
-            input_snapshot={"project_id": task.project_id, "environment_id": task.environment_id, "case_ids": list(task.input_case_ids or [])},
+            input_snapshot={
+                "project_id": task.project_id,
+                "environment_id": task.environment_id,
+                "case_ids": list(task.input_case_ids or []),
+                "target_type": target_type,
+                "security_scan": dict(task.security_scan_json) if task.security_scan_json else None,
+            },
         )
         db.add(run)
         db.flush()
 
-        roles = (
+        roles = [
             ("MAIN", "任务主 Agent", "READY", ["task.chat", "task.goal.update"]),
             ("PLANNER", "Planner", "QUEUED", []),
-            ("API_WORKER", "API Worker", "WAITING_APPROVAL", ["test-run.create"]),
+            (("API_WORKER", "API Worker", "WAITING_APPROVAL", ["test-run.create"])
+             if target_type == "API" else
+             ("UI_WORKER", "UI Worker", "WAITING_APPROVAL", ["web-test-run.create"])),
+        ]
+        if task.security_scan_json:
+            roles.append(("SECURITY_WORKER", "安全 Worker", "WAITING_DEPENDENCY", ["zap.scan.create", "zap.scan.read"]))
+        roles.extend([
             ("REVIEWER", "审阅 Agent", "WAITING_DEPENDENCY", ["report.review"]),
             ("REPORT_AGENT", "报告 Agent", "WAITING_DEPENDENCY", ["report.generate"]),
-        )
+        ])
         agents: dict[str, TaskAgentInstance] = {}
         for role, name, state, tools in roles:
             instance = TaskAgentInstance(
@@ -378,7 +441,7 @@ class TaskService:
 
         plan_work = self._enqueue_work(
             db, run, agents["PLANNER"], work_key="plan:v1", kind="PLAN",
-            input_json={"case_ids": list(task.input_case_ids or []), "environment_id": task.environment_id}, sequence=10,
+            input_json={"case_ids": list(task.input_case_ids or []), "environment_id": task.environment_id, "target_type": target_type}, sequence=10,
         )
         for case_id in task.input_case_ids or []:
             self._add_resource_ref(db, run, "INPUT", "TEST_CASE", str(case_id), metadata={"confirmed": True})
@@ -490,18 +553,58 @@ class TaskService:
 
     # ------------------------------------------------------------------ 命令与状态转换
 
-    def _approve_plan(self, db: Session, run: TaskRun, actor: User) -> None:
-        """只有已持久化的 Planner 方案可被成员明确批准并排入测试执行。"""
+    def _approve_plan(
+        self, db: Session, run: TaskRun, actor: User, *,
+        security_scan_confirmed: bool = False,
+        security_scan_approval_note: str | None = None,
+    ) -> None:
+        """只有人工确认已持久化方案与可选 ZAP 范围后才派发副作用工作。"""
         if run.status != "WAITING_CONFIRMATION" or run.stage != "PLAN_REVIEW":
             raise conflict("当前运行没有待确认的测试方案")
         plan = db.query(TaskPlan).filter(TaskPlan.task_run_id == run.id, TaskPlan.version == run.current_plan_version).with_for_update().first()
         if plan is None or plan.status != "PROPOSED":
             raise conflict("当前测试方案已被处理")
-        api_agent = self._agent_by_role(db, run.id, "API_WORKER")
+        security_selection = run.input_snapshot.get("security_scan") or None
+        approval_note = sanitize_text(security_scan_approval_note or "").strip()[:500]
+        if security_selection:
+            if not security_scan_confirmed:
+                raise conflict("任务包含安全扫描范围；请在方案确认时明确确认扫描")
+            from app.features.security_testing.zap.schemas import ScanJobCreate
+            from app.features.security_testing.zap.services import _access, job_service
+
+            preview = job_service.plan(
+                db,
+                run.input_snapshot["project_id"],
+                actor,
+                ScanJobCreate(
+                    target_id=int(security_selection["target_id"]),
+                    scan_profile_id=int(security_selection["scan_profile_id"]),
+                    confirmed=True,
+                    approval_note=approval_note or None,
+                ),
+            )
+            if preview.is_active_scan:
+                _access.require_admin(db, _access.get_project_or_404(db, run.input_snapshot["project_id"], actor), actor)
+                if not approval_note:
+                    raise bad_request("主动扫描需要填写人工批准说明")
+            run.input_snapshot = {
+                **dict(run.input_snapshot or {}),
+                "security_scan_approval": {
+                    "confirmed_by": actor.id,
+                    "confirmed_at": datetime.now().isoformat(),
+                    "approval_note": approval_note or None,
+                },
+            }
+        elif security_scan_confirmed or approval_note:
+            raise bad_request("当前任务没有申请安全扫描")
+        target_type = run.input_snapshot.get("target_type", "API")
+        worker_role = "API_WORKER" if target_type == "API" else "UI_WORKER"
+        worker_kind = "EXECUTE_API" if target_type == "API" else "EXECUTE_WEB"
+        worker_agent = self._agent_by_role(db, run.id, worker_role)
         plan_work = db.query(TaskWorkItem).filter(TaskWorkItem.task_run_id == run.id, TaskWorkItem.kind == "PLAN").order_by(TaskWorkItem.id.desc()).first()
         work = self._enqueue_work(
-            db, run, api_agent, work_key=f"api-execution:v{plan.version}", kind="EXECUTE_API",
-            input_json={"plan_id": plan.id, "case_ids": list(run.input_snapshot.get("case_ids", [])), "environment_id": run.input_snapshot.get("environment_id")},
+            db, run, worker_agent, work_key=f"{target_type.lower()}-execution:v{plan.version}", kind=worker_kind,
+            input_json={"plan_id": plan.id, "case_ids": list(run.input_snapshot.get("case_ids", [])), "environment_id": run.input_snapshot.get("environment_id"), "target_type": target_type},
             sequence=20,
         )
         if plan_work is not None:
@@ -510,9 +613,26 @@ class TaskService:
         plan.status = "ACCEPTED"
         plan.accepted_at = datetime.now()
         run.status = "QUEUED"
-        run.stage = "API_EXECUTION"
-        api_agent.status = "QUEUED"
-        self._append_event(db, run, "plan.accepted", {"plan_id": plan.id, "work_item_id": work.id}, actor_user_id=actor.id)
+        run.stage = "API_EXECUTION" if target_type == "API" else "WEB_EXECUTION"
+        worker_agent.status = "QUEUED"
+        self._append_event(
+            db, run, "plan.accepted",
+            {"plan_id": plan.id, "work_item_id": work.id, "security_scan_confirmed": bool(security_selection)},
+            actor_user_id=actor.id,
+        )
+
+    @staticmethod
+    def _command_payload(body: TaskCommandCreate) -> dict[str, Any]:
+        """构造幂等比较用的命令内容，批准说明经脱敏后写入审计载荷。"""
+        payload: dict[str, Any] = {}
+        if body.work_item_id:
+            payload["work_item_id"] = body.work_item_id
+        if body.security_scan_confirmed:
+            payload["security_scan_confirmed"] = True
+        note = sanitize_text(body.security_scan_approval_note or "").strip()
+        if note:
+            payload["security_scan_approval_note"] = note[:500]
+        return payload
 
     def _pause(self, db: Session, run: TaskRun, actor: User) -> None:
         """运行中的暂停在当前工作项安全边界生效，待确认状态可立即暂停。"""
@@ -546,6 +666,22 @@ class TaskService:
             db.query(TaskWorkItem).filter(
                 TaskWorkItem.task_run_id == run.id, TaskWorkItem.status == "PENDING",
             ).update({TaskWorkItem.status: "CANCELLED"}, synchronize_session=False)
+        # 已创建的 ZAP Job 仍由原 ScanWorker 执行；通过原服务登记取消请求。
+        from app.features.security_testing.zap.contracts import JOB_TERMINAL_STATUSES
+        from app.features.security_testing.zap.models.job import SecurityScanJob
+        from app.features.security_testing.zap.services import job_service
+
+        scan_refs = db.query(TaskResourceRef).filter(
+            TaskResourceRef.task_run_id == run.id,
+            TaskResourceRef.resource_type == "SECURITY_SCAN_JOB",
+        ).all()
+        for ref in scan_refs:
+            try:
+                scan_job = db.get(SecurityScanJob, int(ref.resource_id))
+            except (TypeError, ValueError):
+                scan_job = None
+            if scan_job is not None and scan_job.status not in JOB_TERMINAL_STATUSES:
+                job_service.cancel(db, scan_job.project_id, actor, scan_job.id)
         self._append_event(db, run, "run.cancel_requested", {"status": run.status}, actor_user_id=actor.id)
 
     def _retry(self, db: Session, run: TaskRun, actor: User, work_item_id: int | None) -> None:
@@ -559,20 +695,23 @@ class TaskService:
         ).with_for_update().first()
         if work is None or work.status != "FAILED":
             raise not_found("可重试的失败工作项不存在")
-        if work.kind == "EXECUTE_API":
+        if work.kind in {"EXECUTE_API", "EXECUTE_WEB"}:
             from app.features.tasks.models import TaskToolInvocation
             invocation = db.query(TaskToolInvocation).filter(TaskToolInvocation.work_item_id == work.id).first()
             if invocation is not None and invocation.status in {"STARTED", "NEEDS_RECONCILIATION"}:
-                raise conflict("API 执行回执状态不明，请先从执行中心核对，不能自动重放")
-        if work.kind not in {"PLAN", "CHAT", "REPORT", "FINALIZE"} and work.kind != "EXECUTE_API":
+                raise conflict("测试执行回执状态不明，请先从执行中心核对，不能自动重放")
+        if work.kind not in {"PLAN", "CHAT", "REPORT", "FINALIZE", "EXECUTE_API", "EXECUTE_WEB", "SECURITY_SCAN"}:
             raise conflict("该类工作项尚未接入安全重试")
         if work.attempt_count >= work.max_attempts:
             raise conflict("工作项已达到最大重试次数")
         work.status = "PENDING"
+        work.available_at = None
         work.error_code = None
         work.error_message = None
         work.finished_at = None
         run.status = "QUEUED"
+        if work.kind == "SECURITY_SCAN":
+            run.stage = "SECURITY_SCAN"
         run.error_code = None
         run.error_message = None
         self._append_event(db, run, "work_item.retry_queued", {"work_item_id": work.id}, actor_user_id=actor.id)

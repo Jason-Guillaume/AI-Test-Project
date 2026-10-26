@@ -61,10 +61,10 @@ def web_setup(api, admin, db, target_server):
     return project_id, env.id
 
 
-def test_migration_head_is_0015(db):
-    """0014 Web Agent 表保留，0015 任务迁移后的 head 为 0015。"""
+def test_migration_head_is_0016(db):
+    """0014 Web Agent 表保留，0016 统一任务与安全扫描迁移后的 head 为 0016。"""
     head = db.execute(text("select version_num from alembic_version")).scalar()
-    assert head == "0015"
+    assert head == "0016"
     tables = {r[0] for r in db.execute(text("select table_name from information_schema.tables "
         "where table_schema='public' and table_name like 'web_agent%'")).all()}
     assert {"web_agent_session", "web_agent_step"} <= tables
