@@ -44,6 +44,7 @@ import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { organizationsApi } from '@/api/organizations';
 import { projectsApi } from '@/api/projects';
 import { prefersDarkScheme } from '@/theme';
+import { TaskSchedulerDrawer } from '@/components/tasks/TaskSchedulerDrawer';
 
 // antd Layout 子部件解构：侧边栏、头部、内容区。
 const { Header, Sider, Content } = Layout;
@@ -112,6 +113,7 @@ const MENU_ITEMS: MenuItem[] = [
     ],
   },
   { key: '/console/agent', icon: <RobotOutlined />, label: 'AI Agent' }, // AI Agent
+  { key: '/console/tasks', icon: <ScheduleOutlined />, label: '统一任务' }, // 持久化任务与多 Agent 团队
   { key: '/console/defects', icon: <BugOutlined />, label: '缺陷管理' }, // 缺陷管理
   {
     key: GROUP_NOTIFICATION_CENTER, // 通知中心（分组）
@@ -203,6 +205,8 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/security-testing': '安全测试', // 安全测试
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI Agent', // AI Agent
+  '/console/tasks': '统一任务', // 全局任务列表
+  '/console/tasks/:taskId': '任务执行台', // 任务详情
   '/console/notifications': '通知记录', // 通知记录
   '/console/notification-channels': '通知渠道', // 通知渠道
   '/console/profile': '个人中心', // 个人中心
@@ -435,12 +439,15 @@ export function ConsoleLayout() {
               allowClear
             />
           </Flex>
-          <Dropdown menu={userMenu} placement="bottomRight">
-            <Flex gap="small" style={{ cursor: 'pointer' }}>
-              <Avatar icon={<UserOutlined />} />
-              <span>{user?.username}</span>
-            </Flex>
-          </Dropdown>
+          <Flex gap="middle" align="center">
+            <TaskSchedulerDrawer />
+            <Dropdown menu={userMenu} placement="bottomRight">
+              <Flex gap="small" style={{ cursor: 'pointer' }}>
+                <Avatar icon={<UserOutlined />} />
+                <span>{user?.username}</span>
+              </Flex>
+            </Dropdown>
+          </Flex>
         </Header>
         <Content style={{ background: themeToken.colorBgLayout }}>
           <div style={{ padding: '16px 24px 0' }}>

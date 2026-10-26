@@ -50,10 +50,13 @@ class LLMProvider(Protocol):
 
 
 class ProductionLLMProvider:
-    """生产 LLM Provider：读 ModelConfiguration 默认配置，httpx 调 OpenAI 兼容。"""
+    """生产 LLM Provider：按显式配置或默认配置调用 OpenAI 兼容接口。"""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, model_config_id: int | None = None) -> None:
+        """保存数据库会话与可选显式模型绑定；不复制或输出加密凭据。"""
         self.db = db
+        # 新任务运行快照显式绑定模型；旧 Agent 调用继续使用平台默认项。
+        self.model_config_id = model_config_id
 
     def generate_structured(
         self, system: str, user_content: str, schema: dict[str, Any] | None = None,
@@ -133,13 +136,15 @@ class ProductionLLMProvider:
             return content
 
     def _load_config(self) -> ModelConfiguration:
-        cfg = (
-            self.db.query(ModelConfiguration)
-            .filter(ModelConfiguration.is_default.is_(True), ModelConfiguration.is_enabled.is_(True))
-            .first()
-        )
+        """优先解析实例绑定的启用模型；未绑定时沿用旧 Agent 的平台默认模型。"""
+        query = self.db.query(ModelConfiguration).filter(ModelConfiguration.is_enabled.is_(True))
+        if self.model_config_id is not None:
+            cfg = query.filter(ModelConfiguration.id == self.model_config_id).first()
+        else:
+            cfg = query.filter(ModelConfiguration.is_default.is_(True)).first()
         if cfg is None:
-            raise LLMError("NO_DEFAULT_MODEL", "未配置启用的默认模型，无法调用 LLM")
+            message = "绑定的模型配置不存在或已停用" if self.model_config_id is not None else "未配置启用的默认模型，无法调用 LLM"
+            raise LLMError("NO_DEFAULT_MODEL", message)
         return cfg
 
     @staticmethod

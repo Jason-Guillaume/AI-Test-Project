@@ -29,6 +29,7 @@ import {
   Typography,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/api/testManagement';
@@ -90,6 +91,7 @@ export function ConsoleTestAssetPage() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
+  const navigate = useNavigate();
 
   const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
@@ -343,7 +345,19 @@ export function ConsoleTestAssetPage() {
                 <Card
                   size="small"
                   title={<Space><Typography.Text strong>{detail.name}</Typography.Text><Tag>rev {detail.revision}</Tag></Space>}
-                  extra={<Button size="small" icon={<EditOutlined />} onClick={openCaseEdit}>编辑用例</Button>}
+                  extra={(
+                    <Space>
+                      {detail.target_type === 'API' && detail.status === 'ACTIVE' && detail.enabled && (
+                        <Button
+                          size="small"
+                          onClick={() => navigate(`/console/tasks?create=1&projectId=${currentProjectId}&caseId=${detail.id}`)}
+                        >
+                          用此用例创建任务
+                        </Button>
+                      )}
+                      <Button size="small" icon={<EditOutlined />} onClick={openCaseEdit}>编辑用例</Button>
+                    </Space>
+                  )}
                   style={{ marginBottom: 12 }}
                 >
                   <Descriptions size="small" column={3}>

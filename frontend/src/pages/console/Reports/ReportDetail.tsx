@@ -57,6 +57,7 @@ import { MetricCard, type MetricTone } from '@/components/MetricCard';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { PageHeader } from '@/components/PageHeader';
 import { StatusBadge } from '@/components/StatusBadge';
+import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
 import { fmtDuration, fmtPercent, fmtTime, fmtTimeSec } from '@/shared/format';
 import { labelOf } from '@/shared/options';
 import {
@@ -666,6 +667,11 @@ export function ConsoleReportDetailPage() {
           </>
         }
       />
+
+      <Flex vertical gap={8} style={{ marginBottom: token.margin }}>
+        <TaskSourceLinks resourceType="REPORT" resourceId={report.id} />
+        <TaskSourceLinks resourceType="TEST_RUN" resourceId={test_run?.id} />
+      </Flex>
 
       {/* C. 风险提示：只在真的有风险时出现 */}
       {riskAlerts.length > 0 && (
