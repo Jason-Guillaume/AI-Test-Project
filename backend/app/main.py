@@ -45,6 +45,8 @@ from app.features.security_testing.zap.router import router as security_scan_rou
 from app.features.security_testing.zap.worker import ScanWorker
 from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
+from app.features.tasks.router import router as tasks_router
+from app.features.tasks.runtime.worker import TaskWorker
 from app.features.users.admin import router as users_admin_router
 from app.features.users.auth import router as auth_router
 from app.features.web_ui.router import router as web_ui_router
@@ -59,6 +61,7 @@ from app.shared.request_context import (
 
 # 本模块的日志统一走这里，输出格式与 request_id 注入由 app.shared.request_context 配置。
 logger = logging.getLogger(__name__)
+task_worker = TaskWorker()
 
 # 业务路由统一挂在 /api/v1 下；新增路由时必须走 include_router(prefix=API_PREFIX)，不要另起前缀。
 API_PREFIX = "/api/v1"
@@ -96,11 +99,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             session.close()
     scan_worker = ScanWorker()
     scan_worker.start()
+    # 任务工作项、租约与命令已持久化，应用重启后由同一调度器安全续跑。
+    task_worker.start()
     yield
     # 停止期先停掉扫描后台任务（已领取的任务会在下一个检查点看到取消位），
     # 再把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
     # 最后回收连接池，避免 gunicorn worker 反复退出时留下半开连接
     scan_worker.stop()
+    task_worker.stop()
     flush_langfuse()
     engine.dispose()
     logger.info("应用已停止")
@@ -189,6 +195,7 @@ def create_app() -> FastAPI:
     application.include_router(api_catalog_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)
     application.include_router(test_management_router, prefix=API_PREFIX)
+    application.include_router(tasks_router, prefix=API_PREFIX)
     # 报告依赖 test_management（TestRun / CaseExecution），紧随其后装配。
     application.include_router(reports_router, prefix=API_PREFIX)
     application.include_router(agent_router, prefix=API_PREFIX)

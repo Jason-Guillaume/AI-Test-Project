@@ -42,6 +42,7 @@ def create_test_run(
     case_ids: list[int],
     environment_id: int,
     session_id: int,
+    source_label: str = "Agent",
 ) -> dict:
     """为选中用例建临时计划 + 套件并立即执行，返回 TestRun 响应 dict。
 
@@ -49,6 +50,7 @@ def create_test_run(
     - case_ids 非空（§18 无用例不执行）；
     - 每个 case 存在且属于 project_id（跨项目用例 404，防越权执行）；
     - 环境存在且启用（平台级资源，404 隐藏停用态）。
+    - source_label 仅允许 Agent / Task，用于原业务计划与套件页面标记真实来源。
     """
     require_writable_project(db, project_id, actor)
     # 去重保序：case_ids 由前端 / 节点传入，可能含重复。
@@ -69,10 +71,11 @@ def create_test_run(
 
     # 临时计划 / 套件名称带 uuid 短码保证项目内唯一（uq_*_project_name）。
     tag = uuid4().hex[:6]
+    source_label = source_label if source_label in {"Agent", "Task"} else "Agent"
     plan = TestPlan(
         project_id=project_id,
-        name=f"[Agent]session-{session_id}-{tag}",
-        description=f"Agent 会话 {session_id} 临时执行计划",
+        name=f"[{source_label}]session-{session_id}-{tag}",
+        description=f"{source_label} 运行 {session_id} 临时执行计划",
         environment_id=environment_id,
         status="ACTIVE",
         execution_mode="MANUAL",
@@ -82,8 +85,8 @@ def create_test_run(
     db.flush()
     suite = TestSuite(
         project_id=project_id,
-        name=f"[Agent]session-{session_id}-{tag}",
-        description="Agent 会话临时套件",
+        name=f"[{source_label}]session-{session_id}-{tag}",
+        description=f"{source_label} 临时测试套件",
         suite_type="CUSTOM",
         enabled=True,
         created_by=actor.id,

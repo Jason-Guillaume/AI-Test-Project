@@ -60,9 +60,9 @@ backend/
                                  #   users, organizations, projects, captcha, defects,
                                  #   model_configuration, environment_configuration, dashboard,
                                  #   notifications, api_catalog, business, test_management,
-                                 #   reports, agent, test_data
+                                 #   reports, agent, test_data, tasks
   scripts/                       # seed_admin.py、e2e_smoke.sh（唯一入口）
-  alembic/                       # 迁移（当前 head = 0014）
+  alembic/                       # 迁移（当前 head = 0015）
   tests/                         # pytest：test_01 … test_20，另有 test_api_catalog.py
 frontend/
   src/
@@ -142,7 +142,7 @@ cd backend
 
 - 测试**不依赖生产数据**，用独立的 `testplatform_test` 数据库
 - `conftest.py` 里 `ApiClient.register()` 会自动 seed 验证码（`_STORAGE[cid] = ...`），业务代码不用管
-- 断言 Alembic head：`assert head == "0014"`（`test_01`、`test_10`、`test_18`、`test_22`、`test_29`、`test_30`、`test_32`；新增迁移后全部一起改）
+- 断言 Alembic head：`assert head == "0015"`（`test_01`、`test_10`、`test_18`、`test_22`、`test_29`、`test_30`、`test_32`；新增迁移后同步全部 head 断言）
 
 ---
 
@@ -183,7 +183,7 @@ cd backend
 .venv/bin/python -m alembic upgrade head
 ```
 
-- head 当前是 `0014`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心 → 0010 Mock → 0011 Security → 0012 Web UI → 0013 ZAP 安全扫描 → 0014 Web UI 智能体二期（web_agent_session / web_agent_step）。新增迁移把 `down_revision` 接 `0014`，并同步所有 head 断言
+- head 当前是 `0015`：0001 基线 → 0002 bug → 0003 接口管理 → 0004 业务表 → 0005 业务执行 → 0006 测试管理 → 0007 Agent → 0008 报告与通知 → 0009 测试数据中心 → 0010 Mock → 0011 Security → 0012 Web UI → 0013 ZAP 安全扫描 → 0014 Web UI 智能体二期 → 0015 统一任务与持久化调度。新增迁移接实际 head，并同步所有 head 断言
 - `--database-url` 可覆盖 `settings.DATABASE_URL`，别硬编码
 - 空库必须先 `stamp base` 再 `upgrade head`，否则 Alembic 认不出库
 
@@ -623,7 +623,7 @@ git push origin develop
 - [docs/migration-plan.md](../../../docs/migration-plan.md) — 从旧项目迁移的路径
 - [docs/current-system-analysis.md](../../../docs/current-system-analysis.md) — 现状分析
 
-**版本**：v1.5（2026-10-23）——对齐 Web UI 智能体二期。Alembic head 为 `0014`。变更 head 后同步改本文 §2、§5、§6.2，以及 `test_01`、`test_10`、`test_18`、`test_22`、`test_29`、`test_30`、`test_32` 的断言。
+**版本**：v1.5（2026-10-23）——对齐 Web UI 智能体二期。该版本交付时 Alembic head 为 `0014`；当前仓库已推进至 `0015`。变更 head 后同步更新本文 §2、§5、§6.2 及全部对应测试断言。
 
 **v1.4 → v1.5 变更**：
 - 0014 创建两张表：web_agent_session（受控浏览器会话）、web_agent_step（步骤提案/结果，加密落库）。会话与步数预算上限分别为 2 与 100。

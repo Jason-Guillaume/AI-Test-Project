@@ -34,6 +34,7 @@
 | [security-testing-phase1-dev-plan.md](security-testing-phase1-dev-plan.md) | 安全测试 Phase 1 开发计划 |
 | [security-testing-phase1-requirements.md](security-testing-phase1-requirements.md) | 安全测试 Phase 1 需求说明 |
 | [test-data-center-dev-plan.md](test-data-center-dev-plan.md) | 测试数据中心 + Data Factory 开发计划 |
+| [agent-cluster-refactor/README.md](agent-cluster-refactor/README.md) | 任务与智能体集群重构：需求、架构、协作、前端、实施、验收及智能体交接指令 |
 
 ## 交付报告（按时间顺序）
 

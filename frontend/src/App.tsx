@@ -62,6 +62,8 @@ const ConsoleMockExecutionListPage = lazyNamedPage(() => import('@/pages/console
 const ConsoleWebUIPage = lazyNamedPage(() => import('@/pages/console/WebUI'), 'ConsoleWebUIPage');
 const ConsoleWebUIAgentPage = lazyNamedPage(() => import('@/pages/console/WebUIAgent'), 'ConsoleWebUIAgentPage');
 const ConsoleSecurityTestingPage = lazyNamedPage(() => import('@/pages/console/SecurityTesting'), 'ConsoleSecurityTestingPage');
+const ConsoleTasksPage = lazyNamedPage(() => import('@/pages/console/Tasks'), 'ConsoleTasksPage');
+const ConsoleTaskDetailPage = lazyNamedPage(() => import('@/pages/console/Tasks'), 'ConsoleTaskDetailPage');
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -199,6 +201,8 @@ function AppRoutes() {
           <Route path="web-ui" element={<ConsoleWebUIPage />} />
           <Route path="web-ui-agent" element={<ConsoleWebUIAgentPage />} />
           <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
+          <Route path="tasks" element={<ConsoleTasksPage />} />
+          <Route path="tasks/:taskId" element={<ConsoleTaskDetailPage />} />
           <Route path="agent" element={<ConsoleAgentPage />} />
           <Route path="notifications" element={<ConsoleNotificationsPage />} />
           <Route path="profile" element={<ConsoleProfilePage />} />

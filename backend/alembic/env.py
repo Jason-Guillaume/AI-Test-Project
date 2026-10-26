@@ -16,6 +16,8 @@ from app.shared.database import Base
 
 # 确保所有 ORM 模型被导入并注册进 Base.metadata。
 import app.models  # noqa: F401
+# Feature-local 任务模型只登记在迁移 metadata，不反向扩展 app.models/__init__.py。
+from app.features.tasks import models as task_models  # noqa: F401
 
 # Alembic 传入的运行时配置对象，后面会覆盖其中的数据库 URL。
 config = context.config

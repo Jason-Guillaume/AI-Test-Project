@@ -4,11 +4,11 @@
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；越权 404，前端不展示。
 // 颜色与状态语义统一走 shared/status 与 theme token，不在本页重复定义色板。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { App, Button, Empty, Table, theme, Typography } from 'antd';
 import { EyeOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
 import { getErrorMessage } from '@/api/client';
 import { reportsApi } from '@/api/reports';
@@ -17,6 +17,7 @@ import { CaseExecutionDetail } from '@/components/exec/CaseExecutionDetail';
 import { DetailDrawer } from '@/components/DetailDrawer';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { StatusBadge } from '@/components/StatusBadge';
+import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
 import { fmtDuration, fmtTime } from '@/shared/format';
 import {
   CASE_EXECUTION_STATUS_COLOR,
@@ -35,9 +36,15 @@ export function ConsoleExecutionHistoryPage() {
   const [pageSize, setPageSize] = useState(20);
   const [drawerRunId, setDrawerRunId] = useState<number | null>(null);
   const [selectedCe, setSelectedCe] = useState<CaseExecution | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { message: msg } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const requestedRunId = Number(searchParams.get('runId'));
+    if (Number.isInteger(requestedRunId) && requestedRunId > 0) setDrawerRunId(requestedRunId);
+  }, [searchParams]);
 
   // 为一次已完成的执行生成正式测试报告；同一执行已有 COMPLETED 报告时后端幂等返回已有。
   const generateReportMutation = useMutation({
@@ -157,7 +164,7 @@ export function ConsoleExecutionHistoryPage() {
 
       <RunDetailDrawer
         runId={drawerRunId}
-        onClose={() => setDrawerRunId(null)}
+        onClose={() => { setDrawerRunId(null); setSearchParams({}); }}
         onSelect={(ce) => setSelectedCe(ce)}
       />
       <CaseExecutionDetail open={selectedCe !== null} execution={selectedCe} onClose={() => setSelectedCe(null)} />
@@ -234,6 +241,9 @@ function RunDetailDrawer({
         pagination={false}
         locale={{ emptyText: <Empty description="无用例执行记录" /> }}
       />
+      <div style={{ marginTop: 16 }}>
+        <TaskSourceLinks resourceType="TEST_RUN" resourceId={runId} />
+      </div>
     </DetailDrawer>
   );
 }
