@@ -115,7 +115,7 @@ export const apiCatalogApi = {
     }),
 
   // ---- 导入 ----
-  /** 导入预览：解析 curl/openapi → 分类（NEW/EXISTING/CHANGED/UNCHANGED），不入库。 */
+  /** 导入预览：自动识别 cURL/OpenAPI/Swagger/Postman 后分类，不入库。 */
   importPreview: (projectId: number, body: ApiImportPreviewRequest) =>
     api.post<ApiImportPreviewResponse>(
       `/projects/${projectId}/apis/import/preview`,

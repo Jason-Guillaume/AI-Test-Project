@@ -1,4 +1,4 @@
-// 导入对话框：选来源（Curl/OpenAPI/Swagger）+ 粘贴文本 → 解析预览 → 确认入库。
+// 导入对话框：粘贴或上传 cURL、OpenAPI/Swagger、Postman 文档 → 解析预览 → 确认入库。
 // 预览不入库（resolve_dry）；确认重新解析+去重+入库（幂等），写 import_record + change_log。
 import { useRef, useState } from 'react';
 import { App, Button, Input, Modal, Select, Space, Tabs, Typography, Upload } from 'antd';
@@ -50,9 +50,22 @@ export function ImportDialog({
     mutationFn: (body: { source_type: ApiSourceType; content: string; file_name?: string | null }) =>
       apiCatalogApi.importPreview(projectId, body),
     onSuccess: (data, variables) => {
-      setPreviewInput({ ...variables, file_name: variables.file_name || null });
+      const detectedSourceType = data.source_type || variables.source_type;
+      const sourceLabels: Partial<Record<ApiSourceType, string>> = {
+        CURL: 'cURL', OPENAPI: 'OpenAPI', SWAGGER: 'Swagger', POSTMAN: 'Postman Collection',
+      };
+      setSourceType(detectedSourceType);
+      setPreviewInput({
+        ...variables,
+        source_type: detectedSourceType,
+        file_name: variables.file_name || null,
+      });
       setPreview(data);
-      message.success(`解析完成：${data.total} 条`);
+      const detectedLabel = sourceLabels[detectedSourceType];
+      const autoDetected = detectedSourceType !== variables.source_type && detectedLabel
+        ? `已识别为 ${detectedLabel}，`
+        : '';
+      message.success(`${autoDetected}解析完成：${data.total} 条`);
     },
     onError: (e) => message.error(getErrorMessage(e, '解析失败')),
   });
@@ -146,7 +159,9 @@ export function ImportDialog({
   const placeholder =
     sourceType === 'CURL'
       ? 'curl -X POST "https://example.com/api/v1/tasks" -H "Authorization: Bearer xxx" -H "Content-Type: application/json" -d \'{"title":"x"}\''
-      : '粘贴 OpenAPI 3.x / Swagger 2.0 的 JSON 或 YAML 文本';
+      : sourceType === 'POSTMAN'
+        ? '粘贴 Postman Collection v2.0/v2.1 JSON；也支持 OpenAPI / Swagger 文档自动识别'
+        : '粘贴 OpenAPI 3.x / Swagger 2.0 的 JSON 或 YAML 文本';
 
   return (
     <Modal
@@ -218,7 +233,7 @@ export function ImportDialog({
                     >
                       <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                       <p className="ant-upload-text">点击或将文件拖拽到此处上传</p>
-                      <p className="ant-upload-hint">支持 UTF-8 编码的 JSON、YAML 文件，最大 2 MB</p>
+                      <p className="ant-upload-hint">支持 UTF-8 编码的 OpenAPI/Swagger JSON、YAML 和 Postman Collection JSON，最大 2 MB</p>
                     </Upload.Dragger>
                     {readingFile ? <Typography.Text>正在读取文件…</Typography.Text> : uploadedName && <Typography.Text>已选择：{uploadedName}</Typography.Text>}
                   </Space>
@@ -229,7 +244,9 @@ export function ImportDialog({
           <Typography.Text type="secondary">
             {sourceType === 'CURL'
               ? '单条 curl，Authorization/Token/Cookie 会自动脱敏为变量占位。'
-              : '请使用 OpenAPI 或 Swagger 文档，暂不支持 Postman Collection；批量导入时按 tag/路径推断模块。'}
+              : sourceType === 'POSTMAN'
+                ? '支持 Postman Collection v2.0/v2.1；OpenAPI 3.x、Swagger 2.0 和 Postman 文档会自动识别，凭据会脱敏。Apifox 请导出为上述标准格式。'
+                : '支持 OpenAPI 3.x（含 3.1）/Swagger 2.0 JSON、YAML，以及 Postman Collection v2.0/v2.1；文档格式会自动识别，凭据会脱敏。Apifox 请导出为上述标准格式。'}
           </Typography.Text>
         </Space>
       )}

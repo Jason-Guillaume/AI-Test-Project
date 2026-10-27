@@ -330,6 +330,58 @@ _SWAGGER_2 = """{
   }
 }"""
 
+_POSTMAN_21 = r'''{
+  "info": {
+    "name": "用户接口",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "collection-secret-token", "type": "string"}]
+  },
+  "item": [{
+    "name": "用户管理",
+    "item": [{
+      "name": "获取用户",
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "X-API-Key", "value": "header-secret-key"},
+          {"key": "Accept", "value": "application/json"}
+        ],
+        "url": {
+          "raw": "https://example.com/v1/users/:userId?limit=20&access_token=query-secret",
+          "host": ["example", "com"],
+          "path": ["v1", "users", ":userId"],
+          "query": [
+            {"key": "limit", "value": "20"},
+            {"key": "access_token", "value": "query-secret"}
+          ],
+          "variable": [{"key": "userId", "value": "123"}]
+        }
+      },
+      "response": [{
+        "name": "成功",
+        "status": "OK",
+        "code": 200,
+        "body": "{\"id\":123,\"token\":\"response-secret\"}"
+      }]
+    }, {
+      "name": "创建用户",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "https://example.com/v1/users",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\":\"Ada\",\"password\":\"body-secret\"}",
+          "options": {"raw": {"language": "json"}}
+        }
+      }
+    }]
+  }]
+}'''
+
 
 def test_openapi_json_yaml_swagger_batch_preview(api, admin):
     """OpenAPI 3.x JSON/YAML 与 Swagger 2.0 均可批量解析。"""
@@ -359,15 +411,64 @@ def test_openapi_json_yaml_swagger_batch_preview(api, admin):
     assert any(p["name"] == "id" for p in path_params)
 
 
-def test_import_rejects_postman_and_honors_selected_module(api, admin):
+def test_import_detects_postman_and_honors_selected_module(api, admin):
     project_id, _ = _create_project(api, admin)
     url = f"/projects/{project_id}/apis/import"
-    postman = '{"info":{"name":"collection"},"item":[]}'
-    for action in ("preview", "confirm"):
-        response = api.post(f"{url}/{action}", username=admin,
-                            json={"source_type": "OPENAPI", "content": postman})
-        assert response.status_code == 400, response.text
-        assert "Postman Collection" in response.json()["message"]
+    # 即使用户保留默认的 OpenAPI 来源，仍按文档内容识别 Postman。
+    preview = api.post(
+        f"{url}/preview",
+        username=admin,
+        json={"source_type": "OPENAPI", "content": _POSTMAN_21},
+    )
+    assert preview.status_code == 200, preview.text
+    result = preview.json()
+    assert result["source_type"] == "POSTMAN"
+    assert result["total"] == 2
+    assert "collection-secret-token" not in preview.text
+    assert "header-secret-key" not in preview.text
+    assert "query-secret" not in preview.text
+    assert "response-secret" not in preview.text
+    assert "body-secret" not in preview.text
+
+    postman20 = _POSTMAN_21.replace("v2.1.0", "v2.0.0")
+    version_preview = api.post(
+        f"{url}/preview",
+        username=admin,
+        json={"source_type": "POSTMAN", "content": postman20},
+    )
+    assert version_preview.status_code == 200, version_preview.text
+    assert version_preview.json()["total"] == 2
+    assert version_preview.json()["source_type"] == "POSTMAN"
+
+    get_user = result["items"][0]["schema"]
+    assert get_user["name"] == "获取用户"
+    assert get_user["method"] == "GET"
+    assert get_user["path"] == "/v1/users/{userId}"
+    assert get_user["source_type"] == "POSTMAN"
+    assert get_user["auth_type"] == "bearer"
+    assert get_user["tags"] == ["用户管理"]
+    assert any(p["name"] == "userId" and p["location"] == "PATH" for p in get_user["parameters"])
+    assert next(p for p in get_user["parameters"] if p["name"] == "limit")["example"] == "20"
+    api_key = next(p for p in get_user["parameters"] if p["name"] == "X-API-Key")
+    assert api_key["schema_json"] == {"sensitive": True}
+    assert api_key["example"] == "${x_api_key}"
+    assert get_user["responses"][0]["status_code"] == 200
+
+    create_user = result["items"][1]["schema"]
+    assert create_user["body"]["body_type"] == "json"
+    assert "${password}" in create_user["body"]["raw_text"]
+
+    confirm = api.post(
+        f"{url}/confirm",
+        username=admin,
+        json={"source_type": "OPENAPI", "content": _POSTMAN_21},
+    )
+    assert confirm.status_code == 201, confirm.text
+    imported = api.get(f"/projects/{project_id}/api-import-records", username=admin)
+    assert imported.status_code == 200, imported.text
+    records = imported.json()["items"]
+    assert records[0]["source_type"] == "POSTMAN"
+    assert records[0]["total"] == 2
 
     module = api.post(f"/projects/{project_id}/api-modules", username=admin,
                       json={"name": "指定模块"})

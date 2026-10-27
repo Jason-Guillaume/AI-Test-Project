@@ -78,9 +78,9 @@ export const RELATION_TYPE_OPTIONS: { label: string; value: RelationType }[] = [
   { label: '后续步骤', value: 'FOLLOW_UP' },
 ];
 
-// 导入来源选项（CURL 单条，OPENAPI/SWAGGER 批量）。
+// 导入来源选项；文档类格式由后端自动识别，避免文件类型选错导致无法导入。
 export const IMPORT_SOURCE_OPTIONS: { label: string; value: ApiSourceType }[] = [
   { label: 'Curl', value: 'CURL' },
-  { label: 'OpenAPI 3.x', value: 'OPENAPI' },
-  { label: 'Swagger 2.0', value: 'SWAGGER' },
+  { label: 'OpenAPI / Swagger', value: 'OPENAPI' },
+  { label: 'Postman Collection', value: 'POSTMAN' },
 ];

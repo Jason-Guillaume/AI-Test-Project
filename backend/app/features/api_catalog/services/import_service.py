@@ -23,7 +23,8 @@ from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_parameter import ApiParameter
 from app.features.api_catalog.models.api_request_body import ApiRequestBody
 from app.features.api_catalog.models.api_response import ApiResponse
-from app.features.api_catalog.parsers import parse_curl, parse_openapi
+from app.features.api_catalog.parsers import parse_curl
+from app.features.api_catalog.parsers.document_parser import parse_api_document
 from app.features.api_catalog.schemas import (
     ImportConfirmRequest,
     ImportConfirmResponse,
@@ -107,7 +108,7 @@ class ImportService:
             ))
         return ImportPreviewResponse(
             project_id=project_id,
-            source_type=body.source_type,
+            source_type=_parsed_source_type(schemas, body.source_type),
             source_hash=None,
             total=len(schemas),
             new_count=counts["NEW"],
@@ -149,7 +150,7 @@ class ImportService:
         batch_hash = _batch_hash(per_schema_hashes)
         record = ApiImportRecord(
             project_id=project_id,
-            source_type=body.source_type,
+            source_type=_parsed_source_type(schemas, body.source_type),
             file_name=body.file_name,
             source_hash=batch_hash,
             total=len(schemas),
@@ -253,16 +254,24 @@ class ImportService:
 
 
 def _parse(source_type: str, content: str) -> list[InternalApiSchema]:
-    """按 source_type 选 parser；CURL 单条，OPENAPI/SWAGGER 批量。"""
+    """自动识别常见接口文档；cURL 保持单条解析。"""
     st = (source_type or "").upper()
     try:
         if st == "CURL":
+            detected = parse_api_document(content, required=False)
+            if detected is not None:
+                return detected
             return [parse_curl(content)]
-        if st in {"OPENAPI", "SWAGGER"}:
-            return parse_openapi(content)
+        if st in {"OPENAPI", "SWAGGER", "POSTMAN", "APIFOX"}:
+            return parse_api_document(content) or []
     except ValueError as exc:
         raise bad_request(str(exc)) from exc
     raise bad_request(f"暂不支持的导入来源：{source_type}")
+
+
+def _parsed_source_type(schemas: list[InternalApiSchema], fallback: str) -> str:
+    """用解析结果标记实际格式，避免用户选错来源时导入记录留下错误类型。"""
+    return schemas[0].source_type if schemas else fallback
 
 
 def _find_existing(db: Session, project_id: int, method: str, path: str) -> ApiInterface | None:

@@ -630,7 +630,7 @@ export interface ApiItemListResponse<T> {
 // 导入预览/确认/调试 DTO。
 export interface ApiImportPreviewRequest {
   source_type: ApiSourceType; // 来源类型
-  content: string; // curl 串或 openapi/swagger 文本
+  content: string; // cURL、OpenAPI/Swagger 或 Postman 文档文本
   file_name?: string | null; // 文件名（可选）
   user_module_id?: number | null; // 用户指定的目标模块
   tag_to_module_map?: Record<string, number> | null; // tag→模块映射

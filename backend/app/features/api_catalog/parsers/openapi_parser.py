@@ -50,7 +50,7 @@ def parse_openapi(content: str) -> list[InternalApiSchema]:
     is_openapi3 = "openapi" in spec
     if not (is_swagger2 or is_openapi3):
         if isinstance(spec.get("info"), dict) and "item" in spec:
-            raise ValueError("该文件是 Postman Collection，暂不支持导入；请使用 OpenAPI 或 Swagger 文档")
+            raise ValueError("该文件是 Postman Collection，请通过通用接口文档解析器导入")
         raise ValueError("缺少 openapi/swagger 版本字段，无法识别文档类型")
 
     paths = spec.get("paths") or {}

@@ -440,7 +440,7 @@ class ApiChangeLogListResponse(BaseModel):
 # ----------------------------------------------------------------------------- 导入预览/确认
 
 class ImportPreviewRequest(BaseModel):
-    """导入预览请求。content 为 curl 串或 openapi/swagger 文本。"""
+    """导入预览请求。content 为 cURL、OpenAPI/Swagger 或 Postman 文本。"""
 
     source_type: ApiSourceType
     content: str = Field(..., min_length=1)
