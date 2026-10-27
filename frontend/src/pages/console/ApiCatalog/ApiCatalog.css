@@ -1,0 +1,79 @@
+.api-module-tree-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 2px 0 8px;
+}
+
+.api-module-tree { min-width: 0; }
+.api-module-tree .ant-tree-treenode { width: 100%; padding-block: 2px; }
+.api-module-tree .ant-tree-node-content-wrapper {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 7px;
+}
+.api-module-tree .ant-tree-title { display: block; min-width: 0; width: 100%; }
+.api-module-title,
+.api-module-api-title {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+}
+.api-module-title { position: relative; padding-right: 4px; }
+.api-module-folder-icon { flex: 0 0 auto; color: #7586a3; }
+.api-module-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.api-module-count {
+  flex: 0 0 auto;
+  color: #8792a3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.api-module-api-title .ant-tag { flex: 0 0 auto; margin: 0; }
+.api-module-actions {
+  position: absolute;
+  right: 0;
+  display: none;
+  align-items: center;
+  gap: 0;
+  padding-left: 8px;
+  background: #fff;
+}
+.api-module-tree .ant-tree-treenode:hover .api-module-actions,
+.api-module-tree .ant-tree-node-selected .api-module-actions { display: flex; }
+.api-module-actions .ant-btn { width: 24px; height: 24px; padding: 0; }
+
+.api-module-interfaces { min-width: 0; }
+.api-module-interfaces-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 2px 18px;
+}
+.api-module-interfaces-title { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.api-module-interfaces-title .ant-typography { margin: 0; }
+.api-module-interfaces-title .ant-typography-secondary { display: block; margin-top: 4px; font-size: 12px; }
+.api-module-interfaces-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: #edf3ff;
+  color: #4f70e7;
+  font-size: 18px;
+}
+.api-module-interfaces-count { margin: 0; padding: 4px 10px; border-radius: 20px; }
+.api-module-interfaces-hint { margin-top: 10px; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .api-module-interfaces-header { align-items: flex-start; }
+  .api-module-interfaces-title .ant-typography { white-space: normal; }
+}
+
+.app-layout-dark .api-module-actions { background: #1f242c; }
+.app-layout-dark .api-module-interfaces-icon { background: rgb(79 112 231 / 18%); color: #91a8ff; }
