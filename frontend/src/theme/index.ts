@@ -133,9 +133,36 @@ const components: ThemeConfig['components'] = {
     titleFontSize: 16,
     footerBg: 'transparent',
   },
-  // Alert：52 处。注意约 12 处是脱敏/权限说明，改样式不影响其语义。
+  // 提醒统一采用紧凑尺寸；带说明的 Alert 也显式覆盖，避免回退到大图标和大留白。
   Alert: {
-    defaultPadding: '8px 12px',
+    defaultPadding: '6px 10px',
+    withDescriptionPadding: '8px 12px',
+    withDescriptionIconSize: 14,
+    fontSize: 12,
+    fontSizeLG: 13,
+    lineHeight: 1.5,
+    marginXS: 4,
+    marginSM: 8,
+    borderRadiusLG: 6,
+  },
+  Message: {
+    contentPadding: '6px 10px',
+    fontSize: 13,
+    fontSizeLG: 14,
+    lineHeight: 1.5,
+    borderRadiusLG: 6,
+  },
+  Notification: {
+    width: 320,
+    fontSize: 12,
+    fontSizeLG: 13,
+    lineHeight: 1.5,
+    lineHeightLG: 1.5,
+    paddingMD: 12,
+    paddingLG: 16,
+    paddingContentHorizontalLG: 16,
+    marginXS: 4,
+    marginSM: 8,
     borderRadiusLG: 6,
   },
   // Progress：2 处，原 strokeColor 写死 hex，改由 defaultColor 统一。
