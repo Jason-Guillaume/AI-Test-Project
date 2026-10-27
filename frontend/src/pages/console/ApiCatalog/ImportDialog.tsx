@@ -165,14 +165,14 @@ export function ImportDialog({
 
   return (
     <Modal
-      title="导入接口"
+      title={preview ? '导入预览' : '导入接口'}
       open={open}
       onCancel={handleClose}
-      width={preview ? 900 : 640}
+      width={preview ? 'min(1240px, calc(100vw - 40px))' : 640}
       footer={
         preview ? (
-          // 预览阶段由 ImportPreview 内的确认按钮驱动，隐藏底部默认按钮。
-          <Button onClick={handleClose}>关闭</Button>
+          // 预览态的选择、返回和确认操作由预览面板底部统一承载。
+          null
         ) : (
           <Space>
             <Button onClick={handleClose}>取消</Button>
@@ -194,6 +194,7 @@ export function ImportDialog({
           preview={preview}
           modules={modules}
           onConfirm={handleConfirm}
+          onClose={handleClose}
           confirming={confirmMutation.isPending}
         />
       ) : (
