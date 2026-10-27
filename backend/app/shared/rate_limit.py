@@ -1,8 +1,7 @@
 """登录与注册端点的进程内滑动窗口限流。
 
 多 API 进程部署时应在可信网关侧再叠加共享限制，这里只作为单进程内的附加屏障。
-沿用旧项目语义：登录按「IP + 用户名」双维度，注册按「IP / 小时」；
-新增图形验证码按「IP / 分钟」维度，防止刷图脚本耗尽验证码签发配额。
+沿用旧项目语义：登录按「IP + 用户名」双维度，注册按「IP / 小时」。
 """
 
 from __future__ import annotations
@@ -31,8 +30,8 @@ def _count_within(key: str, window_seconds: int, now: float | None = None) -> in
     """统计窗口内的事件次数并追加本次请求。
 
     Args:
-        key: 计数键（如 "login:ip:1.2.3.4"、"login:user:alice"、"register:1.2.3.4"、"captcha:1.2.3.4"）。
-        window_seconds: 滑动窗口长度，单位秒（登录/验证码 60 秒、注册 3600 秒）。
+            key: 计数键（如 "login:ip:1.2.3.4"、"login:user:alice"、"register:1.2.3.4"）。
+            window_seconds: 滑动窗口长度，单位秒（登录 60 秒、注册 3600 秒）。
         now: 注入的单调时间，默认取 time.monotonic()；便于单测固定时间。
 
     Returns:
@@ -65,11 +64,6 @@ def enforce_auth_rate_limit(request: Request, action: str, *, username: str | No
             key = f"register:{ip}"
             limit = int(settings.AUTH_REGISTER_IP_LIMIT_PER_HOUR)
             window = 3600
-        elif action == "captcha":
-            # 图形验证码：只按 IP 计数，不需要用户名维度。
-            key = f"captcha:{ip}"
-            limit = int(settings.AUTH_CAPTCHA_IP_LIMIT_PER_MINUTE)
-            window = 60
         elif username:
             key = f"login:user:{username}"
             limit = int(settings.AUTH_LOGIN_USERNAME_LIMIT_PER_MINUTE)

@@ -75,6 +75,7 @@ class ProviderContext:
 
     @property
     def actor_id(self) -> int | None:
+        """获取操作人标识。"""
         return getattr(self.actor, "id", None)
 
 
@@ -92,6 +93,7 @@ class ProviderResult:
 
     @property
     def success(self) -> bool:
+        """判断操作是否成功。"""
         return self.status == STATUS_SUCCESS
 
     @classmethod
@@ -103,6 +105,7 @@ class ProviderResult:
         response_snapshot: dict[str, Any] | None = None,
         cleanup_handle: dict[str, Any] | None = None,
     ) -> "ProviderResult":
+        """构造成功的提供器执行结果。"""
         return cls(
             status=STATUS_SUCCESS,
             outputs=dict(outputs or {}),
@@ -123,6 +126,7 @@ class ProviderResult:
         response_snapshot: dict[str, Any] | None = None,
         outputs: dict[str, Any] | None = None,
     ) -> "ProviderResult":
+        """生成失败结果并保留错误信息。"""
         return cls(
             status=STATUS_FAILED,
             outputs=dict(outputs or {}),
@@ -153,7 +157,9 @@ class BaseProvider:
     #: 类型名，与 schemas.PROVIDER_TYPES 对齐（数据库造数有两个类型共用一个实现）。
     provider_type: str = "STATIC"
 
-    def run(self, ctx: ProviderContext) -> ProviderResult:  # noqa: D401 - 协议方法
+    def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
+        # noqa: D401 - 协议方法
         raise NotImplementedError
 
     # ---------------------------------------------------------------- 配置装载

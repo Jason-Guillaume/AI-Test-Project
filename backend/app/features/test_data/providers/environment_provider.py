@@ -23,6 +23,7 @@ class EnvironmentProvider(BaseProvider):
     provider_type = "ENVIRONMENT"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import EnvironmentProviderConfig
 
         cfg = self.load_config(config_of(ctx), EnvironmentProviderConfig)

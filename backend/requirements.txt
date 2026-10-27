@@ -13,8 +13,6 @@ python-multipart>=0.0.9
 PyJWT>=2.9,<3
 bcrypt>=4.2,<5
 cryptography>=43,<51
-# 图形验证码图片渲染依赖 Pillow（含 C 扩展，PyPI 有 wheel，Python 3.11+ 全平台可用）
-Pillow>=10,<13
 # 接口管理：OpenAPI/Swagger YAML 解析（safe_load，不执行任意对象）
 PyYAML>=6,<7
 # 接口管理：调试执行器发真实出站请求（runtime 用；测试也复用）

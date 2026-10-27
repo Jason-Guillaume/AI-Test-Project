@@ -39,6 +39,7 @@ _PLAN_ITEM_FIELDS = (
 
 
 def _pick(obj: dict, fields: tuple[str, ...]) -> dict[str, Any]:
+    """选取对应数据。"""
     return {field: obj.get(field) for field in fields}
 
 
@@ -195,6 +196,7 @@ def security_plan_review_node(ctx: NodeContext, state: AgentState) -> dict:
 
 
 def _int_list(values: list[Any] | None) -> list[int]:
+    """列出整数。"""
     return [int(v) for v in (values or []) if isinstance(v, (int, str)) and str(v).isdigit()]
 
 

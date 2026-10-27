@@ -39,6 +39,7 @@ import { ExecutionTimeline } from './ExecutionTimeline';
 import { AssertionViewer } from './AssertionViewer';
 import { ScreenshotViewer } from './ScreenshotViewer';
 import { TraceViewer } from './TraceViewer';
+import { DefectSourceLinks } from './DefectSourceLinks';
 
 interface CaseExecutionDetailProps {
   open: boolean;
@@ -119,6 +120,8 @@ export function CaseExecutionDetail({ open, execution, onClose }: CaseExecutionD
       destroyOnClose
     >
       {execution == null ? null : (
+        <>
+        {['FAILED', 'ERROR'].includes(execution.status) && <DefectSourceLinks sourceType="CASE_EXECUTION" sourceId={execution.id} />}
         <ExecContent
           execution={execution}
           isWeb={isWeb}
@@ -131,6 +134,7 @@ export function CaseExecutionDetail({ open, execution, onClose }: CaseExecutionD
           artifacts={snapshot?.artifacts ?? []}
           onViewStep={setSelectedStep}
         />
+        </>
       )}
     </DetailDrawer>
   );

@@ -16,7 +16,10 @@ from app.features.web_ui.schemas import (
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_step import TestStep
 from app.features.test_management.services._access import get_project_or_404, require_writable_project
-from app.models.configuration import Environment
+from app.features.environment_configuration.services.environment_service import (
+    list_project_environment_options,
+    resolve_project_environment,
+)
 from app.shared.crypto import encrypt_secret, decrypt_secret
 from app.shared.errors import bad_request, conflict, not_found
 
@@ -250,9 +253,7 @@ class WebUIService:
     def save_auth(self, db, project_id, body: AuthInput, actor, auth_id=None):
         """加密保存账号与人工扫码后的 storage_state；限定最长 30 天有效期。"""
         require_writable_project(db, project_id, actor)
-        environment = db.get(Environment, body.environment_id)
-        if environment is None or not environment.is_active:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment(db, project_id, body.environment_id)
         expires = body.expires_at.replace(tzinfo=timezone.utc) if body.expires_at.tzinfo is None else body.expires_at.astimezone(timezone.utc)
         if not datetime.now(timezone.utc) < expires <= datetime.now(timezone.utc) + timedelta(days=30):
             raise bad_request("认证有效期必须在未来 30 天内")
@@ -360,36 +361,75 @@ class WebUIService:
     def environment_options(self, db, project_id, actor, keyword=""):
         """项目成员读取可执行环境的最小元信息，不开放管理端的默认请求头或凭据。"""
         get_project_or_404(db, project_id, actor)
-        query = db.query(Environment).filter(Environment.is_active.is_(True))
-        if keyword.strip():
-            query = query.filter(or_(Environment.name.ilike(f"%{keyword.strip()}%"), Environment.display_name.ilike(f"%{keyword.strip()}%")))
-        total = query.count()
-        rows = query.order_by(Environment.id.desc()).limit(200).all()
-        return {"items": [{"id": e.id, "name": e.name, "display_name": e.display_name, "is_active": e.is_active} for e in rows],
-                "total": total, "page": 1, "page_size": 200}
+        rows = list_project_environment_options(db, project_id)
+        term = keyword.strip().lower()
+        if term:
+            rows = [row for row in rows if term in row["name"].lower() or term in row["display_name"].lower()]
+        rows = rows[:200]
+        return {"items": [{"id": row["id"], "name": row["name"], "display_name": row["display_name"], "is_active": row["is_active"]} for row in rows],
+                "total": len(rows), "page": 1, "page_size": 200}
 
     # ---------------------------------------------------------- 智能体二轮：受控浏览器会话
 
     def _session_response(self, row):
-        """将数据库行转换为会话响应，步数计数从活句柄读取。"""
+        """返回当前进程可用状态；丢失句柄后不声称浏览器仍然运行。"""
         from app.features.web_ui.runtime.session_manager import registry
+        from sqlalchemy.orm import object_session
         browser = registry.get_session(row.id)
+        session = object_session(row)
+        recorded_count = session.query(WebAgentStep).filter_by(session_id=row.id).count() if session else 0
+        disconnected = row.status == "ACTIVE" and browser is None
         return {"id": row.id, "project_id": row.project_id, "environment_id": row.environment_id,
                 "auth_profile_id": row.auth_profile_id, "base_url": row.base_url,
-                "target_page_path": row.target_page_path, "status": row.status,
-                "step_budget": row.step_budget, "step_count": browser.step_count if browser else 0,
+                "target_page_path": row.target_page_path, "status": "FAILED" if disconnected else row.status,
+                "status_reason": "浏览器句柄不可用，请重新启动会话" if disconnected else None,
+                "step_budget": row.step_budget, "step_count": browser.step_count if browser else recorded_count,
                 "created_at": row.created_at}
 
-    def _get_session_row(self, db, session_id, actor, *, write=False):
+    def _get_session_row(self, db, session_id, actor, *, write=False, allow_task_bound=False):
         """按资源归属判权限；跨项目和不存在均返回 404。"""
-        return get_row(db, WebAgentSession, session_id, actor, write=write)
+        row = get_row(db, WebAgentSession, session_id, actor, write=write)
+        if row.task_run_id is not None and not allow_task_bound:
+            raise not_found("Web 资源不存在")
+        return row
 
-    def start_session(self, db, project_id, body: SessionStartInput, actor):
+    def start_session(
+        self, db, project_id, body: SessionStartInput, actor, *,
+        task_run_id: int | None = None, task_agent_instance_id: int | None = None,
+    ):
         """启动受控浏览器会话：验证环境、登录态与目标页，创建会话记录并打开浏览器。"""
         require_writable_project(db, project_id, actor)
-        environment = db.get(Environment, body.environment_id)
-        if environment is None or not environment.is_active:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment(db, project_id, body.environment_id)
+        if (task_run_id is None) != (task_agent_instance_id is None):
+            raise bad_request("任务浏览器会话必须同时绑定运行与 UI Worker")
+        if task_run_id is not None:
+            from app.features.tasks.models import Task, TaskAgentInstance, TaskRun
+
+            run = db.get(TaskRun, task_run_id)
+            task = db.get(Task, run.task_id) if run else None
+            worker = db.get(TaskAgentInstance, task_agent_instance_id)
+            if (
+                run is None or task is None or task.project_id != project_id
+                or run.input_snapshot.get("target_type") != "WEB_AUTHORING"
+                or run.status not in {"QUEUED", "RUNNING", "WAITING_CONFIRMATION", "PAUSED"}
+                or worker is None or worker.task_run_id != run.id or worker.role != "UI_WORKER"
+                or run.input_snapshot.get("environment_id") != environment.id
+            ):
+                raise not_found("任务 Web 工作区不存在")
+            from app.features.web_ui.runtime.session_manager import registry
+
+            prior = db.query(WebAgentSession).filter(
+                WebAgentSession.task_run_id == run.id,
+            ).order_by(WebAgentSession.id.desc()).first()
+            if prior is not None:
+                if prior.status == "ACTIVE" and registry.get_session(prior.id) is not None:
+                    return self._session_response(prior)
+                if prior.status == "ACTIVE":
+                    prior.status = "FAILED"
+                    prior.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    db.commit()
+                if prior.status not in {"FAILED", "CLOSED"}:
+                    raise conflict("任务已有未结束的浏览器会话")
         from app.features.web_ui.runtime.policy import TargetPolicy
         from app.features.business.executors.api_executor import ApiRequestExecutor
         policy = TargetPolicy(db, project_id)
@@ -413,7 +453,8 @@ class WebUIService:
         session_row = WebAgentSession(project_id=project_id, environment_id=environment.id,
             auth_profile_id=body.auth_profile_id, base_url=base_url,
             target_page_path=body.target_page_path, status="ACTIVE",
-            step_budget=body.step_budget, created_by=actor.id)
+            step_budget=body.step_budget, created_by=actor.id,
+            task_run_id=task_run_id, task_agent_instance_id=task_agent_instance_id)
         db.add(session_row)
         db.flush()
         headers = ApiRequestExecutor.get_environment_headers(environment)
@@ -436,24 +477,28 @@ class WebUIService:
         db.commit()
         return self._session_response(session_row)
 
-    def get_session(self, db, session_id, actor):
+    def get_session(self, db, session_id, actor, *, task_run_id: int | None = None):
         """读取会话元信息与当前步数。"""
-        row = self._get_session_row(db, session_id, actor)
+        row = self._get_session_row(db, session_id, actor, allow_task_bound=task_run_id is not None)
+        if task_run_id is not None and row.task_run_id != task_run_id:
+            raise not_found("Web 资源不存在")
         return self._session_response(row)
 
     def list_sessions(self, db, project_id, actor, *, page=1, page_size=20):
         """列出项目内的浏览器会话。"""
         get_project_or_404(db, project_id, actor)
-        query = db.query(WebAgentSession).filter_by(project_id=project_id).order_by(WebAgentSession.id.desc())
+        query = db.query(WebAgentSession).filter_by(project_id=project_id, task_run_id=None).order_by(WebAgentSession.id.desc())
         return list_result(query, lambda row: self._session_response(row), page, page_size)
 
-    def observe_session(self, db, session_id, actor):
+    def observe_session(self, db, session_id, actor, *, task_run_id: int | None = None):
         """观察会话当前页面：脱敏语义树与遮罩截图，不持久化（由 Phase B 决定落库时机）。
 
         写权限：观测会推进共享浏览器上下文，并在句柄失效时改写会话状态为 FAILED，
         因此 viewer 不能驱动别人的会话，也不能用观测把成员会话置为失败。
         """
-        row = self._get_session_row(db, session_id, actor, write=True)
+        row = self._get_session_row(db, session_id, actor, write=True, allow_task_bound=task_run_id is not None)
+        if task_run_id is not None and row.task_run_id != task_run_id:
+            raise not_found("Web 资源不存在")
         if row.status != "ACTIVE":
             raise conflict("会话已关闭或失败，请先重新启动会话")
         from app.features.web_ui.runtime.session_manager import registry
@@ -474,7 +519,7 @@ class WebUIService:
         """
         if status not in AGENT_STEP_STATUSES:
             raise bad_request(f"非法的智能体步骤状态：{status}")
-        row = self._get_session_row(db, session_id, actor, write=True)
+        row = self._get_session_row(db, session_id, actor, write=True, allow_task_bound=True)
         db.add(WebAgentStep(
             session_id=row.id, sort=sort,
             step_encrypted=encrypt_secret(json_dump(step)),
@@ -484,7 +529,7 @@ class WebUIService:
         db.commit()
         return {"session_id": row.id, "sort": sort, "status": status}
 
-    def promote_session(self, db, session_id, body: PromoteInput, actor):
+    def promote_session(self, db, session_id, body: PromoteInput, actor, *, task_run_id: int | None = None):
         """把会话中已接受的步骤提升为正式 Web 用例（未确认草稿）。
 
         只取 status=ACCEPTED 且来源为 AI 的已执行步骤——被驳回的提案不会进入
@@ -496,7 +541,9 @@ class WebUIService:
         """
         # 提升会在项目内创建用例，属于写操作：入口即按可写项目校验，
         # 不依赖 save_case 内部的校验兜底（防止后续重构漏掉）。
-        row = self._get_session_row(db, session_id, actor, write=True)
+        row = self._get_session_row(db, session_id, actor, write=True, allow_task_bound=task_run_id is not None)
+        if task_run_id is not None and row.task_run_id != task_run_id:
+            raise not_found("Web 资源不存在")
         steps = [
             decrypt_secret(r.step_encrypted)
             for r in db.query(WebAgentStep).filter_by(session_id=row.id, status="ACCEPTED", source="AI")
@@ -528,9 +575,11 @@ class WebUIService:
             actor, source_type="AI",
         )
 
-    def close_session(self, db, session_id, actor):
+    def close_session(self, db, session_id, actor, *, task_run_id: int | None = None):
         """关闭会话并释放浏览器资源。"""
-        row = self._get_session_row(db, session_id, actor, write=True)
+        row = self._get_session_row(db, session_id, actor, write=True, allow_task_bound=task_run_id is not None)
+        if task_run_id is not None and row.task_run_id != task_run_id:
+            raise not_found("Web 资源不存在")
         from app.features.web_ui.runtime.session_manager import registry
         registry.close_session(row.id)
         row.status = "CLOSED"

@@ -6,7 +6,7 @@ AgentState 时由入口 router 节点跳过已完成段（见 agent/state.py / g
 feature-local 表，由迁移 0007 显式建立。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
 from app.shared.database import Base
@@ -18,6 +18,7 @@ class AgentSession(Base):
     __tablename__ = "agent_session"
     __table_args__ = (
         Index("ix_agent_session_project_status", "project_id", "status"),
+        UniqueConstraint("task_run_id", name="uq_agent_session_task_run"),
         {"comment": "接口测试 Agent 会话：按 project+user 隔离，记录工作流阶段"},
     )
 
@@ -44,3 +45,5 @@ class AgentSession(Base):
     updated_at = Column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间",
     )
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=True, index=True)
+    task_agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)

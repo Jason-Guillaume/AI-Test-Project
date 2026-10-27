@@ -42,7 +42,7 @@ RELATION_TYPES = {"PRECONDITION", "OUTPUT_INPUT", "FOLLOW_UP"}
 HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 
-# ----------------------------------------------------------------------------- Internal API Schema（统一中间表示）
+# ----------------------------------------------------------------------------- Internal API 接口 Schema（统一中间表示）
 
 class InternalParameter(BaseModel):
     """内部参数模型：所有 parser 输出、服务层消费的参数表示。"""
@@ -130,6 +130,7 @@ class ApiModuleCreate(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def strip_name(cls, v: Any) -> str:
+        """清理名称。"""
         return str(v or "").strip()
 
 
@@ -142,6 +143,7 @@ class ApiModuleUpdate(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def strip_name(cls, v: Any) -> Any:
+        """清理名称。"""
         return str(v).strip() if v is not None else None
 
 
@@ -220,11 +222,13 @@ class ApiInterfaceCreate(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def strip_name(cls, v: Any) -> str:
+        """清理名称。"""
         return str(v or "").strip()
 
     @field_validator("method", mode="before")
     @classmethod
     def normalize_method(cls, v: Any) -> str:
+        """规范化方法。"""
         return str(v or "").upper()
 
 
@@ -243,11 +247,13 @@ class ApiInterfaceUpdate(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def strip_name(cls, v: Any) -> Any:
+        """清理名称。"""
         return str(v).strip() if v is not None else None
 
     @field_validator("method", mode="before")
     @classmethod
     def normalize_method(cls, v: Any) -> Any:
+        """规范化方法。"""
         return str(v).upper() if v is not None else None
 
 

@@ -123,6 +123,7 @@ class EnvironmentResponse(BaseModel):
     """环境响应。id 为空表示内置默认项，尚未落库、不可编辑。"""
 
     id: int | None = None
+    project_id: int | None = None
     name: str
     display_name: str
     base_url: str
@@ -137,6 +138,43 @@ class EnvironmentResponse(BaseModel):
     updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProjectEnvironmentCreate(BaseModel):
+    """为项目创建或关联一种环境，并写入项目自己的目标配置。"""
+
+    name: str = Field(..., min_length=1, max_length=50)
+    display_name: str = Field(default="", max_length=100)
+    base_url: str = Field(..., min_length=1, max_length=500)
+    gateway_prefix: str = Field(default="", max_length=200)
+    default_headers: dict = Field(default_factory=dict)
+    description: str | None = Field(default=None, max_length=1000)
+    is_default: bool = False
+    is_active: bool = True
+
+    @field_validator("name", "display_name", "base_url", "gateway_prefix", mode="before")
+    @classmethod
+    def strip_project_text(cls, value):
+        """清理项目文本。"""
+        return _strip(value)
+
+
+class ProjectEnvironmentUpdate(BaseModel):
+    """更新项目环境配置，不改变全局环境模板。"""
+
+    display_name: str | None = Field(default=None, max_length=100)
+    base_url: str | None = Field(default=None, max_length=500)
+    gateway_prefix: str | None = Field(default=None, max_length=200)
+    default_headers: dict | None = None
+    description: str | None = Field(default=None, max_length=1000)
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+    @field_validator("display_name", "base_url", "gateway_prefix", mode="before")
+    @classmethod
+    def strip_project_optional(cls, value):
+        """清理项目可选。"""
+        return _strip(value)
 
 
 class EnvironmentListResponse(BaseModel):
@@ -154,6 +192,8 @@ __all__ = [
     "EnvironmentListResponse",
     "EnvironmentResponse",
     "EnvironmentUpdate",
+    "ProjectEnvironmentCreate",
+    "ProjectEnvironmentUpdate",
     "builtin_environments",
     "normalize_environment_name",
 ]

@@ -39,7 +39,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { agentApi } from '@/api/agent';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { notificationChannelsApi } from '@/api/notificationChannels';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { getErrorMessage } from '@/api/client';
@@ -402,8 +402,9 @@ export function AgentPage() {
   });
 
   const envsQuery = useQuery({
-    queryKey: ['agent', 'environments'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
+    queryKey: ['agent', 'environments', currentProjectId],
+    queryFn: () => projectsApi.listEnvironments(currentProjectId!),
+    enabled: currentProjectId != null,
     staleTime: 60_000,
   });
 

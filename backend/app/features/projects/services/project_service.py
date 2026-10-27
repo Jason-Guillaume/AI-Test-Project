@@ -127,6 +127,11 @@ class ProjectAdminService:
             organization_id=organization_id,
         )
         db.add(project)
+        db.flush()
+        # 新项目获得独立的环境配置副本，之后修改目标地址不会影响其他项目。
+        from app.features.environment_configuration.services.environment_service import ensure_project_environments
+
+        ensure_project_environments(db, project.id, actor_id=actor.id)
         db.commit()  # 事务提交点：路由层不再自行 commit。
         db.refresh(project)
         return project

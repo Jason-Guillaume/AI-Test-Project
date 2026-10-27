@@ -26,7 +26,7 @@ from app.features.test_management.services._access import (
     require_writable_project,
 )
 from app.features.test_management.services.run_service import RunService
-from app.models.configuration import Environment
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.models.identity import User
 from app.shared.errors import bad_request, not_found
 
@@ -65,9 +65,7 @@ def create_test_run(
         if c.project_id != project_id:
             raise not_found("测试用例不存在")
 
-    env = db.get(Environment, environment_id)
-    if env is None or not env.is_active:
-        raise not_found("环境不存在或已停用")
+    resolve_project_environment(db, project_id, environment_id)
 
     # 临时计划 / 套件名称带 uuid 短码保证项目内唯一（uq_*_project_name）。
     tag = uuid4().hex[:6]

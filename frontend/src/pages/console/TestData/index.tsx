@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { Select, Space, Tabs } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { EmptyState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { TestDataTab } from './TestDataTab';
@@ -34,8 +34,9 @@ export function ConsoleTestDataPage() {
 
   // 环境列表：只取启用的，供试跑选择；不阻塞页面渲染。
   const envsQuery = useQuery({
-    queryKey: ['environments', { active: true }],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100, include_inactive: false }),
+    queryKey: ['project-environments', currentProjectId],
+    queryFn: () => projectsApi.listEnvironments(currentProjectId!),
+    enabled: currentProjectId != null,
   });
   const environments: Environment[] = envsQuery.data?.items ?? [];
   const currentEnv = useMemo(

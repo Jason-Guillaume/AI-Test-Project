@@ -1,26 +1,31 @@
-// 任务创建表单：只引用已保存且 ACTIVE 的 API 用例，并要求明确选择执行环境。
-import { useEffect } from 'react';
-import { App, Alert, Button, Checkbox, Form, Input, Modal, Select, Spin } from 'antd';
+// 任务创建表单：引用已确认用例或已登记安全范围，并要求明确选择执行环境。
+import { useEffect, useRef } from 'react';
+import { App, Alert, Button, Form, Input, InputNumber, Modal, Select, Spin } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '@/api/projects';
-import { environmentsApi } from '@/api/environments';
+import { apiCatalogApi } from '@/api/apiCatalog';
 import { testManagementApi } from '@/api/testManagement';
-import { webUIApi } from '@/api/webUI';
+import { webAgentApi, webUIApi } from '@/api/webUI';
 import { securityApi } from '@/api/securityTesting';
 import { getErrorMessage } from '@/api/client';
-import { tasksApi, type Task } from '@/api/tasks';
+import { tasksApi, type AvailableTaskAgent, type Task } from '@/api/tasks';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
+import type { Paginated } from '@/types';
 
 interface FormValues {
   project_id: number;
   title?: string;
   goal: string;
+  agent_definition_id?: number;
   environment_id: number;
-  target_type: 'API' | 'WEB';
+  target_type: 'API' | 'WEB' | 'SECURITY' | 'WEB_AUTHORING';
   case_ids: number[];
-  security_scan_enabled: boolean;
-  scan_target_id?: number;
-  scan_profile_id?: number;
+  web_auth_profile_id?: number;
+  web_target_page_path?: string;
+  web_step_budget?: number;
+  security_api_ids?: number[];
+  security_web_session_id?: number;
+  security_strategy_ids?: number[];
 }
 
 interface CaseOption {
@@ -35,51 +40,112 @@ interface Props {
   onCreated?: (task: Task) => void;
   initialProjectId?: number;
   initialCaseIds?: number[];
+  initialTargetType?: 'API' | 'WEB' | 'SECURITY' | 'WEB_AUTHORING';
 }
 
-/** 创建真实 API 或已确认 Web 任务；资产仍通过原业务 API 读取。 */
-export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, initialCaseIds = [] }: Props) {
+const WORKFLOW_NAMES: Record<string, string> = {
+  api_test: '接口测试',
+  web_ui: 'Web UI 测试',
+  security: '安全测试',
+  reporting: '测试报告',
+};
+
+/** 完整读取分页候选项，避免后续页资源被误认为不存在。 */
+async function loadAllPages<T>(
+  loadPage: (page: number, pageSize: number) => Promise<Paginated<T>>,
+): Promise<Paginated<T>> {
+  const pageSize = 200;
+  const first = await loadPage(1, pageSize);
+  const pageCount = Math.ceil(first.total / pageSize);
+  if (pageCount <= 1) return first;
+  const remaining = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2, pageSize)),
+  );
+  return { ...first, items: [first, ...remaining].flatMap((page) => page.items) };
+}
+
+/** 创建 API/Web 任务或绑定既有安全策略的自研安全评估；资产仍通过原业务 API 读取。 */
+export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, initialCaseIds = [], initialTargetType = 'API' }: Props) {
   const [form] = Form.useForm<FormValues>();
+  const initialized = useRef(false);
+  const restoredCase = useRef(false);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
   const projectId = Form.useWatch('project_id', form);
-  const targetType = Form.useWatch('target_type', form) ?? 'API';
   const environmentId = Form.useWatch('environment_id', form);
-  const securityScanEnabled = Form.useWatch('security_scan_enabled', form) ?? false;
+  const targetType = Form.useWatch('target_type', form) ?? 'API';
   const projectsQuery = useQuery({
     queryKey: ['projects', { taskCreate: true }],
-    queryFn: () => projectsApi.list({ page: 1, page_size: 100 }),
+    queryFn: () => loadAllPages((page, pageSize) => projectsApi.list({ page, page_size: pageSize })),
     enabled: open,
   });
   const environmentsQuery = useQuery({
-    queryKey: ['task-create-environments'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
-    enabled: open,
+    queryKey: ['task-create-environments', projectId],
+    queryFn: () => projectsApi.listEnvironments(projectId!),
+    enabled: open && projectId != null,
   });
   const casesQuery = useQuery({
     queryKey: ['task-create-cases', projectId, targetType],
-    queryFn: async () => targetType === 'API'
-      ? (await testManagementApi.listCases(projectId!, { target_type: 'API', status: 'ACTIVE' }))
-        .map((item): CaseOption => ({ id: item.id, name: item.name, ready: item.enabled && item.status === 'ACTIVE' && item.api_id != null }))
-      : (await webUIApi.cases(projectId!, 1)).items
-        .map((item): CaseOption => ({ id: item.id, name: item.name, ready: item.confirmed })),
+    queryFn: async () => {
+      if (targetType === 'API') {
+        const pageSize = 200;
+        const all = [];
+        for (let page = 1; ; page += 1) {
+          const batch = await testManagementApi.listCases(projectId!, {
+            target_type: 'API', status: 'ACTIVE', page, page_size: pageSize,
+          });
+          all.push(...batch);
+          if (batch.length < pageSize) break;
+        }
+        return all.map((item): CaseOption => ({ id: item.id, name: item.name, ready: item.enabled && item.status === 'ACTIVE' && item.api_id != null }));
+      }
+      const first = await webUIApi.cases(projectId!, 1);
+      const pages = Math.ceil(first.total / first.page_size);
+      const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => webUIApi.cases(projectId!, i + 2)));
+      return [first, ...rest].flatMap((page) => page.items)
+        .map((item): CaseOption => ({ id: item.id, name: item.name, ready: item.confirmed }));
+    },
+    enabled: open && projectId != null && targetType !== 'SECURITY' && targetType !== 'WEB_AUTHORING',
+  });
+  const agentsQuery = useQuery({
+    queryKey: ['task-create-agents', projectId, targetType],
+    queryFn: () => tasksApi.availableAgents(projectId!, {
+      target_type: targetType === 'WEB_AUTHORING' ? 'WEB' : targetType,
+    }),
     enabled: open && projectId != null,
   });
-  const scanTargetsQuery = useQuery({
-    queryKey: ['task-create-scan-targets', projectId],
-    queryFn: () => securityApi.listScanTargets(projectId!, { enabled: true, page: 1, page_size: 100 }),
+  const authoringAuthQuery = useQuery({
+    queryKey: ['task-create-web-auth', projectId],
+    queryFn: () => loadAllPages((page, pageSize) => webUIApi.auth(projectId!, page, pageSize)),
     enabled: open && projectId != null,
   });
-  const scanProfilesQuery = useQuery({
-    queryKey: ['task-create-scan-profiles', projectId],
-    queryFn: () => securityApi.listScanProfiles(projectId!, { enabled: true, page: 1, page_size: 100 }),
+  const securityApisQuery = useQuery({
+    queryKey: ['task-create-security-apis', projectId],
+    queryFn: () => loadAllPages((page, pageSize) => apiCatalogApi.listApis(projectId!, { status: 'ACTIVE', page, page_size: pageSize })),
+    enabled: open && projectId != null,
+  });
+  const securityStrategiesQuery = useQuery({
+    queryKey: ['task-create-security-strategies', projectId],
+    queryFn: () => loadAllPages((page, pageSize) => securityApi.listStrategies(projectId!, { enabled: true, page, page_size: pageSize })),
+    enabled: open && projectId != null,
+  });
+  const securityWebSessionsQuery = useQuery({
+    queryKey: ['task-create-security-web-sessions', projectId],
+    queryFn: () => loadAllPages((page, pageSize) => webAgentApi.sessions(projectId!, page, pageSize)),
     enabled: open && projectId != null,
   });
   const createMutation = useMutation({
-    mutationFn: ({ project_id, target_type: _targetType, security_scan_enabled, scan_target_id, scan_profile_id, ...body }: FormValues) => tasksApi.create(project_id, {
+    mutationFn: ({ project_id, target_type, security_api_ids, security_web_session_id, security_strategy_ids, web_auth_profile_id, web_target_page_path, web_step_budget, ...body }: FormValues) => tasksApi.create(project_id, {
       ...body,
-      security_scan: security_scan_enabled ? { target_id: scan_target_id!, scan_profile_id: scan_profile_id! } : undefined,
+      case_ids: target_type === 'SECURITY' || target_type === 'WEB_AUTHORING' ? [] : body.case_ids,
+      task_mode: target_type === 'WEB_AUTHORING' ? 'WEB_AUTHORING' : 'TEST_EXECUTION',
+      web_authoring: target_type === 'WEB_AUTHORING'
+        ? { auth_profile_id: web_auth_profile_id, target_page_path: web_target_page_path ?? '', step_budget: web_step_budget ?? 20 }
+        : undefined,
+      security_assessment: target_type === 'SECURITY'
+        ? { api_ids: security_api_ids!, web_session_id: security_web_session_id, strategy_ids: security_strategy_ids! }
+        : undefined,
       request_key: `task-create-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     }),
     onSuccess: async (task) => {
@@ -93,24 +159,35 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
   });
 
   useEffect(() => {
-    if (open) form.setFieldValue('project_id', initialProjectId ?? currentProjectId ?? projectsQuery.data?.items[0]?.id);
+    if (!open) {
+      initialized.current = false;
+      restoredCase.current = false;
+      return;
+    }
+    if (!initialized.current && (initialProjectId || currentProjectId || projectsQuery.data)) {
+      form.setFieldValue('project_id', initialProjectId ?? currentProjectId ?? projectsQuery.data?.items[0]?.id);
+      initialized.current = true;
+    }
   }, [currentProjectId, form, initialProjectId, open, projectsQuery.data?.items]);
 
   useEffect(() => {
-    if (!open || initialCaseIds.length === 0 || projectId !== (initialProjectId ?? projectId) || !casesQuery.data) return;
-    if (!form.getFieldValue('case_ids')) form.setFieldValue('case_ids', initialCaseIds);
-  }, [casesQuery.data, form, initialCaseIds, initialProjectId, open, projectId]);
+    if (open) form.setFieldValue('target_type', initialTargetType);
+    else form.resetFields();
+  }, [form, initialTargetType, open]);
+
+  useEffect(() => {
+    if (!open || restoredCase.current || initialCaseIds.length === 0 || projectId !== (initialProjectId ?? projectId) || targetType !== initialTargetType || !casesQuery.data) return;
+    // 仅恢复当前项目和类型中仍可执行的用例，避免误选同 ID 的其他资产。
+    form.setFieldValue('case_ids', initialCaseIds.filter((id) => casesQuery.data.some((item) => item.id === id && item.ready)));
+    restoredCase.current = true;
+  }, [casesQuery.data, form, initialCaseIds, initialProjectId, initialTargetType, open, projectId, targetType]);
 
   const projects = projectsQuery.data?.items ?? [];
   const environments = (environmentsQuery.data?.items ?? []).filter((item) => item.is_active && item.id != null);
   const cases = casesQuery.data ?? [];
-  const scanTargets = (scanTargetsQuery.data?.items ?? []).filter((target) =>
-    target.environment_id === environmentId && (target.target_type === targetType || target.target_type === 'HYBRID'),
-  );
-  const scanProfiles = scanProfilesQuery.data?.items ?? [];
-  const compatibleProfiles = scanProfiles.filter((profile) =>
-    profile.scan_mode.startsWith(targetType) || profile.scan_mode.startsWith('HYBRID') || profile.scan_mode === 'FULL_AUTHORIZED',
-  );
+  const agents = agentsQuery.data ?? [];
+  const securityApis = (securityApisQuery.data?.items ?? []).filter((api) => api.status === 'ACTIVE');
+  const securityStrategies = (securityStrategiesQuery.data?.items ?? []).filter((strategy) => strategy.enabled);
   const initialLoading = projectsQuery.isLoading || environmentsQuery.isLoading;
 
   return (
@@ -124,14 +201,16 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
     >
       {initialLoading ? <Spin /> : projects.length === 0 ? (
         <Alert type="warning" showIcon message="当前账号没有可创建任务的项目" />
-      ) : environments.length === 0 ? (
-        <Alert type="warning" showIcon message="没有可用的执行环境，请先到环境配置中启用一个环境" />
       ) : (
         <Form<FormValues>
           form={form}
           layout="vertical"
+          onValuesChange={(changed) => {
+            if ('target_type' in changed) form.setFieldValue('agent_definition_id', undefined);
+            if ('environment_id' in changed) form.setFieldValue('security_web_session_id', undefined);
+          }}
           onFinish={(values) => createMutation.mutate(values)}
-          initialValues={{ target_type: 'API', security_scan_enabled: false }}
+          initialValues={{ target_type: initialTargetType }}
         >
           <Form.Item name="project_id" label="项目" rules={[{ required: true, message: '请选择项目' }]}>
             <Select
@@ -139,18 +218,40 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
               optionFilterProp="label"
               options={projects.map((project) => ({ value: project.id, label: project.name }))}
               onChange={() => {
-                form.setFieldsValue({ case_ids: [], scan_target_id: undefined, scan_profile_id: undefined });
+                restoredCase.current = true;
+                form.setFieldsValue({ environment_id: undefined, case_ids: [], security_api_ids: [], security_web_session_id: undefined, security_strategy_ids: [], agent_definition_id: undefined, web_auth_profile_id: undefined, web_target_page_path: '', web_step_budget: 20 });
               }}
             />
           </Form.Item>
           <Form.Item name="target_type" label="执行类型" rules={[{ required: true }]}>
             <Select
-              options={[{ value: 'API', label: 'API 自动化' }, { value: 'WEB', label: 'Web 自动化' }]}
+              options={[{ value: 'API', label: 'API 自动化（已确认用例）' }, { value: 'WEB', label: 'Web 自动化（已确认用例）' }, { value: 'WEB_AUTHORING', label: '交互式 Web 编写' }, { value: 'SECURITY', label: '自研安全评估' }]}
               onChange={() => {
-                form.setFieldsValue({ case_ids: [], scan_target_id: undefined });
+                restoredCase.current = true;
+                form.setFieldsValue({ case_ids: [], security_api_ids: [], security_web_session_id: undefined, security_strategy_ids: [], agent_definition_id: undefined, web_auth_profile_id: undefined, web_target_page_path: '', web_step_budget: 20 });
               }}
             />
           </Form.Item>
+          <Form.Item name="agent_definition_id" label="执行 Agent（可选）">
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              loading={agentsQuery.isLoading}
+              disabled={projectId == null || agents.length === 0}
+              options={agents.map((agent: AvailableTaskAgent) => ({
+                value: agent.id,
+                label: `${agent.name} · ${WORKFLOW_NAMES[agent.workflow_template] ?? agent.workflow_template}`,
+                title: agent.description || undefined,
+              }))}
+              placeholder={agentsQuery.isError ? 'Agent 列表加载失败' : agents.length ? '留空使用平台默认编排' : '当前项目暂无满足权限的 Agent，留空使用平台默认编排'}
+            />
+          </Form.Item>
+          {agentsQuery.isError ? (
+            <Alert type="error" showIcon message="读取可用 Agent 失败" style={{ marginBottom: 16 }} />
+          ) : agents.length > 0 && (
+            <Alert type="info" showIcon message="Agent 配置将在本次运行中固定" description="指令、Skill、工作流与工具配置会记录到运行快照；版本修改只影响新任务。停用 Agent、关闭组织智能体权限或撤销模型授权会立即阻止后续工作项。" style={{ marginBottom: 16 }} />
+          )}
           <Form.Item name="title" label="任务名称">
             <Input maxLength={200} placeholder="例如：订单 API 回归验证" />
           </Form.Item>
@@ -159,50 +260,87 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
           </Form.Item>
           <Form.Item name="environment_id" label="执行环境" rules={[{ required: true, message: '请选择执行环境' }]}>
             <Select
+              loading={environmentsQuery.isLoading}
               options={environments.map((item) => ({ value: item.id!, label: item.display_name || item.name }))}
-              onChange={() => form.setFieldValue('scan_target_id', undefined)}
             />
           </Form.Item>
-          <Form.Item name="case_ids" label={`已确认的${targetType === 'API' ? ' API' : ' Web'}用例`} rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个已确认用例' }]}>
-            <Select
-              mode="multiple"
-              showSearch
-              optionFilterProp="label"
-              loading={casesQuery.isLoading}
-              disabled={projectId == null || cases.length === 0}
-              options={cases.map((item) => ({ value: item.id, label: `#${item.id} ${item.name}${item.ready ? '' : '（未确认）'}`, disabled: !item.ready }))}
-              placeholder={casesQuery.isError ? '用例加载失败，请重试' : `选择已确认的${targetType === 'API' ? ' API' : ' Web'}用例`}
-            />
-          </Form.Item>
-          <Form.Item name="security_scan_enabled" valuePropName="checked">
-            <Checkbox>附加 ZAP 安全扫描（需在任务方案确认时再次批准）</Checkbox>
-          </Form.Item>
-          {securityScanEnabled && (
+          {environmentsQuery.isError ? <Alert type="error" showIcon message="读取执行环境失败" style={{ marginBottom: 16 }} /> : environments.length === 0 && <Alert type="warning" showIcon message="当前项目没有可用的执行环境，请选择其他项目或先绑定环境" style={{ marginBottom: 16 }} />}
+          {targetType === 'WEB_AUTHORING' ? (
             <>
-              {scanTargetsQuery.isError || scanProfilesQuery.isError ? (
-                <Alert type="error" showIcon message="读取安全扫描目标或策略失败，无法创建附加扫描任务" style={{ marginBottom: 16 }} />
+              <Alert type="info" showIcon message="交互式 Web 编写会创建独立任务运行和 UI Worker。批准方案后启动受控浏览器；每个页面操作都需人工确认，完成后只生成未确认草稿。" style={{ marginBottom: 16 }} />
+              <Form.Item name="web_target_page_path" label="目标页路径">
+                <Input maxLength={2000} placeholder="例如 /orders；留空从环境入口开始" />
+              </Form.Item>
+              <Form.Item name="web_auth_profile_id" label="受控登录态（可选）">
+                <Select
+                  allowClear
+                  loading={authoringAuthQuery.isLoading}
+                  disabled={environmentId == null}
+                  options={(authoringAuthQuery.data?.items ?? []).filter((item) => item.environment_id === environmentId).map((item) => ({ value: item.id, label: `${item.name} · 到期 ${item.expires_at}` }))}
+                  placeholder="仅显示当前环境的登录态引用；凭据不会交给模型"
+                />
+              </Form.Item>
+              <Form.Item name="web_step_budget" label="最大确认步骤数" initialValue={20} rules={[{ required: true, type: 'number', min: 1, max: 100 }]}>
+                <InputNumber min={1} max={100} style={{ width: '100%' }} />
+              </Form.Item>
+              {authoringAuthQuery.isError && <Alert type="error" showIcon message="读取受控登录态失败" style={{ marginBottom: 16 }} />}
+            </>
+          ) : targetType === 'SECURITY' ? (
+            <>
+              {securityApisQuery.isError || securityStrategiesQuery.isError ? (
+                <Alert type="error" showIcon message="读取接口或安全策略失败，无法创建安全评估任务" style={{ marginBottom: 16 }} />
               ) : (
                 <>
-                  <Form.Item name="scan_target_id" label="扫描目标" rules={[{ required: true, message: '请选择与执行环境匹配的扫描目标' }]}>
+                  <Form.Item name="security_api_ids" label="评估接口（最多 10 个）" rules={[{ required: true, type: 'array', min: 1, max: 10, message: '请选择 1 到 10 个已登记的 API 接口' }]}>
                     <Select
-                      loading={scanTargetsQuery.isLoading}
-                      options={scanTargets.map((target) => ({ value: target.id, label: `#${target.id} ${target.name} · ${target.target_type}` }))}
-                      placeholder={scanTargets.length ? '选择已登记且类型匹配的扫描目标' : '当前环境没有兼容的已启用扫描目标'}
+                      showSearch
+                      optionFilterProp="label"
+                      mode="multiple"
+                      maxCount={10}
+                      loading={securityApisQuery.isLoading}
+                      options={securityApis.map((api) => ({ value: api.id, label: `#${api.id} ${api.method} ${api.path} · ${api.name}` }))}
+                      placeholder={securityApis.length ? '选择当前项目中的 ACTIVE API；每个 API 需有功能用例作为基线' : '当前项目没有可用的 ACTIVE API'}
                     />
                   </Form.Item>
-                  <Form.Item name="scan_profile_id" label="扫描策略" rules={[{ required: true, message: '请选择已启用的扫描策略' }]}>
+                  <Form.Item name="security_strategy_ids" label="安全策略" rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个已启用的安全策略' }]}>
                     <Select
-                      loading={scanProfilesQuery.isLoading}
-                      options={compatibleProfiles.map((profile) => ({ value: profile.id, label: `${profile.name}${profile.is_active_scan ? ' · 主动扫描' : ' · 被动扫描'}` }))}
-                      placeholder="选择扫描策略"
+                      mode="multiple"
+                      showSearch
+                      optionFilterProp="label"
+                      loading={securityStrategiesQuery.isLoading}
+                      options={securityStrategies.map((strategy) => ({ value: strategy.id, label: `${strategy.name} · ${strategy.category}` }))}
+                      placeholder={securityStrategies.length ? '选择结构化安全策略' : '当前项目没有已启用的安全策略'}
                     />
                   </Form.Item>
-                  <Alert type="warning" showIcon message="安全 Worker 只调用现有 ZAP 队列。主动扫描仍需项目管理员权限、目标授权和人工批准说明；任务取消会请求取消关联扫描。" style={{ marginBottom: 16 }} />
+                  <Form.Item name="security_web_session_id" label="被动检查当前 Web 页面（可选）">
+                    <Select
+                      allowClear
+                      loading={securityWebSessionsQuery.isLoading}
+                      disabled={environmentId == null}
+                      options={(securityWebSessionsQuery.data?.items ?? [])
+                        .filter((session) => session.status === 'ACTIVE' && session.environment_id === environmentId)
+                        .map((session) => ({ value: session.id, label: `会话 #${session.id} · 环境 #${session.environment_id} · ${session.target_page_path || '当前页'}` }))}
+                      placeholder="仅显示当前执行环境仍打开的会话；不选则只进行 API 安全评估"
+                    />
+                  </Form.Item>
+                  <Alert type="warning" showIcon message="安全 Agent 可批量评估最多 10 个已登记 API，并可选检查同一执行环境中已打开的受控 Web 页面。页面检查只读取当前响应头与有限 DOM 信号，不导航、不点击、不提交表单。方案需人工确认；高风险变异另需显式确认。" style={{ marginBottom: 16 }} />
                 </>
               )}
             </>
+          ) : (
+            <Form.Item name="case_ids" label={`已确认的${targetType === 'API' ? ' API' : ' Web'}用例`} rules={[{ required: true, type: 'array', min: 1, message: '至少选择一个已确认用例' }]}>
+              <Select
+                mode="multiple"
+                showSearch
+                optionFilterProp="label"
+                loading={casesQuery.isLoading}
+                disabled={projectId == null || cases.length === 0}
+                options={cases.map((item) => ({ value: item.id, label: `#${item.id} ${item.name}${item.ready ? '' : '（未确认）'}`, disabled: !item.ready }))}
+                placeholder={casesQuery.isError ? '用例加载失败，请重试' : `选择已确认的${targetType === 'API' ? ' API' : ' Web'}用例`}
+              />
+            </Form.Item>
           )}
-          {casesQuery.isError && <Alert type="error" showIcon message="读取项目用例失败" style={{ marginBottom: 16 }} />}
+          {targetType !== 'SECURITY' && casesQuery.isError && <Alert type="error" showIcon message="读取项目用例失败" style={{ marginBottom: 16 }} />}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <Button onClick={onClose}>取消</Button>
             <Button type="primary" htmlType="submit" loading={createMutation.isPending}>

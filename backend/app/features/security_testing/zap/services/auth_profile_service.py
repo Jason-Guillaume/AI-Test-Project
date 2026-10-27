@@ -44,6 +44,7 @@ def fingerprint_of(credential: str) -> str:
 
 
 def _get(db: Session, project_id: int, profile_id: int) -> SecurityScanAuthProfile:
+    """获取对应数据。"""
     row = (
         db.query(SecurityScanAuthProfile)
         .filter(

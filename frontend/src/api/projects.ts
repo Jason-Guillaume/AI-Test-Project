@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  Environment,
   OutboundTarget,
   Paginated,
   Project,
@@ -7,6 +8,7 @@ import type {
   ProjectMember,
   ProjectRole,
 } from '@/types';
+import type { EnvironmentUpdate, ProjectEnvironmentCreate } from './environments';
 
 /** 项目列表查询参数，作为 GET /projects 的 query 传给后端。 */
 export interface ProjectListQuery {
@@ -97,4 +99,19 @@ export const projectsApi = {
   /** 删除出站目标，无返回体。 */
   removeTarget: (id: number, targetId: number) =>
     api.delete<void>(`/projects/${id}/targets/${targetId}`),
+  /** 查询项目已绑定环境；响应不包含默认请求头。 */
+  listEnvironments: (id: number, include_inactive = false) =>
+    api.get<Paginated<Environment>>(`/projects/${id}/environments`, { params: { include_inactive } }),
+  /** 新建项目环境，目标地址和默认请求头独立保存在项目绑定上。 */
+  createEnvironment: (id: number, body: ProjectEnvironmentCreate) =>
+    api.post<Environment>(`/projects/${id}/environments`, body),
+  /** 修改项目自己的环境地址与状态。 */
+  updateEnvironment: (id: number, environmentId: number, body: EnvironmentUpdate) =>
+    api.patch<Environment>(`/projects/${id}/environments/${environmentId}`, body),
+  /** 设置项目默认执行环境。 */
+  setDefaultEnvironment: (id: number, environmentId: number) =>
+    api.post<Environment>(`/projects/${id}/environments/${environmentId}/set-default`),
+  /** 停用项目环境绑定，保留模板与历史执行引用。 */
+  deactivateEnvironment: (id: number, environmentId: number) =>
+    api.delete<void>(`/projects/${id}/environments/${environmentId}`),
 };

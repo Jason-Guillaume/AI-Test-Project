@@ -32,8 +32,6 @@ AGENT_INTENTS = (
     "EXECUTE_EXISTING_CASES", "ANALYZE_RESULT", "QUERY_TEST_ASSET", "CLARIFY",
     "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
     "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
-    # Phase 2：发起 ZAP 安全扫描（先出计划，停在人工确认，LLM 不能创建任务）。
-    "REQUEST_SECURITY_SCAN",
     # Phase 2：交互式 Web 用例编写（observe→decide→act 循环）。
     "INTERACTIVE_WEB_AUTHORING",
 )
@@ -42,7 +40,6 @@ AgentIntent = Literal[
     "EXECUTE_EXISTING_CASES", "ANALYZE_RESULT", "QUERY_TEST_ASSET", "CLARIFY",
     "GENERATE_SECURITY_TEST", "EXECUTE_SECURITY_TEST",
     "ANALYZE_SECURITY_RESULT", "QUERY_SECURITY_FINDING",
-    "REQUEST_SECURITY_SCAN",
     "INTERACTIVE_WEB_AUTHORING",
 ]
 
@@ -70,8 +67,7 @@ AgentStage = Literal[
 ]
 
 # sendMessage 入参 action：人工在 review 暂停点的快捷操作。
-# confirm_security_risk（Phase F）/ confirm_security_scan（Phase 2）只由人工触发，
-# LLM 工具里没有这个参数——这是「主动扫描必须校验真实人类批准」的落点（§二十三）。
+# confirm_security_risk 只由人工触发；LLM 工具里没有这个参数。
 AGENT_ACTIONS = (
     "confirm_points", "confirm_cases", "execute", "analyze",
     "regenerate_points", "regenerate_cases", "query", "continue",
@@ -79,8 +75,6 @@ AGENT_ACTIONS = (
     "confirm_report", "skip_notification",
     # Phase F：安全计划确认 / 高风险人工确认。
     "confirm_security_plan", "confirm_security_risk",
-    # Phase 2：ZAP 扫描计划人工确认（唯一能创建扫描任务的入口）。
-    "confirm_security_scan",
     # Phase 2：Web 智能体步骤提案确认 / 拒绝；提升通过 Web Agent 专用端点完成。
     "confirm_web_step", "reject_web_step",
 )
@@ -89,7 +83,6 @@ AgentAction = Literal[
     "regenerate_points", "regenerate_cases", "query", "continue",
     "confirm_report", "skip_notification",
     "confirm_security_plan", "confirm_security_risk",
-    "confirm_security_scan",
     "confirm_web_step", "reject_web_step",
 ]
 
@@ -142,7 +135,7 @@ AGENT_ISSUE_SEVERITIES = (
 )
 
 
-# --------------------------------------------------------------------------- 会话 / 消息 API 契约
+# --------------------------------------------------------------------------- 会话 / 消息 API 接口 契约
 
 
 class AgentSessionCreate(BaseModel):
@@ -201,17 +194,6 @@ class SendMessageRequest(BaseModel):
     )
     security_case_ids: list[int] | None = Field(
         None, description="confirm_security_risk 时待确认高风险的安全用例 TestCase ID（缺省 = 全部待确认项）",
-    )
-    # Phase 2：ZAP 扫描计划人工确认。
-    zap_scan_target_id: int | None = Field(
-        None, gt=0, description="REQUEST_SECURITY_SCAN 时指定的扫描目标 ID（缺省 = 项目内唯一可用目标）",
-    )
-    zap_scan_profile_id: int | None = Field(
-        None, gt=0, description="REQUEST_SECURITY_SCAN 时指定的扫描策略 ID（缺省 = 项目内唯一可用策略）",
-    )
-    approval_note: str | None = Field(
-        None, max_length=500,
-        description="confirm_security_scan 且为主动扫描时的批准说明（人工填写，后端必填校验）",
     )
     # Web 智能体二轮：显式绑定受控浏览器会话（经 POST /projects/{id}/web-agent/sessions 创建）。
     # 归属校验在后端做：会话不属于本 Agent 会话所在项目时统一 404。

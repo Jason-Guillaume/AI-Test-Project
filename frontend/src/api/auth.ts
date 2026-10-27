@@ -11,8 +11,6 @@ export interface LoginInput {
 export interface RegisterInput {
   username: string; // 新账号的登录名
   password: string; // 新账号密码
-  captcha_id: string; // 图形验证码 challenge_id，由 GET /captcha 签发
-  captcha_code: string; // 用户输入的验证码文本
 }
 
 /** 修改密码的输入，对应 PATCH /me。 */

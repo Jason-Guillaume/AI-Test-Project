@@ -24,10 +24,12 @@ from app.features.agent.state import AgentState, set_error
 
 
 def _dump(obj) -> str:
+    """将输入数据转换为可序列化的字典。"""
     return json.dumps(sanitize_context(obj), ensure_ascii=False, default=str)
 
 
 def test_case_generator_node(ctx: NodeContext, state: AgentState) -> dict:
+    """验证用例生成器节点场景及其预期结果。"""
     confirmed_ids = state.get("confirmed_point_ids") or []
     points = state.get("generated_test_points") or []
     # 仅保留已确认的测试点；未显式确认时（confirmed 为空但有生成点）视为全部确认。

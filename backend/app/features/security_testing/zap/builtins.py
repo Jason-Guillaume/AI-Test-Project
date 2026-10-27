@@ -26,9 +26,9 @@ from app.features.security_testing.zap.contracts import (
 )
 from app.features.security_testing.zap.scope_guard import HIGH_RISK_ACTIVE_PATH_PATTERNS
 
-#: (code, name, scan_mode, spider, client_spider, passive, active, max_duration,
-#:  max_depth, max_concurrency, request_delay, max_alerts_per_rule, max_request_budget,
-#:  active_enabled, description)
+# 扫描策略字段：（code, name, scan_mode, spider, client_spider, passive, active, max_duration，
+# 以及 max_depth, max_concurrency, request_delay, max_alerts_per_rule, max_request_budget，
+# 以及 active_enabled、description）。
 BUILTIN_PROFILES: tuple[tuple, ...] = (
     (
         "API_PASSIVE_BASIC",

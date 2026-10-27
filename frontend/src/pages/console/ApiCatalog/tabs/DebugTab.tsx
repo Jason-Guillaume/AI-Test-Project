@@ -6,7 +6,7 @@ import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 import { apiCatalogApi } from '@/api/apiCatalog';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { getErrorMessage } from '@/api/client';
 import { useAuth } from '@/hooks/useAuth';
 import { LoadingState } from '@/components/PageState';
@@ -32,13 +32,15 @@ function prefillKv(
  * 调试 Tab。
  *
  * 权限：非平台管理员只读提示，不展示表单。
- * 查询：环境列表（environmentsApi.list，page_size=100 含停用项 false 即只看启用）。
+ * 查询：当前项目已启用的环境列表（不包含项目默认请求头）。
  * 发送：拼装 override_* 入参 → POST /apis/{id}/debug；白名单未命中由后端 403。
  */
 export function DebugTab({
   api,
+  projectId,
 }: {
   api: ApiInterfaceDetail;
+  projectId: number;
 }) {
   const { isPlatformAdmin } = useAuth();
   const { message } = App.useApp();
@@ -52,8 +54,8 @@ export function DebugTab({
   const [result, setResult] = useState<ApiDebugResult | null>(null);
 
   const envsQuery = useQuery({
-    queryKey: ['environments', { page: 1, page_size: 100 }],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
+    queryKey: ['project-environments', projectId],
+    queryFn: () => projectsApi.listEnvironments(projectId),
   });
 
   const sendMutation = useMutation({

@@ -100,6 +100,7 @@ def list_domains(
     keyword: str | None = Query(None),
     status: str | None = Query(None),
 ):
+    """列出`domains`。"""
     return _DOMAIN.list_domains(
         db, project_id, user, keyword=keyword, status=status, page=page, page_size=page_size
     )
@@ -117,11 +118,13 @@ def create_domain(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建领域。"""
     return _DOMAIN.create_domain(db, project_id, body, actor=user)
 
 
 @router.get("/business-domains/{domain_id}", response_model=BusinessDomainResponse, summary="业务域详情")
 def get_domain(domain_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取领域。"""
     return _DOMAIN.get_domain(db, domain_id, user)
 
 
@@ -132,6 +135,7 @@ def update_domain(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新领域。"""
     return _DOMAIN.update_domain(db, domain_id, body, actor=user)
 
 
@@ -141,6 +145,7 @@ def update_domain(
     summary="删除业务域（级联清理下属流程/动作/绑定）",
 )
 def delete_domain(domain_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除领域。"""
     _DOMAIN.delete_domain(db, domain_id, actor=user)
     return None
 
@@ -163,6 +168,7 @@ def list_flows(
     status: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
+    """列出`flows`。"""
     return _FLOW.list_flows(
         db, project_id, user,
         domain_id=domain_id, status=status, keyword=keyword, page=page, page_size=page_size,
@@ -181,11 +187,13 @@ def create_flow(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建流程。"""
     return _FLOW.create_flow(db, project_id, body, actor=user)
 
 
 @router.get("/business-flows/{flow_id}", response_model=BusinessFlowResponse, summary="业务流程基本信息")
 def get_flow(flow_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取流程。"""
     return _FLOW.get_flow(db, flow_id, user)
 
 
@@ -195,6 +203,7 @@ def get_flow(flow_id: int, db: Session = Depends(get_db), user: User = Depends(g
     summary="业务流程聚合详情（动作/前置条件/变量/状态/绑定/映射/引用/规则）",
 )
 def get_flow_detail(flow_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取流程详情。"""
     return _FLOW.get_flow_detail(db, flow_id, user)
 
 
@@ -205,6 +214,7 @@ def update_flow(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新流程。"""
     return _FLOW.update_flow(db, flow_id, body, actor=user)
 
 
@@ -214,6 +224,7 @@ def update_flow(
     summary="删除业务流程（级联清理动作及子配置）",
 )
 def delete_flow(flow_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除流程。"""
     _FLOW.delete_flow(db, flow_id, actor=user)
     return None
 
@@ -227,6 +238,7 @@ def delete_flow(flow_id: int, db: Session = Depends(get_db), user: User = Depend
     summary="业务动作列表（按 sort 升序）",
 )
 def list_actions(flow_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`actions`。"""
     return _FLOW.list_actions(db, flow_id, user)
 
 
@@ -242,6 +254,7 @@ def create_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建动作。"""
     return _FLOW.create_action(db, flow_id, body, actor=user)
 
 
@@ -252,6 +265,7 @@ def update_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新动作。"""
     return _FLOW.update_action(db, action_id, body, actor=user)
 
 
@@ -261,6 +275,7 @@ def update_action(
     summary="删除业务动作（级联清理子配置与绑定）",
 )
 def delete_action(action_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除动作。"""
     _FLOW.delete_action(db, action_id, actor=user)
     return None
 
@@ -276,6 +291,7 @@ def reorder_actions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """重新排序动作。"""
     return _FLOW.reorder_actions(db, flow_id, body, actor=user)
 
 
@@ -288,6 +304,7 @@ def reorder_actions(
     summary="前置条件列表",
 )
 def list_preconditions(action_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`preconditions`。"""
     return _CONFIG.list_preconditions(db, action_id, user)
 
 
@@ -303,6 +320,7 @@ def create_precondition(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建前置条件。"""
     return _CONFIG.create_precondition(db, action_id, body, actor=user)
 
 
@@ -317,6 +335,7 @@ def update_precondition(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新前置条件。"""
     return _CONFIG.update_precondition(db, precondition_id, body, actor=user)
 
 
@@ -328,6 +347,7 @@ def update_precondition(
 def delete_precondition(
     precondition_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
+    """删除前置条件。"""
     _CONFIG.delete_precondition(db, precondition_id, actor=user)
     return None
 
@@ -341,6 +361,7 @@ def delete_precondition(
     summary="业务变量列表（INPUT/OUTPUT 混排）",
 )
 def list_variables(action_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`variables`。"""
     return _CONFIG.list_variables(db, action_id, user)
 
 
@@ -356,6 +377,7 @@ def create_variable(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建变量。"""
     return _CONFIG.create_variable(db, action_id, body, actor=user)
 
 
@@ -366,6 +388,7 @@ def update_variable(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新变量。"""
     return _CONFIG.update_variable(db, variable_id, body, actor=user)
 
 
@@ -375,6 +398,7 @@ def update_variable(
     summary="删除业务变量",
 )
 def delete_variable(variable_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除变量。"""
     _CONFIG.delete_variable(db, variable_id, actor=user)
     return None
 
@@ -388,6 +412,7 @@ def delete_variable(variable_id: int, db: Session = Depends(get_db), user: User 
     summary="业务状态列表",
 )
 def list_states(action_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`states`。"""
     return _CONFIG.list_states(db, action_id, user)
 
 
@@ -403,6 +428,7 @@ def create_state(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建状态。"""
     return _CONFIG.create_state(db, action_id, body, actor=user)
 
 
@@ -413,6 +439,7 @@ def update_state(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新状态。"""
     return _CONFIG.update_state(db, state_id, body, actor=user)
 
 
@@ -422,6 +449,7 @@ def update_state(
     summary="删除业务状态",
 )
 def delete_state(state_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除状态。"""
     _CONFIG.delete_state(db, state_id, actor=user)
     return None
 
@@ -435,6 +463,7 @@ def delete_state(state_id: int, db: Session = Depends(get_db), user: User = Depe
     summary="业务绑定列表（含失效判定与映射）",
 )
 def list_bindings(action_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`bindings`。"""
     return _BINDING.list_bindings(db, action_id, user)
 
 
@@ -450,6 +479,7 @@ def create_binding(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建绑定。"""
     return _BINDING.create_binding(db, action_id, body, actor=user)
 
 
@@ -459,6 +489,7 @@ def create_binding(
     summary="业务绑定详情（含失效判定与输入/输出映射）",
 )
 def get_binding(binding_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取绑定。"""
     return _BINDING.get_binding(db, binding_id, user)
 
 
@@ -469,6 +500,7 @@ def update_binding(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新绑定。"""
     return _BINDING.update_binding(db, binding_id, body, actor=user)
 
 
@@ -478,11 +510,12 @@ def update_binding(
     summary="删除业务绑定（级联清理映射）",
 )
 def delete_binding(binding_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除绑定。"""
     _BINDING.delete_binding(db, binding_id, actor=user)
     return None
 
 
-# --------------------------------------------------------------------------- API 映射
+# --------------------------------------------------------------------------- API 接口 映射
 
 
 @router.get(
@@ -491,6 +524,7 @@ def delete_binding(binding_id: int, db: Session = Depends(get_db), user: User = 
     summary="业务变量 ↔ 接口参数映射列表",
 )
 def list_mappings(binding_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`mappings`。"""
     return _BINDING.list_mappings(db, binding_id, user)
 
 
@@ -506,6 +540,7 @@ def create_mapping(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建映射。"""
     return _BINDING.create_mapping(db, binding_id, body, actor=user)
 
 
@@ -520,6 +555,7 @@ def update_mapping(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新映射。"""
     return _BINDING.update_mapping(db, mapping_id, body, actor=user)
 
 
@@ -529,6 +565,7 @@ def update_mapping(
     summary="删除映射",
 )
 def delete_mapping(mapping_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除映射。"""
     _BINDING.delete_mapping(db, mapping_id, actor=user)
     return None
 
@@ -542,6 +579,7 @@ def delete_mapping(mapping_id: int, db: Session = Depends(get_db), user: User = 
     summary="变量引用列表（动作间输出→输入）",
 )
 def list_variable_refs(flow_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出变量`refs`。"""
     return _REF.list_variable_refs(db, flow_id, user)
 
 
@@ -557,6 +595,7 @@ def create_variable_ref(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建变量`ref`。"""
     return _REF.create_variable_ref(db, flow_id, body, actor=user)
 
 
@@ -566,6 +605,7 @@ def create_variable_ref(
     summary="删除变量引用",
 )
 def delete_variable_ref(ref_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除变量`ref`。"""
     _REF.delete_variable_ref(db, ref_id, actor=user)
     return None
 
@@ -587,6 +627,7 @@ def list_rules(
     flow_id: int | None = Query(None, ge=1),
     action_id: int | None = Query(None, ge=1),
 ):
+    """列出`rules`。"""
     return _RULE.list_rules(
         db, project_id, user,
         flow_id=flow_id, action_id=action_id, page=page, page_size=page_size,
@@ -605,6 +646,7 @@ def create_rule(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建规则。"""
     return _RULE.create_rule(db, project_id, body, actor=user)
 
 
@@ -615,6 +657,7 @@ def update_rule(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新规则。"""
     return _RULE.update_rule(db, rule_id, body, actor=user)
 
 
@@ -624,6 +667,7 @@ def update_rule(
     summary="删除业务规则",
 )
 def delete_rule(rule_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除规则。"""
     _RULE.delete_rule(db, rule_id, actor=user)
     return None
 
@@ -643,6 +687,7 @@ def execute_flow_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """执行流程接口。"""
     return _EXECUTION.execute_flow(db, flow_id, body, actor=user)
 
 
@@ -652,6 +697,7 @@ def execute_flow_endpoint(
     summary="执行记录详情",
 )
 def get_execution(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取执行记录。"""
     return _EXECUTION.get_execution(db, execution_id, user)
 
 
@@ -661,4 +707,5 @@ def get_execution(execution_id: int, db: Session = Depends(get_db), user: User =
     summary="执行记录的步骤执行列表",
 )
 def list_execution_actions(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出执行记录`actions`。"""
     return _EXECUTION.list_execution_actions(db, execution_id, user)

@@ -23,6 +23,10 @@ from app.features.test_data.schemas import (
     FixtureGenerateRequest,
 )
 from app.features.test_data.services._access import get_project_or_404
+from app.features.environment_configuration.services.environment_service import (
+    list_project_environment_options,
+    resolve_project_environment,
+)
 from app.models.configuration import Environment
 from app.models.identity import User
 from app.shared.errors import (
@@ -37,10 +41,11 @@ class RuntimeService:
     """造数运行时入口。无状态，路由层复用单例。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self._factory = DataFactory()
         self._cleanup = CleanupRunner()
 
-    # ---------------------------------------------------------------- 试跑 Fixture
+    # ---------------------------------------------------------------- 试跑 固定数据 Fixture
 
     def generate(
         self,
@@ -55,7 +60,7 @@ class RuntimeService:
         ``body.scope`` 只接收不生效：试跑一律按 CASE 处理，不写项目缓存。
         """
         fixture = self._load_fixture_or_404(db, fixture_id, actor)
-        environment = self._load_environment(db, body.environment_id)
+        environment = self._load_environment(db, fixture.project_id, body.environment_id)
 
         result = self._factory.generate(
             db,
@@ -86,7 +91,7 @@ class RuntimeService:
     ) -> DataExecution:
         """手工试跑一个 Provider，走完整安全策略（与生产同一条路径）。"""
         provider = self._load_provider_or_404(db, provider_id, actor)
-        environment = self._load_environment(db, body.environment_id)
+        environment = self._load_environment(db, provider.project_id, body.environment_id)
         return self._factory.test_provider(
             db,
             provider_id=provider_id,
@@ -162,11 +167,9 @@ class RuntimeService:
         return row
 
     @staticmethod
-    def _load_environment(db: Session, environment_id: int) -> Environment:
-        environment = db.get(Environment, environment_id)
-        if environment is None or not environment.is_active:
-            raise not_found("环境不存在或已停用")
-        return environment
+    def _load_environment(db: Session, project_id: int, environment_id: int) -> Environment:
+        """加载环境。"""
+        return resolve_project_environment(db, project_id, environment_id)
 
     @staticmethod
     def _load_latest_environment(db: Session, project_id: int) -> Environment:
@@ -181,18 +184,15 @@ class RuntimeService:
             .first()
         )
         if latest is not None:
-            environment = db.get(Environment, latest.environment_id)
-            if environment is not None and environment.is_active:
-                return environment
-        environment = (
-            db.query(Environment)
-            .filter(Environment.is_active.is_(True))
-            .order_by(Environment.is_default.desc(), Environment.id.asc())
-            .first()
-        )
-        if environment is None:
+            try:
+                return resolve_project_environment(db, project_id, latest.environment_id)
+            except AppError:
+                pass
+        options = list_project_environment_options(db, project_id)
+        default = next((row for row in options if row["is_default"]), None)
+        if default is None:
             raise bad_request("没有可用的执行环境，无法执行清理")
-        return environment
+        return resolve_project_environment(db, project_id, default["id"])
 
 
 __all__ = ["RuntimeService"]

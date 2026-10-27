@@ -2,6 +2,9 @@
 
 分析日期：2026-10-15。范围是当前工作区源码，含未提交的测试数据中心与 Alembic `0009`。本文件只做审计和分阶段改造计划，不改功能代码、不建迁移、不重命名已有 API。
 
+> 目录规范已于 2026-10-27 收敛，现行约定以 [coding-conventions.md §2.1](coding-conventions.md) 为准。本文前半部分保留审计日的代码事实；其中的旧路径和 `bootstrap/routes.py` 整理项是历史记录，不应作为当前目录结构指令。
+> 验证码功能已于 2026-10-27 从当前产品中移除；本文架构图和模块清单中的验证码记录仅反映 2026-10-15 的审计快照。
+
 后续可以把 **Phase A / Phase B / Phase C** 整段交给 Claude Code 执行。每一阶段的允许改动、禁止项、验收命令都写在对应章节。
 
 ---
@@ -447,8 +450,7 @@ API client 都从 `./client` 的 `api.get/post` 出发，没有页面直接使�
 ```
 app/
   main.py                 运行时唯一路由装配
-  bootstrap/routes.py     与 main 保持同一份清单（文档装配点）
-  models/                 只放 0001 基线九张业务表 + Base 再导出
+  models/                 只放平台核心 ORM 模型；不注册 Feature-local 表
   shared/
     access.py             项目读/写门槛（新）
     errors.py             信封 + 错误码登记
@@ -506,7 +508,7 @@ app/features/<feature>/
   __init__.py          只写模块说明，不在 import 时连上全部 service
   router.py            只做 HTTP
   schemas.py           Pydantic v2，snake_case
-  models/              有表才建；不加入 app/models/__init__.py
+  models/              Feature 自有 ORM 模型；不加入 app/models/__init__.py
   services/
     _access.py         只保留 resolve_*；项目门槛改调 shared.access
     <资源>_service.py  业务规则与 commit
@@ -996,7 +998,7 @@ P0 不包含重写组织路由、不包含拆 `types/index.ts` 的全部历史�
 3. 新增 `app/shared/execution/result.py` 和适配函数，不改调用方。本步可以没有行为变化，只被后续 Mock 使用。若适配函数无人调用，至少加一个单测锁定字段。
 4. 新增 `GET /api/v1/environment-options`。实现放在 environment service。返回 `[{name, display_name, is_default}]`，不含 header、不含 base_url。任何登录用户可调用。管理端原接口不动。
 5. 前端 `queryKeys.ts`，`useConsoleScope` 补失效前缀。把执行中心、计划、业务流程、Agent、测试数据的环境查询改到 `environment-options`。接口调试若需要 base_url，仍走管理员接口，调试本身就仅管理员。
-6. `bootstrap/routes.py` 补上 `api_catalog`、`test_management`、`reports`、`notification channel`，顺序与 `main.py` 一致。
+6. 路由装配只保留 `app/main.py` 这一处；不新增 `bootstrap/routes.py` 的第二份路由清单。
 7. `shared/errors.py` 增加新域码的注释段，不改旧常量的值。
 
 **禁止：** 改表、改已有 URL、改测试列表的裸数组、改 `execute_flow` 的 commit、移动页面目录、拆 `types/index.ts`（那是 P1，可单独放在 Phase B 末尾的可选提交，见下）。

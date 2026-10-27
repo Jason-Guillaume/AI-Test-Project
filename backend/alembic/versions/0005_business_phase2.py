@@ -29,6 +29,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """处理`upgrade`相关逻辑。"""
     conn = op.get_bind()
     inspector = inspect(conn)
 
@@ -113,7 +114,7 @@ def upgrade() -> None:
             comment="乐观锁版本号",
         ))
 
-    # ----------------------------------------------------------------- 5. flow_execution
+    # ----------------------------------------------------------------- 5. 流程执行记录 flow_execution
     if "flow_execution" not in inspector.get_table_names():
         op.create_table(
             "flow_execution",
@@ -155,7 +156,7 @@ def upgrade() -> None:
             "ON flow_execution (project_id, status)"
         ))
 
-    # ----------------------------------------------------------------- 6. action_execution
+    # ----------------------------------------------------------------- 6. 动作执行记录 action_execution
     if "action_execution" not in inspector.get_table_names():
         op.create_table(
             "action_execution",
@@ -206,19 +207,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """处理`downgrade`相关逻辑。"""
     conn = op.get_bind()
 
-    # 6. action_execution
+    # 6. 动作执行记录 action_execution
     conn.execute(sa.text("DROP TABLE IF EXISTS action_execution"))
 
-    # 5. flow_execution
+    # 5. 流程执行记录 flow_execution
     conn.execute(sa.text("DROP TABLE IF EXISTS flow_execution"))
 
     # 4. 乐观锁
     conn.execute(sa.text("ALTER TABLE business_action DROP COLUMN IF EXISTS revision"))
     conn.execute(sa.text("ALTER TABLE business_flow DROP COLUMN IF EXISTS revision"))
 
-    # 3. variable_ref FK
+    # 3. 变量引用外键 variable_ref FK
     conn.execute(sa.text("ALTER TABLE business_variable_ref DROP COLUMN IF EXISTS source_variable_id"))
     conn.execute(sa.text("ALTER TABLE business_variable_ref DROP COLUMN IF EXISTS target_variable_id"))
 

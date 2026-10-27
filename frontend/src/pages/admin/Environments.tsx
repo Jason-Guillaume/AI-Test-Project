@@ -5,35 +5,38 @@ import {
   Form,
   Input,
   Modal,
+  Select,
   Space,
   Switch,
   Tag,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { projectsApi } from '@/api/projects';
 import {
   environmentsApi,
-  type EnvironmentCreate,
   type EnvironmentUpdate,
+  type ProjectEnvironmentCreate,
 } from '@/api/environments';
 import type { Environment, Paginated } from '@/types';
 import {
+  EmptyState,
   ErrorState,
   LoadingState,
   PageContainer,
 } from '@/components/PageState';
 import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
 import { getErrorMessage } from '@/api/client';
+import { PageHeader } from '@/components/PageHeader';
 
 /**
  * 环境与目标服务配置页。
  *
- * 用途：维护全局「环境」列表，每个环境对应一个被测服务的 base_url 与网关前缀。
- * 数据来源：environmentsApi.list 分页查询（include_inactive=true 展示停用项）；
- *       写操作（create/update/setDefault/remove）成功后 invalidate 整个 ['environments'] 缓存。
+ * 用途：按项目维护独立的执行目标；环境类型可复用，各项目 URL 与请求头相互隔离。
+ * 数据来源：先选择项目，再查询该项目的环境绑定。
  * 权限：写操作仅平台管理员可用；后端对停用/默认环境有保护，前端 disabled 位与之一致。
  * 失败呈现：任一 mutation 失败通过 message.error 折叠展示 getErrorMessage(e)。
- * 空态：表格 emptyText 提示「系统会在表为空时回退到内置环境」；内置环境（无 id）不可编辑/删除。
+ * 空态：所选项目无环境时显示项目范围的空态与新增入口。
  */
 export function AdminEnvironmentsPage() {
   const { message } = App.useApp();
@@ -47,12 +50,19 @@ export function AdminEnvironmentsPage() {
   const [creating, setCreating] = useState(false);
   // 编辑目标：null 表示不编辑，非 null 表示正在编辑该环境
   const [editing, setEditing] = useState<Environment | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<number>();
+  const projectsQuery = useQuery({
+    queryKey: ['projects', 'environment-admin'],
+    queryFn: () => projectsApi.list({ page: 1, page_size: 200 }),
+  });
+  const projectId = selectedProjectId ?? projectsQuery.data?.items[0]?.id;
 
   // 列表查询：queryKey 同时带上分页与 include_inactive，翻页/搜索都能命中不同缓存槽
   const listQuery = useQuery({
-    queryKey: ['environments', { ...pagination, include_inactive: true }],
+    queryKey: ['environments', projectId, { ...pagination, include_inactive: true }],
     queryFn: () =>
-      environmentsApi.list({ ...pagination, include_inactive: true }),
+      environmentsApi.list({ ...pagination, include_inactive: true, project_id: projectId }),
+    enabled: projectId != null,
   });
 
   // 写操作成功后的统一缓存失效入口
@@ -60,7 +70,8 @@ export function AdminEnvironmentsPage() {
     queryClient.invalidateQueries({ queryKey: ['environments'] });
 
   const createMutation = useMutation({
-    mutationFn: environmentsApi.create,
+    mutationFn: ({ projectId, body }: { projectId: number; body: ProjectEnvironmentCreate }) =>
+      projectsApi.createEnvironment(projectId, body),
     // 成功后 toast + 失效列表 + 关闭弹窗
     onSuccess: () => {
       message.success('已创建');
@@ -70,9 +81,8 @@ export function AdminEnvironmentsPage() {
     onError: (e) => message.error(getErrorMessage(e)),
   });
   const updateMutation = useMutation({
-    // 更新需要同时带环境 name 与 body；body 内字段部分更新即可
-    mutationFn: ({ name, body }: { name: string; body: EnvironmentUpdate }) =>
-      environmentsApi.update(name, body),
+    mutationFn: ({ projectId, environmentId, body }: { projectId: number; environmentId: number; body: EnvironmentUpdate }) =>
+      projectsApi.updateEnvironment(projectId, environmentId, body),
     onSuccess: () => {
       message.success('已更新');
       invalidate();
@@ -81,17 +91,19 @@ export function AdminEnvironmentsPage() {
     onError: (e) => message.error(getErrorMessage(e)),
   });
   const setDefaultMutation = useMutation({
-    mutationFn: environmentsApi.setDefault,
+    mutationFn: ({ projectId, environmentId }: { projectId: number; environmentId: number }) =>
+      projectsApi.setDefaultEnvironment(projectId, environmentId),
     onSuccess: () => {
       message.success('已设为默认');
       invalidate();
     },
     onError: (e) => message.error(getErrorMessage(e)),
   });
-  const deleteMutation = useMutation({
-    mutationFn: environmentsApi.remove,
+  const toggleMutation = useMutation({
+    mutationFn: ({ projectId, environmentId, active }: { projectId: number; environmentId: number; active: boolean }) =>
+      projectsApi.updateEnvironment(projectId, environmentId, { is_active: active }),
     onSuccess: () => {
-      message.success('已删除');
+      message.success('环境状态已更新');
       invalidate();
     },
     onError: (e) => message.error(getErrorMessage(e)),
@@ -105,12 +117,11 @@ export function AdminEnvironmentsPage() {
     {
       title: '状态',
       key: 'state',
-      // 三态标签：启用/停用、是否默认、内置（无 id）
+      // 项目环境状态与默认项。
       render: (_: unknown, row: Environment) => (
         <Space size="small">
           {row.is_active ? <Tag color="blue">启用</Tag> : <Tag>停用</Tag>}
           {row.is_default && <Tag color="gold">默认</Tag>}
-          {!row.id && <Tag>内置</Tag>}
         </Space>
       ),
     },
@@ -118,30 +129,30 @@ export function AdminEnvironmentsPage() {
       title: '操作',
       key: 'actions',
       width: 240,
-      // 权限/保护：内置环境 (!row.id) 不允许编辑、设为默认、删除；默认环境不允许再改默认或删除
+      // 停用只关闭项目绑定，保留模板和历史执行引用。
       render: (_: unknown, row: Environment) => (
-        <Space>
+        <Space wrap>
           <Button
             size="small"
-            disabled={!row.id}
+            disabled={row.id == null}
             onClick={() => setEditing(row)}
           >
             编辑
           </Button>
           <Button
             size="small"
-            disabled={!row.id || row.is_default || !row.is_active}
-            onClick={() => setDefaultMutation.mutate(row.name)}
+            disabled={row.id == null || row.is_default || !row.is_active || projectId == null}
+            onClick={() => projectId != null && row.id != null && setDefaultMutation.mutate({ projectId, environmentId: row.id })}
           >
             设为默认
           </Button>
           <Button
             size="small"
-            danger
-            disabled={!row.id || row.is_default}
-            onClick={() => deleteMutation.mutate(row.name)}
+            danger={row.is_active}
+            disabled={row.id == null || projectId == null}
+            onClick={() => projectId != null && row.id != null && toggleMutation.mutate({ projectId, environmentId: row.id, active: !row.is_active })}
           >
-            删除
+            {row.is_active ? '停用' : '启用'}
           </Button>
         </Space>
       ),
@@ -149,6 +160,16 @@ export function AdminEnvironmentsPage() {
   ];
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
+  if (projectsQuery.isPending) return <LoadingState />;
+  if (projectsQuery.isError)
+    return (
+      <PageContainer>
+        <ErrorState error={projectsQuery.error} onRetry={projectsQuery.refetch} />
+      </PageContainer>
+    );
+  const projects = projectsQuery.data.items;
+  if (projects.length === 0)
+    return <PageContainer><EmptyState description="暂无项目，请先创建项目后再配置环境" /></PageContainer>;
   if (listQuery.isPending) return <LoadingState />;
   if (listQuery.isError)
     return (
@@ -161,12 +182,22 @@ export function AdminEnvironmentsPage() {
 
   return (
     <PageContainer>
+      <PageHeader title="环境配置" subtitle="按项目隔离执行环境与目标服务" />
       <Space
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
-        <span style={{ fontSize: 16, fontWeight: 500 }}>环境与目标服务配置</span>
-        <Button type="primary" onClick={() => setCreating(true)}>
-          新增环境
+        <Select
+          value={projectId}
+          style={{ width: 320 }}
+          placeholder="选择项目"
+          onChange={(value) => {
+            setSelectedProjectId(value);
+            setPagination((current) => ({ ...current, page: 1 }));
+          }}
+          options={projects.map((project) => ({ value: project.id, label: project.name }))}
+        />
+        <Button type="primary" disabled={projectId == null} onClick={() => setCreating(true)}>
+          新增项目环境
         </Button>
       </Space>
 
@@ -178,18 +209,17 @@ export function AdminEnvironmentsPage() {
         total={data.total}
         pagination={pagination}
         onPaginationChange={setPagination}
-        emptyText="暂无环境（系统会在表为空时回退到内置环境）"
+        emptyText="该项目暂无环境配置"
       />
 
       {creating && (
         <EnvironmentFormModal
-          title="新增环境"
+          title={`为 ${projects.find((project) => project.id === projectId)?.name ?? '项目'} 新增环境`}
           loading={createMutation.isPending}
           onCancel={() => setCreating(false)}
-          onSubmit={(body) =>
-            // 新建表单必然含环境标识 name；复用同一表单组件故做一次收窄。
-            createMutation.mutate(body as EnvironmentCreate)
-          }
+          onSubmit={(body) => {
+            if (projectId != null) createMutation.mutate({ projectId, body: body as ProjectEnvironmentCreate });
+          }}
         />
       )}
       {editing && (
@@ -198,9 +228,11 @@ export function AdminEnvironmentsPage() {
           editing={editing}
           loading={updateMutation.isPending}
           onCancel={() => setEditing(null)}
-          onSubmit={(body) =>
-            updateMutation.mutate({ name: editing.name, body })
-          }
+          onSubmit={(body) => {
+            if (projectId != null && editing.id != null) {
+              updateMutation.mutate({ projectId, environmentId: editing.id, body });
+            }
+          }}
         />
       )}
     </PageContainer>
@@ -210,8 +242,7 @@ export function AdminEnvironmentsPage() {
 /**
  * 环境新建/编辑共用表单弹窗。
  *
- * 用途：新建时收 name/display_name/base_url/... 等所有字段；
- *       编辑时 name 只读（后端不允许改环境标识），其余字段回填当前值。
+ * 用途：新建时收环境类型、项目展示名和目标地址；编辑时环境类型固定，只更新项目配置。
  * 是否发请求：本组件不发请求，仅通过 onSubmit 把校验后的 body 抛给父组件。
  * 校验：name 必填且匹配 ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,49}$（字母数字开头，可含 _ -）。
  * 失败呈现：Form 就地展示 rules 提示；提交进行中标记 loading 驱动 confirmLoading。
@@ -227,9 +258,9 @@ function EnvironmentFormModal({
   editing?: Environment;
   loading: boolean;
   onCancel: () => void;
-  onSubmit: (body: EnvironmentCreate | EnvironmentUpdate) => void;
+  onSubmit: (body: ProjectEnvironmentCreate | EnvironmentUpdate) => void;
 }) {
-  const [form] = Form.useForm<EnvironmentCreate>();
+  const [form] = Form.useForm<ProjectEnvironmentCreate & { default_headers_text: string }>();
   return (
     <Modal
       title={title}
@@ -238,7 +269,29 @@ function EnvironmentFormModal({
       confirmLoading={loading}
       onCancel={onCancel}
       destroyOnClose
-      onOk={() => form.validateFields().then((v) => onSubmit(v))}
+      onOk={() => form.validateFields().then((values) => {
+        let default_headers: Record<string, string>;
+        try {
+          const parsed = JSON.parse(values.default_headers_text || '{}');
+          if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error();
+          default_headers = Object.fromEntries(
+            Object.entries(parsed).map(([key, value]) => [key, String(value)]),
+          );
+        } catch {
+          form.setFields([{ name: 'default_headers_text', errors: ['请输入有效的 JSON 对象'] }]);
+          return;
+        }
+        onSubmit({
+          name: values.name,
+          display_name: values.display_name,
+          base_url: values.base_url,
+          gateway_prefix: values.gateway_prefix,
+          default_headers,
+          description: values.description,
+          is_default: values.is_default,
+          is_active: values.is_active,
+        } as ProjectEnvironmentCreate | EnvironmentUpdate);
+      })}
     >
       <Form
         layout="vertical"
@@ -250,6 +303,7 @@ function EnvironmentFormModal({
                 display_name: editing.display_name,
                 base_url: editing.base_url,
                 gateway_prefix: editing.gateway_prefix,
+                default_headers_text: JSON.stringify(editing.default_headers ?? {}, null, 2),
                 description: editing.description,
                 is_default: editing.is_default,
                 is_active: editing.is_active,
@@ -258,12 +312,13 @@ function EnvironmentFormModal({
                 display_name: '',
                 base_url: '',
                 gateway_prefix: '',
+                default_headers_text: '{}',
                 is_default: false,
                 is_active: true,
               }
         }
       >
-        {/* 环境标识 name 只在创建时出现；创建后不允许修改（后端约束） */}
+        {/* 环境标识创建后固定；每个项目独立配置自己的目标地址。 */}
         {!editing && (
           <Form.Item
             name="name"
@@ -283,11 +338,18 @@ function EnvironmentFormModal({
         <Form.Item name="display_name" label="展示名称">
           <Input />
         </Form.Item>
-        <Form.Item name="base_url" label="被测服务 base_url">
+        <Form.Item name="base_url" label="被测服务地址" rules={[{ required: !editing, message: '请输入被测服务地址' }]}>
           <Input placeholder="https://test-api.example.com" />
         </Form.Item>
         <Form.Item name="gateway_prefix" label="网关前缀">
           <Input placeholder="/api/v1" />
+        </Form.Item>
+        <Form.Item
+          name="default_headers_text"
+          label="默认请求头（JSON）"
+          extra="仅此项目的请求会使用这些请求头；执行环境选择器不会返回请求头内容。"
+        >
+          <Input.TextArea rows={3} placeholder={'{\n  "Authorization": "Bearer …"\n}'} />
         </Form.Item>
         <Form.Item name="description" label="说明">
           <Input.TextArea rows={2} maxLength={1000} />

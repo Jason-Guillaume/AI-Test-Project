@@ -74,6 +74,7 @@ def require_manage_project(db: Session, project_id: int, user: User) -> Project:
 
 
 def resolve_service_project_id(db: Session, service_id: int) -> int:
+    """解析并确定服务项目标识。"""
     row = db.get(MockService, service_id)
     if row is None:
         raise not_found("Mock 服务不存在")
@@ -81,6 +82,7 @@ def resolve_service_project_id(db: Session, service_id: int) -> int:
 
 
 def resolve_endpoint_project_id(db: Session, endpoint_id: int) -> int:
+    """解析并确定接口项目标识。"""
     row = db.get(MockEndpoint, endpoint_id)
     if row is None:
         raise not_found("Mock 接口不存在")
@@ -88,6 +90,7 @@ def resolve_endpoint_project_id(db: Session, endpoint_id: int) -> int:
 
 
 def resolve_scenario_project_id(db: Session, scenario_id: int) -> int:
+    """解析并确定场景项目标识。"""
     row = db.get(MockScenario, scenario_id)
     if row is None:
         raise not_found("Mock 场景不存在")
@@ -95,6 +98,7 @@ def resolve_scenario_project_id(db: Session, scenario_id: int) -> int:
 
 
 def resolve_execution_project_id(db: Session, execution_id: int) -> int:
+    """解析并确定执行记录项目标识。"""
     row = db.get(MockExecution, execution_id)
     if row is None:
         raise not_found("Mock 调用记录不存在")

@@ -26,6 +26,7 @@ from app.features.agent.tools import execution_tool, security_tool
 
 
 def _dump(obj) -> str:
+    """将输入数据转换为可序列化的字典。"""
     return json.dumps(sanitize_context(obj), ensure_ascii=False, default=str)
 
 
@@ -43,6 +44,7 @@ def _load_security_findings(ctx: NodeContext, state: AgentState, run_id: int) ->
 
 
 def result_analyzer_node(ctx: NodeContext, state: AgentState) -> dict:
+    """分析执行结果并更新智能体状态。"""
     project_id = state["project_id"]
     run_id = state.get("test_run_id")
 

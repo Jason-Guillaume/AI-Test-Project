@@ -27,7 +27,7 @@ import pytest
 
 from sqlalchemy import inspect, text
 
-from tests.conftest import BACKEND_DIR, TEST_DSN, unique
+from tests.conftest import BACKEND_DIR, TEST_DSN, migration_head, unique
 
 # 0013 建的 6 张表。
 ZAP_TABLES = frozenset(
@@ -59,6 +59,7 @@ _IFACE_OWNER = "zap-iface-owner"
 
 
 def _project(api, admin, name=None):
+    """通过 API 创建扫描测试项目并返回项目标识。"""
     r = api.post(
         "/projects", username=admin,
         json={"name": name or unique("zap-proj"), "description": "ZAP 扫描项目"},
@@ -85,6 +86,7 @@ def _user_id(username):
 
 
 def _add_member(api, admin, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}", username=admin,
         json={"user_id": user_id, "role": role},
@@ -116,6 +118,7 @@ def _target_body(**overrides):
 
 
 def _auth_body(**overrides):
+    """构造 ZAP 认证配置请求体。"""
     body = {
         "name": unique("auth"),
         "auth_mode": "BEARER_TOKEN",
@@ -127,6 +130,7 @@ def _auth_body(**overrides):
 
 
 def _profile_body(**overrides):
+    """构造 ZAP 扫描配置档案请求体。"""
     body = {
         "name": unique("profile"),
         "scan_mode": "API_PASSIVE",
@@ -139,6 +143,7 @@ def _profile_body(**overrides):
 
 
 def _tables(db):
+    """构造扫描相关数据库表结构快照。"""
     return {
         row[0]
         for row in db.execute(
@@ -151,6 +156,7 @@ def _tables(db):
 
 
 def _indexes(db):
+    """构造扫描相关数据库索引快照。"""
     return {
         row[0]
         for row in db.execute(
@@ -261,6 +267,7 @@ def _fixed_resolver(*address, record=None):
     result = [ipaddress.ip_address(item) for item in (address or (PUBLIC_IP,))]
 
     def resolver(host):
+        """构造可替换的项目环境解析器。"""
         if record is not None:
             record.append(host)
         return result
@@ -394,9 +401,10 @@ def _seed_alert_risks(db, project_id, job_id):
 
 
 class TestMigration:
-    def test_head_is_0017_and_tables_created(self, db):
+    def test_head_and_tables_created(self, db):
+        """验证`head`是否和`tables`创建场景及其预期结果。"""
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0017"
+        assert head == migration_head()
         assert ZAP_TABLES.issubset(_tables(db))
 
     def test_orm_matches_migrated_schema(self, db):
@@ -431,6 +439,7 @@ class TestMigration:
             assert name not in source, f"app/models/__init__.py 不应暴露 {name}"
 
     def test_partial_unique_indexes(self, db):
+        """验证`partial``unique``indexes`场景及其预期结果。"""
         indexes = _indexes(db)
         assert "uq_security_scan_finding_job_finding" in indexes
         assert "ix_security_scan_profile_code" in indexes
@@ -453,7 +462,7 @@ class TestMigration:
 
         tables = _tables(db)
         assert ZAP_TABLES.issubset(tables)
-        assert db.execute(text("select version_num from alembic_version")).scalar() == "0017"
+        assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
 
 
 # --------------------------------------------------------------------------- 范围守卫（§四 / §五 / §十五）
@@ -461,6 +470,7 @@ class TestMigration:
 
 class TestScopeGuard:
     def test_production_environment_detected(self):
+        """验证生产环境环境`detected`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import is_production_environment
 
         for name in (
@@ -470,12 +480,14 @@ class TestScopeGuard:
             assert is_production_environment(name), name
 
     def test_non_production_environment_not_flagged(self):
+        """验证`non`生产环境环境不`flagged`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import is_production_environment
 
         for name in ("dev", "test", "uat", "预发", "测试环境", None, ""):
             assert not is_production_environment(name), name
 
     def test_validate_target_url_normalizes_trailing_slash(self):
+        """验证校验目标URL`normalizes``trailing``slash`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import validate_target_url
 
         assert validate_target_url(
@@ -483,6 +495,7 @@ class TestScopeGuard:
         ) == BASE_URL
 
     def test_reserved_address_rejected(self):
+        """验证`reserved``address`被拒绝场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import validate_target_url
 
         for host in ("127.0.0.1", "10.0.0.1", "192.168.1.10", "169.254.169.254", "0.0.0.0", "::1"):
@@ -494,6 +507,7 @@ class TestScopeGuard:
                 raise AssertionError(f"保留地址未被拒绝：{host}")
 
     def test_scheme_credentials_rejected(self):
+        """验证`scheme``credentials`被拒绝场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import validate_target_url
 
         for url in (
@@ -529,6 +543,7 @@ class TestScopeGuard:
         ) == f"http://{PUBLIC_IP}:8443"
 
     def test_whitelist_entry_tolerates_scheme_credentials_and_paths(self):
+        """验证`whitelist``entry``tolerates``scheme``credentials`和`paths`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import validate_target_url
 
         for entry in (
@@ -759,6 +774,7 @@ class TestScopeGuard:
         assert not accepted, f"这些解析不出主机名的白名单条目被静默放行了：{accepted}"
 
     def test_redirect_restricted_to_same_host_when_no_allowlist(self):
+        """验证`redirect``restricted`到相同`host`当无`allowlist`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import assert_redirect_allowed
 
         assert_redirect_allowed(
@@ -772,6 +788,7 @@ class TestScopeGuard:
             raise AssertionError("跳转到其它主机未被拒绝")
 
     def test_redirect_allowed_when_in_whitelist(self):
+        """验证`redirect``allowed`当`in``whitelist`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import assert_redirect_allowed
 
         assert_redirect_allowed(
@@ -779,6 +796,7 @@ class TestScopeGuard:
         )
 
     def test_compile_path_regex_escapes_metacharacters(self):
+        """验证`compile`路径`regex``escapes``metacharacters`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import compile_path_regex
 
         assert compile_path_regex([]) is None
@@ -794,6 +812,7 @@ class TestScopeGuard:
             assert _re.search(pattern, candidate), candidate
 
     def test_default_active_exclude_regex_contains_high_risk_paths(self):
+        """验证默认启用状态`exclude``regex`包含高风险风险`paths`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import (
             HIGH_RISK_ACTIVE_PATH_PATTERNS,
             default_active_exclude_regex,
@@ -806,6 +825,7 @@ class TestScopeGuard:
             assert name in pattern, name
 
     def test_destructive_methods_and_blocked_actions(self):
+        """验证`destructive``methods`和被拦截`actions`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import (
             BLOCKED_ACTIVE_ACTIONS,
             DESTRUCTIVE_METHODS,
@@ -816,6 +836,7 @@ class TestScopeGuard:
         assert {"payment", "delete", "transfer", "bulk_update"}.issubset(BLOCKED_ACTIVE_ACTIONS)
 
     def test_active_scan_authorization_gate(self):
+        """验证启用状态扫描授权`gate`场景及其预期结果。"""
         from app.features.security_testing.zap.scope_guard import assert_active_scan_authorized
 
         # 非主动扫描一律放行。
@@ -843,11 +864,12 @@ class TestScopeGuard:
                 assert not blocked, (env, authorized, allowed)
 
 
-# --------------------------------------------------------------------------- OpenAPI 导出（§十三 出口）
+# --------------------------------------------------------------------------- OpenAPI 接口 文档导出 导出（§十三 出口）
 
 
 class TestOpenAPIExport:
     def test_document_shape_and_normalization(self, db):
+        """验证`document``shape`和`normalization`场景及其预期结果。"""
         from app.features.security_testing.zap.openapi_export import (
             OPENAPI_VERSION,
             build_openapi_document,
@@ -906,6 +928,7 @@ class TestOpenAPIExport:
         db.rollback()
 
     def test_truncation_reports_limit_in_description(self, db):
+        """验证`truncation``reports`上限`in`说明场景及其预期结果。"""
         from app.features.security_testing.zap.openapi_export import (
             build_openapi_document,
             count_interfaces,
@@ -922,6 +945,7 @@ class TestOpenAPIExport:
         assert "/iface/5" not in doc["paths"]
 
     def test_only_active_filters_draft_interfaces(self, db):
+        """验证仅启用状态`filters``draft``interfaces`场景及其预期结果。"""
         from app.features.security_testing.zap.openapi_export import build_openapi_document
 
         pid = _project_row(db)
@@ -1332,6 +1356,7 @@ class TestEvidenceRedaction:
 
 class TestScanTarget:
     def test_create_read_patch_delete(self, api, admin):
+        """验证创建读取局部更新删除场景及其预期结果。"""
         pid = _project(api, admin)
         r = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin, json=_target_body(),
@@ -1362,6 +1387,7 @@ class TestScanTarget:
         ).status_code == 404
 
     def test_list_pagination_shape(self, api, admin):
+        """验证列出`pagination``shape`场景及其预期结果。"""
         pid = _project(api, admin)
         assert api.post(
             f"/projects/{pid}/security/scan-targets", username=admin, json=_target_body(),
@@ -1374,6 +1400,7 @@ class TestScanTarget:
         assert len(body["items"]) == 1
 
     def test_entry_url_must_share_host_with_base(self, api, admin):
+        """验证`entry`URL`must``share``host`包含`base`场景及其预期结果。"""
         pid = _project(api, admin)
         r = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin,
@@ -1386,6 +1413,7 @@ class TestScanTarget:
         assert r.json()["code"] == "SECURITY_SCAN_SCOPE_VIOLATION"
 
     def test_non_public_base_url_rejected(self, api, admin):
+        """验证`non`公开`base`URL被拒绝场景及其预期结果。"""
         pid = _project(api, admin)
         for base in ("http://127.0.0.1/", "http://10.0.0.1/", "http://169.254.169.254/"):
             r = api.post(
@@ -1410,6 +1438,7 @@ class TestScanTarget:
         assert patch.json()["code"] == "SECURITY_SCAN_SCOPE_VIOLATION"
 
     def test_is_production_derived_from_environment(self, api, admin, db):
+        """验证是否生产环境`derived`从环境场景及其预期结果。"""
         env_id = _make_environment(db, "生产环境")
         pid = _project(api, admin)
         r = api.post(
@@ -1420,6 +1449,7 @@ class TestScanTarget:
         assert r.json()["is_production"] is True
 
     def test_unknown_environment_id_rejected(self, api, admin):
+        """验证未知环境标识被拒绝场景及其预期结果。"""
         pid = _project(api, admin)
         r = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin,
@@ -1428,6 +1458,7 @@ class TestScanTarget:
         assert r.status_code == 404, r.text
 
     def test_inflight_job_blocks_delete(self, api, admin, db):
+        """验证`inflight``job``blocks`删除场景及其预期结果。"""
         pid = _project(api, admin)
         target_id = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin, json=_target_body(),
@@ -1445,6 +1476,7 @@ class TestScanTarget:
         assert r.status_code == 403, r.text
 
     def test_editor_can_create_target(self, api, admin):
+        """验证`editor`可以创建目标场景及其预期结果。"""
         pid = _project(api, admin)
         editor = _user(api, admin, pid, "zap-e", role="editor")
         assert api.post(
@@ -1489,6 +1521,7 @@ def _profile(db, project_id, **overrides):
 
 class TestAuthProfile:
     def test_credential_never_returned_in_response(self, api, admin):
+        """验证`credential``never``returned``in`响应场景及其预期结果。"""
         pid = _project(api, admin)
         r = api.post(
             f"/projects/{pid}/security/scan-auth-profiles", username=admin,
@@ -1504,6 +1537,7 @@ class TestAuthProfile:
         assert "credential_encrypted" not in r.text
 
     def test_list_does_not_return_credential(self, api, admin):
+        """验证列出是否不返回`credential`场景及其预期结果。"""
         pid = _project(api, admin)
         api.post(
             f"/projects/{pid}/security/scan-auth-profiles", username=admin,
@@ -1516,6 +1550,7 @@ class TestAuthProfile:
         assert r.json()["items"][0]["has_credential"] is True
 
     def test_credential_stored_as_ciphertext(self, api, admin, db):
+        """验证`credential``stored``as``ciphertext`场景及其预期结果。"""
         pid = _project(api, admin)
         api.post(
             f"/projects/{pid}/security/scan-auth-profiles", username=admin,
@@ -1553,6 +1588,7 @@ class TestAuthProfile:
         assert r.json()["code"] == "SECURITY_SCAN_PROFILE_INVALID" or r.json()["code"]
 
     def test_update_rotates_and_removes_credential(self, api, admin, db):
+        """验证更新`rotates`和`removes``credential`场景及其预期结果。"""
         pid = _project(api, admin)
         r = api.post(
             f"/projects/{pid}/security/scan-auth-profiles", username=admin,
@@ -1589,6 +1625,7 @@ class TestAuthProfile:
         assert stored is None
 
     def test_delete(self, api, admin):
+        """验证删除场景及其预期结果。"""
         pid = _project(api, admin)
         profile_id = api.post(
             f"/projects/{pid}/security/scan-auth-profiles", username=admin, json=_auth_body(),
@@ -1598,6 +1635,7 @@ class TestAuthProfile:
         ).status_code == 204
 
     def test_member_cannot_create_auth_profile(self, api, admin):
+        """验证成员不能创建认证配置档案场景及其预期结果。"""
         pid = _project(api, admin)
         member = _user(api, admin, pid, "zap-m", role="member")
         r = api.post(
@@ -1611,6 +1649,7 @@ class TestAuthProfile:
 
 class TestScanProfile:
     def test_builtin_profiles_visible_and_protected(self, api, admin):
+        """验证内置`profiles``visible`和`protected`场景及其预期结果。"""
         from app.features.security_testing.zap.contracts import is_active_scan
 
         pid = _project(api, admin)
@@ -1629,6 +1668,7 @@ class TestScanProfile:
         assert all(item["exclude_paths"] for item in active)
 
     def test_builtin_profile_cannot_be_deleted_or_renamed_by_code(self, api, admin):
+        """验证内置配置档案不能`be``deleted`或`renamed`按代码场景及其预期结果。"""
         pid = _project(api, admin)
         builtin_id = [
             item["id"]
@@ -1662,6 +1702,7 @@ class TestScanProfile:
         assert r.json()["code"] == "SECURITY_SCAN_PROFILE_INVALID"
 
     def test_active_enabled_requires_active_mode(self, api, admin):
+        """验证启用状态启用状态需要启用状态`mode`场景及其预期结果。"""
         pid = _project(api, admin)
         r = api.post(
             f"/projects/{pid}/security/scan-profiles", username=admin,
@@ -1671,6 +1712,7 @@ class TestScanProfile:
         assert r.json()["code"] == "SECURITY_SCAN_PROFILE_INVALID"
 
     def test_custom_profile_crud_and_auth_binding(self, api, admin):
+        """验证自定义配置档案增删改查和认证绑定场景及其预期结果。"""
         pid = _project(api, admin)
         auth_id = api.post(
             f"/projects/{pid}/security/scan-auth-profiles", username=admin, json=_auth_body(),
@@ -1705,6 +1747,7 @@ class TestScanProfile:
         ).status_code == 204
 
     def test_auth_binding_must_be_same_project(self, api, admin):
+        """验证认证绑定`must``be`相同项目场景及其预期结果。"""
         pid = _project(api, admin)
         other = _project(api, admin)
         other_auth_id = api.post(
@@ -1717,6 +1760,7 @@ class TestScanProfile:
         assert r.status_code == 400, r.text
 
     def test_outsider_cannot_see_other_projects_profile(self, api, admin):
+        """验证`outsider`不能`see`其他`projects`配置档案场景及其预期结果。"""
         pid = _project(api, admin)
         profile_id = api.post(
             f"/projects/{pid}/security/scan-profiles", username=admin, json=_profile_body(),
@@ -1758,6 +1802,7 @@ class TestScanPlan:
         assert body["warning"]
 
     def test_plan_reports_limitations_without_zap(self, api, admin, db, monkeypatch):
+        """验证计划`reports``limitations`不带ZAP场景及其预期结果。"""
         from app.shared.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
@@ -1800,6 +1845,7 @@ class TestScanPlan:
 
 class TestScanJob:
     def test_create_refused_when_zap_disabled(self, api, admin, db, monkeypatch):
+        """验证创建`refused`当ZAP`disabled`场景及其预期结果。"""
         from app.shared.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
@@ -1816,6 +1862,7 @@ class TestScanJob:
         assert r.json()["code"] == "ZAP_SERVICE_UNAVAILABLE"
 
     def test_create_job_returns_pending(self, api, admin, db, monkeypatch):
+        """验证创建`job``returns``pending`场景及其预期结果。"""
         from app.shared.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
@@ -1838,6 +1885,7 @@ class TestScanJob:
         assert body["target_name"]
 
     def test_duplicate_target_job_rejected(self, api, admin, db, monkeypatch):
+        """验证重复目标`job`被拒绝场景及其预期结果。"""
         from app.shared.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
@@ -1904,6 +1952,7 @@ class TestScanJob:
         assert r.status_code == 403, r.text
 
     def test_cancel_pending_job(self, api, admin, db, monkeypatch):
+        """验证`cancel``pending``job`场景及其预期结果。"""
         from app.shared.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
@@ -1971,6 +2020,7 @@ class TestScanJob:
         assert body["generated_at"]
 
     def test_list_jobs_filters(self, api, admin, db):
+        """验证列出`jobs``filters`场景及其预期结果。"""
         pid = _project(api, admin)
         target_id = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin, json=_target_body(),
@@ -1990,6 +2040,7 @@ class TestScanJob:
         assert pending.json()["items"][0]["status"] == "PENDING"
 
     def test_cross_project_job_is_404(self, api, admin, db):
+        """验证跨项目项目`job`是否场景及其预期结果。"""
         pid = _project(api, admin)
         target_id = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin, json=_target_body(),
@@ -2008,6 +2059,7 @@ class TestScanJob:
             assert r.status_code == 404, path
 
     def test_unauthenticated_gets_401(self, api, admin):
+        """验证`unauthenticated``gets`场景及其预期结果。"""
         r = api.get("/security/zap/health")
         assert r.status_code == 401, r.text
 
@@ -2036,6 +2088,7 @@ class TestAlertSeverityFilter:
         _seed_alert_risks(db, project_id, job_id)
 
         def risks(severity=None):
+            """读取并筛选 ZAP 告警风险等级。"""
             result = job_service.alerts(db, project_id, user, job_id, 1, 100, severity=severity)
             return sorted(item.risk for item in result.items)
 
@@ -2151,6 +2204,7 @@ class TestAlertSeverityFilter:
 
 class TestZapHealth:
     def test_health_reports_not_available(self, api, admin, monkeypatch):
+        """验证`health``reports`不`available`场景及其预期结果。"""
         from app.shared.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
@@ -2197,6 +2251,7 @@ class TestZapHealth:
         original = zap_client.build_connector
 
         def spy(*args, **kwargs):
+            """记录被监视函数收到的调用参数。"""
             called.append(args)
             return original(*args, **kwargs)
 
@@ -2212,6 +2267,7 @@ class TestZapHealth:
 
 
 def _zap_on(monkeypatch, *, enabled=True, base_url=BASE_URL):
+    """检查测试环境是否启用了 ZAP。"""
     from app.shared.config import settings
 
     monkeypatch.setattr(settings, "ZAP_ENABLED", enabled, raising=False)
@@ -2230,8 +2286,10 @@ def _terminal_orchestrator(status="COMPLETED"):
         payload = {"status": "FAILED", "finished_at": datetime.now(), "error_code": "SECURITY_SCAN_FAILED"}
 
     def factory(connector):
+        """创建可控制响应的模拟 ZAP 客户端。"""
         class _Stub:
             def run(self, job_id):
+                """运行对应数据。"""
                 with SessionLocal() as session:
                     row = session.get(SecurityScanJob, job_id)
                     for key, value in payload.items():
@@ -2256,6 +2314,7 @@ class TestScanWorker:
         worker.stop()
 
     def test_tick_claims_pending_job_and_preserves_terminal_state(self, api, admin, db, monkeypatch):
+        """验证`tick``claims``pending``job`和`preserves``terminal`状态场景及其预期结果。"""
         _zap_on(monkeypatch, enabled=True)
         pid = _project(api, admin)
         target_id = api.post(
@@ -2310,8 +2369,10 @@ class TestScanWorker:
         calls = []
 
         def factory(connector):
+            """创建可控制响应的模拟 ZAP 客户端。"""
             class _Stub:
                 def run(self, job_id):
+                    """运行对应数据。"""
                     calls.append(job_id)
                     return "COMPLETED"
 
@@ -2404,8 +2465,10 @@ class TestScanWorker:
         seen = []
 
         def factory(connector):
+            """创建可控制响应的模拟 ZAP 客户端。"""
             class _Stub:
                 def run(self, job_id):
+                    """运行对应数据。"""
                     seen.append(job_id)
                     from app.shared.database import SessionLocal
                     from app.features.security_testing.zap.models.job import SecurityScanJob
@@ -2437,6 +2500,7 @@ class TestScanWorker:
             worker.stop()
 
     def test_start_spawns_thread_when_enabled(self, api, admin, db, monkeypatch):
+        """验证启动`spawns``thread`当启用状态场景及其预期结果。"""
         _zap_on(monkeypatch, enabled=True)
         pid = _project(api, admin)
         target_id = api.post(

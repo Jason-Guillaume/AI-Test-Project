@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.models.configuration import Environment
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.test_management.models.test_plan import TestPlan, TestPlanSuite
 from app.features.test_management.models.test_suite import TestSuite
 from app.features.test_management.schemas import (
@@ -36,10 +36,12 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(p: TestPlan) -> TestPlanResponse:
+    """构造接口响应数据。"""
     return TestPlanResponse.model_validate(p)
 
 
 def _ensure_unique_name(db: Session, project_id: int, name: str, *, exclude_id: int | None = None) -> None:
+    """确保`unique`名称。"""
     q = db.query(TestPlan).filter(TestPlan.project_id == project_id, TestPlan.name == name)
     if exclude_id is not None:
         q = q.filter(TestPlan.id != exclude_id)
@@ -55,6 +57,7 @@ class PlanService:
         status: str | None = None, keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestPlanListResponse:
+        """列出`plans`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TestPlan).filter(TestPlan.project_id == project_id)
         if status:
@@ -71,6 +74,7 @@ class PlanService:
     def create_plan(
         self, db: Session, project_id: int, body: TestPlanCreate, *, actor: User,
     ) -> TestPlanResponse:
+        """创建计划。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -80,9 +84,7 @@ class PlanService:
         if body.execution_mode not in TEST_EXECUTION_MODES:
             raise bad_request("执行模式取值非法")
         if body.environment_id is not None:
-            env = db.get(Environment, body.environment_id)
-            if env is None or not env.is_active:
-                raise not_found("环境不存在或已停用")
+            resolve_project_environment(db, project_id, body.environment_id)
         _ensure_unique_name(db, project_id, name)
         plan = TestPlan(
             project_id=project_id, name=name,
@@ -101,11 +103,13 @@ class PlanService:
         return _response(plan)
 
     def get_plan(self, db: Session, plan_id: int, user: User) -> TestPlanResponse:
+        """获取计划。"""
         return _response(self._get_or_404(db, plan_id, user))
 
     def update_plan(
         self, db: Session, plan_id: int, body: TestPlanUpdate, *, actor: User,
     ) -> TestPlanResponse:
+        """更新计划。"""
         plan = self._get_writable_or_404(db, plan_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -122,9 +126,7 @@ class PlanService:
         if "execution_mode" in data and data["execution_mode"] is not None and data["execution_mode"] not in TEST_EXECUTION_MODES:
             raise bad_request("执行模式取值非法")
         if "environment_id" in data and data["environment_id"] is not None:
-            env = db.get(Environment, data["environment_id"])
-            if env is None or not env.is_active:
-                raise not_found("环境不存在或已停用")
+            resolve_project_environment(db, plan.project_id, data["environment_id"])
         for field in ("description", "environment_id", "status", "execution_mode"):
             if field in data and data[field] is not None:
                 setattr(plan, field, data[field])
@@ -136,6 +138,7 @@ class PlanService:
         return _response(plan)
 
     def delete_plan(self, db: Session, plan_id: int, *, actor: User) -> None:
+        """删除计划。"""
         plan = self._get_writable_or_404(db, plan_id, actor)
         db.delete(plan)
         db.commit()
@@ -143,6 +146,7 @@ class PlanService:
     # -------------------------------------------------------------- 计划-套件关联
 
     def list_plan_suites(self, db: Session, plan_id: int, user: User) -> list[TestPlanSuiteResponse]:
+        """列出计划`suites`。"""
         self._get_or_404(db, plan_id, user)
         rows = (
             db.query(TestPlanSuite).filter(TestPlanSuite.plan_id == plan_id)
@@ -153,6 +157,7 @@ class PlanService:
     def add_plan_suite(
         self, db: Session, plan_id: int, body: TestPlanSuiteAdd, *, actor: User,
     ) -> TestPlanSuiteResponse:
+        """添加计划套件。"""
         plan = self._get_writable_or_404(db, plan_id, actor)
         suite = db.get(TestSuite, body.suite_id)
         if suite is None or suite.project_id != plan.project_id:
@@ -172,6 +177,7 @@ class PlanService:
         return TestPlanSuiteResponse.model_validate(row)
 
     def remove_plan_suite(self, db: Session, plan_suite_id: int, *, actor: User) -> None:
+        """移除计划套件。"""
         row = db.get(TestPlanSuite, plan_suite_id)
         if row is None:
             raise not_found("计划套件关联不存在")
@@ -180,6 +186,7 @@ class PlanService:
         db.commit()
 
     def _get_or_404(self, db: Session, plan_id: int, user: User) -> TestPlan:
+        """获取或。"""
         p = db.get(TestPlan, plan_id)
         if p is None:
             raise not_found("测试计划不存在")
@@ -187,6 +194,7 @@ class PlanService:
         return p
 
     def _get_writable_or_404(self, db: Session, plan_id: int, actor: User) -> TestPlan:
+        """获取可写或。"""
         p = db.get(TestPlan, plan_id)
         if p is None:
             raise not_found("测试计划不存在")

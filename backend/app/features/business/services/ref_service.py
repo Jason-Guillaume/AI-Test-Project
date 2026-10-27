@@ -28,6 +28,7 @@ from app.shared.errors import bad_request, not_found
 
 
 def _ref_response(ref: BusinessVariableRef) -> BusinessVariableRefResponse:
+    """构造`ref`响应数据。"""
     return BusinessVariableRefResponse.model_validate(ref)
 
 
@@ -37,6 +38,7 @@ class RefService:
     def list_variable_refs(
         self, db: Session, flow_id: int, user: User
     ) -> list[BusinessVariableRefResponse]:
+        """列出变量`refs`。"""
         get_project_or_404(db, resolve_flow_project_id(db, flow_id), user)
         items = (
             db.query(BusinessVariableRef)
@@ -49,6 +51,7 @@ class RefService:
     def create_variable_ref(
         self, db: Session, flow_id: int, body: BusinessVariableRefCreate, *, actor: User
     ) -> BusinessVariableRefResponse:
+        """创建变量`ref`。"""
         project = require_writable_project(db, resolve_flow_project_id(db, flow_id), actor)
         # 两个动作都必须属于当前流程，避免跨流程引用。
         source = db.get(BusinessAction, body.source_action_id)
@@ -91,6 +94,7 @@ class RefService:
         return _ref_response(ref)
 
     def delete_variable_ref(self, db: Session, ref_id: int, *, actor: User) -> None:
+        """删除变量`ref`。"""
         ref = db.get(BusinessVariableRef, ref_id)
         if ref is None:
             raise not_found("变量引用不存在")

@@ -75,6 +75,7 @@ class _Parsed:
     """curl 扫描中间结果。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self.method: str = "GET"
         self.url: str = ""
         self.headers: list[tuple[str, str]] = []
@@ -203,7 +204,7 @@ def _parse_urlencode(chunk: str) -> list[tuple[str, str]]:
 
 
 def _parse_form_field(chunk: str) -> tuple[str, str, bool]:
-    """-F key=value / key=@file / key=<file → (key, value, is_file)。"""
+    """解析 curl -F 表单字段格式：key=value、key=@file 或 key=<file，并返回字段名、字段值和文件标记。"""
     if "=" in chunk:
         key, _, value = chunk.partition("=")
         key = key.strip()
@@ -459,11 +460,13 @@ def _build_body(state: _Parsed, content_type: str | None) -> InternalBody:
 
 
 def _looks_json(raw: str) -> bool:
+    """判断文本是否为 JSON 格式。"""
     s = raw.lstrip()
     return s.startswith("{") or s.startswith("[")
 
 
 def _looks_form(raw: str) -> bool:
+    """判断请求体是否为表单格式。"""
     s = raw.strip()
     if not s or s[0] in "{[":
         return False
@@ -490,7 +493,7 @@ def _form_schema(fields: list[tuple[str, str]]) -> dict:
 
 
 def _multipart_schema(state: _Parsed) -> dict:
-    """multipart → {properties, files}。"""
+    """将 multipart 请求体转换为 properties 与 files 结构。"""
     props: dict[str, dict] = {}
     for name, value in state.multipart_fields:
         entry: dict = {"type": "string", "example": value}

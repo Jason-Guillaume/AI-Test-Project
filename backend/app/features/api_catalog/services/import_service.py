@@ -71,6 +71,7 @@ class ImportService:
     def preview(
         self, db: Session, project_id: int, body: ImportPreviewRequest, *, actor: User
     ) -> ImportPreviewResponse:
+        """预览对应数据。"""
         self._assert_writable(db, project_id, actor)
         schemas = _parse(body.source_type, body.content)
         items: list[ImportPreviewItem] = []
@@ -121,6 +122,7 @@ class ImportService:
     def confirm(
         self, db: Session, project_id: int, body: ImportConfirmRequest, *, actor: User
     ) -> ImportConfirmResponse:
+        """确认对应数据。"""
         self._assert_writable(db, project_id, actor)
         schemas = _parse(body.source_type, body.content)
         # 重新解析后按与预览相同的键去重；不信任预览缓存（幂等）。
@@ -134,7 +136,7 @@ class ImportService:
                 continue
             existing = _find_existing(db, project_id, schema.method, schema.path)
             if existing is None:
-                self._create_from_schema(db, project_id, schema, actor)
+                self._create_from_schema(db, project_id, schema, actor, body.user_module_id, body.tag_to_module_map)
                 created += 1
             elif existing.source_hash == schema.source_hash:
                 skipped += 1
@@ -172,6 +174,7 @@ class ImportService:
     # ---------------------------------------------------------------- 内部
 
     def _assert_writable(self, db: Session, project_id: int, actor: User) -> None:
+        """断言可写。"""
         from app.models.project import Project
 
         project = db.get(Project, project_id)
@@ -181,10 +184,12 @@ class ImportService:
             raise forbidden("需要项目成员权限")
 
     def _create_from_schema(
-        self, db: Session, project_id: int, schema: InternalApiSchema, actor: User
+        self, db: Session, project_id: int, schema: InternalApiSchema, actor: User,
+        user_module_id: int | None, tag_to_module_map: dict[str, int] | None,
     ) -> ApiInterface:
+        """创建从结构定义。"""
         module_id = _resolver.resolve(
-            db, project_id, schema, user_module_id=None, tag_to_module_map=None
+            db, project_id, schema, user_module_id=user_module_id, tag_to_module_map=tag_to_module_map
         )
         iface = ApiInterface(
             project_id=project_id,
@@ -217,6 +222,7 @@ class ImportService:
     def _update_from_schema(
         self, db: Session, iface: ApiInterface, schema: InternalApiSchema, actor: User
     ) -> None:
+        """更新从结构定义。"""
         diff = _compute_import_diff(db, iface, schema)
         # 字段更新（保留 module_id 除非 resolver 重新解析到不同模块；这里不移动模块，避免误改用户归类）。
         iface.name = schema.name[:200]
@@ -249,14 +255,18 @@ class ImportService:
 def _parse(source_type: str, content: str) -> list[InternalApiSchema]:
     """按 source_type 选 parser；CURL 单条，OPENAPI/SWAGGER 批量。"""
     st = (source_type or "").upper()
-    if st == "CURL":
-        return [parse_curl(content)]
-    if st in {"OPENAPI", "SWAGGER"}:
-        return parse_openapi(content)
+    try:
+        if st == "CURL":
+            return [parse_curl(content)]
+        if st in {"OPENAPI", "SWAGGER"}:
+            return parse_openapi(content)
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
     raise bad_request(f"暂不支持的导入来源：{source_type}")
 
 
 def _find_existing(db: Session, project_id: int, method: str, path: str) -> ApiInterface | None:
+    """查找`existing`。"""
     return (
         db.query(ApiInterface)
         .filter(

@@ -323,18 +323,14 @@ def test_dashboard_my_projects_is_deduplicated(api, admin):
     assert by_key["projects"]["value"] == 2
 
 
-def test_unconnected_modules_are_marked_not_connected(api, admin):
-    """看板对未接入模块返回「未接入」标记，而不是伪造的 0 统计。
-
-    缺陷已在 Phase-1 接入（bug 表 + CRUD），因此不再出现在未接入集合里，
-    而是和 projects/organizations 等一并作为真实计数参与统计。
-    """
+def test_dashboard_execution_and_report_cards_use_real_counts(api, admin):
+    """看板执行与报告卡片返回真实数量，不再返回未接入占位值。"""
     overview = api.get("/dashboard/overview", username=admin).json()
     by_key = {card["key"]: card for card in overview["stats"]}
 
-    # 未接入的能力：仍是 Phase-1 明确标记「未接入」的两项。
+    # 当前测试数据库没有执行或报告记录，真实计数应为零且不再标记未接入。
     for key in ("test_runs", "reports"):
-        assert by_key[key]["hint"] == "未接入", (key, by_key[key])
+        assert by_key[key]["hint"] != "未接入", (key, by_key[key])
         assert by_key[key]["value"] == 0
 
     # 已接入的模块返回真实计数，而不是「未接入」占位。

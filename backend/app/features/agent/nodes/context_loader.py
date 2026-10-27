@@ -28,6 +28,7 @@ from app.features.agent.tools import (
 
 
 def context_loader_node(ctx: NodeContext, state: AgentState) -> dict:
+    """加载项目、用户和测试相关上下文。"""
     project_id = state["project_id"]
     target_type = state.get("target_type")
     target_ids = state.get("target_ids") or []

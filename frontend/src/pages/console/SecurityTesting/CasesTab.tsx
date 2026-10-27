@@ -33,7 +33,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { securityApi } from '@/api/securityTesting';
 import { testManagementApi } from '@/api/testManagement';
 import { apiCatalogApi } from '@/api/apiCatalog';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { getErrorMessage } from '@/api/client';
 import { ErrorState, LoadingState } from '@/components/PageState';
 import {
@@ -266,6 +266,7 @@ export function CasesTab({ projectId }: { projectId: number }) {
 
       {executeOpen && (
         <ExecuteModal
+          projectId={projectId}
           cases={selectedCases}
           submitting={runMutation.isPending}
           onCancel={() => setExecuteOpen(false)}
@@ -317,7 +318,7 @@ function PlanPreviewModal({
   });
   const envsQuery = useQuery({
     queryKey: ['security-preview', projectId, 'envs'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100, include_inactive: false }),
+    queryFn: () => projectsApi.listEnvironments(projectId),
   });
 
   const apis: ApiInterface[] = apisQuery.data?.items ?? [];
@@ -537,11 +538,13 @@ function PlanPreviewModal({
 
 /** 执行 Modal：选择非生产环境后批量执行选中用例。 */
 function ExecuteModal({
+  projectId,
   cases,
   submitting,
   onCancel,
   onSubmit,
 }: {
+  projectId: number;
   cases: SecurityCaseDetail[];
   submitting: boolean;
   onCancel: () => void;
@@ -549,8 +552,8 @@ function ExecuteModal({
 }) {
   const [envId, setEnvId] = useState<number | undefined>(undefined);
   const envsQuery = useQuery({
-    queryKey: ['security-execute', 'envs'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100, include_inactive: false }),
+    queryKey: ['security-execute', projectId, 'envs'],
+    queryFn: () => projectsApi.listEnvironments(projectId),
   });
   const envs = (envsQuery.data?.items ?? []).filter((e) => e.id != null);
 

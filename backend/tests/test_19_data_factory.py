@@ -49,6 +49,7 @@ API = "/api/v1"
 
 
 def _create_project(api, admin, name=None):
+    """创建项目。"""
     r = api.post(
         "/projects", username=admin,
         json={"name": name or unique("proj"), "description": "data factory test"},
@@ -58,6 +59,7 @@ def _create_project(api, admin, name=None):
 
 
 def _dev_env(db, name="dev", admin_id=None):
+    """创建测试用开发环境配置。"""
     from app.models.configuration import Environment
 
     if admin_id is None:
@@ -82,6 +84,7 @@ def _stub_env(api, admin, db, stub):
     _whitelist(db, pid, stub.port, admin_id)
 
     def iface(method, path, name=None):
+        """创建 API 接口测试数据。"""
         return _make_iface(db, pid, method, path, name or unique("iface"))
 
     return pid, env_id, admin_id, iface
@@ -90,6 +93,7 @@ def _stub_env(api, admin, db, stub):
 def _make_fixture(api, admin, project_id, *, key, steps=None, outputs=None,
                   cleanup_policy="AFTER_CASE", status="ACTIVE", scope="CASE",
                   dependencies=None, cache_enabled=True):
+    """构造固定数据。"""
     body = {
         "name": key, "fixture_key": key, "entity_type": "TASK",
         "scope": scope, "status": status, "cache_enabled": cache_enabled,
@@ -103,6 +107,7 @@ def _make_fixture(api, admin, project_id, *, key, steps=None, outputs=None,
 
 def _make_provider(api, admin, project_id, *, provider_type, config_json,
                    name=None, enabled=True, risk_level=None):
+    """构造提供器。"""
     body = {
         "name": name or unique("prov"), "provider_type": provider_type,
         "config_json": config_json, "enabled": enabled,
@@ -130,6 +135,7 @@ def _db_connection(api, admin, project_id, env_id):
 
 
 def _db_policy(api, admin, project_id, env_id, tables, operations):
+    """为测试数据库写入访问策略。"""
     r = api.put(
         f"/projects/{project_id}/database-policies/{env_id}", username=admin,
         json={"enabled": True, "allowed_tables": tables, "allowed_operations": operations},
@@ -139,6 +145,7 @@ def _db_policy(api, admin, project_id, env_id, tables, operations):
 
 
 def _generate(api, admin, fixture_id, env_id, variables=None):
+    """生成对应数据。"""
     return api.post(
         f"/fixtures/{fixture_id}/generate", username=admin,
         json={"environment_id": env_id, "scope": "CASE", "variables": variables or {}},
@@ -147,6 +154,7 @@ def _generate(api, admin, fixture_id, env_id, variables=None):
 
 def _step(step_type, sort, *, name=None, config=None, provider_id=None, phase="GENERATE",
           on_failure="ABORT"):
+    """构造固定数据生成步骤。"""
     return {
         "phase": phase, "step_type": step_type,
         "name": name or step_type, "sort": sort,
@@ -166,18 +174,20 @@ def _task_seed_row(db, status="PENDING", name="seed"):
 
 
 def _task_status(db, row_id):
+    """读取指定任务的执行状态。"""
     return db.execute(
         text("SELECT status FROM td_sandbox_task WHERE id = :i"), {"i": row_id}
     ).scalar()
 
 
-# --------------------------------------------------------------------------- SUCCESS_TASK
+# --------------------------------------------------------------------------- 成功任务类型 SUCCESS_TASK
 
 
 class TestSuccessTask:
     """验收标准一：拿到声明的 task_id，中间步骤变量不出契约。"""
 
     def test_contract_exposes_only_declared_outputs(self, api, admin, db):
+        """验证`contract``exposes`仅`declared``outputs`场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/tasks", 200, {
                 "code": 0, "message": "ok",
@@ -279,13 +289,14 @@ class TestSuccessTask:
             assert r.json().get("code") == "DATA_RESOLVE_FAILED"
 
 
-# --------------------------------------------------------------------------- FAKER
+# --------------------------------------------------------------------------- 数据生成器 FAKER
 
 
 class TestFaker:
     """验收标准四：必须真调生成器，不能回退成配置字面量。"""
 
     def test_phone_is_generated_not_literal(self, api, admin, db):
+        """验证`phone`是否`generated`不`literal`场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, _iface = _stub_env(api, admin, db, stub)
             fixture = _make_fixture(
@@ -314,6 +325,7 @@ class TestFaker:
             assert isinstance(values[0], str) and isinstance(values[1], str)
 
     def test_illegal_generator_is_config_error(self, api, admin, db):
+        """验证`illegal`生成器是否配置错误场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, _iface = _stub_env(api, admin, db, stub)
             fixture = _make_fixture(
@@ -334,6 +346,7 @@ class TestReservedStep:
     """验收标准五：预留类型只保存不执行。"""
 
     def test_wait_step_fails_with_unsupported(self, api, admin, db):
+        """验证`wait``step``fails`包含`unsupported`场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, _iface = _stub_env(api, admin, db, stub)
             fixture = _make_fixture(
@@ -378,6 +391,7 @@ class TestDependencyChain:
     """依赖先于自己被生成，中间变量在依赖间传递但不出契约。"""
 
     def test_dependency_generates_first_and_injects(self, api, admin, db):
+        """验证`dependency``generates``first`和`injects`场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
             project_iface = iface("POST", "/projects", "创建项目")
@@ -428,6 +442,7 @@ class TestDependencyChain:
                 "${fixture.BASE_PROJECT.project_id}"
 
     def test_disabled_dependency_fails_generation(self, api, admin, db):
+        """验证`disabled``dependency``fails``generation`场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
             base = _make_fixture(
@@ -452,6 +467,7 @@ class TestDatabasePatch:
     """验收标准二：DATABASE_PATCH 只在白名单环境改 sandbox 表。"""
 
     def test_patch_updates_only_whitelisted_sandbox_row(self, api, admin, db):
+        """验证局部更新`updates`仅`whitelisted``sandbox``row`场景及其预期结果。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
         conn_id = _db_connection(api, admin, pid, env_id)
@@ -494,6 +510,7 @@ class TestDatabasePatch:
         assert after_count == before_count
 
     def test_non_whitelisted_table_rejected_and_recorded(self, api, admin, db):
+        """验证`non``whitelisted``table`被拒绝和`recorded`场景及其预期结果。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
         conn_id = _db_connection(api, admin, pid, env_id)
@@ -554,6 +571,7 @@ class TestDatabaseInsert:
     """DATABASE_INSERT 走白名单，插入 sandbox 表并返回主键。"""
 
     def test_insert_returns_id_and_appends_one_row(self, api, admin, db):
+        """验证`insert``returns`标识和`appends``one``row`场景及其预期结果。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
         conn_id = _db_connection(api, admin, pid, env_id)
@@ -619,6 +637,7 @@ class TestProductionBlocked:
     """验收标准三：生产环境试跑数据库 Provider 失败且表不变。"""
 
     def test_production_refuses_and_leaves_table_untouched(self, api, admin, db):
+        """验证生产环境`refuses`和`leaves``table``untouched`场景及其预期结果。"""
         prod_env_id = _dev_env(db, "production")
         pid = _create_project(api, admin)
         conn_id = _db_connection(api, admin, pid, prod_env_id)
@@ -655,13 +674,14 @@ class TestProductionBlocked:
         assert detail["error_code"] == "DATABASE_ENVIRONMENT_FORBIDDEN"
 
 
-# --------------------------------------------------------------------------- Cleanup
+# --------------------------------------------------------------------------- 清理流程
 
 
 class TestCleanup:
     """验收标准：Cleanup 失败不得覆盖原错误码。"""
 
     def test_cleanup_failure_keeps_generation_error_code(self, api, admin, db):
+        """验证清理失败`keeps``generation`错误代码场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"task_id": 7, "name": "t"}})
@@ -765,6 +785,7 @@ class TestCleanup:
 
 class TestProviderTestEndpoint:
     def test_static_provider_test_returns_detail(self, api, admin, db):
+        """验证`static`提供器测试`returns`详情场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, _iface = _stub_env(api, admin, db, stub)
             prov = _make_provider(
@@ -790,6 +811,7 @@ class TestProviderTestEndpoint:
             assert rec["output_snapshot"]["secret"] == "******", rec["output_snapshot"]
 
     def test_disabled_provider_test_refused(self, api, admin, db):
+        """验证`disabled`提供器测试`refused`场景及其预期结果。"""
         with StubServer() as stub:
             pid, env_id, _aid, _iface = _stub_env(api, admin, db, stub)
             prov = _make_provider(

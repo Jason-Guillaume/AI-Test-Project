@@ -6,7 +6,8 @@
 
 | 需求 | 文档 |
 |---|---|
-| 本地启动前后端联调 | [getting-started.md](getting-started.md) |
+| 本地快速启动 | [根目录启动指南](../local-startup-guide.md) |
+| 本地启动详细说明与故障排查 | [getting-started.md](getting-started.md) |
 | 了解编码规范 / 红线 | [coding-conventions.md](coding-conventions.md) |
 | 了解项目当前阶段与历史决策 | [development.md](development.md)（开发日志索引） |
 | 查看某模块的交付结论 | 见下方「交付报告」 |
@@ -19,6 +20,7 @@
 | [target-architecture.md](target-architecture.md) | 目标架构与阶段一设计 |
 | [migration-plan.md](migration-plan.md) | 旧→新 API 映射、字段与状态码差异 |
 | [architecture-audit-unification-plan.md](architecture-audit-unification-plan.md) | 前后端架构审计与统一改造计划 |
+| [agent-governance-runtime.md](agent-governance-runtime.md) | Agent、Skill、MCP 与任务 LangGraph 运行边界及配置步骤 |
 
 ## 开发流程与规范
 
@@ -26,6 +28,7 @@
 |---|---|
 | [coding-conventions.md](coding-conventions.md) | 编码规范（中文注释规则、架构不变量、红线、变更流程） |
 | [development.md](development.md) | 项目开发日志索引，章节在 [development/](development/) 目录 |
+| [self-designed-security-agent.md](self-designed-security-agent.md) | 自研安全评估 Agent、工具治理、审批边界与迁移说明 |
 
 ## 功能开发计划与需求
 

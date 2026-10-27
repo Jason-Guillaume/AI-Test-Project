@@ -30,6 +30,12 @@ EVENT_TYPES: tuple[str, ...] = (
     EVENT_TYPE_DEFECT_CREATED,
     EVENT_TYPE_DEFECT_ASSIGNED,
     EVENT_TYPE_DEFECT_STATUS_CHANGED,
+    "task.plan_ready",
+    "task.completed",
+    "task.completed_with_issues",
+    "task.failed",
+    "task.waiting_model",
+    "task.reconciliation_required",
 )
 
 

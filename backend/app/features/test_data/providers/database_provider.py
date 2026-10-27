@@ -45,6 +45,7 @@ class DatabaseProvider(BaseProvider):
     provider_type = "DATABASE_INSERT"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import DatabaseProviderConfig
 
         cfg = self.load_config(config_of(ctx), DatabaseProviderConfig)
@@ -124,6 +125,7 @@ class DatabaseProvider(BaseProvider):
 
     @staticmethod
     def _load_policy(db, project_id: int, environment_id: int) -> DatabaseAccessPolicy | None:
+        """加载策略。"""
         return db.query(DatabaseAccessPolicy).filter(
             DatabaseAccessPolicy.project_id == project_id,
             DatabaseAccessPolicy.environment_id == environment_id,

@@ -79,6 +79,7 @@ def list_strategies(
     category: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
+    """列出`strategies`。"""
     # response_model=list 时返回 items；前端按需改用 ListResponse。
     return _STRATEGY.list_strategies(
         db, project_id, user, category=category, keyword=keyword, page=page, page_size=page_size,
@@ -96,11 +97,13 @@ def create_strategy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建策略。"""
     return _STRATEGY.create_strategy(db, project_id, body, actor=user)
 
 
 @router.get("/test-strategies/{strategy_id}", summary="测试策略详情")
 def get_strategy(strategy_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取策略。"""
     return _STRATEGY.get_strategy(db, strategy_id, user)
 
 
@@ -111,11 +114,13 @@ def update_strategy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新策略。"""
     return _STRATEGY.update_strategy(db, strategy_id, body, actor=user)
 
 
 @router.delete("/test-strategies/{strategy_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试策略")
 def delete_strategy(strategy_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除策略。"""
     _STRATEGY.delete_strategy(db, strategy_id, actor=user)
     return None
 
@@ -135,6 +140,7 @@ def list_points(
     status: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
+    """列出`points`。"""
     return _POINT.list_points(
         db, project_id, user, strategy_id=strategy_id, target_type=target_type,
         status=status, keyword=keyword, page=page, page_size=page_size,
@@ -146,11 +152,13 @@ def create_point(
     project_id: int, body: TestPointCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建检查点。"""
     return _POINT.create_point(db, project_id, body, actor=user)
 
 
 @router.get("/test-points/{point_id}", summary="测试点详情")
 def get_point(point_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取检查点。"""
     return _POINT.get_point(db, point_id, user)
 
 
@@ -159,11 +167,13 @@ def update_point(
     point_id: int, body: TestPointUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新检查点。"""
     return _POINT.update_point(db, point_id, body, actor=user)
 
 
 @router.delete("/test-points/{point_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试点")
 def delete_point(point_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除检查点。"""
     _POINT.delete_point(db, point_id, actor=user)
     return None
 
@@ -183,6 +193,7 @@ def list_cases(
     status: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
+    """列出`cases`。"""
     return _CASE.list_cases(
         db, project_id, user, test_point_id=test_point_id, target_type=target_type,
         status=status, keyword=keyword, page=page, page_size=page_size,
@@ -194,16 +205,19 @@ def create_case(
     project_id: int, body: TestCaseCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建用例。"""
     return _CASE.create_case(db, project_id, body, actor=user)
 
 
 @router.get("/test-cases/{case_id}", summary="测试用例基本信息")
 def get_case(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取用例。"""
     return _CASE.get_case(db, case_id, user)
 
 
 @router.get("/test-cases/{case_id}/detail", summary="测试用例聚合详情（前置条件/数据/步骤/断言）")
 def get_case_detail(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取用例详情。"""
     return _CASE.get_case_detail(db, case_id, user)
 
 
@@ -212,11 +226,13 @@ def update_case(
     case_id: int, body: TestCaseUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新用例。"""
     return _CASE.update_case(db, case_id, body, actor=user)
 
 
 @router.delete("/test-cases/{case_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试用例")
 def delete_case(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除用例。"""
     _CASE.delete_case(db, case_id, actor=user)
     return None
 
@@ -226,6 +242,7 @@ def delete_case(case_id: int, db: Session = Depends(get_db), user: User = Depend
 
 @router.get("/test-cases/{case_id}/preconditions", response_model=list, summary="前置条件列表")
 def list_preconditions(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`preconditions`。"""
     return _CASE.list_preconditions(db, case_id, user)
 
 
@@ -234,6 +251,7 @@ def create_precondition(
     case_id: int, body: TestCasePreconditionCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建前置条件。"""
     return _CASE.create_precondition(db, case_id, body, actor=user)
 
 
@@ -242,11 +260,13 @@ def update_precondition(
     precondition_id: int, body: TestCasePreconditionUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新前置条件。"""
     return _CASE.update_precondition(db, precondition_id, body, actor=user)
 
 
 @router.delete("/test-case-preconditions/{precondition_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除前置条件")
 def delete_precondition(precondition_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除前置条件。"""
     _CASE.delete_precondition(db, precondition_id, actor=user)
     return None
 
@@ -256,6 +276,7 @@ def delete_precondition(precondition_id: int, db: Session = Depends(get_db), use
 
 @router.get("/test-cases/{case_id}/data", response_model=list, summary="测试数据列表")
 def list_data(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出数据。"""
     return _CASE.list_data(db, case_id, user)
 
 
@@ -264,6 +285,7 @@ def create_data(
     case_id: int, body: TestCaseDataCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建数据。"""
     return _CASE.create_data(db, case_id, body, actor=user)
 
 
@@ -272,20 +294,23 @@ def update_data(
     data_id: int, body: TestCaseDataUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新数据。"""
     return _CASE.update_data(db, data_id, body, actor=user)
 
 
 @router.delete("/test-case-data/{data_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试数据")
 def delete_data(data_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除数据。"""
     _CASE.delete_data(db, data_id, actor=user)
     return None
 
 
-# --------------------------------------------------------------------------- 用例子实体：所需 Fixture
+# --------------------------------------------------------------------------- 用例子实体：所需 固定数据 Fixture
 
 
 @router.get("/test-cases/{case_id}/fixtures", response_model=list, summary="所需 Fixture 列表")
 def list_case_fixtures(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出用例`fixtures`。"""
     return _CASE.list_fixtures(db, case_id, user)
 
 
@@ -294,6 +319,7 @@ def replace_case_fixtures(
     case_id: int, body: TestCaseFixtureReplace,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """替换用例关联的固定数据。"""
     return _CASE.replace_fixtures(db, case_id, body, actor=user)
 
 
@@ -302,6 +328,7 @@ def replace_case_fixtures(
 
 @router.get("/test-cases/{case_id}/steps", response_model=list, summary="测试步骤列表")
 def list_steps(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`steps`。"""
     return _CASE.list_steps(db, case_id, user)
 
 
@@ -310,6 +337,7 @@ def create_step(
     case_id: int, body: TestStepCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建`step`。"""
     return _CASE.create_step(db, case_id, body, actor=user)
 
 
@@ -318,11 +346,13 @@ def update_step(
     step_id: int, body: TestStepUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新`step`。"""
     return _CASE.update_step(db, step_id, body, actor=user)
 
 
 @router.delete("/test-steps/{step_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试步骤")
 def delete_step(step_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除`step`。"""
     _CASE.delete_step(db, step_id, actor=user)
     return None
 
@@ -332,6 +362,7 @@ def delete_step(step_id: int, db: Session = Depends(get_db), user: User = Depend
 
 @router.get("/test-cases/{case_id}/assertions", response_model=list, summary="断言列表")
 def list_assertions(case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`assertions`。"""
     return _CASE.list_assertions(db, case_id, user)
 
 
@@ -340,6 +371,7 @@ def create_assertion(
     case_id: int, body: TestAssertionCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建断言。"""
     return _CASE.create_assertion(db, case_id, body, actor=user)
 
 
@@ -348,11 +380,13 @@ def update_assertion(
     assertion_id: int, body: TestAssertionUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新断言。"""
     return _CASE.update_assertion(db, assertion_id, body, actor=user)
 
 
 @router.delete("/test-assertions/{assertion_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除断言")
 def delete_assertion(assertion_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除断言。"""
     _CASE.delete_assertion(db, assertion_id, actor=user)
     return None
 
@@ -370,6 +404,7 @@ def list_suites(
     suite_type: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
+    """列出`suites`。"""
     return _SUITE.list_suites(
         db, project_id, user, suite_type=suite_type, keyword=keyword, page=page, page_size=page_size,
     ).items
@@ -380,11 +415,13 @@ def create_suite(
     project_id: int, body: TestSuiteCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建套件。"""
     return _SUITE.create_suite(db, project_id, body, actor=user)
 
 
 @router.get("/test-suites/{suite_id}", summary="测试套件详情")
 def get_suite(suite_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取套件。"""
     return _SUITE.get_suite(db, suite_id, user)
 
 
@@ -393,11 +430,13 @@ def update_suite(
     suite_id: int, body: TestSuiteUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新套件。"""
     return _SUITE.update_suite(db, suite_id, body, actor=user)
 
 
 @router.delete("/test-suites/{suite_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试套件")
 def delete_suite(suite_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除套件。"""
     _SUITE.delete_suite(db, suite_id, actor=user)
     return None
 
@@ -407,6 +446,7 @@ def delete_suite(suite_id: int, db: Session = Depends(get_db), user: User = Depe
 
 @router.get("/test-suites/{suite_id}/cases", response_model=list, summary="套件下的用例列表")
 def list_suite_cases(suite_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出套件`cases`。"""
     return _SUITE.list_suite_cases(db, suite_id, user)
 
 
@@ -415,11 +455,13 @@ def add_suite_case(
     suite_id: int, body: TestSuiteCaseAdd,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """添加套件用例。"""
     return _SUITE.add_suite_case(db, suite_id, body, actor=user)
 
 
 @router.delete("/test-suite-cases/{suite_case_id}", status_code=status.HTTP_204_NO_CONTENT, summary="从套件移除用例")
 def remove_suite_case(suite_case_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """移除套件用例。"""
     _SUITE.remove_suite_case(db, suite_case_id, actor=user)
     return None
 
@@ -437,6 +479,7 @@ def list_plans(
     status: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
+    """列出`plans`。"""
     return _PLAN.list_plans(
         db, project_id, user, status=status, keyword=keyword, page=page, page_size=page_size,
     ).items
@@ -447,11 +490,13 @@ def create_plan(
     project_id: int, body: TestPlanCreate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建计划。"""
     return _PLAN.create_plan(db, project_id, body, actor=user)
 
 
 @router.get("/test-plans/{plan_id}", summary="测试计划详情")
 def get_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取计划。"""
     return _PLAN.get_plan(db, plan_id, user)
 
 
@@ -460,11 +505,13 @@ def update_plan(
     plan_id: int, body: TestPlanUpdate,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新计划。"""
     return _PLAN.update_plan(db, plan_id, body, actor=user)
 
 
 @router.delete("/test-plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试计划")
 def delete_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除计划。"""
     _PLAN.delete_plan(db, plan_id, actor=user)
     return None
 
@@ -474,6 +521,7 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db), user: User = Depend
 
 @router.get("/test-plans/{plan_id}/suites", response_model=list, summary="计划下的套件列表")
 def list_plan_suites(plan_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出计划`suites`。"""
     return _PLAN.list_plan_suites(db, plan_id, user)
 
 
@@ -482,11 +530,13 @@ def add_plan_suite(
     plan_id: int, body: TestPlanSuiteAdd,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """添加计划套件。"""
     return _PLAN.add_plan_suite(db, plan_id, body, actor=user)
 
 
 @router.delete("/test-plan-suites/{plan_suite_id}", status_code=status.HTTP_204_NO_CONTENT, summary="从计划移除套件")
 def remove_plan_suite(plan_suite_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """移除计划套件。"""
     _PLAN.remove_plan_suite(db, plan_suite_id, actor=user)
     return None
 
@@ -504,16 +554,19 @@ def create_run(
     plan_id: int, body: TestRunCreateRequest,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建运行。"""
     return _RUN.create_and_execute_run(db, plan_id, body, actor=user)
 
 
 @router.get("/test-runs/{run_id}", response_model=TestRunResponse, summary="测试执行记录详情")
 def get_run(run_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取运行。"""
     return _RUN.get_run(db, run_id, user)
 
 
 @router.get("/test-runs/{run_id}/cases", response_model=CaseExecutionListResponse, summary="用例执行记录列表")
 def list_case_executions(run_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出用例`executions`。"""
     return _RUN.list_case_executions(db, run_id, user)
 
 
@@ -525,4 +578,5 @@ def list_runs(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
+    """列出`runs`。"""
     return _RUN.list_runs(db, project_id, user, page=page, page_size=page_size)

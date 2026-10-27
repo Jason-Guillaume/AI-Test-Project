@@ -48,6 +48,7 @@ def assert_no_forbidden_fields(result: Any) -> None:
     """
 
     def walk(node: Any) -> None:
+        """遍历对应数据。"""
         if isinstance(node, dict):
             for key, value in node.items():
                 if str(key).lower() in FORBIDDEN_LLM_KEYS:
@@ -61,6 +62,7 @@ def assert_no_forbidden_fields(result: Any) -> None:
 
 
 def _dump(obj) -> str:
+    """将输入数据转换为可序列化的字典。"""
     return json.dumps(sanitize_context(obj), ensure_ascii=False, default=str)
 
 
@@ -173,6 +175,7 @@ _RETRY_SYSTEM = """你是接口测试平台的测试 Agent。下面是生成的�
 
 
 def validator_node(ctx: NodeContext, state: AgentState) -> dict:
+    """执行校验器节点并返回更新后的智能体状态。"""
     drafts_data = state.get("generated_test_cases") or []
     if not drafts_data:
         return {"validation_errors": [], "current_stage": "TEST_CASE_REVIEW"}

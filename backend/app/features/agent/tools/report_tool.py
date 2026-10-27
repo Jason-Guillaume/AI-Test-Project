@@ -32,7 +32,7 @@ def get_report_brief(db: Session, report_id: int, user: User) -> dict:
 
     含 AI 总结 overview 供 Agent 二次归纳；webhook/secret 绝不在此出现（§三一）。
     """
-    report = _REPORT.get_report_orm(db, report_id, user)  # viewer+ + 404
+    report = _REPORT.get_report_orm(db, report_id, user)  # viewer+ 及以上角色无权访问时返回 404
     ai = report.ai_summary if isinstance(report.ai_summary, dict) else {}
     brief = {
         "report_id": report.id,

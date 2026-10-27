@@ -90,7 +90,7 @@ class ReportService:
     def build_report(
         self, db: Session, test_run_id: int, *, actor: User,
         generate_ai_summary: bool = True, regenerate: bool = False,
-        provider: Any = None,
+        provider: Any = None, ai_summary_instructions: str | None = None,
     ) -> ReportGenerateResponse:
         """为一次 TestRun 生成正式报告（代码统计 + 可选 AI 总结）。
 
@@ -118,7 +118,10 @@ class ReportService:
         )
         if existing is not None:
             if regenerate:
-                self._generate_ai_summary(db, existing, self._rows_for_run(db, test_run_id), provider)
+                self._generate_ai_summary(
+                    db, existing, self._rows_for_run(db, test_run_id), provider,
+                    additional_instructions=ai_summary_instructions,
+                )
                 db.commit()
                 db.refresh(existing)
             return ReportGenerateResponse(report_id=existing.id, status="COMPLETED")
@@ -158,7 +161,10 @@ class ReportService:
             report.status = "COMPLETED"
             if generate_ai_summary:
                 # AI 总结失败不影响报告 COMPLETED（§九），内部已 try/except 兜底。
-                self._generate_ai_summary(db, report, rows, provider)
+                self._generate_ai_summary(
+                    db, report, rows, provider,
+                    additional_instructions=ai_summary_instructions,
+                )
             db.commit()
         except Exception as exc:  # noqa: BLE001 — 统计阶段异常要把报告置 FAILED 并上报。
             report.status = "FAILED"
@@ -197,7 +203,7 @@ class ReportService:
         report = db.get(TestReport, report_id)
         if report is None:
             raise not_found("测试报告不存在")
-        get_project_or_404(db, report.project_id, user)  # viewer+
+        get_project_or_404(db, report.project_id, user)  # viewer+ 及以上角色
 
         run = db.get(TestRun, report.test_run_id) if report.test_run_id else None
         rows = self._rows_for_run(db, report.test_run_id) if report.test_run_id else []
@@ -517,7 +523,7 @@ class ReportService:
                 return "ENVIRONMENT_ERROR"
             return "EXECUTION_ERROR"
 
-        # status == "FAILED"
+        # 状态判断：status == "FAILED"
         if any(s in err_msg for s in _ENV_SIGNALS):
             return "ENVIRONMENT_ERROR"
         if any(s in err_msg for s in _DATA_SIGNALS):
@@ -584,6 +590,7 @@ class ReportService:
     def _generate_ai_summary(
         self, db: Session, report: TestReport,
         rows: list[tuple[CaseExecution, TestCase | None]], provider: Any,
+        *, additional_instructions: str | None = None,
     ) -> None:
         """调用 LLM 生成结构化 AI 总结；失败置空，不影响报告 COMPLETED（§九）。"""
         try:
@@ -592,7 +599,7 @@ class ReportService:
                 from app.features.agent.providers.llm_provider import ProductionLLMProvider
                 provider = ProductionLLMProvider(db)
             payload = self._build_ai_payload(report, rows)
-            result = generate_ai_summary(provider, payload)
+            result = generate_ai_summary(provider, payload, additional_instructions=additional_instructions)
             if result is not None:
                 report.ai_summary = result
                 report.ai_summary_version = "summary-v1"

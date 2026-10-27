@@ -28,6 +28,7 @@ from app.shared.errors import not_found
 
 
 def _execution_response(execution: FlowExecution) -> FlowExecutionResponse:
+    """构造执行记录响应数据。"""
     return FlowExecutionResponse.model_validate(execution)
 
 

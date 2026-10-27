@@ -49,6 +49,7 @@ class BuiltQuery:
 
 
 def _ident(value: Any, *, what: str) -> sql.Identifier:
+    """校验并安全引用 SQL 表名或列名。"""
     text = validate_identifier(value, field=what)
     return sql.Identifier(text)
 

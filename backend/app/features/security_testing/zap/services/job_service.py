@@ -65,6 +65,7 @@ from app.features.security_testing.zap.services import (
     profile_service,
     target_service,
 )
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.test_management.models.execution import TestRun
 from app.models.configuration import Environment
 from app.models.identity import User
@@ -133,11 +134,11 @@ def _check_test_run(db: Session, project_id: int, test_run_id: int | None) -> No
         raise AppError("关联的测试执行记录不存在", status_code=404, code=CODE_NOT_FOUND)
 
 
-def _environment(db: Session, environment_id: int | None) -> Environment | None:
-    """读环境；空 ID 返回 None，不视为错误。"""
+def _environment(db: Session, project_id: int, environment_id: int | None) -> Environment | None:
+    """读取项目绑定的环境配置；空 ID 返回 None。"""
     if not environment_id:
         return None
-    return db.get(Environment, environment_id)
+    return resolve_project_environment(db, project_id, environment_id)
 
 
 def _now() -> datetime:
@@ -195,7 +196,7 @@ def to_read(db: Session, row: SecurityScanJob) -> ScanJobRead:
     if row.scan_profile_id:
         profile = db.get(SecurityScanProfile, row.scan_profile_id)
         base.scan_profile_name = profile.name if profile is not None else None
-    env = _environment(db, row.environment_id)
+    env = db.get(Environment, row.environment_id) if row.environment_id else None
     base.environment_name = env.name if env is not None else None
     return base
 
@@ -214,7 +215,7 @@ def plan(db: Session, project_id: int, user: User, payload: ScanJobCreate) -> Sc
     profile = _get_profile(db, project_id, payload.scan_profile_id)
     # 计划预览也要校验：预览会显示「Finding 会挂到这次测试执行」，指向别的项目就是误导。
     _check_test_run(db, project_id, payload.test_run_id)
-    env = _environment(db, target.environment_id)
+    env = _environment(db, project_id, target.environment_id)
     environment_name = env.name if env is not None else ""
 
     active = is_active_scan(profile.scan_mode) and bool(profile.active_enabled)
@@ -308,7 +309,7 @@ def create(db: Session, project_id: int, user: User, payload: ScanJobCreate) -> 
     if not bool(profile.enabled):
         raise AppError("扫描策略已停用，无法发起扫描", status_code=400, code=CODE_SECURITY_SCAN_PROFILE_NOT_FOUND)
 
-    env = _environment(db, target.environment_id)
+    env = _environment(db, project_id, target.environment_id)
     environment_name = env.name if env is not None else ""
     active = is_active_scan(profile.scan_mode) and bool(profile.active_enabled)
 

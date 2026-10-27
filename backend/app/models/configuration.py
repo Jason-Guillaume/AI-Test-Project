@@ -1,7 +1,7 @@
-"""模型配置与执行环境配置。
+"""模型配置与环境类型目录。
 
 ModelConfiguration.api_key_encrypted 只保存密文，任何接口都不得返回该字段。
-Environment.base_url 决定测试流量真正打到哪台服务器，因此写操作仅限平台管理员。
+Environment 维护环境标识目录；项目实际使用的 URL、网关前缀与请求头保存在 ProjectEnvironment。
 """
 
 from sqlalchemy import (
@@ -28,9 +28,9 @@ class ModelConfiguration(Base):
     __table_args__ = {"comment": "大模型连接、调用参数及启停状态配置"}
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    domain_id = Column(String(100), unique=True, nullable=False, index=True, comment="稳定逻辑ID")
-    # domain_id 是对外稳定的逻辑键：前端下拉、授权白名单（organization_member.allowed_model_ids）
-    # 以及组织级模型分配都只认它，自增 id 仅供内部引用。
+    domain_id = Column(String(100), unique=True, nullable=False, index=True, comment="后端生成的稳定逻辑ID")
+    # domain_id 是后端生成并保持不变的引用键，授权白名单（organization_member.allowed_model_ids）
+    # 与任务模型路由使用它；管理表单不接收或展示它，自增 id 用于内部关联。
     label = Column(String(120), nullable=False, comment="前端展示名称")
     provider = Column(String(50), nullable=False, default="openai-compatible", server_default=text("'openai-compatible'"),
                       comment="模型供应商")

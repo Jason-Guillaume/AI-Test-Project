@@ -59,6 +59,7 @@ def create_channel(
     project_id: int, body: ChannelCreateRequest,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """创建渠道。"""
     # webhook_url / secret 在 service 内加密入库，响应只回脱敏形式。
     return _CHANNEL.create_channel(db, project_id, body, actor=user)
 
@@ -75,11 +76,13 @@ def list_channels(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
+    """列出`channels`。"""
     return _CHANNEL.list_channels(db, project_id, user, page=page, page_size=page_size)
 
 
 @router.get("/notification-channels/{channel_id}", response_model=ChannelResponse, summary="通知渠道详情")
 def get_channel(channel_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取渠道。"""
     return _CHANNEL.get_channel(db, channel_id, user)
 
 
@@ -88,6 +91,7 @@ def update_channel(
     channel_id: int, body: ChannelUpdateRequest,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """更新渠道。"""
     return _CHANNEL.update_channel(db, channel_id, body, actor=user)
 
 
@@ -97,6 +101,7 @@ def update_channel(
     summary="删除通知渠道",
 )
 def delete_channel(channel_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除渠道。"""
     _CHANNEL.delete_channel(db, channel_id, user)
     return None
 
@@ -110,6 +115,7 @@ def delete_channel(channel_id: int, db: Session = Depends(get_db), user: User = 
     summary="通知渠道连通性测试（发送测试卡片）",
 )
 def test_channel(channel_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """验证渠道场景及其预期结果。"""
     return _CHANNEL.test_channel(db, channel_id, user)
 
 
@@ -122,6 +128,7 @@ def notify_report(
     report_id: int, body: NotifyReportRequest,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
+    """发送通知报告。"""
     # 路由层编排：报告 viewer+（get_report_orm）→ 触发外发升级 member+ → 渠道解析 → 发送。
     report = _REPORT.get_report_orm(db, report_id, user)
     require_writable_project(db, report.project_id, user)
@@ -157,6 +164,7 @@ def list_channel_records(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
+    """列出渠道记录。"""
     return _CHANNEL.list_records_by_channel(db, channel_id, user, page=page, page_size=page_size)
 
 
@@ -172,6 +180,7 @@ def list_report_notifications(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
+    """列出报告`notifications`。"""
     # 报告 viewer+ 鉴权后取 project_id，再按报告维度查发送记录。
     report = _REPORT.get_report_orm(db, report_id, user)
     return _CHANNEL.list_records_for_report(

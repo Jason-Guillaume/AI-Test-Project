@@ -58,7 +58,7 @@ _VAR_SOURCES = ("VARIABLE", "RUNTIME")
 class CaseExecutionResult:
     """单用例执行结果（由 run_service 落库为 CaseExecution）。"""
 
-    status: str = "PENDING"  # PASSED/FAILED/ERROR/SKIPPED
+    status: str = "PENDING"  # 执行状态：PASSED/FAILED/ERROR/SKIPPED
     executor_type: str | None = None
     request_snapshot: dict[str, Any] | None = None
     response_snapshot: dict[str, Any] | None = None
@@ -202,7 +202,7 @@ def _fixture_outputs(variables: ExecutionContext | None) -> dict[str, dict[str, 
     }
 
 
-# --------------------------------------------------------------------------- API
+# --------------------------------------------------------------------------- API 接口
 
 
 def _execute_api(
@@ -213,6 +213,7 @@ def _execute_api(
     fixture_outputs: dict[str, dict[str, Any]],
     extra_headers: dict[str, str] | None = None,
 ) -> CaseExecutionResult:
+    """执行API。"""
     executor_type = "API"
     if test_case.api_id is None:
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
@@ -274,7 +275,7 @@ def _execute_api(
     )
 
 
-# --------------------------------------------------------------------------- BUSINESS_FLOW
+# --------------------------------------------------------------------------- 业务流程 BUSINESS_FLOW
 
 
 def _execute_business_flow(
@@ -285,6 +286,7 @@ def _execute_business_flow(
     fixture_outputs: dict[str, dict[str, Any]],
     extra_headers: dict[str, str] | None = None,
 ) -> CaseExecutionResult:
+    """执行业务流程。"""
     executor_type = "BUSINESS_FLOW"
     if test_case.business_flow_id is None:
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
@@ -348,7 +350,7 @@ def _execute_business_flow(
     )
 
 
-# --------------------------------------------------------------------------- BUSINESS_ACTION
+# --------------------------------------------------------------------------- 业务动作 BUSINESS_ACTION
 
 
 def _execute_business_action(
@@ -359,6 +361,7 @@ def _execute_business_action(
     fixture_outputs: dict[str, dict[str, Any]],
     extra_headers: dict[str, str] | None = None,
 ) -> CaseExecutionResult:
+    """执行业务动作。"""
     executor_type = "BUSINESS_ACTION"
     if test_case.business_action_id is None:
         return CaseExecutionResult(status="ERROR", executor_type=executor_type,
@@ -660,6 +663,7 @@ def _load_action_step_config(db: Session, case_id: int) -> dict[str, Any]:
 
 
 def _load_assertions(db: Session, case_id: int) -> list[dict[str, Any]]:
+    """加载`assertions`。"""
     rows = (
         db.query(TestAssertion)
         .filter(TestAssertion.test_case_id == case_id)
@@ -684,6 +688,7 @@ def _resolve_tokens(obj: Any, scope: ResolveScope) -> Any:
 
 
 def _build_response_dict(resp) -> dict[str, Any]:
+    """构建响应字典。"""
     return {
         "status_code": resp.status_code,
         "headers": dict(resp.response_headers or {}),
@@ -711,6 +716,7 @@ def _build_flow_response(execution: FlowExecution, action_execs: list[ActionExec
 
 
 def _decide_status(resp, assertion_results: list[dict[str, Any]]) -> tuple[str, str | None, str | None]:
+    """处理`decide`状态相关数据。"""
     if resp.error_message:
         if "超时" in resp.error_message:
             return "ERROR", "HTTP_TIMEOUT", resp.error_message
@@ -725,6 +731,7 @@ def _decide_status(resp, assertion_results: list[dict[str, Any]]) -> tuple[str, 
 def _decide_flow_status(
     execution: FlowExecution, assertion_results: list[dict[str, Any]],
 ) -> tuple[str, str | None, str | None]:
+    """处理`decide`流程状态相关数据。"""
     if execution.status != "SUCCESS":
         return "FAILED", execution.error_code or "FLOW_FAILED", execution.error_message or "业务流程执行失败"
     if not required_all_passed(assertion_results):
@@ -733,6 +740,7 @@ def _decide_flow_status(
 
 
 def _try_parse_json(text: str) -> object:
+    """尝试将响应文本解析为 JSON；解析失败时返回空结果。"""
     if not text:
         return None
     try:

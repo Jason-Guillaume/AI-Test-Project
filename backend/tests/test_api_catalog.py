@@ -263,7 +263,7 @@ def test_curl_import_preview_masks_sensitive_values(api, admin):
     assert "secret-token-123" not in r.text
 
 
-# ---------------------------------------------------------------- OpenAPI / Swagger 批量
+# ---------------------------------------------------------------- OpenAPI 接口 文档导出 / Swagger 批量
 
 _OPENAPI_JSON = """{
   "openapi": "3.0.0",
@@ -357,6 +357,35 @@ def test_openapi_json_yaml_swagger_batch_preview(api, admin):
     schema = r.json()["items"][0]["schema"]
     path_params = [p for p in schema["parameters"] if p["location"] == "PATH"]
     assert any(p["name"] == "id" for p in path_params)
+
+
+def test_import_rejects_postman_and_honors_selected_module(api, admin):
+    project_id, _ = _create_project(api, admin)
+    url = f"/projects/{project_id}/apis/import"
+    postman = '{"info":{"name":"collection"},"item":[]}'
+    for action in ("preview", "confirm"):
+        response = api.post(f"{url}/{action}", username=admin,
+                            json={"source_type": "OPENAPI", "content": postman})
+        assert response.status_code == 400, response.text
+        assert "Postman Collection" in response.json()["message"]
+
+    module = api.post(f"/projects/{project_id}/api-modules", username=admin,
+                      json={"name": "指定模块"})
+    assert module.status_code == 201, module.text
+    body = {"source_type": "OPENAPI", "content": _OPENAPI_JSON,
+            "user_module_id": module.json()["id"], "selected_items": [0]}
+    preview = api.post(f"{url}/preview", username=admin, json=body)
+    assert preview.status_code == 200, preview.text
+    selected = preview.json()["items"][0]["schema"]
+    confirm = api.post(f"{url}/confirm", username=admin, json=body)
+    assert confirm.status_code == 201, confirm.text
+    interfaces = api.get(f"/projects/{project_id}/apis", username=admin)
+    assert interfaces.status_code == 200, interfaces.text
+    items = interfaces.json()
+    if isinstance(items, dict):
+        items = items["items"]
+    match = next(item for item in items if item["path"] == selected["path"] and item["method"] == selected["method"])
+    assert match["module_id"] == module.json()["id"]
 
 
 # ---------------------------------------------------------------- 导入预览→确认（幂等 + 变更检测）

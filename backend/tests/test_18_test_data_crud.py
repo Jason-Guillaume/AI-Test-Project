@@ -7,7 +7,7 @@
 - 测试数据目录 value_json 脱敏；数据池 payload 脱敏 + 占用/释放（service 层）
 - 被测库连接：password 不回显；ping 只 SELECT 1；member 创建 403
 - 数据库策略：PRODUCTION enabled=true → 400 DATABASE_ENVIRONMENT_FORBIDDEN
-- 执行记录只读列表为空；head==0017
+- 执行记录只读列表为空；迁移版本与当前 Alembic head 一致
 
 权限约定：读 viewer+，写 member+，DB 连接/策略写仅平台管理员；越权与不存在共用 404。
 """
@@ -22,6 +22,7 @@ from tests.conftest import (
     TEST_DB_PORT,
     TEST_DB_USER,
     TEST_DATABASE_NAME,
+    migration_head,
     unique,
 )
 
@@ -32,6 +33,7 @@ API = "/api/v1"
 
 
 def _create_project(api, admin, name=None):
+    """创建项目。"""
     r = api.post(
         "/projects", username=admin,
         json={"name": name or unique("proj"), "description": "test-data project"},
@@ -41,6 +43,7 @@ def _create_project(api, admin, name=None):
 
 
 def _register_and_login(api, username):
+    """注册测试用户并完成登录，返回用户标识。"""
     r = api.register(username)
     assert r.status_code == 201, r.text
     api.login(username, "Init-Password-123")
@@ -48,6 +51,7 @@ def _register_and_login(api, username):
 
 
 def _add_member(api, admin, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}", username=admin,
         json={"user_id": user_id, "role": role},
@@ -63,6 +67,7 @@ def _gkey(prefix: str) -> str:
 def _make_fixture(api, admin, project_id, *, key, name=None, entity_type="USER",
                   scope="PROJECT", status="ACTIVE", steps=None, outputs=None,
                   dependencies=None):
+    """构造固定数据。"""
     body = {
         "name": name or key, "fixture_key": key, "entity_type": entity_type,
         "scope": scope, "status": status, "cache_enabled": True,
@@ -76,11 +81,13 @@ def _make_fixture(api, admin, project_id, *, key, name=None, entity_type="USER",
 
 
 def _admin_id(db):
+    """查询平台管理员用户标识。"""
     from app.models.identity import User
     return db.query(User).filter(User.username == "platform_admin").first().id
 
 
 def _get_or_create_env(db, name, admin_id):
+    """获取或创建`env`。"""
     from app.models.configuration import Environment
     env = db.query(Environment).filter(Environment.name == name).first()
     if env is not None:
@@ -99,10 +106,11 @@ def _get_or_create_env(db, name, admin_id):
 
 
 class TestSchema:
-    def test_head_is_0017_and_tables_present(self, db):
+    def test_head_and_tables_present(self, db):
+        """验证`head`是否和`tables``present`场景及其预期结果。"""
         from sqlalchemy import text
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0017"
+        assert head == migration_head()
         tables = {
             row[0]
             for row in db.execute(
@@ -122,7 +130,7 @@ class TestSchema:
             assert t in tables, f"缺少表 {t}"
 
 
-# --------------------------------------------------------------------------- Fixture CRUD
+# --------------------------------------------------------------------------- 固定数据增删改查 固定数据 Fixture CRUD
 
 
 class TestFixtureCrud:
@@ -166,6 +174,7 @@ class TestFixtureCrud:
         assert patched["name"] == "成功任务v2"
 
     def test_duplicate_key_conflict(self, api, admin):
+        """验证重复键`conflict`场景及其预期结果。"""
         pid = _create_project(api, admin)
         _make_fixture(api, admin, pid, key="DUP_KEY")
         r = api.post(
@@ -175,6 +184,7 @@ class TestFixtureCrud:
         assert r.status_code == 409
 
     def test_bad_key_rejected(self, api, admin):
+        """验证`bad`键被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/fixtures", username=admin,
@@ -290,6 +300,7 @@ class TestFixtureCycle:
         assert c_detail["dependency_count"] == 0
 
     def test_self_dependency_rejected(self, api, admin):
+        """验证`self``dependency`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         # 自引用必须 ACTIVE 才进得了「依赖目标需 ACTIVE」这道关，随后被自依赖环检测拦下。
         r = api.post(
@@ -305,6 +316,7 @@ class TestFixtureCycle:
         assert r.json().get("code") == "FIXTURE_DEPENDENCY_CYCLE"
 
     def test_dependency_tree_rendered(self, api, admin):
+        """验证`dependency``tree``rendered`场景及其预期结果。"""
         pid = _create_project(api, admin)
         self._abc(api, admin, pid)
         aid = next(
@@ -314,7 +326,7 @@ class TestFixtureCycle:
         )
         tree = api.get(f"/fixtures/{aid}/dependencies", username=admin).json()
         assert tree[0]["fixture_key"] == "A_NODE"
-        # A → B → C
+        # 依赖执行顺序：A → B → C。
         assert tree[0]["children"][0]["fixture_key"] == "B_NODE"
         assert tree[0]["children"][0]["children"][0]["fixture_key"] == "C_NODE"
 
@@ -324,6 +336,7 @@ class TestFixtureCycle:
 
 class TestFixtureOutputs:
     def test_output_uniqueness(self, api, admin):
+        """验证输出`uniqueness`场景及其预期结果。"""
         pid = _create_project(api, admin)
         detail = _make_fixture(api, admin, pid, key="OUT_DUP")
         r = api.put(
@@ -336,6 +349,7 @@ class TestFixtureOutputs:
         assert r.status_code == 409
 
     def test_replace_outputs(self, api, admin):
+        """验证`replace``outputs`场景及其预期结果。"""
         pid = _create_project(api, admin)
         detail = _make_fixture(api, admin, pid, key="OUT_OK")
         r = api.put(
@@ -350,11 +364,12 @@ class TestFixtureOutputs:
         assert names == {"id", "token"}
 
 
-# --------------------------------------------------------------------------- Data Provider
+# --------------------------------------------------------------------------- 数据提供器 数据提供器 Data Provider
 
 
 class TestProvider:
     def test_static_provider_crud(self, api, admin):
+        """验证`static`提供器增删改查场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/data-providers", username=admin,
@@ -371,6 +386,7 @@ class TestProvider:
         assert api.delete(f"/data-providers/{pid_}", username=admin).status_code == 204
 
     def test_config_extra_key_rejected_422(self, api, admin):
+        """验证配置`extra`键被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/data-providers", username=admin,
@@ -380,6 +396,7 @@ class TestProvider:
         assert r.status_code == 422
 
     def test_config_top_level_password_rejected_400(self, api, admin):
+        """验证配置`top``level`密码被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/data-providers", username=admin,
@@ -389,6 +406,7 @@ class TestProvider:
         assert r.status_code == 400
 
     def test_database_provider_requires_platform_admin(self, api, admin):
+        """验证数据库提供器需要`platform``admin`场景及其预期结果。"""
         pid = _create_project(api, admin)
         # 普通 member 建 DATABASE_INSERT → 403。
         bob_name = unique("bob")
@@ -422,6 +440,7 @@ class TestProvider:
 
 class TestAsset:
     def test_value_masked_on_read(self, api, admin):
+        """验证值`masked``on`读取场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/test-data-assets", username=admin,
@@ -437,6 +456,7 @@ class TestAsset:
         assert body["value_json"]["username"] == "alice"
 
     def test_delete_asset(self, api, admin):
+        """验证删除资产场景及其预期结果。"""
         pid = _create_project(api, admin)
         aid = api.post(
             f"/projects/{pid}/test-data-assets", username=admin,
@@ -451,6 +471,7 @@ class TestAsset:
 
 class TestPool:
     def test_pool_and_item_crud_with_masking(self, api, admin):
+        """验证连接池和条目增删改查包含`masking`场景及其预期结果。"""
         pid = _create_project(api, admin)
         pool = api.post(
             f"/projects/{pid}/data-pools", username=admin,
@@ -477,6 +498,7 @@ class TestPool:
         assert api.delete(f"/data-pools/{pool['id']}", username=admin).status_code == 204
 
     def test_item_cannot_be_created_occupied(self, api, admin):
+        """验证条目不能`be`创建`occupied`场景及其预期结果。"""
         pid = _create_project(api, admin)
         pool = api.post(
             f"/projects/{pid}/data-pools", username=admin,
@@ -543,6 +565,7 @@ class TestPool:
 
 class TestTargetDbAndPolicy:
     def test_connection_password_not_echoed(self, api, admin, db):
+        """验证连接密码不`echoed`场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "dev", _admin_id(db))
         r = api.post(
@@ -564,6 +587,7 @@ class TestTargetDbAndPolicy:
         assert got["password_set"] is True
 
     def test_member_cannot_create_connection(self, api, admin, db):
+        """验证成员不能创建连接场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "dev", _admin_id(db))
         bob_name = unique("bob")
@@ -578,6 +602,7 @@ class TestTargetDbAndPolicy:
         assert r.status_code == 403
 
     def test_ping_select_one(self, api, admin, db):
+        """验证`ping``select``one`场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "dev", _admin_id(db))
         # 指向测试夹具自身在用的库（必然可达），避免依赖容器是否初始化了 dev 库。
@@ -595,6 +620,7 @@ class TestTargetDbAndPolicy:
         assert "latency_ms" in body
 
     def test_production_policy_refused(self, api, admin, db):
+        """验证生产环境策略`refused`场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "production", _admin_id(db))
         r = api.put(
@@ -605,6 +631,7 @@ class TestTargetDbAndPolicy:
         assert r.json().get("code") == "DATABASE_ENVIRONMENT_FORBIDDEN"
 
     def test_dev_policy_upsert(self, api, admin, db):
+        """验证开发环境策略`upsert`场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "dev", _admin_id(db))
         r = api.put(
@@ -627,6 +654,7 @@ class TestTargetDbAndPolicy:
 
 class TestExecutionReadOnly:
     def test_list_empty(self, api, admin):
+        """验证列出空值场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.get(f"/projects/{pid}/data-executions", username=admin)
         assert r.status_code == 200
@@ -634,5 +662,6 @@ class TestExecutionReadOnly:
         assert r.json()["total"] == 0
 
     def test_get_not_found(self, api, admin):
+        """验证获取不`found`场景及其预期结果。"""
         r = api.get("/data-executions/999999", username=admin)
         assert r.status_code == 404

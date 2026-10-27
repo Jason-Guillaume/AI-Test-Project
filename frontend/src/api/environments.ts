@@ -13,6 +13,11 @@ export interface EnvironmentCreate {
   is_active?: boolean; // 是否启用；false 表示建好即停用
 }
 
+/** 新建项目环境配置；base_url 必填，地址只保存在指定项目。 */
+export interface ProjectEnvironmentCreate extends EnvironmentCreate {
+  base_url: string;
+}
+
 /** 修改环境的请求体，对应 PATCH /environments/{name}；字段全部可选，只提交要改的项。 */
 export interface EnvironmentUpdate {
   display_name?: string; // 新的展示名称
@@ -29,6 +34,7 @@ export interface EnvironmentListQuery {
   page?: number; // 页码，从 1 开始；不传时后端返回第一页
   page_size?: number; // 每页条数；不传时后端用默认值
   include_inactive?: boolean; // 是否包含已停用的环境，默认只看启用项
+  project_id?: number; // 管理端指定项目时，返回该项目自己的环境配置
 }
 
 /**

@@ -26,11 +26,32 @@ export interface BugUpdate {
   assignee_id?: number | null;
 }
 
+export type DefectSourceType = 'CASE_EXECUTION' | 'SECURITY_FINDING';
+export interface DefectSourceLink {
+  id: number;
+  project_id: number;
+  bug_id: number;
+  case_execution_id: number | null;
+  security_finding_id: number | null;
+  created_at: string;
+}
+export interface DefectSourceContext {
+  project_id: number;
+  source_type: DefectSourceType;
+  source_id: number;
+  test_run_id: number | null;
+}
+
 /**
  * 缺陷管理接口集合，由缺陷列表页调用。
  * 覆盖端点：GET /bugs、POST /bugs、GET/PUT/DELETE /bugs/{id}。
  */
 export const bugsApi = {
+  /** 读取授权后的来源定位信息与关联，不复制证据。 */
+  sourceContext: (source_type: DefectSourceType, source_id: number) => api.get<DefectSourceContext>('/bugs/sources/context', { params: { source_type, source_id } }),
+  sources: (source_type: DefectSourceType, source_id: number) => api.get<DefectSourceLink[]>('/bugs/sources', { params: { source_type, source_id } }),
+  bugSources: (id: number) => api.get<DefectSourceLink[]>(`/bugs/${id}/sources`),
+  linkSource: (body: { source_type: DefectSourceType; source_id: number; request_key: string; bug_id?: number; bug?: BugCreate }) => api.post<DefectSourceLink>('/bugs/sources', body),
   /** 分页查询可见项目下的缺陷，支持 project_id/status/severity/keyword 过滤。 */
   list: (params: BugListQuery) =>
     api.get<Paginated<Bug>>('/bugs', { params }),

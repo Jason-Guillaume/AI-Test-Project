@@ -23,7 +23,7 @@ import { CaretRightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/api/testManagement';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { getErrorMessage } from '@/api/client';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { StatusBadge } from '@/components/StatusBadge';
@@ -54,8 +54,9 @@ export function ConsoleExecutionCenterPage() {
     enabled: currentProjectId != null,
   });
   const envsQuery = useQuery({
-    queryKey: ['environments'],
-    queryFn: () => environmentsApi.list({ include_inactive: false }),
+    queryKey: ['project-environments', currentProjectId],
+    queryFn: () => projectsApi.listEnvironments(currentProjectId!),
+    enabled: currentProjectId != null,
   });
   const environments: Environment[] = envsQuery.data?.items ?? [];
 

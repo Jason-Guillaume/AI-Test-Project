@@ -58,7 +58,7 @@
 > 每次接手任何一件编码 / 排错 / 评审 / 文档任务前，**都必须完整阅读一遍本文档**——不是扫一眼，是从头到尾读。**特别是**：
 > - §1.1（本节，通用工作规范）
 > - §1.2（中文注释要求）
-> - §2.4（17 条不可修改的红线）
+> - §2.4（16 条不可修改的红线）
 > - §3（前端架构）
 > - §7（提变更流程）
 >
@@ -86,7 +86,7 @@
 
 **为什么是中文**：本仓库的主要读者是中文工程师；中文注释比英文更贴近业务语义（"报告人 / 处理人 / 可见性" 这类概念用英文翻译会丢失精度）。所有 docstring、内联注释、错误消息文案（用户可见）**统一用中文**；标识符、类型名、模块路径、API 字段名仍按各语言惯例用英文 `snake_case`（Python）或 `camelCase`/`snake_case`（TS，见 §3.3）。
 
-**注释的密度基线**：参考 [backend/app/features/defects/service.py](../backend/app/features/defects/service.py)、[backend/app/features/captcha/service.py](../backend/app/features/captcha/service.py)、[frontend/src/pages/console/Defects.tsx](../frontend/src/pages/console/Defects.tsx)。这些文件的注释密度就是本仓库的合格下限。
+**注释的密度基线**：参考 [backend/app/features/defects/services/defect_service.py](../backend/app/features/defects/services/defect_service.py)、[frontend/src/pages/console/Defects.tsx](../frontend/src/pages/console/Defects.tsx)。这些文件的注释密度就是本仓库的合格下限。
 
 **例外（允许无注释的场景）**：
 - 一行 `__init__.py` 只写 `# noqa: F401` 且无其他内容的文件
@@ -98,7 +98,7 @@
 - 权限判定：`if not has_x_role(...)`、`if user.role != "admin"`
 - 事务边界：`db.commit()`、`db.flush()`、`db.rollback()`、`session.begin()`
 - 外部 IO：HTTP 请求、文件读写、图片渲染、加密/哈希
-- 鉴权与安全：JWT 签发/校验、密码校验、限流触发、验证码校验
+- 鉴权与安全：JWT 签发/校验、密码校验、限流触发
 - 缓存失效：`queryClient.invalidateQueries`、`session.expire`
 - 分页：`order_by(None)`、`in_(...) or [-1]`、`page_size` 兜底
 - 降级/回退：`except Exception` 后 `return None`、默认值 fallback
@@ -160,22 +160,19 @@ queryClient.invalidateQueries({ queryKey: ['bugs'] }); // 组织切换后可能�
 backend/
 ├── app/
 │   ├── main.py                  # FastAPI 应用工厂，装配中间件 + 路由
-│   ├── models/                  # ORM 模型（不含业务逻辑）
+│   ├── models/                  # 平台核心 ORM 模型
 │   │   ├── identity.py          #   User 相关
 │   │   ├── project.py           #   Project 相关
 │   │   ├── configuration.py     #   配置相关
 │   │   └── notification.py      #   通知相关
 │   ├── features/                # 每个业务域一个包
-│   │   ├── auth/                #   （在 users/ 里）
-│   │   ├── users/               #   auth.py（登录/注册）+ admin.py（后台 CRUD）+ schemas.py
-│   │   ├── organizations/       #   schemas.py + service.py + router.py
-│   │   ├── projects/            #   schemas.py + service.py + router.py（ProjectOutboundTarget 模型在 app/models/project.py）
-│   │   ├── notifications/       #   schemas.py + service.py + router.py
-│   │   ├── dashboard/           #   schemas.py + service.py + router.py
-│   │   ├── defects/             #   schemas.py + service.py + router.py + models/bug.py
-│   │   ├── captcha/             #   schemas.py + service.py + router.py
-│   │   ├── environment_configuration/
-│   │   └── model_configuration/
+│   │   ├── users/               #   认证与用户管理
+│   │   ├── projects/            #   项目、成员与出站目标
+│   │   ├── api_catalog/         #   接口目录、解析器与调试
+│   │   ├── test_management/     #   测试资产与执行
+│   │   ├── test_data/           #   Provider、运行时与数据安全
+│   │   ├── agent/               #   Agent 图、节点、工具与提示词
+│   │   └── ...                  #   其他业务域保持同级
 │   ├── shared/                  # 跨 feature 的通用能力
 │   │   ├── auth.py              #   JWT 签发/校验、token_version 撤销
 │   │   ├── config.py            #   pydantic-settings 配置
@@ -202,17 +199,26 @@ backend/
 
 **Feature 目录的内部规范**：
 
-每个 `app/features/<name>/` 包含：
-- `__init__.py` — 模块 docstring（**必须有**），声明范围与未接入能力
-- `schemas.py` — Pydantic v2 的 `*Create` / `*Update` / `*Response` 三类模型
-- `service.py` — **类式** service（`class XxxService:`），**所有 commit 都在这**
-- `router.py` — 只声明路由，参数解析 + 认证依赖 + 调 service + 拼响应；**不 commit**
-- 可选 `models/` 子目录 — 若该 feature 有专属 ORM 表
+每个 `app/features/<name>/` 按需包含以下结构：
+- `__init__.py` — 模块 docstring，声明领域范围
+- `router.py` — 默认路由入口；多组路由可拆成同级模块，由 `app/main.py` 统一装配
+- `schemas.py` — Pydantic 请求与响应模型；规模较大时可拆分子模块
+- `services/` — 业务规则与事务边界；一个服务也使用复数目录，按资源拆分
+- `models/` — 该 Feature 独占的 ORM 模型；新领域模型不放入 `app/models/`
+- 可选 `executors/`、`providers/`、`runtime/`、`security/`、`parsers/` 等 — 仅在对应职责确实存在时创建
+
+其他 Feature 如需调用某个 Service，应从该 Feature 的 `services/__init__.py` 导入公开入口；内部实现放在
+`services/<resource>_service.py`，不要求每个 Feature 预建空文件。
+
+`app/models/` 只保留平台核心模型。Feature-local ORM 模型不能加入 `app/models/__init__.py`；由所属
+Feature 在运行时导入，并通过显式 Alembic 迁移建表。旧 `app.models.<feature>` 路径可短期保留为兼容
+导出，旧的 `from app.models import FeatureModel` 名称也通过懒加载兼容；新代码必须从
+`app.features.<feature>.models` 导入。
 
 **Feature 之间的依赖规则**：
-- feature 之间**不能**互相 import `service.py`（避免循环依赖和事务边界混乱）
-- feature 之间**只能**通过 `schemas.py` 的 DTO 和 `shared/` 的工具函数交换数据
-- 跨 feature 的资源读写必须通过 API（前端）或明确的服务方法，不能直接查对方的表
+- feature 之间不能依赖对方的私有实现或 `_` 开头的模块
+- 跨 feature 的业务调用通过对方明确的公开 service contract；共享基础能力放在 `shared/`
+- ORM 模型归属唯一；确需跨域只读查询时，显式导入所属 Feature 的模型，不复制模型定义
 
 ### 2.2 分层规则
 
@@ -238,7 +244,7 @@ backend/
         └──────────────┬──────────────────────────┘
                        ▼
         ┌─────────────────────────────────────────┐
-        │  service.py（class XxxService）          │
+        │  services/<resource>_service.py          │
         │  - 权限判定（has_project_role 等）       │
         │  - 业务规则                              │
         │  - 事务边界：flush / commit / rollback   │
@@ -297,7 +303,7 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 
 ### 2.4 关键不变量（不可修改）
 
-**下面 17 条是硬红线**。**改动其中任何一条都需要在 PR 里说明理由、更新本文档、并跑完整测试。**
+**下面 16 条是硬红线**。**改动其中任何一条都需要在 PR 里说明理由、更新本文档、并跑完整测试。**
 
 | # | 分类 | 不变量 | 违反后果 |
 |---|---|---|---|
@@ -315,9 +321,8 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 | 12 | db | `SessionLocal` 三个 flag 固定：`autocommit=False, autoflush=False, expire_on_commit=False` | commit-后读契约破坏 |
 | 13 | routes | `API_PREFIX = "/api/v1"` 单前缀；所有 feature router 都走 `include_router(prefix=API_PREFIX)`；装配顺序：CORS → request_context → exception_handlers → routers | 版本管理 / 错误信封失效 |
 | 14 | config | `AUTO_CREATE_SCHEMA` 默认 `False`；启动不 create_all；结构变更全部走 Alembic | 与迁移脚本双写冲突 |
-| 15 | rate_limit | 限流键固定四种：`login:ip:{ip}` / `login:user:{username}` / `register:{ip}` / `captcha:{ip}`；只用 `request.client.host`，不信任 X-Forwarded-For；滑动窗口 + 50k key 上限 + 300s 清扫 | 限流被伪造绕过 / 内存泄漏 |
-| 16 | captcha | 单进程内存 dict + `threading.Lock`；一次性 pop 语义（成功失败都删）；**多 worker / 多实例部署不可用**（需切 Redis 或 DB） | 生产多进程下挑战复用 |
-| 17 | migrations | `0001_initial_schema.py` 用 `Base.metadata.create_all` 建基线（只在空库上跑）；`0002+` 必须走显式 `op.create_table/op.add_column`；`seed_admin.py` 每次 `stamp base` + `upgrade head`（幂等） | 迁移链断裂 |
+| 15 | rate_limit | 限流键固定三种：`login:ip:{ip}` / `login:user:{username}` / `register:{ip}`；只用 `request.client.host`，不信任 X-Forwarded-For；滑动窗口 + 50k key 上限 + 300s 清扫 | 限流被伪造绕过 / 内存泄漏 |
+| 16 | migrations | `0001_initial_schema.py` 用 `Base.metadata.create_all` 建基线（只在空库上跑）；`0002+` 必须走显式 `op.create_table/op.add_column`；`seed_admin.py` 每次 `stamp base` + `upgrade head`（幂等） | 迁移链断裂 |
 
 **证据路径**（每条都能定位到具体代码）：
 1. `app/shared/roles.py:16-22, 31-36, 45-56, 64-65`
@@ -325,7 +330,7 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 3. `app/shared/roles.py:162-172`
 4. `app/shared/errors.py:32, 40-48, 150-161`
 5. `app/shared/errors.py:36, 184-189` + `app/shared/auth.py:29-31, 99-113`
-6. `app/features/projects/service.py:83-90`（`get_accessible_or_404` 定义）+ `app/features/projects/router.py:153, 177, 189, 202, 216, 238, 255, 270`（路由层调用点）+ `:315-316, 330-331`（出站目标交叉校验）
+6. `app/features/projects/services/project_service.py:83-90`（`get_accessible_or_404` 定义）+ `app/features/projects/router.py:153, 177, 189, 202, 216, 238, 255, 270`（路由层调用点）+ `:315-316, 330-331`（出站目标交叉校验）
 7. `app/shared/auth.py:34-58`
 8. `app/shared/auth.py:61-68, 108-113`
 9. `app/shared/auth.py:95-100`
@@ -335,8 +340,7 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 13. `app/main.py:49-50, 102-109, 111-133, 135-136, 162-172`
 14. `app/main.py:71-85`
 15. `app/shared/rate_limit.py:26-27, 30-50, 64-80, 85-89`
-16. `app/features/captcha/services/captcha_service.py`
-17. `alembic/versions/0001_initial_schema.py:22-26, 29-38` + `backend/scripts/seed_admin.py`
+16. `alembic/versions/0001_initial_schema.py:22-26, 29-38` + `backend/scripts/seed_admin.py`
 
 ---
 
@@ -351,7 +355,6 @@ frontend/src/
 ├── api/                        # 每个后端 feature 一个 API 客户端
 │   ├── client.ts               # axios 实例（baseURL, interceptors, getErrorMessage）
 │   ├── auth.ts                 # 登录/注册/登出/me
-│   ├── captcha.ts              # 图形验证码签发
 │   ├── users.ts                # 用户管理
 │   ├── organizations.ts
 │   ├── projects.ts             # 含 listMembers
@@ -579,7 +582,6 @@ export function XxxPage() {
 | PyJWT | `>=2.9,<3` | JWT |
 | bcrypt | `>=4.2,<5` | 密码哈希 |
 | cryptography | `>=43,<51` | Fernet 加密 |
-| Pillow | `>=10,<13` | 图形验证码渲染 |
 
 **测试**：
 | 包 | 版本 |
@@ -629,7 +631,7 @@ export function XxxPage() {
 - 引入未在本文档列出的**新 UI 库**（当前只用 antd + @ant-design/icons）
 - 修改 `tsconfig.json` 为**非 strict**（当前是 strict mode）
 
-**"未接入"的标记**：如果当前代码库某个能力没做（如通知渠道推送、回归关联），必须在**相关模块的 docstring** 里明确标记「未接入，属后续阶段」，不允许在文档或注释里模糊描述。参考 [backend/app/features/defects/__init__.py](../backend/app/features/defects/__init__.py) 和 [backend/app/features/defects/service.py](../backend/app/features/defects/service.py) 的写法。
+**"未接入"的标记**：如果当前代码库某个能力没做（如通知渠道推送、回归关联），必须在**相关模块的 docstring** 里明确标记「未接入，属后续阶段」，不允许在文档或注释里模糊描述。参考 [backend/app/features/defects/__init__.py](../backend/app/features/defects/__init__.py) 和 [backend/app/features/defects/services/defect_service.py](../backend/app/features/defects/services/defect_service.py) 的写法。
 
 ---
 
@@ -653,7 +655,7 @@ export function XxxPage() {
 """
 ```
 
-**示例 2 — 服务层**（[backend/app/features/defects/service.py](../backend/app/features/defects/service.py)）：
+**示例 2 — 服务层**（[backend/app/features/defects/services/defect_service.py](../backend/app/features/defects/services/defect_service.py)）：
 ```python
 """缺陷服务层。
 
@@ -670,20 +672,6 @@ export function XxxPage() {
 """
 ```
 
-**示例 3 — 声明限制的服务**（[backend/app/features/captcha/service.py](../backend/app/features/captcha/service.py)）：
-```python
-"""图形验证码核心服务：签发、渲染与校验。
-
-存储策略（**关键**）：
-- 进程内 dict + threading.Lock，一次性使用（校验即删除）
-- 每次签发时机会式清理过期条目，不做后台定时任务
-- **明确限制**：单进程部署。多 worker / 多实例部署不可用；
-  需要分布式时必须切换到 Redis 或 DB 后端，本模块不做分布式一致性
-
-字符集排除易混淆字符：0/O/1/I/l；长度与图片参数由 app.shared.config.settings 控制。
-"""
-```
-
 ### 5.2 函数 docstring
 
 **Python（有参数）**：
@@ -692,7 +680,7 @@ def register_user(body: UserCreate, request: Request, db: Session = Depends(get_
     """自助注册：创建账号与个人组织，并直接签发访问令牌。
 
     Args:
-        body: 用户名、密码与验证码 challenge。
+        body: 用户名与密码。
         request: 用于取客户端地址做限流。
         db: 数据库会话。
     Returns:
@@ -745,15 +733,9 @@ def _get_project_or_404(self, db: Session, project_id: int, user: User) -> Proje
     return project
 ```
 
-**安全校验前置**：
+**注册限流前置**：
 ```python
     enforce_auth_rate_limit(request, "register")  # 限流：按「注册」桶计数
-
-    # 验证码先于任何业务校验：不匹配则不发任何用户名/密码错误信息，
-    # 避免攻击者通过错误差异判断验证码是否通过、用户名是否被占用。
-    # 校验是「一次性」的：无论成功失败，服务端都删除 challenge，防止重放。
-    if not verify_challenge(body.captcha_id, body.captcha_code):
-        raise bad_request("验证码错误或已过期")
 ```
 
 **跨项目越权防护**：
@@ -854,7 +836,7 @@ def _get_project_or_404(self, db: Session, project_id: int, user: User) -> Proje
 
 **❌ 错误 1：新文件没有模块 docstring**
 ```python
-# backend/app/features/foo/service.py  ← 错！文件顶部没有 docstring
+# backend/app/features/foo/services/foo_service.py  ← 错！文件顶部没有 docstring
 """（空）"""
 
 def create_foo(db, body):
@@ -936,7 +918,7 @@ return {"items": [{"name": "示例"}], "total": 1}  # 错！查询失败要报�
 ### 7.1 常规改动
 
 1. **读本文档**，特别是 §1.1（通用工作规范：中文回复 + 必读本文档）、§1.2（注释要求）、§2.4 / §3（架构不变量）
-2. **确认改动不违反红线**（§2.4 表格里 17 条）
+2. **确认改动不违反红线**（§2.4 表格里 16 条）
 3. **写代码**：按 §5 的模板写注释
 4. **跑测试**：
    ```bash
@@ -962,8 +944,7 @@ return {"items": [{"name": "示例"}], "total": 1}  # 错！查询失败要报�
 - 修改事务 flag（§2.4 #12）
 - 修改 API 前缀（§2.4 #13）
 - 修改限流策略（§2.4 #15）
-- 修改验证码存储策略（§2.4 #16）
-- 修改迁移链路（§2.4 #17）
+- 修改迁移链路（§2.4 #16）
 - 升级 §4 的技术栈版本（major 升级）
 - 引入 §4.3 禁止的新框架
 
@@ -1073,8 +1054,8 @@ A：不能。必须对齐 §3.2 的约定，特别是 `['project', id, ...]` 这
 - 项目角色修正为五档（viewer/member/editor/owner/admin），`admin` 仅在平台管理员判定时派生
 - 目录树补充 `ProjectOutboundTarget` 的实际位置（`app/models/project.py`）、标注 `app/scripts/` 为已弃用
 - `defects.ts` API 模板对齐实际文件（severity/status 可选、`api.put` 而非 `api.patch`、`BugUpdate` 是独立 interface 不含 `project_id`）
-- 不变量 #6 证据路径区分定义（`service.py:83-90`）与调用点（`router.py`）
-- 不变量 #17 明确指向顶层 `backend/scripts/seed_admin.py`，避免与已弃用的 `app/scripts/seed_admin.py` 混淆
+- 不变量 #6 证据路径区分定义（`services/project_service.py:83-90`）与调用点（`router.py`）
+- 不变量 #16 明确指向顶层 `backend/scripts/seed_admin.py`，避免与已弃用的 `app/scripts/seed_admin.py` 混淆
 
 **维护者**：所有参与本仓库的工程师。**违反本文档的 PR 一律拒绝，除非先修文档**（且走 §7.2 讨论流程）。
 

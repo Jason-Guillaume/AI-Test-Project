@@ -32,12 +32,7 @@ interface AuthState {
   ready: boolean; // /me 恢复流程是否结束；false 表示登录态还在恢复中
   isPlatformAdmin: boolean; // 是否为平台管理员，等价于 user.role === 'admin'
   login: (username: string, password: string) => Promise<User>; // 登录并写入令牌与用户缓存
-  register: (
-    username: string,
-    password: string,
-    captchaId: string,
-    captchaCode: string,
-  ) => Promise<User>; // 注册并自动登录，一次性拿到 access_token
+  register: (username: string, password: string) => Promise<User>; // 注册并自动登录，一次性拿到 access_token
   logout: () => Promise<void>; // 登出并清除本地登录态
   refresh: () => Promise<void>; // 用本地令牌重新拉取 /me 刷新用户信息
 }
@@ -119,17 +114,10 @@ export function AuthProvider({
   // 注册即自动登录：后端返回 TokenResponse（含 access_token + user），
   // 这里一次性把 token 与 user 都写入缓存，调用方无需再走一次 login。
   const register = useCallback(
-    async (
-      username: string,
-      password: string,
-      captchaId: string,
-      captchaCode: string,
-    ) => {
+    async (username: string, password: string) => {
       const res = await authApi.register({
         username,
         password,
-        captcha_id: captchaId,
-        captcha_code: captchaCode,
       });
       tokenStore.set(res.access_token);
       userStore.set(res.user);

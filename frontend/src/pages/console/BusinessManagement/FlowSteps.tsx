@@ -18,9 +18,11 @@ interface FlowStepsProps {
 }
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
-  API: 'API',
-  WEB: 'Web（预留）',
-  MOBILE: '移动端（预留）',
+  NORMAL: '普通动作',
+  SYSTEM: '系统动作（历史类型）',
+  MANUAL: '人工动作（历史类型）',
+  WAIT: '等待动作（历史类型）',
+  DECISION: '决策动作（历史类型）',
 };
 
 export function FlowSteps({ actions, onReorder, onDelete, deleting, onAdd, onSelectAction }: FlowStepsProps) {

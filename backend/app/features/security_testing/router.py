@@ -83,6 +83,7 @@ def get_security_setting(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecuritySettingRead:
+    """获取安全`setting`。"""
     return _SETTING.get_setting(db, project_id, user)
 
 
@@ -93,6 +94,7 @@ def update_security_setting(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecuritySettingRead:
+    """更新安全`setting`。"""
     return _SETTING.update_setting(db, project_id, body, actor=user)
 
 
@@ -111,6 +113,7 @@ def list_security_strategies(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityStrategyListResponse:
+    """列出安全`strategies`。"""
     return _STRATEGY.list_strategies(
         db, project_id, actor=user, category=category, enabled=enabled,
         page=page, page_size=page_size,
@@ -127,6 +130,7 @@ def create_security_strategy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityStrategyResponse:
+    """创建安全策略。"""
     return _STRATEGY.create_strategy(db, project_id, body, actor=user)
 
 
@@ -136,6 +140,7 @@ def get_security_strategy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityStrategyResponse:
+    """获取安全策略。"""
     return _STRATEGY.get_strategy(db, strategy_id, actor=user)
 
 
@@ -146,6 +151,7 @@ def update_security_strategy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityStrategyResponse:
+    """更新安全策略。"""
     return _STRATEGY.update_strategy(db, strategy_id, body, actor=user)
 
 
@@ -155,6 +161,7 @@ def delete_security_strategy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除安全策略。"""
     _STRATEGY.delete_strategy(db, strategy_id, actor=user)
 
 
@@ -186,6 +193,7 @@ def update_mutation_rule(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MutationRuleResponse:
+    """更新变异规则。"""
     rule = get_manageable_rule(db, rule_id, actor=user)
     # 规则已校验过 editor+；这里只取策略行判断预留类别。
     strategy = db.get(SecurityStrategy, rule.strategy_id)
@@ -198,6 +206,7 @@ def delete_mutation_rule(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除变异规则。"""
     _RULE.delete_rule(db, rule_id, actor=user)
 
 
@@ -238,6 +247,7 @@ def discard_security_plan(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityPlanRead:
+    """放弃安全计划。"""
     return _PLAN.discard(db, plan_id, actor=user)
 
 
@@ -258,6 +268,7 @@ def list_security_cases(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityCaseListResponse:
+    """列出安全`cases`。"""
     return _CASE.list_cases(
         db, project_id, user=user, api_id=api_id, strategy_id=strategy_id,
         mutation_type=mutation_type, enabled=enabled, page=page, page_size=page_size,
@@ -270,6 +281,7 @@ def get_security_case(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityCaseDetail:
+    """获取安全用例。"""
     return _CASE.get_case(db, security_case_id, user=user)
 
 
@@ -322,7 +334,7 @@ def get_security_execution(
     return _EXECUTION.get_execution(db, security_execution_id, user=user)
 
 
-# --------------------------------------------------------------------------- Finding（§16.2）
+# --------------------------------------------------------------------------- 安全发现项（§16.2）Finding
 
 
 @router.get(
@@ -338,6 +350,7 @@ def list_security_findings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityFindingListResponse:
+    """列出安全`findings`。"""
     return _FINDING.list_findings(
         db, project_id, user=user, severity=severity, status=status,
         api_id=api_id, page=page, page_size=page_size,
@@ -350,6 +363,7 @@ def get_security_finding(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SecurityFindingRead:
+    """获取安全发现项。"""
     return _FINDING.get_finding(db, finding_id, user=user)
 
 

@@ -3,6 +3,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import 'dayjs/locale/zh-cn'; // 导入 dayjs 简体中文语言包，必须先于任何渲染完成
+import '@/styles/app.css';
 import { AppProviders } from '@/components/QueryProvider';
 import { App } from '@/App';
 

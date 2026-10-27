@@ -70,6 +70,7 @@ _DEBUG = DebugService()
     summary="模块树（含未分类）",
 )
 def list_modules(project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`modules`。"""
     return _API.list_modules(db, project_id, user)
 
 
@@ -85,6 +86,7 @@ def create_module(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建`module`。"""
     return _API.create_module(db, project_id, body, actor=user)
 
 
@@ -95,6 +97,7 @@ def update_module(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新`module`。"""
     return _API.update_module(db, module_id, body, actor=user)
 
 
@@ -105,6 +108,7 @@ def move_module(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """移动模块。"""
     return _API.move_module(db, module_id, body, actor=user)
 
 
@@ -118,6 +122,7 @@ def delete_module(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """删除`module`。"""
     _API.delete_module(db, module_id, actor=user)
     return None
 
@@ -141,6 +146,7 @@ def list_interfaces(
     module_id: int | None = Query(None, ge=1),
     status: str | None = Query(None),
 ):
+    """列出`interfaces`。"""
     return _API.list_interfaces(
         db, project_id, user,
         keyword=keyword, method=method, module_id=module_id, status=status,
@@ -160,11 +166,13 @@ def create_interface(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建接口。"""
     return _API.create_interface(db, project_id, body, actor=user)
 
 
 @router.get("/apis/{api_id}", response_model=ApiInterfaceDetailResponse, summary="接口详情")
 def get_interface(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取接口。"""
     return _API.get_interface(db, api_id, user)
 
 
@@ -175,11 +183,13 @@ def update_interface(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """更新接口。"""
     return _API.update_interface(db, api_id, body, actor=user)
 
 
 @router.delete("/apis/{api_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除接口（级联子表）")
 def delete_interface(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除接口。"""
     _API.delete_interface(db, api_id, actor=user)
     return None
 
@@ -191,6 +201,7 @@ def move_interface(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """移动接口。"""
     return _API.move_interface(db, api_id, body, actor=user)
 
 
@@ -199,6 +210,7 @@ def move_interface(
 
 @router.get("/apis/{api_id}/request", response_model=ApiRequestBundleResponse, summary="请求参数+body")
 def get_request(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取请求。"""
     return _API.get_request(db, api_id, user)
 
 
@@ -209,6 +221,7 @@ def save_request(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """保存请求。"""
     return _API.save_request(db, api_id, body, actor=user)
 
 
@@ -217,6 +230,7 @@ def save_request(
 
 @router.get("/apis/{api_id}/responses", response_model=ApiResponsesBundleResponse, summary="响应列表")
 def get_responses(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取`responses`。"""
     return _API.get_responses(db, api_id, user)
 
 
@@ -227,6 +241,7 @@ def save_responses(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """保存`responses`。"""
     return _API.save_responses(db, api_id, body, actor=user)
 
 
@@ -235,6 +250,7 @@ def save_responses(
 
 @router.get("/apis/{api_id}/relations", response_model=ApiRelationListResponse, summary="关联列表")
 def list_relations(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """列出`relations`。"""
     items = _API.list_relations(db, api_id, user)
     return ApiRelationListResponse(items=items, total=len(items))
 
@@ -251,6 +267,7 @@ def create_relation(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """创建`relation`。"""
     return _API.create_relation(db, api_id, body, actor=user)
 
 
@@ -264,6 +281,7 @@ def delete_relation(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """删除`relation`。"""
     _API.delete_relation(db, relation_id, actor=user)
     return None
 
@@ -279,6 +297,7 @@ def list_history(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
+    """列出`history`。"""
     items, total = _API.list_history(db, api_id, user, page=page, page_size=page_size)
     return ApiChangeLogListResponse(items=items, total=total)
 
@@ -297,6 +316,7 @@ def import_preview(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """预览接口定义导入结果。"""
     return _IMPORT.preview(db, project_id, body, actor=user)
 
 
@@ -312,6 +332,7 @@ def import_confirm(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """确认并保存接口定义导入结果。"""
     return _IMPORT.confirm(db, project_id, body, actor=user)
 
 
@@ -327,6 +348,7 @@ def list_import_records(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
+    """列出`import`记录。"""
     items, total = _API.list_import_records(db, project_id, user, page=page, page_size=page_size)
     return ApiImportRecordListResponse(items=items, total=total)
 
@@ -345,4 +367,5 @@ def debug_execute(
     db: Session = Depends(get_db),
     user: User = Depends(require_platform_admin),
 ):
+    """执行接口调试请求并返回响应。"""
     return _DEBUG.execute(db, api_id, body, actor=user)

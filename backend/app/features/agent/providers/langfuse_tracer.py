@@ -112,7 +112,7 @@ def llm_generation(
             model_parameters=model_parameters or {},
         )
         gen = cm.__enter__()
-    except Exception as exc:  # noqa: BLE001 —— no-throw
+    except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
         logger.warning("Langfuse span 创建失败（忽略）：%s", exc)
         yield None
         return
@@ -131,7 +131,7 @@ def llm_generation(
         raise
     try:
         cm.__exit__(None, None, None)
-    except Exception as exc:  # noqa: BLE001 —— no-throw
+    except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
         logger.warning("Langfuse span 结束失败（忽略）：%s", exc)
 
 
@@ -162,7 +162,7 @@ def update_generation(
             }
             kwargs["usage_details"] = {k: v for k, v in details.items() if v is not None}
         gen.update(**kwargs)
-    except Exception as exc:  # noqa: BLE001 —— no-throw
+    except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
         logger.warning("Langfuse 回写失败（忽略）：%s", exc)
 
 
@@ -173,5 +173,5 @@ def flush_langfuse() -> None:
         return
     try:
         client.flush()
-    except Exception as exc:  # noqa: BLE001 —— no-throw
+    except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
         logger.warning("Langfuse flush 失败（忽略）：%s", exc)

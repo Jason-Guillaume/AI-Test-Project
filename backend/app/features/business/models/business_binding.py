@@ -1,8 +1,8 @@
 """业务绑定（Business Binding）ORM 模型。
 
-业务动作不直接保存接口 ID，而是通过独立的 Binding 建立 action ↔ 接口的关系。
-binding_type 预留 API/WEB/MOBILE 三种通道，当前第一阶段只真正支持 API：通过 api_id
-引用接口管理（api_catalog）的 api_interface 表。
+业务动作不直接保存接口 ID，而是通过独立的 Binding 建立 action ↔ API 或 Web 用例的关系。
+API 通道通过 api_id 引用接口管理（api_catalog）的 api_interface 表；Web 通道引用 Web 用例。
+MOBILE 是历史预留值，当前不接受新建或更新，也不参与流程执行。
 
 关键设计：api_id 外键 ondelete=SET NULL（**非** CASCADE）——接口被删除时绑定行保留、
 api_id 置空，服务层据此识别「绑定接口已失效」。若用 CASCADE 会静默删除绑定、隐藏断裂，
@@ -18,7 +18,7 @@ from app.shared.database import Base
 
 
 class BusinessBinding(Base):
-    """业务绑定：业务动作与具体执行接口（API/Web/Mobile）的关系。"""
+    """业务绑定：业务动作与 API 接口或 Web 用例的关系。"""
 
     __tablename__ = "business_binding"
     __table_args__ = (
@@ -44,7 +44,7 @@ class BusinessBinding(Base):
     )
     binding_type = Column(
         String(20), nullable=False, default="API", server_default=text("'API'"),
-        comment="绑定通道：API/WEB/MOBILE",
+        comment="绑定通道：API/WEB；MOBILE 为历史预留值",
     )
     name = Column(
         String(200), nullable=True,

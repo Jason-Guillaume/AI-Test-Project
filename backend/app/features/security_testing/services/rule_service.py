@@ -149,4 +149,5 @@ class SecurityRuleService:
 
     @staticmethod
     def _to_response(rows) -> list[MutationRuleResponse]:
+        """构造`to`响应数据。"""
         return [MutationRuleResponse.model_validate(r) for r in rows]

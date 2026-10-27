@@ -153,6 +153,7 @@ def run_assertions(assertions: list[dict[str, Any]], response: dict[str, Any]) -
 
 
 def _stringify(value: Any) -> str:
+    """将断言实际值转换为可比较的字符串。"""
     if value is None:
         return ""
     if isinstance(value, (dict, list)):
@@ -165,6 +166,7 @@ def _stringify(value: Any) -> str:
 
 
 def _message(atype: str, operator: str, actual: Any, expected: Any, passed: bool) -> str:
+    """处理消息相关数据。"""
     verb = "通过" if passed else "失败"
     actual_s = _stringify(actual) or "(空)"
     expected_s = "" if expected is None else str(expected)

@@ -206,6 +206,7 @@ _ENVIRONMENT_CODE_BY_REASON = {
 
 
 def _environment_error_code(decision: EnvironmentDecision) -> str:
+    """将环境异常映射为平台错误代码。"""
     return _ENVIRONMENT_CODE_BY_REASON.get(decision.reason, CODE_SECURITY_TARGET_NOT_ALLOWED)
 
 
@@ -390,7 +391,7 @@ def _auth_header_present(headers: dict[str, Any] | None) -> bool:
 
 
 def _fingerprint(*, api_id: Any, mutation_type: str, location: Any, field: Any, baseline_case_id: Any) -> str:
-    """sha256(api_id|mutation_type|target_location|target_field|baseline_case_id)。"""
+    """根据接口、变异类型、目标位置、目标字段和基线用例标识计算 SHA-256 指纹。"""
     raw = "|".join(str(v) for v in (api_id, mutation_type, location, field, baseline_case_id))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -569,6 +570,7 @@ class _CaseContext:
         case_execution_id: int | None,
         started_at: datetime,
     ) -> None:
+        """初始化对象状态。"""
         self.db = db
         self.security_case = security_case
         self.environment = environment
@@ -824,6 +826,7 @@ def run_security_case(
     project_id = security_case.project_id or iface.project_id
 
     def send_once(request: Any = None) -> Any:
+        """发送`once`。"""
         # 重放循环会把同一个请求对象传回来；这里只用它作为「本次是重放执行」的信号，
         # 请求内容始终是上面变异出来的那份。
         return send(

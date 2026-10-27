@@ -46,6 +46,7 @@ def generate_report(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """生成报告。"""
     # project_id 由 service 从 TestRun 解析；权限 member+ 在 service 内校验。
     return _REPORT.build_report(
         db, run_id, actor=user,
@@ -69,6 +70,7 @@ def list_reports(
     status: str | None = Query(None),
     test_run_id: int | None = Query(None, ge=1),
 ):
+    """列出`reports`。"""
     return _REPORT.list_reports(
         db, project_id, user, page=page, page_size=page_size,
         environment_id=environment_id, risk_level=risk_level, status=status, test_run_id=test_run_id,
@@ -77,11 +79,13 @@ def list_reports(
 
 @router.get("/reports/{report_id}", response_model=TestReportDetailResponse, summary="测试报告详情")
 def get_report(report_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """获取报告。"""
     return _REPORT.get_report(db, report_id, user)
 
 
 @router.delete("/reports/{report_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除测试报告")
 def delete_report(report_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """删除报告。"""
     _REPORT.delete_report(db, report_id, user)
     return None
 
@@ -96,4 +100,5 @@ def regenerate_ai_summary(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """重新生成报告的 AI 摘要。"""
     return _REPORT.regenerate_ai_summary(db, report_id, user)

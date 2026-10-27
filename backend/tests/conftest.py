@@ -66,7 +66,6 @@ os.environ["SECRET_KEY"] = os.environ.get(
 os.environ["AUTH_LOGIN_IP_LIMIT_PER_MINUTE"] = "1000000"
 os.environ["AUTH_LOGIN_USERNAME_LIMIT_PER_MINUTE"] = "1000000"
 os.environ["AUTH_REGISTER_IP_LIMIT_PER_HOUR"] = "1000000"
-os.environ["AUTH_CAPTCHA_IP_LIMIT_PER_MINUTE"] = "1000000"
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
@@ -132,6 +131,16 @@ def _run_migrations() -> str:
     config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     command.stamp(config, "base")
     command.upgrade(config, "head")
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
+def migration_head() -> str:
+    """读取仓库当前 Alembic head，避免功能测试把迁移版本写死。"""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     return ScriptDirectory.from_config(config).get_current_head()
 
 
@@ -289,34 +298,13 @@ class ApiClient:
     def register(self, username: str, password: str = DEFAULT_PASSWORD):
         """调用 POST /register 创建账号，返回原始响应（由调用方断言状态码）。
 
-        注册接口需要图形验证码，本 helper 直接写入内存 challenge 存储
-        （见 app.features.captcha.services.captcha_service._STORAGE），保证既有测试无需改动即可通过。
-        需要验证验证码失败分支的用例请显式构造 challenge_id / captcha_code。
-
         Args:
             username: 新用户名的用户名，约定由 unique() 生成以避免冲突。
             password: 注册密码，默认使用测试统一初始密码。
         """
-        from datetime import datetime, timedelta
-        from uuid import uuid4
-
-        from app.features.captcha.services.captcha_service import _STORAGE
-
-        # 每个测试独立 challenge：避免多次 register 复用同一个 ID。
-        challenge_id = f"test-{uuid4().hex[:8]}"
-        code = "TEST12"
-        _STORAGE[challenge_id] = {
-            "code": code,
-            "expires_at": datetime.now() + timedelta(minutes=5),
-        }
         return self.client.post(
             f"{API}/register",
-            json={
-                "username": username,
-                "password": password,
-                "captcha_id": challenge_id,
-                "captcha_code": code,
-            },
+            json={"username": username, "password": password},
         )
 
     def login(self, username: str, password: str = DEFAULT_PASSWORD) -> str:

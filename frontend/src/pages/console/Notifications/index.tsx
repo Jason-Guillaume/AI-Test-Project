@@ -3,9 +3,10 @@
 import { App, Button, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { notificationsApi } from '@/api/notifications';
 import { getErrorMessage } from '@/api/client';
-import type { NotificationList } from '@/types';
+import type { Notification, NotificationList } from '@/types';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
 
@@ -157,8 +158,11 @@ export function ConsoleNotificationsPage() {
           {
             title: '操作',
             key: 'actions',
-            render: (_: unknown, row: { id: number; is_read: boolean }) => (
+            render: (_: unknown, row: Notification) => (
               <Space>
+                {row.event_type.startsWith('task.') && typeof (row.payload?.detail as Record<string, unknown> | undefined)?.task_id === 'number' && (
+                  <Link to={`/console/tasks/${(row.payload?.detail as { task_id: number }).task_id}${typeof (row.payload?.detail as Record<string, unknown>).run_id === 'number' ? `?runId=${(row.payload?.detail as { run_id: number }).run_id}` : ''}`}>查看任务</Link>
+                )}
                 {!row.is_read && (
                   <Button /* 已读的通知不再展示「标记已读」按钮，减少无意义的操作 */ size="small"
                     onClick={() => markReadMutation.mutate(row.id)}

@@ -17,6 +17,7 @@ API = "/api/v1"
 
 
 def _create_project(api, actor, name=None):
+    """创建项目。"""
     proj_name = name or unique("proj")
     r = api.post("/projects", username=actor, json={"name": proj_name, "description": "test-mgmt project"})
     assert r.status_code == 201, r.text
@@ -24,6 +25,7 @@ def _create_project(api, actor, name=None):
 
 
 def _register_and_login(api, username):
+    """注册测试用户并完成登录，返回用户标识。"""
     r = api.register(username)
     assert r.status_code == 201, r.text
     uid = r.json()["user"]["id"]
@@ -32,12 +34,14 @@ def _register_and_login(api, username):
 
 
 def _add_member(api, actor, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(f"/projects/{project_id}/members/{user_id}", username=actor,
                 json={"user_id": user_id, "role": role})
     assert r.status_code == 200, r.text
 
 
 def _make_case(api, admin, project_id, name=None):
+    """构造用例。"""
     return api.post(
         f"/projects/{project_id}/test-cases", username=admin,
         json={"name": name or unique("case")},
@@ -51,6 +55,7 @@ class TestSuite:
     """测试套件 CRUD + 套件-用例关联。"""
 
     def test_suite_crud(self, api, admin):
+        """验证套件增删改查场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         r = api.post(f"/projects/{project_id}/test-suites", username=admin,
                      json={"name": "回归套件", "suite_type": "REGRESSION", "enabled": True})
@@ -65,6 +70,7 @@ class TestSuite:
         assert api.get(f"/test-suites/{sid}", username=admin).status_code == 404
 
     def test_suite_case_association_and_dedup(self, api, admin):
+        """验证套件用例`association`和`dedup`场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         sid = api.post(f"/projects/{project_id}/test-suites", username=admin,
                        json={"name": unique("suite")}).json()["id"]
@@ -101,6 +107,7 @@ class TestPlan:
     """测试计划 CRUD + 计划-套件关联 + environment 校验。"""
 
     def test_plan_crud(self, api, admin):
+        """验证计划增删改查场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         r = api.post(f"/projects/{project_id}/test-plans", username=admin,
                      json={"name": "每日回归", "status": "DRAFT", "execution_mode": "MANUAL"})
@@ -115,6 +122,7 @@ class TestPlan:
         assert api.get(f"/test-plans/{pid}", username=admin).status_code == 404
 
     def test_plan_suite_association_and_dedup(self, api, admin):
+        """验证计划套件`association`和`dedup`场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         pid = api.post(f"/projects/{project_id}/test-plans", username=admin,
                        json={"name": unique("plan")}).json()["id"]
@@ -160,6 +168,7 @@ class TestRunListing:
     """TestRun 列表与项目隔离。执行端到端见 test_15。"""
 
     def test_run_list_empty(self, api, admin):
+        """验证运行列出空值场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         r = api.get(f"/projects/{project_id}/test-runs", username=admin)
         assert r.status_code == 200
@@ -167,6 +176,7 @@ class TestRunListing:
         assert r.json()["total"] == 0
 
     def test_run_cross_project_hidden_as_404(self, api, admin):
+        """验证运行跨项目项目`hidden``as`场景及其预期结果。"""
         observer = unique("observer")
         _register_and_login(api, observer)
         project_id, _ = _create_project(api, admin)
@@ -174,6 +184,7 @@ class TestRunListing:
         assert api.get(f"/projects/{project_id}/test-runs", username=observer).status_code == 404
 
     def test_plan_cross_project_hidden_as_404(self, api, admin):
+        """验证计划跨项目项目`hidden``as`场景及其预期结果。"""
         owner = unique("owner")
         observer = unique("observer")
         owner_id = _register_and_login(api, owner)

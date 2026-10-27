@@ -94,6 +94,7 @@ def list_scan_targets(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanTargetListResponse:
+    """列出扫描`targets`。"""
     return _TARGETS.list_targets(db, project_id, user, page, page_size, enabled=enabled)
 
 
@@ -107,6 +108,7 @@ def create_scan_target(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanTargetRead:
+    """创建扫描目标。"""
     return _TARGETS.to_read(db, _TARGETS.create(db, project_id, user, body))
 
 
@@ -119,6 +121,7 @@ def get_scan_target(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanTargetRead:
+    """获取扫描目标。"""
     _access.get_project_or_404(db, project_id, user)
     row = _TARGETS.get_or_none(db, project_id, target_id)
     if row is None:
@@ -136,6 +139,7 @@ def update_scan_target(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanTargetRead:
+    """更新扫描目标。"""
     return _TARGETS.to_read(db, _TARGETS.update(db, project_id, user, target_id, body))
 
 
@@ -148,6 +152,7 @@ def delete_scan_target(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除扫描目标。"""
     _TARGETS.delete(db, project_id, user, target_id)
 
 
@@ -166,6 +171,7 @@ def list_scan_profiles(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanProfileListResponse:
+    """列出扫描`profiles`。"""
     return _PROFILES.list_profiles(
         db, project_id, user, page, page_size, enabled=enabled, is_builtin=is_builtin,
     )
@@ -181,6 +187,7 @@ def create_scan_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanProfileRead:
+    """创建扫描配置档案。"""
     return _PROFILES.to_read(_PROFILES.create(db, project_id, user, body))
 
 
@@ -193,6 +200,7 @@ def get_scan_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanProfileRead:
+    """获取扫描配置档案。"""
     _access.get_project_or_404(db, project_id, user)
     row = _PROFILES.get_or_none(db, project_id, profile_id)
     if row is None:
@@ -210,6 +218,7 @@ def update_scan_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanProfileRead:
+    """更新扫描配置档案。"""
     return _PROFILES.to_read(_PROFILES.update(db, project_id, user, profile_id, body))
 
 
@@ -222,6 +231,7 @@ def delete_scan_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除扫描配置档案。"""
     _PROFILES.delete(db, project_id, user, profile_id)
 
 
@@ -240,6 +250,7 @@ def list_scan_auth_profiles(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanAuthProfileListResponse:
+    """列出扫描认证`profiles`。"""
     return _AUTH_PROFILES.list_profiles(db, project_id, user, page, page_size, enabled=enabled)
 
 
@@ -269,6 +280,7 @@ def get_scan_auth_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanAuthProfileRead:
+    """获取扫描认证配置档案。"""
     return _JOBS.get_auth_profile(db, project_id, user, profile_id)
 
 
@@ -283,6 +295,7 @@ def update_scan_auth_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanAuthProfileRead:
+    """更新扫描认证配置档案。"""
     return ScanAuthProfileRead.model_validate(
         _AUTH_PROFILES.update(db, project_id, user, profile_id, body)
     )
@@ -297,6 +310,7 @@ def delete_scan_auth_profile(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除扫描认证配置档案。"""
     _AUTH_PROFILES.delete(db, project_id, user, profile_id)
 
 
@@ -341,6 +355,7 @@ def list_scan_jobs(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanJobListResponse:
+    """列出扫描`jobs`。"""
     return _JOBS.list_jobs(
         db, project_id, user, page, page_size, status=status, target_id=target_id,
     )
@@ -355,6 +370,7 @@ def get_scan_job(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanJobRead:
+    """获取扫描`job`。"""
     return _JOBS.get_job(db, project_id, user, job_id)
 
 
@@ -381,6 +397,7 @@ def get_scan_progress(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanJobProgressRead:
+    """获取扫描`progress`。"""
     return _JOBS.progress(db, project_id, user, job_id)
 
 
@@ -397,6 +414,7 @@ def list_scan_events(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanEventListResponse:
+    """列出扫描`events`。"""
     return _JOBS.events(
         db, project_id, user, job_id, page, page_size, event_type=event_type,
     )
@@ -416,6 +434,7 @@ def list_scan_alerts(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanAlertListResponse:
+    """列出扫描`alerts`。"""
     return _JOBS.alerts(
         db, project_id, user, job_id, page, page_size, rule_id=rule_id, severity=severity,
     )
@@ -434,6 +453,7 @@ def list_scan_findings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ScanFindingListResponse:
+    """列出扫描`findings`。"""
     return _JOBS.findings(
         db, project_id, user, job_id, page, page_size, source_rule_id=source_rule_id,
     )
@@ -450,6 +470,7 @@ def get_scan_coverage(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> CoverageRead:
+    """获取扫描`coverage`。"""
     return _JOBS.coverage(db, project_id, user, job_id, page, page_size)
 
 

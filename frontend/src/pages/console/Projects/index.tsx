@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { projectsApi } from '@/api/projects';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
 import { ProjectRoleTag } from '@/components/RoleTag';
@@ -14,16 +13,11 @@ import { ProjectRoleTag } from '@/components/RoleTag';
  * 用户控制台的项目列表页组件。
  *
  * 用途：分页展示当前用户有权访问的项目，支持按项目名关键字搜索。
- * 数据来源：projectsApi.list，请求参数为分页 + 关键字 + 当前组织作用域。
- * 作用域切换：organization_id 取自 useConsoleScope().currentOrgId，
- *       切换组织/项目作用域后 currentOrgId 变化 → queryKey 变化 → 自动重新请求，
- *       因此页面本身不需要监听作用域变化的额外副作用。
+ * 数据来源：projectsApi.list，请求参数为分页 + 关键字；接口仅返回当前用户可访问项目。
  * 失败呈现：列表接口失败时整页换成可重试的 ErrorState。
  * 空态：无匹配项目时表格为空。
  */
 export function ConsoleProjectsPage() {
-  // 当前选中的组织作用域 ID；null 表示「不限组织」（平台管理员视角）
-  const { currentOrgId } = useConsoleScope();
   // 分页状态：默认第一页、每页 10 条
   const [pagination, setPagination] = useState<PaginationState>({
     page: 1,
@@ -32,18 +26,15 @@ export function ConsoleProjectsPage() {
   // 关键字搜索词；空串等价于不搜索
   const [keyword, setKeyword] = useState('');
 
-  // 分页参数与筛选条件统一拼成一份 query 对象；
-  // 依赖 pagination/keyword/currentOrgId，三者任一变化都会重新计算
+  // 分页参数与筛选条件统一拼成一份 query 对象。
   const query = useMemo(
     () => ({
       page: pagination.page,
       page_size: pagination.page_size,
       // 空串转成 undefined，避免向后端发 keyword= 的无意义参数
       keyword: keyword || undefined,
-      // 作用域为 null 时不传组织过滤，展示跨组织可见的全部项目
-      organization_id: currentOrgId ?? undefined,
     }),
-    [pagination, keyword, currentOrgId],
+    [pagination, keyword],
   );
 
   // 项目列表查询；queryKey 带 query 对象，参数一变就重新请求

@@ -180,6 +180,7 @@ def find_scenario_for_api(db: Session, api_id: int, project_id: int, user: User)
 
 
 def _matcher_count(db: Session, scenario_id: int) -> int:
+    """统计匹配器数量。"""
     from app.features.mock_management.models import MockMatcher
 
     return (

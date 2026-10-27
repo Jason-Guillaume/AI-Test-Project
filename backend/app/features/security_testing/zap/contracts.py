@@ -355,7 +355,7 @@ def redact_text(text: str | None, *, replace: str = REDACTED_PLACEHOLDER) -> str
     if not text:
         return ""
     result = text
-    # "Authorization: Bearer eyJ..." → "Authorization: Bearer ******"
+    # 脱敏前后示例："Authorization: Bearer eyJ..." → "Authorization: Bearer ******"
     result = _RE_BEARER_HEADER.sub(r"\1" + replace, result)
     # "Bearer eyJ..." 单独出现
     result = _RE_BEARER_BARE.sub(r"\1" + replace, result)

@@ -77,4 +77,5 @@ class SecuritySettingService:
 
     @staticmethod
     def _to_response(row: SecurityProjectSetting) -> SecuritySettingRead:
+        """构造`to`响应数据。"""
         return SecuritySettingRead.model_validate(row)

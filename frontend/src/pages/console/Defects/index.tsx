@@ -28,25 +28,26 @@ import {
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   bugsApi,
   type BugCreate,
   type BugUpdate,
 } from '@/api/defects';
 import { projectsApi } from '@/api/projects';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
 import { getErrorMessage } from '@/api/client';
+import { DefectOrigins } from '@/components/exec/DefectOrigins';
 import type { Bug, BugSeverity, BugStatus, Paginated, Project } from '@/types';
 
 // 后端约定的状态与严重度常量；与 BugStatus/BugSeverity 类型保持同步。
 const BUG_STATUSES: BugStatus[] = ['待确认', '处理中', '已修复', '已关闭', '已拒绝'];
 const SEVERITY_OPTIONS: { label: string; value: BugSeverity }[] = [
-  { label: '1 致命', value: 1 },
-  { label: '2 严重', value: 2 },
-  { label: '3 一般', value: 3 },
-  { label: '4 轻微', value: 4 },
+  { label: '1 低', value: 1 },
+  { label: '2 中', value: 2 },
+  { label: '3 高', value: 3 },
+  { label: '4 严重', value: 4 },
 ];
 const STATUS_COLOR: Record<BugStatus, string> = {
   待确认: 'orange',
@@ -56,10 +57,10 @@ const STATUS_COLOR: Record<BugStatus, string> = {
   已拒绝: 'red',
 };
 const SEVERITY_COLOR: Record<BugSeverity, string> = {
-  1: 'red',
-  2: 'volcano',
-  3: 'orange',
-  4: 'gold',
+  1: 'gold',
+  2: 'orange',
+  3: 'volcano',
+  4: 'red',
 };
 
 // 新建/编辑弹窗的表单值。severity 与 status 都有默认值，减少空态。
@@ -86,7 +87,9 @@ interface BugFormValues {
 export function ConsoleDefectsPage() {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
-  const { currentOrgId } = useConsoleScope();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedBugId = Number(searchParams.get('bugId'));
+  const bugDetail = useQuery({ queryKey: ['bug-detail', requestedBugId], queryFn: () => bugsApi.get(requestedBugId), enabled: Number.isSafeInteger(requestedBugId) && requestedBugId > 0 });
   // antd Form 实例：必须在使用 useForm 的组件内创建；
   // 每次弹窗打开用 key 强制重建以重置值，无需手工 resetFields。
   const [bugForm] = Form.useForm<BugFormValues>();
@@ -127,14 +130,13 @@ export function ConsoleDefectsPage() {
     queryFn: () => bugsApi.list(query),
   });
 
-  // 项目下拉数据源：拉当前组织下的项目（page_size=100 兜底）
+  // 项目下拉数据源：拉当前用户全部可见项目（page_size=100 兜底）
   const projectsQuery = useQuery<Paginated<Project>>({
-    queryKey: ['projects', { page: 1, page_size: 100, organization_id: currentOrgId ?? undefined }],
+    queryKey: ['projects', { page: 1, page_size: 100 }],
     queryFn: () =>
       projectsApi.list({
         page: 1,
         page_size: 100,
-        organization_id: currentOrgId ?? undefined,
       }),
   });
 
@@ -329,6 +331,7 @@ export function ConsoleDefectsPage() {
             width: 140,
             render: (_: unknown, row: Bug) => (
               <Space>
+                <Button size="small" onClick={() => setSearchParams({ bugId: String(row.id) })}>详情</Button>
                 <Button size="small" onClick={() => openEdit(row)}>
                   编辑
                 </Button>
@@ -350,6 +353,14 @@ export function ConsoleDefectsPage() {
         pagination={pagination}
         onPaginationChange={setPagination}
       />
+
+      <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnClose>
+        {bugDetail.isLoading ? <LoadingState /> : bugDetail.isError || !bugDetail.data ? <ErrorState error={bugDetail.error} onRetry={bugDetail.refetch} /> : <Space direction="vertical" style={{ width: '100%' }}>
+          <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
+          <Typography.Text strong>关联来源</Typography.Text>
+          <DefectOrigins bugId={bugDetail.data.id} />
+        </Space>}
+      </Modal>
 
       {/* 新建 / 编辑弹窗 */}
       <Modal

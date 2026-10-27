@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from uuid import uuid4
 import pytest
 from sqlalchemy import text
-from tests.conftest import unique
+from tests.conftest import migration_head, unique
 
 HTML = b'''<!doctype html><title>Web UI Demo</title>
 <label>User<input data-testid="username"></label><label>Password<input data-testid="password" type="password"></label>
@@ -62,12 +62,15 @@ def target_server():
 @pytest.fixture()
 def web_setup(api, admin, db, target_server):
     """创建授权项目与环境，不修改开发数据库或 ZAP 资源。"""
+    from app.features.environment_configuration.models import ProjectEnvironment
     from app.models.configuration import Environment
     response = api.post("/projects", username=admin, json={"name": unique("web")})
     assert response.status_code == 201, response.text
     project_id = response.json()["id"]
     env = Environment(name=unique("web-env"), display_name="浏览器验收环境", base_url=f"http://127.0.0.1:{target_server}", is_active=True)
     db.add(env)
+    db.commit()
+    db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id, base_url=env.base_url, is_active=True))
     db.commit()
     allowed = api.post(f"/projects/{project_id}/targets", username=admin,
         json={"scheme": "http", "host": "127.0.0.1", "port": target_server, "enabled": True})
@@ -103,7 +106,7 @@ def confirm(api, admin, case):
 def test_migration_and_web_asset_storage(api, admin, db, web_setup):
     """0012 新表存在，用例和步骤使用旧表；原始脚本和非法操作被拒绝。"""
     project, _ = web_setup
-    assert db.execute(text("select version_num from alembic_version")).scalar() == "0017"
+    assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
     case = create_case(api, admin, project)
     from app.features.test_management.models.test_case import TestCase
     from app.features.test_management.models.test_step import TestStep
@@ -385,7 +388,7 @@ def test_migration_downgrade_preserves_existing_contracts(db):
         assert {"test_case", "test_step", "case_execution", "test_run", "test_report", "security_case", "mock_service"} <= tables
     finally:
         command.upgrade(config, "head")
-    assert db.execute(text("select version_num from alembic_version")).scalar() == "0017"
+    assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
 
 
 def test_cookie_and_jwt_are_used_by_real_browser(api, admin, web_setup, target_server):

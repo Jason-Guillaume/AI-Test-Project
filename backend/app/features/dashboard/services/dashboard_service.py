@@ -3,18 +3,22 @@
 所有统计都以「当前用户可见范围」为口径；响应体带 scope 字段说明统计范围，
 避免把全局数字误当成个人指标展示。
 
-已接入的缺陷统计直接读 bug 表按可见项目过滤计数；尚未迁移的业务
-（测试执行、报告等）在 stats 中以 value=0 并明确 hint="未接入" 返回，
-绝不产生随机或伪造数据。
+项目、测试执行、报告与缺陷统计均直接读取现有业务表，并按当前用户可见项目过滤。
 """
 
 from __future__ import annotations
+
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.features.dashboard.schemas import (
     DashboardOverviewResponse,
+    DashboardChartsResponse,
+    DashboardDailyCount,
+    DashboardDefectSeverityItem,
+    DashboardExecutionTrendItem,
     DashboardScopeResponse,
     ProjectSummaryItem,
     ProjectSummaryResponse,
@@ -23,6 +27,10 @@ from app.features.dashboard.schemas import (
     StatCard,
 )
 from app.features.defects.models.bug import Bug
+from app.features.defects.schemas import SEVERITY_LABELS
+from app.features.reports.models.report import TestReport
+from app.features.test_management.models.execution import CaseExecution, TestRun
+from app.features.test_management.models.test_case import TestCase
 from app.models.configuration import Environment, ModelConfiguration
 from app.models.identity import Organization, OrganizationMember, User
 from app.models.notification import Notification
@@ -35,11 +43,6 @@ from app.shared.roles import (
     normalize_project_role,
     project_role_for,
 )
-
-# 「未接入」标记：尚未迁移的业务固定返回 value=0 并带这个 hint，
-# 前端据此渲染占位文案，而不是把 0 当成真实指标展示。
-NOT_MIGRATED_HINT = "未接入"
-
 
 def build_scope(db: Session, user: User) -> DashboardScopeResponse:
     """构造当前统计口径说明。"""
@@ -91,13 +94,23 @@ def overview_for_user(db: Session, user: User) -> DashboardOverviewResponse:
     - unread_notifications：当前用户收件箱未读数
     - models_available / environments_available：组织级授权内可用的配置数
     - defects：当前用户可见范围内的真实缺陷计数（bug 表按 accessible_project_ids 过滤）
-    - test_runs / reports：属于后续迁移范围，明确标记「未接入」
+    - test_runs / reports：当前用户可见项目内的真实执行与报告数量
     """
     scope = build_scope(db, user)
     is_admin = is_platform_admin(user)
 
     project_query = project_visible_query(db, user)
     projects_total = int(project_query.count())
+
+    test_run_query = db.query(func.count(TestRun.id))
+    report_query = db.query(func.count(TestReport.id))
+    if not is_admin:
+        # 执行与报告沿用项目可见范围，避免普通成员看到其它项目的统计。
+        visible_project_ids = scope.project_ids or [-1]
+        test_run_query = test_run_query.filter(TestRun.project_id.in_(visible_project_ids))
+        report_query = report_query.filter(TestReport.project_id.in_(visible_project_ids))
+    test_runs_total = int(test_run_query.scalar() or 0)
+    reports_total = int(report_query.scalar() or 0)
 
     if is_admin:
         organizations_total = int(db.query(func.count(Organization.id)).scalar() or 0)
@@ -180,11 +193,119 @@ def overview_for_user(db: Session, user: User) -> DashboardOverviewResponse:
         StatCard(key="unread_notifications", label="未读通知", value=unread_notifications, hint="个人收件箱"),
         StatCard(key="models_available", label="可用模型配置", value=models_available, hint="组织授权且已启用"),
         StatCard(key="environments_available", label="可用环境", value=environments_available, hint="已启用的执行环境"),
-        StatCard(key="test_runs", label="测试执行", value=0, hint=NOT_MIGRATED_HINT),
-        StatCard(key="reports", label="测试报告", value=0, hint=NOT_MIGRATED_HINT),
+        StatCard(key="test_runs", label="测试执行", value=test_runs_total, hint="当前用户可见项目"),
+        StatCard(key="reports", label="测试报告", value=reports_total, hint="当前用户可见项目"),
         StatCard(key="defects", label="缺陷", value=defects_total, hint="我可见项目内的缺陷"),
     ]
     return DashboardOverviewResponse(scope=scope, stats=stats)
+
+
+def charts_for_user(
+    db: Session,
+    user: User,
+    *,
+    days: int = 7,
+    organization_id: int | None = None,
+    project_id: int | None = None,
+) -> DashboardChartsResponse:
+    """返回工作台趋势图数据，只统计当前用户可见的项目。"""
+    today = date.today()
+    first_day = today - timedelta(days=days - 1)
+    after_last_day = today + timedelta(days=1)
+    start_at = datetime.combine(first_day, time.min)
+    end_at = datetime.combine(after_last_day, time.min)
+    days_in_range = [first_day + timedelta(days=offset) for offset in range(days)]
+    day_keys = [item.isoformat() for item in days_in_range]
+
+    # 先由既有项目可见性查询收敛，再叠加用户在顶栏选择的组织和项目。
+    # 不可见或不存在的选择都会得到空数据，不泄露项目是否存在。
+    visible_projects = project_visible_query(db, user)
+    if organization_id is not None:
+        visible_projects = visible_projects.filter(Project.organization_id == organization_id)
+    if project_id is not None:
+        visible_projects = visible_projects.filter(Project.id == project_id)
+    project_ids = [row[0] for row in visible_projects.with_entities(Project.id).all()]
+    scoped_project_ids = project_ids or [-1]
+
+    execution_counts = {key: {"total": 0, "passed": 0, "failed": 0} for key in day_keys}
+    if project_ids:
+        execution_time = func.coalesce(CaseExecution.started_at, CaseExecution.created_at)
+        day_expression = func.date(execution_time)
+        rows = (
+            db.query(
+                day_expression,
+                CaseExecution.status,
+                func.count(CaseExecution.id),
+            )
+            .join(TestRun, TestRun.id == CaseExecution.test_run_id)
+            .filter(
+                TestRun.project_id.in_(scoped_project_ids),
+                execution_time >= start_at,
+                execution_time < end_at,
+            )
+            .group_by(day_expression, CaseExecution.status)
+            .all()
+        )
+        for day_value, status_value, count in rows:
+            day_key = day_value.isoformat() if hasattr(day_value, "isoformat") else str(day_value)
+            if day_key not in execution_counts:
+                continue
+            bucket = execution_counts[day_key]
+            value = int(count or 0)
+            bucket["total"] += value
+            normalized_status = str(status_value or "").upper()
+            if normalized_status == "PASSED":
+                bucket["passed"] += value
+            elif normalized_status in {"FAILED", "ERROR"}:
+                bucket["failed"] += value
+
+    generation_counts = {key: 0 for key in day_keys}
+    if project_ids:
+        day_expression = func.date(TestCase.created_at)
+        rows = (
+            db.query(day_expression, func.count(TestCase.id))
+            .filter(
+                TestCase.project_id.in_(scoped_project_ids),
+                TestCase.source_type == "AI",
+                TestCase.created_at >= start_at,
+                TestCase.created_at < end_at,
+            )
+            .group_by(day_expression)
+            .all()
+        )
+        for day_value, count in rows:
+            day_key = day_value.isoformat() if hasattr(day_value, "isoformat") else str(day_value)
+            if day_key in generation_counts:
+                generation_counts[day_key] = int(count or 0)
+
+    severity_counts = {severity: 0 for severity in SEVERITY_LABELS}
+    if project_ids:
+        rows = (
+            db.query(Bug.severity, func.count(Bug.id))
+            .filter(Bug.project_id.in_(scoped_project_ids))
+            .group_by(Bug.severity)
+            .all()
+        )
+        for severity, count in rows:
+            if severity in severity_counts:
+                severity_counts[severity] = int(count or 0)
+
+    return DashboardChartsResponse(
+        scope=build_scope(db, user),
+        days=days,
+        execution_trend=[
+            DashboardExecutionTrendItem(date=key, **execution_counts[key]) for key in day_keys
+        ],
+        defect_severity=[
+            DashboardDefectSeverityItem(
+                severity=severity,
+                label=SEVERITY_LABELS[severity],
+                value=severity_counts[severity],
+            )
+            for severity in SEVERITY_LABELS
+        ],
+        case_generation=[DashboardDailyCount(date=key, count=generation_counts[key]) for key in day_keys],
+    )
 
 
 def project_summaries(db: Session, user: User, *, page: int, page_size: int) -> ProjectSummaryResponse:

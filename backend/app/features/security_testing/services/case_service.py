@@ -37,7 +37,7 @@ from app.features.test_management.models.test_plan import TestPlan, TestPlanSuit
 from app.features.test_management.models.test_suite import TestSuite, TestSuiteCase
 from app.features.test_management.schemas import TestRunCreateRequest, TestRunResponse
 from app.features.test_management.services.run_service import RunService
-from app.models.configuration import Environment
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.models.identity import User
 from app.shared.errors import bad_request, not_found
 from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
@@ -152,13 +152,19 @@ class SecurityCaseService:
         只执行仍启用的用例；一个都不剩则 400，避免创建一个空计划。
         """
         require_writable_project(db, project_id, actor)
-        environment = db.get(Environment, body.environment_id) if body.environment_id else None
-        if environment is None or not environment.is_active:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment(db, project_id, body.environment_id) if body.environment_id else None
+        if environment is None:
+            raise not_found("环境未关联当前项目或已停用")
 
         cases = _load_enabled_security_cases(db, project_id, body.security_case_ids)
         if not cases:
             raise bad_request("所选安全用例不存在或已停用")
+        unconfirmed_high_risk = [
+            row.id for row in cases
+            if row.confirmation_required and not (row.confirmed_by and row.confirmed_at)
+        ]
+        if unconfirmed_high_risk:
+            raise bad_request("所选安全用例包含尚未人工确认的高风险变异")
 
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         name = (body.plan_name or f"安全测试-{stamp}").strip()[:200]

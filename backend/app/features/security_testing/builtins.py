@@ -18,10 +18,10 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy import text
 
-# (strategy_key, name, category, description, risk_level, [rules])
-# rule = (name, mutation_type, target_location, target_field, mutation_config,
-#         expected_security_behavior, expected_status_codes, severity,
-#         enabled, confirmation_required, sort)
+# 策略配置字段：（strategy_key, name, category, description, risk_level, [rules]）。
+# 规则字段以元组表示：name、mutation_type、target_location、target_field、mutation_config，
+# 以及 expected_security_behavior、expected_status_codes、severity，
+# 以及 enabled、confirmation_required、sort。
 BUILTIN_STRATEGIES: tuple[tuple[str, str, str, str, str, list[tuple]], ...] = (
     (
         "AUTH_BASIC",

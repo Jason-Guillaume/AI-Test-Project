@@ -31,6 +31,7 @@ API = "/api/v1"
 
 
 def _create_project(api, admin, name=None):
+    """创建项目。"""
     r = api.post(
         "/projects", username=admin,
         json={"name": name or unique("proj"), "description": "mock project"},
@@ -48,6 +49,7 @@ def _register(api, username):
 
 
 def _add_member(api, admin, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}", username=admin,
         json={"user_id": user_id, "role": role},
@@ -56,20 +58,22 @@ def _add_member(api, admin, project_id, user_id, role="member"):
 
 
 def _skey(prefix="SVC"):
-    """service_key / scenario_key：^[A-Z][A-Z0-9_]{0,99}$。"""
+    """服务键或场景键格式：service_key / scenario_key：^[A-Z][A-Z0-9_]{0,99}。"""
     return f"{prefix}_{uuid4().hex[:6].upper()}"
 
 
 def _create_service(api, admin, project_id, key, *, public_runtime=False, token=None, name=None):
+    """创建服务。"""
     body = {"name": name or key, "service_key": key, "public_runtime": public_runtime}
     if token is not None:
         body["runtime_token"] = token
     r = api.post(f"/projects/{project_id}/mock-services", username=admin, json=body)
     assert r.status_code == 201, r.text
-    return r.json()  # {service, runtime_token}
+    return r.json()  # 调用上下文包含 {service, runtime_token}。
 
 
 def _create_endpoint(api, admin, service_id, *, method="GET", path="/items", name=None):
+    """创建接口。"""
     r = api.post(
         f"/mock-services/{service_id}/endpoints", username=admin,
         json={"name": name or path, "method": method, "path": path},
@@ -83,6 +87,7 @@ def _create_scenario(
     behavior_type="STATIC_RESPONSE", status_code=200, body=None, template=None,
     delay_ms=None, headers=None, matchers=None, is_default=False, priority=0,
 ):
+    """创建场景。"""
     payload = {
         "name": key, "scenario_key": key, "behavior_type": behavior_type,
         "status_code": status_code, "is_default": is_default, "priority": priority,
@@ -131,6 +136,7 @@ def _runtime(
 
 
 def _matcher(source, field, operator, expected=None, **kw):
+    """构造模拟请求匹配规则。"""
     m = {"source": source, "field": field, "operator": operator}
     if expected is not None:
         m["expected_value"] = expected
@@ -147,10 +153,11 @@ def _header_ci(headers_map, name):
     return None
 
 
-# --------------------------------------------------------------------------- 1. Service + Token
+# --------------------------------------------------------------------------- 1. 服务与令牌 Service + Token
 
 
 def test_mock_service_crud_token_and_permissions(api, admin, db):
+    """验证模拟服务增删改查令牌和权限场景及其预期结果。"""
     project_id = _create_project(api, admin)
     key = _skey("PAY")
 
@@ -242,10 +249,11 @@ def test_mock_service_crud_token_and_permissions(api, admin, db):
     assert r_dup.status_code == 409
 
 
-# --------------------------------------------------------------------------- 2. Endpoint
+# --------------------------------------------------------------------------- 2. 接口 Endpoint
 
 
 def test_mock_endpoint_crud(api, admin):
+    """验证模拟接口增删改查场景及其预期结果。"""
     project_id = _create_project(api, admin)
     svc = _create_service(api, admin, project_id, _skey("EP"))
     service_id = svc["service"]["id"]
@@ -293,6 +301,7 @@ def test_mock_endpoint_crud(api, admin):
 
 
 def test_mock_scenario_matcher_default_duplicate_test(api, admin):
+    """验证模拟场景匹配器默认重复测试场景及其预期结果。"""
     project_id = _create_project(api, admin)
     svc = _create_service(api, admin, project_id, _skey("SC"))
     service_id = svc["service"]["id"]
@@ -364,6 +373,7 @@ def test_mock_scenario_matcher_default_duplicate_test(api, admin):
 
 
 def test_mock_runtime_behavior_types_and_template(api, admin):
+    """验证模拟运行时`behavior``types`和`template`场景及其预期结果。"""
     project_id = _create_project(api, admin)
     svc = _create_service(api, admin, project_id, _skey("BHVR"))
     token = svc["runtime_token"]
@@ -419,12 +429,12 @@ def test_mock_runtime_behavior_types_and_template(api, admin):
     assert r.json() == {"ok": True}
     assert r.headers["x-mock-trace"] == "normal"
 
-    # 4xx。
+    # HTTP 4xx 错误响应。
     r = _runtime(api, project_id, skey, base, token=token, params={"case": "400"})
     assert r.status_code == 400
     assert r.json() == {"err": "bad_request"}
 
-    # 5xx。
+    # HTTP 5xx 服务端错误响应。
     r = _runtime(api, project_id, skey, base, token=token, params={"case": "500"})
     assert r.status_code == 500
     assert r.json()["err"] == "internal"
@@ -453,7 +463,7 @@ def test_mock_runtime_behavior_types_and_template(api, admin):
     # 模板占位符解析（结构化替换，非代码求值）。
     r = _runtime(api, project_id, skey, base, token=token, params={"case": "tpl"})
     assert r.status_code == 200
-    assert r.json()["id"] == "42"  # ${request.path.id}
+    assert r.json()["id"] == "42"  # 请求路径参数模板 `${request.path.id}`。
     assert r.json()["rid"]  # ${runtime.request_id} 非空
 
 
@@ -461,6 +471,7 @@ def test_mock_runtime_behavior_types_and_template(api, admin):
 
 
 def test_mock_matching_priority_and_concurrency_isolation(api, admin, db):
+    """验证模拟`matching``priority`和`concurrency``isolation`场景及其预期结果。"""
     project_id = _create_project(api, admin)
     svc = _create_service(api, admin, project_id, _skey("ISO"))
     token = svc["runtime_token"]
@@ -580,6 +591,7 @@ def test_mock_no_matcher_scenario_shadows_default(api, admin):
 
 
 def test_mock_execution_plane_separation_and_masking(api, admin):
+    """验证模拟执行记录`plane``separation`和`masking`场景及其预期结果。"""
     project_id = _create_project(api, admin)
     # 私有服务（需 token）+ 公共服务（无需 token）。
     priv = _create_service(api, admin, project_id, _skey("PRIV"))
@@ -668,10 +680,11 @@ def test_mock_execution_plane_separation_and_masking(api, admin):
     assert after == before + 1
 
 
-# --------------------------------------------------------------------------- 7. API Catalog 一键创建
+# --------------------------------------------------------------------------- 7. API 接口 Catalog 一键创建
 
 
 def test_mock_api_catalog_one_click_create(api, admin):
+    """验证模拟API`catalog``one``click`创建场景及其预期结果。"""
     project_id = _create_project(api, admin)
 
     # 先建一个 API 接口（method+path 取自它）。
@@ -762,6 +775,7 @@ def test_mock_no_arbitrary_code_execution(api, admin):
 
 
 def test_mock_case_mocks_crud_and_validation(api, admin):
+    """验证模拟用例`mocks`增删改查和校验场景及其预期结果。"""
     project_id = _create_project(api, admin)
     svc = _create_service(api, admin, project_id, _skey("TCM"))
     service_id = svc["service"]["id"]
@@ -997,6 +1011,7 @@ def test_mock_context_propagated_to_executed_request(api, admin, db):
         seen: list[str] = []
 
         def sut(h, body):
+            """读取被测请求中的模拟上下文标记。"""
             seen.append(h.headers.get("X-Mock-Context") or "")
             return 200, {"code": 0, "data": {"ok": True}}
 

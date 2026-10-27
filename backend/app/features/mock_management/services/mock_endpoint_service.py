@@ -37,6 +37,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 def _raise_not_found(message: str = "Mock 接口不存在") -> None:
+    """资源不存在或不可见时抛出 404 错误。"""
     raise not_found(message)
 
 
@@ -50,6 +51,7 @@ class MockEndpointService:
         keyword: str | None = None, enabled: bool | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> MockEndpointListResponse:
+        """列出`endpoints`。"""
         service = self._get_service_or_404(db, service_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(MockEndpoint).filter(MockEndpoint.mock_service_id == service.id)
@@ -76,6 +78,7 @@ class MockEndpointService:
         )
 
     def get_endpoint(self, db: Session, endpoint_id: int, user: User) -> MockEndpointResponse:
+        """获取接口。"""
         row = self._get_or_404(db, endpoint_id, user)
         return endpoint_response(db, row)
 
@@ -84,6 +87,7 @@ class MockEndpointService:
     def create_endpoint(
         self, db: Session, service_id: int, body: MockEndpointCreate, *, actor: User,
     ) -> MockEndpointResponse:
+        """创建接口。"""
         service = self._get_service_writable(db, service_id, actor)
         method = (body.method or "").strip().upper()
         if not method:
@@ -132,6 +136,7 @@ class MockEndpointService:
         return endpoint_response(db, endpoint)
 
     def delete_endpoint(self, db: Session, endpoint_id: int, *, actor: User) -> None:
+        """删除接口。"""
         endpoint = self._get_writable_or_404(db, endpoint_id, actor)
         ref_count = int(
             db.query(TestCaseMock.id).filter(TestCaseMock.mock_endpoint_id == endpoint.id).count()
@@ -146,6 +151,7 @@ class MockEndpointService:
     def update_endpoint(
         self, db: Session, endpoint_id: int, body: MockEndpointUpdate, *, actor: User,
     ) -> MockEndpointResponse:
+        """更新接口。"""
         endpoint = self._get_writable_or_404(db, endpoint_id, actor)
         if body.revision != endpoint.revision:
             raise conflict("该 Mock 接口已被他人修改，请刷新后重试")
@@ -198,6 +204,7 @@ class MockEndpointService:
     # ---------------------------------------------------------------- 内部
 
     def _get_service_or_404(self, db: Session, service_id: int, user: User) -> MockService:
+        """获取服务或。"""
         service = db.get(MockService, service_id)
         if service is None:
             raise not_found("Mock 服务不存在")
@@ -205,6 +212,7 @@ class MockEndpointService:
         return service
 
     def _get_service_writable(self, db: Session, service_id: int, actor: User) -> MockService:
+        """获取服务可写。"""
         from app.features.mock_management.services._access import require_writable_project
 
         service = db.get(MockService, service_id)
@@ -214,6 +222,7 @@ class MockEndpointService:
         return service
 
     def _get_or_404(self, db: Session, endpoint_id: int, user: User) -> MockEndpoint:
+        """获取或。"""
         row = db.get(MockEndpoint, endpoint_id)
         if row is None:
             _raise_not_found()
@@ -221,6 +230,7 @@ class MockEndpointService:
         return row
 
     def _get_writable_or_404(self, db: Session, endpoint_id: int, actor: User) -> MockEndpoint:
+        """获取可写或。"""
         from app.features.mock_management.services._access import require_writable_project
 
         row = db.get(MockEndpoint, endpoint_id)

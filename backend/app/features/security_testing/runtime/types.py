@@ -51,17 +51,17 @@ class FieldSpec:
     形式承载，取主类型用 ``primary_type``。
     """
 
-    location: str  # PATH / QUERY / HEADER / COOKIE / BODY
+    location: str  # 请求字段位置：PATH / QUERY / HEADER / COOKIE / BODY
     name: str
     json_path: str | None = None
-    type: str = "string"  # integer / number / string / boolean / object / array
+    type: str = "string"  # 支持的数据类型：integer / number / string / boolean / object / array
     required: bool = False
     enum: list[Any] | None = None
     minimum: float | None = None
     maximum: float | None = None
     min_length: int | None = None
     max_length: int | None = None
-    format: str | None = None  # email / date / uuid / uri
+    format: str | None = None  # 支持的格式：email / date / uuid / uri
     example: Any = None
 
     @property
@@ -100,6 +100,7 @@ class MutationRuleView:
         """从 ORM 行或 dict 构造视图，缺列按默认值补齐。"""
 
         def pick(name: str, default: Any = None) -> Any:
+            """选取对应数据。"""
             if isinstance(row, dict):
                 return row.get(name, default)
             return getattr(row, name, default)

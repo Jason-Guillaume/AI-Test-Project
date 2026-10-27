@@ -57,6 +57,7 @@ class CleanupOutcome:
 
     @property
     def failed(self) -> bool:
+        """记录执行失败状态及错误信息。"""
         return bool(self.failures)
 
 
@@ -82,11 +83,12 @@ class LifecycleManager:
     """造数生命周期编排器。无状态，进程级复用。"""
 
     def __init__(self, masker: SensitiveDataMasker | None = None) -> None:
+        """初始化对象状态。"""
         self._masker = masker or SensitiveDataMasker()
         self._factory = DataFactory(self._masker)
         self._cleanup = CleanupRunner(self._masker)
 
-    # ---------------------------------------------------------------- PREPARE / SETUP
+    # ---------------------------------------------------------------- 准备 / 初始化
 
     def prepare_run(
         self,
@@ -211,7 +213,7 @@ class LifecycleManager:
             return dict(produced)
         return {fixture.fixture_key: dict(flat)}
 
-    # ---------------------------------------------------------------- CLEANUP
+    # ---------------------------------------------------------------- 清理
 
     def cleanup_case(
         self,
@@ -255,6 +257,7 @@ class LifecycleManager:
         actor: User,
         stage: str,
     ) -> CleanupOutcome:
+        """应用对应数据。"""
         outcome = CleanupOutcome()
         for data_exec in rows:
             # 已清过的记录不重复清理（CASE 阶段清过的，RUN 阶段跳过）。
@@ -323,6 +326,7 @@ class LifecycleManager:
     def _cache_lookup(
         db: Session, *, project_id: int, fixture_id: int, scope: str, scope_key: str,
     ) -> FixtureCache | None:
+        """查询当前作用域可复用的固定数据缓存。"""
         return (
             db.query(FixtureCache)
             .filter(
@@ -373,6 +377,7 @@ class LifecycleManager:
 
     @staticmethod
     def _cache_rows(db: Session, data_execution_id: int) -> list[FixtureCache]:
+        """读取固定数据缓存记录。"""
         return (
             db.query(FixtureCache)
             .filter(FixtureCache.data_execution_id == data_execution_id)

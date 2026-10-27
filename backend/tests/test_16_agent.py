@@ -36,12 +36,14 @@ API = "/api/v1"
 
 
 def _create_project(api, actor, name=None):
+    """创建项目。"""
     r = api.post("/projects", username=actor, json={"name": name or unique("agent-proj")})
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
 def _register_and_login(api, username):
+    """注册测试用户并完成登录，返回用户标识。"""
     r = api.register(username)
     assert r.status_code == 201, r.text
     api.login(username, "Init-Password-123")
@@ -49,6 +51,7 @@ def _register_and_login(api, username):
 
 
 def _add_member(api, actor, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}", username=actor,
         json={"user_id": user_id, "role": role},
@@ -57,10 +60,12 @@ def _add_member(api, actor, project_id, user_id, role="member"):
 
 
 def _get_user(db, username):
+    """获取用户。"""
     return db.query(User).filter(User.username == username).first()
 
 
 def _create_api(api, actor, project_id, *, name=None, body_schema=None):
+    """创建API。"""
     payload = {
         "name": name or unique("api"),
         "method": "POST",
@@ -76,6 +81,7 @@ def _create_api(api, actor, project_id, *, name=None, body_schema=None):
 
 
 def _create_strategy(api, actor, project_id):
+    """创建策略。"""
     r = api.post(
         f"/projects/{project_id}/test-strategies", username=actor,
         json={"name": unique("strategy"), "category": "FUNCTIONAL", "enabled": True},
@@ -85,6 +91,7 @@ def _create_strategy(api, actor, project_id):
 
 
 def _create_env(db):
+    """创建`env`。"""
     env = Environment(name=unique("agent-env"), base_url="http://127.0.0.1:1", is_active=True)
     db.add(env)
     db.commit()
@@ -93,17 +100,20 @@ def _create_env(db):
 
 
 def _create_session_http(api, actor, project_id):
+    """创建会话HTTP。"""
     r = api.post(f"/projects/{project_id}/agent/sessions", username=actor, json={})
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
 def _get_session_obj(db, session_id):
+    """获取会话`obj`。"""
     from app.features.agent.models.agent_session import AgentSession
     return db.get(AgentSession, session_id)
 
 
 def _make_fake():
+    """构造`fake`。"""
     return FakeLLMProvider()
 
 
@@ -145,13 +155,14 @@ def _full_responses(api_id, point_id=None):
     }
 
 
-# --------------------------------------------------------------------------- AgentState
+# --------------------------------------------------------------------------- 智能体状态 AgentState
 
 
 class TestAgentState:
     """AgentState 初始化与工具函数。"""
 
     def test_initial_state_defaults(self):
+        """验证`initial`状态`defaults`场景及其预期结果。"""
         s = make_initial_state(1, 1)
         assert s["current_stage"] == "UNDERSTANDING"
         assert s["project_id"] == 1
@@ -159,6 +170,7 @@ class TestAgentState:
         assert s["messages"] == []
 
     def test_set_error_returns_partial(self):
+        """验证设置错误`returns``partial`场景及其预期结果。"""
         s = make_initial_state(1, 1)
         err = set_error(s, "TEST_CODE", "错误消息")
         assert err["current_stage"] == "FAILED"
@@ -166,6 +178,7 @@ class TestAgentState:
         assert err["error"]["message"] == "错误消息"
 
     def test_semantic_key_normalization(self):
+        """验证`semantic`键`normalization`场景及其预期结果。"""
         assert semantic_key("用户-登录[必填]") == "用户登录必填"
         assert semantic_key("  User Login [Required]  ") == "userloginrequired"
         assert semantic_key("创建_资源 v2") == "创建资源v2"
@@ -180,11 +193,13 @@ class TestSanitizer:
     """敏感数据过滤（§34）与 prompt injection 隔离（§35）。"""
 
     def test_authorization_masked(self):
+        """验证授权`masked`场景及其预期结果。"""
         data = {"headers": {"Authorization": "Bearer real_token_xyz_123"}}
         result = sanitize_context(data)
         assert "real_token_xyz_123" not in str(result)
 
     def test_password_token_masked(self):
+        """验证密码令牌`masked`场景及其预期结果。"""
         data = {"password": "secret123", "token": "real_token_abc", "username": "testuser"}
         result = sanitize_context(data)
         result_str = str(result)
@@ -193,17 +208,20 @@ class TestSanitizer:
         assert "testuser" in result_str  # 非敏感字段保留
 
     def test_text_sanitization(self):
+        """验证文本`sanitization`场景及其预期结果。"""
         text = "Authorization: Bearer real_secret_token_456\nGET /api/test"
         result = sanitize_text(text)
         assert "real_secret_token_456" not in result
         assert "GET /api/test" in result
 
     def test_assert_no_real_secret_helper(self):
+        """验证`assert`无`real``secret``helper`场景及其预期结果。"""
         payload = '{"Authorization": "Bearer Bearer ${token}"}'
         hits = assert_no_real_secret(payload, forbidden=("real_token_xyz",))
         assert hits == []
 
     def test_build_chat_messages_role_isolation(self):
+        """验证构建`chat``messages`角色`isolation`场景及其预期结果。"""
         from app.features.agent.providers.sanitizer import build_chat_messages
         msgs = build_chat_messages(
             "你是测试助手。", "业务数据：接口参数...",
@@ -223,6 +241,7 @@ class TestSessionCRUD:
     """会话 CRUD + 项目隔离。"""
 
     def test_create_and_list(self, api, admin):
+        """验证创建和列出场景及其预期结果。"""
         pid = _create_project(api, admin)
         sid = _create_session_http(api, admin, pid)
         sessions = api.get(f"/projects/{pid}/agent/sessions", username=admin).json()
@@ -231,6 +250,7 @@ class TestSessionCRUD:
         assert sessions[0]["current_stage"] == "UNDERSTANDING"
 
     def test_detail_with_messages(self, api, admin):
+        """验证详情包含`messages`场景及其预期结果。"""
         pid = _create_project(api, admin)
         sid = _create_session_http(api, admin, pid)
         r = api.get(f"/agent/sessions/{sid}", username=admin)
@@ -240,6 +260,7 @@ class TestSessionCRUD:
         assert data["messages"] == []
 
     def test_delete_session(self, api, admin):
+        """验证删除会话场景及其预期结果。"""
         pid = _create_project(api, admin)
         sid = _create_session_http(api, admin, pid)
         assert api.delete(f"/agent/sessions/{sid}", username=admin).status_code == 204

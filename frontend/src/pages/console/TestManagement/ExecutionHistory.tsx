@@ -37,9 +37,22 @@ export function ConsoleExecutionHistoryPage() {
   const [drawerRunId, setDrawerRunId] = useState<number | null>(null);
   const [selectedCe, setSelectedCe] = useState<CaseExecution | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const requestedProjectId = Number(searchParams.get('projectId'));
+  const requestedExecutionId = Number(searchParams.get('caseExecutionId'));
   const { message: msg } = App.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const linkedExecutionQuery = useQuery({
+    queryKey: ['case-executions', drawerRunId],
+    queryFn: () => testManagementApi.listCaseExecutions(drawerRunId!),
+    enabled: drawerRunId != null && requestedExecutionId > 0 && (!requestedProjectId || requestedProjectId === currentProjectId),
+  });
+
+  useEffect(() => {
+    if (requestedExecutionId > 0 && linkedExecutionQuery.data) {
+      setSelectedCe(linkedExecutionQuery.data.items.find(item => item.id === requestedExecutionId) ?? null);
+    }
+  }, [linkedExecutionQuery.data, requestedExecutionId]);
 
   useEffect(() => {
     const requestedRunId = Number(searchParams.get('runId'));
@@ -69,6 +82,9 @@ export function ConsoleExecutionHistoryPage() {
         <EmptyState description="请先在顶部选择一个项目" />
       </PageContainer>
     );
+  }
+  if (requestedProjectId > 0 && requestedProjectId !== currentProjectId) {
+    return <PageContainer><EmptyState description={`此运行链接指向项目 #${requestedProjectId}，请先在顶部切换项目`} /></PageContainer>;
   }
 
   const runs: TestRun[] = runsQuery.data?.items ?? [];

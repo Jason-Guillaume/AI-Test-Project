@@ -98,6 +98,7 @@ def _dot_path(body: Any, path: str) -> tuple[bool, Any]:
 
 
 def _normalize_header(name: str) -> str:
+    """规范化请求头。"""
     return (name or "").lower().replace("-", "_").replace(" ", "_")
 
 
@@ -117,6 +118,7 @@ class RequestSnapshot:
     body: Any = None
 
     def header(self, name: str) -> tuple[bool, Any]:
+        """按 HTTP 请求头名称读取对应的值。"""
         target = _normalize_header(name)
         for key, value in self.headers.items():
             if _normalize_header(key) == target:
@@ -159,6 +161,7 @@ def _values_equal(actual: Any, expected: Any) -> bool:
 
 
 def _contains(actual: Any, expected: Any) -> bool:
+    """按指定运算符检查目标值是否包含给定内容。"""
     if isinstance(actual, (list, tuple, str, dict)):
         try:
             return expected in actual

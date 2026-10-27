@@ -20,6 +20,7 @@ class PoolProvider(BaseProvider):
     provider_type = "EXISTING_POOL"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import PoolProviderConfig
         from app.features.test_data.services.pool_service import PoolService
 
@@ -72,6 +73,7 @@ class PoolProvider(BaseProvider):
 
     @staticmethod
     def _lease_handle(item_id: int, lease_id: int) -> dict:
+        """处理租约。"""
         return {"type": "POOL_LEASE", "item_id": item_id, "lease_id": lease_id}
 
     @staticmethod

@@ -20,27 +20,36 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.security_testing.models import SecurityCase
 from app.features.security_testing.schemas import (
     FINDING_OPEN_STATUSES,
     PlanConfirmRequest,
     PlanPreviewRequest,
+    SecurityRunRequest,
     SecurityExecutionRead,
     SecurityFindingListResponse,
 )
-from app.features.security_testing.services._access import get_project_or_404
+from app.features.security_testing.services._access import get_project_or_404, require_writable_project
 from app.features.security_testing.services.execution_query_service import ExecutionQueryService
 from app.features.security_testing.services.finding_service import FindingService
+from app.features.security_testing.services.case_service import SecurityCaseService
 from app.features.security_testing.services.plan_service import PlanService
 from app.features.security_testing.services.strategy_service import SecurityStrategyService
+from app.features.test_management.models.test_case import TestCase
 from app.models.identity import User
 
 __all__ = [
     "list_strategies",
+    "read_api_context",
+    "read_findings",
+    "inspect_web_session",
     "preview_plan",
     "confirm_plan",
+    "execute_cases",
     "security_case_status",
     "list_findings",
     "open_findings_brief",
@@ -72,6 +81,7 @@ def _pick(obj: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
 
 
 def _rules_brief(strategy: Any) -> list[dict[str, Any]]:
+    """将安全策略规则整理为智能体可读的摘要。"""
     data = strategy.model_dump(mode="json")
     return [_pick(rule, _RULE_BRIEF_FIELDS) for rule in (data.get("rules") or [])]
 
@@ -90,6 +100,89 @@ def list_strategies(db: Session, project_id: int, user: User) -> list[dict[str, 
     ]
 
 
+def read_api_context(
+    db: Session, project_id: int, user: User, *, api_ids: list[int],
+) -> list[dict[str, Any]]:
+    """读取登记 API 的安全评估上下文；不返回请求示例、认证值或响应正文。"""
+    get_project_or_404(db, project_id, user)
+    ids = list(dict.fromkeys(int(item) for item in api_ids))
+    if not ids or len(ids) > 10:
+        raise ValueError("安全上下文仅支持 1 到 10 个目标 API")
+    rows = db.query(ApiInterface).filter(
+        ApiInterface.project_id == project_id,
+        ApiInterface.id.in_(ids),
+    ).all()
+    by_id = {row.id: row for row in rows}
+    if len(by_id) != len(ids):
+        raise ValueError("部分 API 不存在或不属于当前项目")
+    counts = dict(db.query(TestCase.api_id, func.count(TestCase.id)).filter(
+        TestCase.project_id == project_id,
+        TestCase.api_id.in_(ids),
+        TestCase.target_type == "API",
+        TestCase.case_type != "SECURITY",
+        TestCase.status == "ACTIVE",
+        TestCase.enabled.is_(True),
+    ).group_by(TestCase.api_id).all())
+    return [
+        {
+            "id": api_id,
+            "name": by_id[api_id].name,
+            "method": by_id[api_id].method,
+            "path": by_id[api_id].path,
+            "auth_type": by_id[api_id].auth_type,
+            "status": by_id[api_id].status,
+            "functional_baseline_count": int(counts.get(api_id, 0)),
+        }
+        for api_id in ids
+    ]
+
+
+def read_findings(
+    db: Session, project_id: int, user: User, *, api_ids: list[int], limit: int = 20,
+) -> list[dict[str, Any]]:
+    """读取所选 API 未关闭 Finding 摘要；不返回证据、响应正文或凭据。"""
+    ids = list(dict.fromkeys(int(item) for item in api_ids))
+    if not ids or len(ids) > 10:
+        raise ValueError("Finding 查询仅支持 1 到 10 个目标 API")
+    remaining = min(max(int(limit), 1), 20)
+    findings: list[dict[str, Any]] = []
+    for api_id in ids:
+        if remaining <= 0:
+            break
+        items = open_findings_brief(
+            db, project_id, user, api_id=api_id, limit=remaining,
+        )
+        findings.extend(items)
+        remaining -= len(items)
+    return findings
+
+
+def inspect_web_session(
+    db: Session, project_id: int, user: User, *, web_session_id: int,
+) -> dict[str, Any]:
+    """被动检查当前项目受控 Web Agent 会话；不导航、不执行页面操作。"""
+    require_writable_project(db, project_id, user)
+    from app.features.web_ui.models import WebAgentSession
+
+    row = db.query(WebAgentSession).filter(
+        WebAgentSession.id == int(web_session_id),
+        WebAgentSession.project_id == project_id,
+        WebAgentSession.status == "ACTIVE",
+    ).first()
+    if row is None:
+        raise ValueError("受控 Web 会话不存在、已关闭或不属于当前项目")
+    from app.features.web_ui.runtime.session_manager import registry
+
+    browser = registry.get_session(row.id)
+    if browser is None:
+        raise ValueError("受控 Web 会话已断开，请重新启动后再检查")
+    return {
+        "session_id": row.id,
+        "environment_id": row.environment_id,
+        **browser.security_snapshot(),
+    }
+
+
 def preview_plan(
     db: Session, project_id: int, user: User, *,
     strategy_ids: list[int],
@@ -97,6 +190,7 @@ def preview_plan(
     business_action_id: int | None = None,
     baseline_case_id: int | None = None,
     environment_id: int | None = None,
+    name: str | None = None,
 ) -> dict[str, Any]:
     """生成安全计划预览：只算一遍，不写 TestCase。"""
     body = PlanPreviewRequest(
@@ -105,6 +199,7 @@ def preview_plan(
         baseline_case_id=baseline_case_id,
         strategy_ids=strategy_ids,
         environment_id=environment_id,
+        name=name,
     )
     return _PLAN.preview(db, project_id, body, actor=user).model_dump(mode="json")
 
@@ -118,6 +213,29 @@ def confirm_plan(
     """
     body = PlanConfirmRequest(accepted_item_indexes=list(accepted_item_indexes or []))
     return _PLAN.confirm(db, plan_id, body, actor=user).model_dump(mode="json")
+
+
+def execute_cases(
+    db: Session,
+    project_id: int,
+    user: User,
+    *,
+    security_case_ids: list[int],
+    environment_id: int,
+    plan_name: str | None = None,
+) -> dict[str, Any]:
+    """通过既有安全用例服务执行确认过的变异用例，并复用统一 TestRun。"""
+    result = SecurityCaseService.run_security_cases(
+        db,
+        project_id,
+        SecurityRunRequest(
+            security_case_ids=list(dict.fromkeys(int(i) for i in security_case_ids)),
+            environment_id=environment_id,
+            plan_name=plan_name,
+        ),
+        actor=user,
+    )
+    return result.model_dump(mode="json")
 
 
 def security_case_status(
@@ -163,6 +281,7 @@ def list_findings(
 
 
 def _findings_brief(response: SecurityFindingListResponse) -> list[dict[str, Any]]:
+    """将安全发现项整理为报告摘要。"""
     return [_pick(item.model_dump(mode="json"), OPEN_FINDING_BRIEF_FIELDS) for item in response.items]
 
 

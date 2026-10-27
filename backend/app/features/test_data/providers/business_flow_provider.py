@@ -21,6 +21,7 @@ class BusinessFlowProvider(BaseProvider):
     provider_type = "BUSINESS_FLOW"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import BusinessFlowProviderConfig
 
         cfg = self.load_config(config_of(ctx), BusinessFlowProviderConfig)
@@ -75,6 +76,7 @@ class BusinessFlowProvider(BaseProvider):
 
 
 def db_get_flow(db, flow_id: int) -> BusinessFlow | None:
+    """获取`db`流程。"""
     return db.get(BusinessFlow, flow_id)
 
 

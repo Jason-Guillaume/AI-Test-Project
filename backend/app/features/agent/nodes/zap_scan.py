@@ -54,10 +54,12 @@ _PROFILE_FIELDS = (
 
 
 def _pick(obj: dict, fields: tuple[str, ...]) -> dict[str, Any]:
+    """选取对应数据。"""
     return {field: obj.get(field) for field in fields}
 
 
 def _positive(values: list[Any] | None) -> list[int]:
+    """校验正数对应数据。"""
     return [int(v) for v in (values or []) if isinstance(v, (int, str)) and str(v).isdigit()]
 
 

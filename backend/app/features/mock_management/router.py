@@ -82,7 +82,7 @@ _INTEGRATION = ApiMockIntegrationService()
 _CASE_MOCK = TestCaseMockService()
 
 
-# --------------------------------------------------------------------------- MockService
+# --------------------------------------------------------------------------- 模拟服务 MockService
 
 
 @router.get("/projects/{project_id}/mock-services", response_model=MockServiceListResponse)
@@ -95,6 +95,7 @@ def list_mock_services(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockServiceListResponse:
+    """列出模拟`services`。"""
     return _SERVICE.list_services(
         db, project_id, user, keyword=keyword, enabled=enabled, page=page, page_size=page_size,
     )
@@ -110,6 +111,7 @@ def create_mock_service(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockServiceCreateResponse:
+    """创建模拟服务。"""
     return _SERVICE.create_service(db, project_id, body, actor=user)
 
 
@@ -119,6 +121,7 @@ def get_mock_service(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockServiceResponse:
+    """获取模拟服务。"""
     return _SERVICE.get_service(db, service_id, user)
 
 
@@ -129,6 +132,7 @@ def update_mock_service(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockServiceResponse:
+    """更新模拟服务。"""
     return _SERVICE.update_service(db, service_id, body, actor=user)
 
 
@@ -138,6 +142,7 @@ def delete_mock_service(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除模拟服务。"""
     _SERVICE.delete_service(db, service_id, actor=user)
 
 
@@ -151,7 +156,7 @@ def reset_mock_token(
     return _SERVICE.reset_token(db, service_id, actor=user)
 
 
-# --------------------------------------------------------------------------- MockEndpoint
+# --------------------------------------------------------------------------- 模拟接口 MockEndpoint
 
 
 @router.get(
@@ -166,6 +171,7 @@ def list_mock_endpoints(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockEndpointListResponse:
+    """列出模拟`endpoints`。"""
     return _ENDPOINT.list_endpoints(
         db, service_id, user, keyword=keyword, enabled=enabled, page=page, page_size=page_size,
     )
@@ -181,6 +187,7 @@ def create_mock_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockEndpointResponse:
+    """创建模拟接口。"""
     return _ENDPOINT.create_endpoint(db, service_id, body, actor=user)
 
 
@@ -190,6 +197,7 @@ def get_mock_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockEndpointResponse:
+    """获取模拟接口。"""
     return _ENDPOINT.get_endpoint(db, endpoint_id, user)
 
 
@@ -200,6 +208,7 @@ def update_mock_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockEndpointResponse:
+    """更新模拟接口。"""
     return _ENDPOINT.update_endpoint(db, endpoint_id, body, actor=user)
 
 
@@ -209,10 +218,11 @@ def delete_mock_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除模拟接口。"""
     _ENDPOINT.delete_endpoint(db, endpoint_id, actor=user)
 
 
-# --------------------------------------------------------------------------- MockScenario
+# --------------------------------------------------------------------------- 模拟场景 MockScenario
 
 
 @router.get(
@@ -228,6 +238,7 @@ def list_mock_scenarios(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioListResponse:
+    """列出模拟`scenarios`。"""
     return _SCENARIO.list_scenarios(
         db, endpoint_id, user, keyword=keyword, enabled=enabled,
         is_default=is_default, page=page, page_size=page_size,
@@ -244,6 +255,7 @@ def create_mock_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioResponse:
+    """创建模拟场景。"""
     return _SCENARIO.create_scenario(db, endpoint_id, body, actor=user)
 
 
@@ -253,6 +265,7 @@ def get_mock_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioResponse:
+    """获取模拟场景。"""
     return _SCENARIO.get_scenario(db, scenario_id, user)
 
 
@@ -263,6 +276,7 @@ def update_mock_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioResponse:
+    """更新模拟场景。"""
     return _SCENARIO.update_scenario(db, scenario_id, body, actor=user)
 
 
@@ -272,6 +286,7 @@ def delete_mock_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除模拟场景。"""
     _SCENARIO.delete_scenario(db, scenario_id, actor=user)
 
 
@@ -282,6 +297,7 @@ def replace_mock_matchers(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioResponse:
+    """替换模拟场景的请求匹配规则。"""
     return _SCENARIO.replace_matchers(db, scenario_id, body, actor=user)
 
 
@@ -291,6 +307,7 @@ def set_default_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioResponse:
+    """设置默认场景。"""
     return _SCENARIO.set_default(db, scenario_id, actor=user)
 
 
@@ -301,6 +318,7 @@ def duplicate_scenario(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockScenarioResponse:
+    """复制模拟场景及其匹配配置。"""
     return _SCENARIO.duplicate(db, scenario_id, new_key, actor=user)
 
 
@@ -333,6 +351,7 @@ def list_mock_executions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockExecutionListResponse:
+    """列出模拟`executions`。"""
     return _EXECUTION.list_executions(
         db, project_id, user, test_run_id=test_run_id, case_execution_id=case_execution_id,
         service_id=service_id, matched=matched, context_id=context_id,
@@ -346,6 +365,7 @@ def get_mock_execution(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockExecutionResponse:
+    """获取模拟执行记录。"""
     return _EXECUTION.get_execution(db, execution_id, user)
 
 
@@ -361,6 +381,7 @@ def list_mock_contexts(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[MockContextResponse]:
+    """列出模拟`contexts`。"""
     return _CONTEXT.list_contexts(
         db, project_id, user, status=status, test_run_id=test_run_id,
         page=page, page_size=page_size,
@@ -373,6 +394,7 @@ def get_mock_context(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockContextResponse:
+    """获取模拟上下文。"""
     return _CONTEXT.get_context(db, context_id, user)
 
 
@@ -382,10 +404,11 @@ def close_mock_context(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> MockContextResponse:
+    """关闭模拟上下文。"""
     return _CONTEXT.close_context(db, context_id, actor=user)
 
 
-# --------------------------------------------------------------------------- API 一键创建 + 用例 Mock 声明
+# --------------------------------------------------------------------------- API 接口 一键创建 + 用例 Mock 声明
 
 
 @router.post(
@@ -411,6 +434,7 @@ def list_case_mocks(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TestCaseMockResponse]:
+    """列出用例`mocks`。"""
     return _CASE_MOCK.list_case_mocks(db, test_case_id, user)
 
 

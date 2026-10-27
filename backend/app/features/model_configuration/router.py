@@ -70,8 +70,7 @@ def list_configurations(
         value = keyword.strip()
         pattern = f"%{value}%"
         query = query.filter(
-            (ModelConfiguration.domain_id.ilike(pattern))
-            | (ModelConfiguration.label.ilike(pattern))
+            (ModelConfiguration.label.ilike(pattern))
             | (ModelConfiguration.model_name.ilike(pattern))
             | (ModelConfiguration.provider.ilike(pattern))
         )

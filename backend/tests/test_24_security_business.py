@@ -64,10 +64,12 @@ def _rule(**overrides) -> dict:
 
 def _action(action_id: int = 2, action_key: str = "ASSIGN_TASK", sort: int = 2,
             name: str = "分配执行人") -> dict:
+    """构造业务动作测试数据。"""
     return {"id": action_id, "action_key": action_key, "sort": sort, "name": name}
 
 
 def _flow_actions() -> list[dict]:
+    """构造业务流程的动作列表。"""
     return [
         {"id": 1, "action_key": "CREATE_TASK", "sort": 1, "name": "创建任务"},
         {"id": 2, "action_key": "ASSIGN_TASK", "sort": 2, "name": "分配执行人"},
@@ -80,12 +82,14 @@ class FakeExecutor:
     """记录调用次数的假执行器：不连网，只按预设返回结果。"""
 
     def __init__(self, statuses=(200, 200), bodies=(), errors=()):
+        """初始化对象状态。"""
         self.statuses = list(statuses)
         self.bodies = list(bodies)
         self.errors = list(errors)
         self.calls = 0
 
     def __call__(self, request):
+        """执行对象封装的调用逻辑。"""
         index = min(self.calls, len(self.statuses) - 1)
         self.calls += 1
         return SimpleNamespace(
@@ -122,6 +126,7 @@ class TestReplayLoop:
         assert outcome.statuses == (200, 409)
 
     def test_three_calls_are_allowed(self) -> None:
+        """验证`three``calls`是否为`allowed`场景及其预期结果。"""
         executor = FakeExecutor(statuses=(200, 200, 200))
         outcome = run_replay(object(), executor, count=3)
         assert executor.calls == 3
@@ -135,6 +140,7 @@ class TestReplayLoop:
 
     @pytest.mark.parametrize("interval_ms", [-1, MAX_REPLAY_INTERVAL_MS + 1, 60000])
     def test_interval_outside_cap_is_rejected(self, interval_ms: int) -> None:
+        """验证`interval``outside``cap`是否被拒绝场景及其预期结果。"""
         _expect_error(AppError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: run_replay(object(), FakeExecutor(), interval_ms=interval_ms))
 
@@ -146,6 +152,7 @@ class TestReplayLoop:
         assert sleeps == [0.25]
 
     def test_zero_interval_never_sleeps(self) -> None:
+        """验证`zero``interval``never``sleeps`场景及其预期结果。"""
         sleeps: list[float] = []
         run_replay(object(), FakeExecutor(), count=3, interval_ms=0, sleep=sleeps.append)
         assert sleeps == []
@@ -156,6 +163,7 @@ class TestReplayLoop:
         seen: list = []
 
         def execute(request):
+            """执行对应数据。"""
             seen.append(request)
             return SimpleNamespace(status_code=200, response_body="", error_message=None)
 
@@ -163,6 +171,7 @@ class TestReplayLoop:
         assert seen == [marker, marker, marker]
 
     def test_transport_error_is_recorded_not_swallowed(self) -> None:
+        """验证`transport`错误是否`recorded`不`swallowed`场景及其预期结果。"""
         executor = FakeExecutor(statuses=(0, 200), errors=("连接超时", None))
         outcome = run_replay(object(), executor)
         assert outcome.errors == ("连接超时", None)
@@ -172,6 +181,7 @@ class TestReplayLoop:
         """执行器抛异常时向上传递，由调用方按 FAILED_EXECUTION 处理。"""
 
         def execute(request):
+            """执行对应数据。"""
             raise TimeoutError("连接超时")
 
         with pytest.raises(TimeoutError):
@@ -192,13 +202,16 @@ class TestReplayParams:
     """规则配置里的次数与间隔：默认值、容错、越界。"""
 
     def test_defaults(self) -> None:
+        """验证`defaults`场景及其预期结果。"""
         assert read_replay_params(None) == (2, 0)
         assert read_replay_params({}) == (2, 0)
 
     def test_reads_explicit_values(self) -> None:
+        """验证`reads``explicit``values`场景及其预期结果。"""
         assert read_replay_params({"replay_count": 3, "replay_interval_ms": 1200}) == (3, 1200)
 
     def test_tolerates_string_and_float(self) -> None:
+        """验证`tolerates``string`和`float`场景及其预期结果。"""
         assert read_replay_params({"replay_count": "3", "replay_interval_ms": 1000.0}) == (3, 1000)
 
     def test_boolean_is_not_a_count(self) -> None:
@@ -208,11 +221,13 @@ class TestReplayParams:
 
     @pytest.mark.parametrize("count", [1, 4, 100, "x", [2]])
     def test_bad_count_is_rejected(self, count) -> None:
+        """验证`bad`统计是否被拒绝场景及其预期结果。"""
         _expect_error(AppError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: read_replay_params({"replay_count": count}))
 
     @pytest.mark.parametrize("interval_ms", [-1, 5001, 60000, "abc"])
     def test_bad_interval_is_rejected(self, interval_ms) -> None:
+        """验证`bad``interval`是否被拒绝场景及其预期结果。"""
         _expect_error(AppError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: read_replay_params({"replay_interval_ms": interval_ms}))
 
@@ -225,10 +240,12 @@ class TestNeedsConfirmation:
 
     @pytest.mark.parametrize("method", ["DELETE", "delete"])
     def test_method_mutation_to_delete(self, method: str) -> None:
+        """验证方法变异到删除场景及其预期结果。"""
         assert needs_confirmation(mutation_type="METHOD_MUTATION", method=method) is True
 
     @pytest.mark.parametrize("method", ["GET", "POST", "PUT"])
     def test_method_mutation_to_non_delete_does_not(self, method: str) -> None:
+        """验证方法变异到`non`删除是否不场景及其预期结果。"""
         assert needs_confirmation(mutation_type="METHOD_MUTATION", method=method) is False
 
     @pytest.mark.parametrize("mutation_type,method", [
@@ -258,10 +275,12 @@ class TestNeedsConfirmation:
         ("INFO", "POST", False),
     ])
     def test_strategy_risk_level(self, risk: str, method: str, expected: bool) -> None:
+        """验证策略风险`level`场景及其预期结果。"""
         assert needs_confirmation(mutation_type="REMOVE_TOKEN", method=method,
                                   strategy_risk_level=risk) is expected
 
     def test_rule_flag_always_wins(self) -> None:
+        """验证规则`flag``always``wins`场景及其预期结果。"""
         assert needs_confirmation(mutation_type="REMOVE_TOKEN", method="GET",
                                   confirmation_required=True) is True
 
@@ -273,15 +292,18 @@ class TestDuplicateCandidate:
         "CREATE_TASK", "SUBMIT_ORDER", "PAY_ORDER", "SAVE_DRAFT", "ADD_USER", "INSERT_RECORD",
     ])
     def test_write_like_action_keys(self, key: str) -> None:
+        """验证写入`like`动作`keys`场景及其预期结果。"""
         assert is_duplicate_candidate(key) is True
 
     @pytest.mark.parametrize("key", [
         "LOGIN", "GET_TASK", "RUN_TASK", "DELETE_TASK", "UPDATE_TASK", "QUERY_LIST", "",
     ])
     def test_non_write_action_keys(self, key: str) -> None:
+        """验证`non`写入动作`keys`场景及其预期结果。"""
         assert is_duplicate_candidate(key) is False
 
     def test_idempotency_rule_type_counts(self) -> None:
+        """验证`idempotency`规则类型`counts`场景及其预期结果。"""
         assert is_duplicate_candidate("RUN_TASK", ["IDEMPOTENCY"]) is True
         assert is_duplicate_candidate("RUN_TASK", ["idempotency"]) is True
 
@@ -300,14 +322,17 @@ class TestFixtureGap:
         assert fixture_gap(config, None) is None
 
     def test_missing_fixture_blocks(self) -> None:
+        """验证缺失固定数据`blocks`场景及其预期结果。"""
         config = {"resource_source": {"fixture_key": "TASK_B", "output": "task_id"}}
         assert fixture_gap(config, frozenset()) == FIXTURE_REQUIRED
 
     def test_available_fixture_does_not_block(self) -> None:
+        """验证`available`固定数据是否不`block`场景及其预期结果。"""
         config = {"resource_source": {"fixture_key": "task_b", "output": "task_id"}}
         assert fixture_gap(config, {"TASK_B"}) is None
 
     def test_candidates_and_fixture_key_are_all_checked(self) -> None:
+        """验证`candidates`和固定数据键是否为`all``checked`场景及其预期结果。"""
         config = {
             "candidates": [{"fixture_key": "USER_B", "output": "token"}],
             "fixture_key": "SUCCESS_TASK",
@@ -316,6 +341,7 @@ class TestFixtureGap:
         assert fixture_gap(config, {"USER_B", "SUCCESS_TASK"}) is None
 
     def test_config_without_sources_never_blocks(self) -> None:
+        """验证配置不带`sources``never``blocks`场景及其预期结果。"""
         assert fixture_gap({}, frozenset()) is None
         assert fixture_gap(None, frozenset()) is None
 
@@ -327,9 +353,11 @@ class TestStateFixtureKey:
     """终态 Fixture 默认键：{POST_STATE}_{ENTITY}。"""
 
     def test_default_key(self) -> None:
+        """验证默认键场景及其预期结果。"""
         assert default_state_fixture_key({"entity": "task", "post_state": "success"}) == "SUCCESS_TASK"
 
     def test_empty_parts_yield_empty_key(self) -> None:
+        """验证空值`parts``yield`空值键场景及其预期结果。"""
         assert default_state_fixture_key({"entity": "task", "post_state": ""}) == ""
         assert default_state_fixture_key({"entity": "", "post_state": "success"}) == ""
         assert default_state_fixture_key({}) == ""
@@ -339,13 +367,16 @@ class TestNextAction:
     """跳步的目标：被跳过步骤之后的第一个动作。"""
 
     def test_next_is_the_action_after_the_skipped_one(self) -> None:
+        """验证`next`是否`the`动作之后`the`跳过`one`场景及其预期结果。"""
         actions = _flow_actions()
         assert next_action(actions[1], actions)["id"] == 3
 
     def test_last_action_has_no_next(self) -> None:
+        """验证`last`动作是否包含无`next`场景及其预期结果。"""
         assert next_action(_flow_actions()[-1], _flow_actions()) is None
 
     def test_empty_flow_has_no_next(self) -> None:
+        """验证空值流程是否包含无`next`场景及其预期结果。"""
         assert next_action(_action(sort=1), []) is None
 
     def test_missing_next_action_returns_none(self) -> None:
@@ -357,6 +388,7 @@ class TestBusinessStateItem:
     """§6.4 / §12：post_state 有值才生成「用终态 Fixture 再调用此动作」的计划。"""
 
     def test_generates_item_when_post_state_exists(self) -> None:
+        """验证`generates`条目当`post`状态存在场景及其预期结果。"""
         item = business_state_item(
             rule=_rule(), action=_action(),
             state={"entity": "task", "post_state": "success"},
@@ -369,6 +401,7 @@ class TestBusinessStateItem:
         assert item["mutation_config"]["state_entity"] == "TASK"
 
     def test_no_item_when_post_state_is_empty(self) -> None:
+        """验证无条目当`post`状态是否空值场景及其预期结果。"""
         assert business_state_item(
             rule=_rule(), action=_action(), state={"entity": "task", "post_state": None},
         ) is None
@@ -384,6 +417,7 @@ class TestBusinessStateItem:
         assert item["blocked_reason"] == FIXTURE_REQUIRED
 
     def test_not_blocked_when_fixture_is_available(self) -> None:
+        """验证不被拦截当固定数据是否`available`场景及其预期结果。"""
         item = business_state_item(
             rule=_rule(), action=_action(),
             state={"entity": "task", "post_state": "success"},
@@ -392,6 +426,7 @@ class TestBusinessStateItem:
         assert item["blocked_reason"] is None
 
     def test_fixture_key_from_rule_config_wins(self) -> None:
+        """验证固定数据键从规则配置`wins`场景及其预期结果。"""
         item = business_state_item(
             rule=_rule(mutation_config={"fixture_key": "DONE_ORDER"}),
             action=_action(), state={"entity": "order", "post_state": "done"},
@@ -399,11 +434,13 @@ class TestBusinessStateItem:
         assert item["mutation_config"]["fixture_key"] == "DONE_ORDER"
 
     def test_no_item_when_neither_entity_nor_fixture_key(self) -> None:
+        """验证无条目当`neither``entity``nor`固定数据键场景及其预期结果。"""
         assert business_state_item(
             rule=_rule(), action=_action(), state={"entity": "", "post_state": "success"},
         ) is None
 
     def test_write_method_requires_confirmation(self) -> None:
+        """验证写入方法需要`confirmation`场景及其预期结果。"""
         item = business_state_item(rule=_rule(), action=_action(), method="POST",
                                    state={"entity": "task", "post_state": "success"})
         assert item["confirmation_required"] is True
@@ -416,6 +453,7 @@ class TestSequenceBypassItem:
     """验收：跳步计划的 target 是后置 Action，而不是一整条 Flow。"""
 
     def test_target_is_the_action_after_the_skipped_one(self) -> None:
+        """验证目标是否`the`动作之后`the`跳过`one`场景及其预期结果。"""
         actions = _flow_actions()
         item = sequence_bypass_item(rule=_rule(), skipped_action=actions[0], actions=actions)
         assert item["mutation_type"] == "SEQUENCE_BYPASS"
@@ -424,6 +462,7 @@ class TestSequenceBypassItem:
         assert item["name"].startswith("分配执行人-SEQUENCE_BYPASS")
 
     def test_skipped_action_is_never_the_target(self) -> None:
+        """验证跳过动作是否`never``the`目标场景及其预期结果。"""
         actions = _flow_actions()
         skipped = actions[1]
         item = sequence_bypass_item(rule=_rule(), skipped_action=skipped, actions=actions)
@@ -431,6 +470,7 @@ class TestSequenceBypassItem:
         assert item["mutation_config"]["skipped_action_id"] == skipped["id"]
 
     def test_no_target_when_skipped_is_the_last_action(self) -> None:
+        """验证无目标当跳过是否`the``last`动作场景及其预期结果。"""
         actions = _flow_actions()
         assert sequence_bypass_item(
             rule=_rule(), skipped_action=actions[-1], actions=actions,
@@ -448,6 +488,7 @@ class TestSequenceBypassItem:
         assert item["mutation_config"]["fixture_key"] == "SUCCESS_TASK"
 
     def test_not_blocked_when_fixture_is_available(self) -> None:
+        """验证不被拦截当固定数据是否`available`场景及其预期结果。"""
         actions = _flow_actions()
         item = sequence_bypass_item(
             rule=_rule(), skipped_action=actions[0], actions=actions,
@@ -457,6 +498,7 @@ class TestSequenceBypassItem:
         assert item["blocked_reason"] is None
 
     def test_rule_fixture_key_wins_over_derived_key(self) -> None:
+        """验证规则固定数据键`wins``over``derived`键场景及其预期结果。"""
         actions = _flow_actions()
         item = sequence_bypass_item(
             rule=_rule(mutation_config={"fixture_key": "SEED_TASK"}),
@@ -470,6 +512,7 @@ class TestDuplicateSubmitItem:
     """DUPLICATE_SUBMIT：只挂到创建/提交/支付类动作。"""
 
     def test_generate_for_create_like_action(self) -> None:
+        """验证生成用于创建`like`动作场景及其预期结果。"""
         item = duplicate_submit_item(
             rule=_rule(mutation_type="DUPLICATE_SUBMIT"),
             action=_action(action_key="CREATE_TASK", name="创建任务"),
@@ -482,6 +525,7 @@ class TestDuplicateSubmitItem:
         assert item["mutation_config"]["replay_count"] == 2
 
     def test_skip_non_write_action(self) -> None:
+        """验证`skip``non`写入动作场景及其预期结果。"""
         assert duplicate_submit_item(
             rule=_rule(mutation_type="DUPLICATE_SUBMIT"),
             action=_action(action_key="RUN_TASK", name="执行任务"),
@@ -499,6 +543,7 @@ class TestDuplicateSubmitItem:
                       ))
 
     def test_accept_idempotency_rule(self) -> None:
+        """验证`accept``idempotency`规则场景及其预期结果。"""
         item = duplicate_submit_item(
             rule=_rule(mutation_type="DUPLICATE_SUBMIT"),
             action=_action(action_key="RUN_TASK", name="执行任务"),
@@ -512,6 +557,7 @@ class TestReplayItem:
     """REPLAY_SAME_REQUEST 计划项：次数与间隔夹进允许范围后再快照。"""
 
     def test_defaults_are_snapped_into_the_item(self) -> None:
+        """验证`defaults`是否为`snapped``into``the`条目场景及其预期结果。"""
         item = replay_item(rule=_rule(), target="创建任务", method="POST", api_id=5)
         assert item["mutation_type"] == "REPLAY_SAME_REQUEST"
         assert item["expectation"] == "EXPECTED_IDEMPOTENT"
@@ -521,6 +567,7 @@ class TestReplayItem:
         assert item["api_id"] == 5
 
     def test_explicit_count_and_interval_are_kept(self) -> None:
+        """验证`explicit`统计和`interval`是否为`kept`场景及其预期结果。"""
         item = replay_item(
             rule=_rule(mutation_config={"replay_count": 3, "replay_interval_ms": 800}),
             target="创建任务",
@@ -529,6 +576,7 @@ class TestReplayItem:
         assert item["mutation_config"]["replay_interval_ms"] == 800
 
     def test_out_of_range_config_is_rejected_before_snapping(self) -> None:
+        """验证`out``of``range`配置是否被拒绝之前`snapping`场景及其预期结果。"""
         _expect_error(AppError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: replay_item(
                           rule=_rule(mutation_config={"replay_count": 9}), target="创建任务",
@@ -539,6 +587,7 @@ class TestItemShape:
     """§16.3 的 preview item 形状。"""
 
     def test_item_has_the_preview_keys(self) -> None:
+        """验证条目是否包含`the`预览`keys`场景及其预期结果。"""
         item = replay_item(rule=_rule(), target="创建任务", method="POST")
         for key in ("index", "name", "mutation_type", "target_type", "method", "expectation",
                     "expected_status_codes", "severity", "risk_level", "confirmation_required",
@@ -550,6 +599,7 @@ class TestItemShape:
         assert item["risk_level"] == "MEDIUM"
 
     def test_risk_level_comes_from_strategy(self) -> None:
+        """验证风险`level``comes`从策略场景及其预期结果。"""
         item = replay_item(
             rule=_rule(severity="LOW"),
             target="创建任务",
@@ -561,6 +611,7 @@ class TestItemShape:
         assert item["source_rule_id"] == 11
 
     def test_item_name_shape(self) -> None:
+        """验证条目名称`shape`场景及其预期结果。"""
         assert item_name("创建任务", "REMOVE_TOKEN", "Authorization") == "创建任务-REMOVE_TOKEN-Authorization"
         assert item_name(None, "REPLAY_SAME_REQUEST") == "目标-REPLAY_SAME_REQUEST"
 
@@ -572,6 +623,7 @@ class TestFlowIsNotModified:
     """验收：不给 execute_flow 增加 skip 参数，跳步靠计划项指向后置 Action。"""
 
     def test_execute_flow_has_no_skip_parameter(self) -> None:
+        """验证执行流程是否包含无`skip``parameter`场景及其预期结果。"""
         tree = ast.parse(EXECUTOR_PATH.read_text())
         fn = next(
             node for node in ast.walk(tree)

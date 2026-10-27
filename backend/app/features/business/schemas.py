@@ -26,11 +26,12 @@ BusinessDomainStatus = Literal["ACTIVE", "INACTIVE"]
 BUSINESS_FLOW_STATUSES = ("DRAFT", "ACTIVE", "DEPRECATED")
 BusinessFlowStatus = Literal["DRAFT", "ACTIVE", "DEPRECATED"]
 
-BUSINESS_ACTION_TYPES = ("NORMAL", "SYSTEM", "MANUAL", "WAIT", "DECISION")
-BusinessActionType = Literal["NORMAL", "SYSTEM", "MANUAL", "WAIT", "DECISION"]
+# 当前执行器只实现普通顺序动作；历史动作类型仅通过响应字段读取，不再接受新配置。
+BUSINESS_ACTION_TYPES = ("NORMAL",)
+BusinessActionType = Literal["NORMAL"]
 
-BUSINESS_BINDING_TYPES = ("API", "WEB", "MOBILE")
-BusinessBindingType = Literal["API", "WEB", "MOBILE"]
+BUSINESS_BINDING_TYPES = ("API", "WEB")
+BusinessBindingType = Literal["API", "WEB"]
 
 BUSINESS_PRECONDITION_TYPES = ("VARIABLE", "STATE", "BUSINESS", "TEXT")
 BusinessPreconditionType = Literal["VARIABLE", "STATE", "BUSINESS", "TEXT"]
@@ -173,7 +174,7 @@ class BusinessActionBase(BaseModel):
     )
     sort: int = Field(default=0, ge=0, description="步骤顺序，越小越靠前")
     action_type: BusinessActionType = Field(
-        default="NORMAL", description="动作类型：NORMAL/SYSTEM/MANUAL/WAIT/DECISION",
+        default="NORMAL", description="当前仅支持普通顺序动作 NORMAL",
     )
 
 
@@ -389,7 +390,7 @@ class BusinessVariableRefResponse(BaseModel):
 class BusinessBindingCreate(BaseModel):
     """新增业务绑定入参（action_id 由路径提供）。"""
 
-    binding_type: BusinessBindingType = Field(default="API", description="绑定通道：API/WEB/MOBILE")
+    binding_type: BusinessBindingType = Field(default="API", description="绑定通道：API/WEB")
     api_id: int | None = Field(None, gt=0, description="绑定的接口ID（api_catalog.ApiInterface）")
     name: str | None = Field(None, max_length=200, description="绑定名称（如 API v1）")
     is_default: bool = Field(default=True, description="是否为默认绑定（执行时使用）")
@@ -428,7 +429,7 @@ class BusinessBindingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --------------------------------------------------------------------------- 业务 API 映射
+# --------------------------------------------------------------------------- 业务 API 接口 映射
 
 
 class BusinessApiMappingCreate(BaseModel):

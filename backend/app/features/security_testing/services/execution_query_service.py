@@ -26,6 +26,7 @@ class ExecutionQueryService:
     def get_execution(
         db: Session, security_execution_id: int, *, user: User
     ) -> SecurityExecutionRead:
+        """获取执行记录。"""
         row = db.get(SecurityExecution, security_execution_id)
         if row is None:
             raise AppError(

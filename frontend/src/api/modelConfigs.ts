@@ -9,7 +9,6 @@ export interface ProviderCatalogItem {
 
 /** 新建模型配置的请求体，对应 POST /model-configs。 */
 export interface ModelConfigurationCreate {
-  domain_id: string; // 业务域标识，用于区分模型归属领域
   label: string; // 展示名称
   provider: string; // 服务商标识，如 openai / dashscope
   api_base: string; // 服务端点 base URL

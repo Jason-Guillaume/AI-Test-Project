@@ -29,10 +29,16 @@ from app.shared.crypto import decrypt_secret, encrypt_secret
 from app.shared.errors import not_found
 
 
-def create_session(db: Session, project_id: int, actor: User, *, title: str | None = None) -> AgentSession:
+def create_session(
+    db: Session, project_id: int, actor: User, *, title: str | None = None,
+    task_run_id: int | None = None, task_agent_instance_id: int | None = None,
+) -> AgentSession:
     """建会话。写操作需 project member（不足 403）。"""
     require_writable_project(db, project_id, actor)
-    session = AgentSession(project_id=project_id, user_id=actor.id, title=title)
+    session = AgentSession(
+        project_id=project_id, user_id=actor.id, title=title,
+        task_run_id=task_run_id, task_agent_instance_id=task_agent_instance_id,
+    )
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -44,7 +50,7 @@ def list_sessions(db: Session, project_id: int, user: User) -> list[AgentSession
     get_project_or_404(db, project_id, user)
     return (
         db.query(AgentSession)
-        .filter(AgentSession.project_id == project_id)
+        .filter(AgentSession.project_id == project_id, AgentSession.task_run_id.is_(None))
         .order_by(AgentSession.updated_at.desc(), AgentSession.id.desc())
         .all()
     )
@@ -53,7 +59,7 @@ def list_sessions(db: Session, project_id: int, user: User) -> list[AgentSession
 def get_session_or_404(db: Session, session_id: int, user: User) -> AgentSession:
     """取会话并校验项目可见性（viewer+）；不存在 / 不可见统一 404（§33）。"""
     session = db.get(AgentSession, session_id)
-    if session is None:
+    if session is None or session.task_run_id is not None:
         raise not_found("会话不存在")
     get_project_or_404(db, session.project_id, user)
     return session
@@ -62,7 +68,7 @@ def get_session_or_404(db: Session, session_id: int, user: User) -> AgentSession
 def get_session_for_write(db: Session, session_id: int, actor: User) -> AgentSession:
     """取会话并校验可写（member+）：发消息 / 删会话用。"""
     session = db.get(AgentSession, session_id)
-    if session is None:
+    if session is None or session.task_run_id is not None:
         raise not_found("会话不存在")
     require_writable_project(db, session.project_id, actor)
     return session
@@ -236,6 +242,7 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
     state["current_stage"] = session.current_stage
 
     def latest(msg_type: str) -> dict[str, Any] | None:
+        """读取会话中的最新消息。"""
         for m in reversed(msgs):
             if m.message_type == msg_type and m.metadata_json:
                 return m.metadata_json
@@ -278,7 +285,7 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
 
     scan_meta = latest("SECURITY_SCAN_PLAN")
     if scan_meta:
-        # 跨轮次保留计划：confirm_security_scan 需要重放 preview 复核扫描强度。
+        # 旧版扫描工作区字段继续读取，用于历史会话兼容；当前图不再注册扫描节点。
         state["zap_scan_plan"] = scan_meta.get("plan")
         state["zap_scan_job_id"] = scan_meta.get("job_id")
 

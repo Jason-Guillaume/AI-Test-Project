@@ -1,6 +1,6 @@
-// 用户控制台的作用域上下文：当前选中的组织与项目。
+// 用户控制台的作用域上下文：当前选中的项目，以及该项目派生的组织范围。
 //
-// 切换组织/项目时通过 queryClient.invalidateQueries 清空以旧作用域为 key 的缓存，
+// 同步组织范围或切换项目时通过 queryClient.invalidateQueries 清空相关缓存，
 // 避免显示上一项目的数据。作用域通过 query 参数传给后端，不依赖请求头。
 //
 // 状态来源：localStorage（console.current_org_id / console.current_project_id），刷新页面后仍保留。
@@ -22,13 +22,13 @@ const ORG_KEY = 'console.current_org_id';
 const PROJECT_KEY = 'console.current_project_id';
 
 /**
- * ConsoleScopeProvider 对外暴露的当前作用域与切换操作。
- * 作用域为 null 表示未选择，此时后端接口按“不限定作用域”处理。
+ * ConsoleScopeProvider 对外暴露的当前项目作用域与同步操作。
+ * currentOrgId 由 ConsoleLayout 按所选项目自动同步，不再由用户单独选择组织。
  */
 interface ConsoleScopeState {
-  currentOrgId: number | null; // 当前选中组织 ID；null 表示未选择任何组织
-  currentProjectId: number | null; // 当前选中项目 ID；null 表示仅按组织作用域过滤
-  setOrgId: (id: number | null) => void; // 切换组织：持久化并失效项目级缓存
+  currentOrgId: number | null; // 当前项目所属组织 ID；无项目或未归属组织时为 null
+  currentProjectId: number | null; // 当前选中项目 ID；null 表示不限定项目
+  setOrgId: (id: number | null) => void; // 同步项目所属组织范围
   setProjectId: (id: number | null) => void; // 切换项目：持久化并失效项目级缓存
   clear: () => void; // 清空组织与项目（登出或离开控制台时使用）
 }
@@ -40,8 +40,7 @@ const ConsoleScopeContext = createContext<ConsoleScopeState | null>(null);
  * 作用域 Provider：持有“当前组织/项目”选择态，并在切换时清理相关查询缓存。
  *
  * 不发请求（只改状态与失效缓存，实际拉取由各页面的 useQuery 触发）。
- * 空态呈现：初值来自 localStorage，没有历史选择时两个 ID 均为 null，
- * 由 UI 展示“选择组织/项目”占位而不是报错。
+ * 空态呈现：初值来自 localStorage，没有历史项目选择时两个 ID 均为 null。
  *
  * @param props.children 控制台子树（ConsoleLayout 及其页面）
  */
@@ -57,20 +56,12 @@ export function ConsoleScopeProvider({ children }: { children: ReactNode }) {
     return raw ? Number(raw) : null;
   });
 
-  // 切换组织：同步写 localStorage，并让项目列表与看板失效。
+  // 同步项目所属组织范围；只有工作台的组织统计依赖此字段。
   const setOrgId = useCallback((id: number | null) => {
     setOrgIdState(id);
     if (id == null) localStorage.removeItem(ORG_KEY);
     else localStorage.setItem(ORG_KEY, String(id));
-    // 组织切换会让项目列表与项目级数据全部失效；缺陷列表按当前作用域过滤，
-    // 组织切换后可能命中新的项目集合，也一起刷新。
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['bugs'] });
-    // 业务管理按项目作用域过滤，组织切换后项目集合可能变化。
-    queryClient.invalidateQueries({ queryKey: ['business'] });
-    // 测试数据中心按项目作用域过滤，组织切换后项目集合可能变化，整棵失效。
-    queryClient.invalidateQueries({ queryKey: ['test-data'] });
   }, [queryClient]);
 
   // 切换项目：项目级数据全部以 ['project', id, ...] 为 key，整体失效即可。

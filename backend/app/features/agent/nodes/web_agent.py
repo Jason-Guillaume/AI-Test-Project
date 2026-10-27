@@ -61,7 +61,7 @@ def web_observe_node(ctx: NodeContext, state: AgentState) -> dict:
     首轮同时把用户自然语言目标固化到 web_goal（后续轮次由持久化重建，
     不依赖本轮请求参数）。预算耗尽时把阶段置为 WEB_STEP_REVIEW——因为
     interrupt_before 会在 web_step_review 之前停下，节点本身不会执行，
-    阶段必须由**产出该暂停点**的节点设置（与 zap_scan_planner 同范式）。
+    阶段必须由**产出该暂停点**的节点设置。
     """
     if state.get("action") == "reject_web_step":
         try:
@@ -191,6 +191,17 @@ def web_act_node(ctx: NodeContext, state: AgentState) -> dict:
     if not session_id or not state.get("web_current_step"):
         return set_error(state, "WEB_STEP_MISSING", "缺少浏览器会话或待执行步骤")
 
+    # 任务内浏览器操作在每个真实动作前重读控制状态；暂停/取消到达后，
+    # 不执行已经生成但尚未执行的提案。旧的独立 Agent 会话不受此分支影响。
+    from app.features.agent.models.agent_session import AgentSession
+    from app.features.tasks.models import TaskRun
+
+    agent_session = ctx.db.get(AgentSession, state.get("session_id"))
+    if agent_session is not None and agent_session.task_run_id is not None:
+        task_run = ctx.db.get(TaskRun, agent_session.task_run_id)
+        if task_run is None or task_run.status in {"PAUSE_REQUESTED", "PAUSED", "CANCEL_REQUESTED", "CANCELLED"}:
+            return set_error(state, "TASK_CONTROL_REQUESTED", "任务已暂停或取消；当前 Web 步骤未执行")
+
     browser = _browser_or_none(session_id)
     if browser is None:
         return set_error(state, "WEB_SESSION_CLOSED", "浏览器会话已断开，请重新启动会话")
@@ -206,6 +217,19 @@ def web_act_node(ctx: NodeContext, state: AgentState) -> dict:
     if proposal is None:
         return set_error(state, "WEB_STEP_MISSING", "待确认步骤不存在或已处理，请重新获取提案")
     step = proposal["step"]
+
+    # 控制命令可能在 Agent turn 期间到达。刷新并锁住运行行直到浏览器动作
+    # 留痕提交，让暂停/取消在动作前或动作后生效，不与实际页面操作竞跑。
+    if agent_session is not None and agent_session.task_run_id is not None:
+        task_run = (
+            ctx.db.query(TaskRun)
+            .filter(TaskRun.id == agent_session.task_run_id)
+            .populate_existing()
+            .with_for_update()
+            .first()
+        )
+        if task_run is None or task_run.status in {"PAUSE_REQUESTED", "PAUSED", "CANCEL_REQUESTED", "CANCELLED"}:
+            return set_error(state, "TASK_CONTROL_REQUESTED", "任务已暂停或取消；当前 Web 步骤未执行")
 
     try:
         result = browser.execute_step(step)

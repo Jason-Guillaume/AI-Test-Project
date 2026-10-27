@@ -21,6 +21,7 @@ API = "/api/v1"
 
 
 def _create_project(api, actor, name=None):
+    """创建项目。"""
     proj_name = name or unique("proj")
     r = api.post("/projects", username=actor, json={"name": proj_name, "description": "test-asset project"})
     assert r.status_code == 201, r.text
@@ -28,6 +29,7 @@ def _create_project(api, actor, name=None):
 
 
 def _register_and_login(api, username):
+    """注册测试用户并完成登录，返回用户标识。"""
     r = api.register(username)
     assert r.status_code == 201, r.text
     user_id = r.json()["user"]["id"]
@@ -36,6 +38,7 @@ def _register_and_login(api, username):
 
 
 def _add_member(api, actor, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}",
         username=actor, json={"user_id": user_id, "role": role},
@@ -50,6 +53,7 @@ class TestStrategy:
     """测试策略 CRUD 与枚举校验。"""
 
     def test_strategy_crud(self, api, admin):
+        """验证策略增删改查场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         # 建。
         r = api.post(
@@ -80,6 +84,7 @@ class TestStrategy:
         assert r.status_code == 404
 
     def test_strategy_invalid_category_rejected(self, api, admin):
+        """验证策略无效`category`被拒绝场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         r = api.post(
             f"/projects/{project_id}/test-strategies", username=admin,
@@ -89,6 +94,7 @@ class TestStrategy:
         assert r.status_code == 422
 
     def test_strategy_filter_by_category(self, api, admin):
+        """验证策略筛选条件按`category`场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         for cat in ("AUTH", "FUNCTIONAL"):
             api.post(f"/projects/{project_id}/test-strategies", username=admin,
@@ -105,6 +111,7 @@ class TestPoint:
     """测试点 CRUD + strategy 跨项目校验。"""
 
     def test_point_crud(self, api, admin):
+        """验证检查点增删改查场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         sid = api.post(f"/projects/{project_id}/test-strategies", username=admin,
                        json={"name": unique("strat")}).json()["id"]
@@ -147,6 +154,7 @@ class TestCaseCrud:
     """测试用例 CRUD + revision 乐观锁。"""
 
     def test_case_crud(self, api, admin):
+        """验证用例增删改查场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         r = api.post(
             f"/projects/{project_id}/test-cases", username=admin,
@@ -204,12 +212,14 @@ class TestCaseSubEntities:
     """前置条件 / 测试数据 / 步骤 / 断言 的 CRUD + 聚合详情。"""
 
     def _make_case(self, api, admin, project_id):
+        """构造用例。"""
         return api.post(
             f"/projects/{project_id}/test-cases", username=admin,
             json={"name": unique("case")},
         ).json()["id"]
 
     def test_sub_crud_and_detail(self, api, admin):
+        """验证`sub`增删改查和详情场景及其预期结果。"""
         project_id, _ = _create_project(api, admin)
         cid = self._make_case(api, admin, project_id)
 
@@ -274,6 +284,7 @@ class TestProjectIsolation:
     """§25：跨项目访问 404；viewer 只读。"""
 
     def test_cross_project_hidden_as_404(self, api, admin):
+        """验证跨项目项目`hidden``as`场景及其预期结果。"""
         owner = unique("owner")
         observer = unique("observer")
         owner_id = _register_and_login(api, owner)
@@ -287,6 +298,7 @@ class TestProjectIsolation:
         assert api.get(f"/test-strategies/{sid}", username=observer).status_code == 404
 
     def test_viewer_can_read_not_write(self, api, admin):
+        """验证`viewer`可以读取不写入场景及其预期结果。"""
         owner = unique("owner")
         viewer = unique("viewer")
         owner_id = _register_and_login(api, owner)

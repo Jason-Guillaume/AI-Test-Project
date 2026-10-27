@@ -5,6 +5,7 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Empty,
   Flex,
   Input,
@@ -14,6 +15,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -35,6 +37,7 @@ import {
   type TaskCommandRequest,
   type TaskMessage,
   type TaskResourceRef,
+  type TaskToolInvocation,
   type TaskWorkItem,
 } from '@/api/tasks';
 import { TaskCreateModal } from '@/components/tasks/TaskCreateModal';
@@ -44,13 +47,15 @@ import { useConsoleScope } from '@/hooks/useConsoleScope';
 
 const STATUS_LABEL: Record<string, string> = {
   QUEUED: '排队中', RUNNING: '运行中', WAITING_CONFIRMATION: '待确认',
+  READY: '就绪', WAITING_APPROVAL: '待确认', WAITING_DEPENDENCY: '等待前置节点',
   PAUSE_REQUESTED: '暂停中', PAUSED: '已暂停', CANCEL_REQUESTED: '取消中',
-  WAITING_EXTERNAL: '等待外部扫描',
+  WAITING_EXTERNAL: '等待外部处理',
   SUCCEEDED: '已完成', SUCCEEDED_WITH_ISSUES: '完成但有问题', FAILED: '失败',
   CANCELLED: '已取消', SUPERSEDED: '已被新目标替代', RECONCILIATION_REQUIRED: '待核对',
 };
 const STAGE_LABEL: Record<string, string> = {
   MODEL_RETRY: '模型重试中', WAITING_MODEL: '等待修复模型配置',
+  SECURITY_EXECUTION: '安全变异执行中',
 };
 const EVENT_LABEL: Record<string, string> = {
   'llm.primary_succeeded': '主模型调用成功',
@@ -61,7 +66,10 @@ const EVENT_LABEL: Record<string, string> = {
 const ROLE_LABEL: Record<string, string> = {
   MAIN: '任务主 Agent', PLANNER: 'Planner', API_WORKER: 'API Worker',
   UI_WORKER: 'UI Worker', SECURITY_WORKER: '安全 Worker', REVIEWER: '审阅 Agent',
-  REPORT_AGENT: '报告 Agent',
+  REPORT_AGENT: '报告 Agent', SUB_AGENT: '子 Agent',
+};
+const TOOL_CALL_STATUS: Record<string, string> = {
+  STARTED: '调用中', SUCCEEDED: '成功', FAILED: '失败', CANCELLED: '未调用', NEEDS_RECONCILIATION: '待核对',
 };
 const TERMINAL = new Set(['SUCCEEDED', 'SUCCEEDED_WITH_ISSUES', 'FAILED', 'CANCELLED', 'SUPERSEDED']);
 const STOP_POLLING = new Set([...TERMINAL, 'RECONCILIATION_REQUIRED', 'PAUSED']);
@@ -74,6 +82,8 @@ export function ConsoleTasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialProjectId = Number(searchParams.get('projectId')) || undefined;
   const initialCaseId = Number(searchParams.get('caseId')) || undefined;
+  const requestedType = searchParams.get('type');
+  const initialTargetType = requestedType === 'WEB' || requestedType === 'SECURITY' || requestedType === 'WEB_AUTHORING' ? requestedType : 'API';
   useEffect(() => {
     if (searchParams.get('create') === '1') setCreateOpen(true);
   }, [searchParams]);
@@ -97,7 +107,7 @@ export function ConsoleTasksPage() {
       <Flex justify="space-between" align="start" wrap="wrap" gap={12}>
         <div>
           <Typography.Title level={4} style={{ marginTop: 0 }}>统一任务</Typography.Title>
-          <Typography.Text type="secondary">任务在后台持久运行，关闭页面不会中断；输入范围来自已确认的 API 或 Web 测试资产，可选关联 ZAP 扫描。</Typography.Text>
+          <Typography.Text type="secondary">任务在后台持久运行；范围可来自已确认的 API/Web 用例、交互式 Web 编写目标，或由安全 Agent 对已登记 API 生成受控变异计划。</Typography.Text>
         </div>
         <Button type="primary" onClick={() => setCreateOpen(true)}>创建统一任务</Button>
       </Flex>
@@ -121,6 +131,7 @@ export function ConsoleTasksPage() {
         onCreated={(task) => navigate(`/console/tasks/${task.id}`)}
         initialProjectId={initialProjectId}
         initialCaseIds={initialCaseId ? [initialCaseId] : []}
+        initialTargetType={initialTargetType}
       />
     </PageContainer>
   );
@@ -129,7 +140,12 @@ export function ConsoleTasksPage() {
 /** 按运行和参与者 ID 恢复独立消息会话、命令与业务产物。 */
 export function ConsoleTaskDetailPage() {
   const { taskId: rawTaskId } = useParams<{ taskId: string }>();
+  const navigate = useNavigate();
   const taskId = rawTaskId ? Number(rawTaskId) : null;
+  const [searchParams] = useSearchParams();
+  const requestedRun = searchParams.get('runId');
+  const requestedRunId = requestedRun === null ? null : Number(requestedRun);
+  const invalidRunId = requestedRun !== null && (!Number.isSafeInteger(requestedRunId) || requestedRunId! <= 0);
   const { message: toast, modal } = App.useApp();
   const queryClient = useQueryClient();
   const [selectedAgentId, setSelectedAgentId] = useState<number | 'events' | null>(null);
@@ -141,18 +157,20 @@ export function ConsoleTaskDetailPage() {
     enabled: taskId != null,
     refetchInterval: 5000,
   });
-  const runId = taskQuery.data?.latest_run?.id ?? null;
+  const runId = invalidRunId ? null : requestedRunId ?? taskQuery.data?.latest_run?.id ?? null;
   const runQuery = useQuery({
     queryKey: ['task-run', runId],
     queryFn: () => tasksApi.getRun(runId!),
-    enabled: runId != null,
+    enabled: runId != null && taskQuery.isSuccess,
     refetchInterval: (query) => STOP_POLLING.has(query.state.data?.run.status ?? '') ? false : 3000,
   });
-  const pollRunDetails = !STOP_POLLING.has(runQuery.data?.run.status ?? taskQuery.data?.latest_run?.status ?? '');
+  // 在读取消息等关联数据前核对运行归属，防止链接指向其他任务。
+  const runMatchesTask = runQuery.data?.run.task_id === taskId;
+  const pollRunDetails = !STOP_POLLING.has(runQuery.data?.run.status ?? '');
   const messagesQuery = useQuery({
     queryKey: ['task-messages', runId],
     queryFn: () => tasksApi.messages(runId!),
-    enabled: runId != null,
+    enabled: runId != null && runMatchesTask,
     refetchInterval: pollRunDetails ? 5000 : false,
   });
   const eventsQuery = useQuery({
@@ -163,13 +181,13 @@ export function ConsoleTaskDetailPage() {
       const next = await tasksApi.events(runId!, previous[previous.length - 1]?.event_seq ?? 0);
       return [...previous, ...next].slice(-200);
     },
-    enabled: runId != null,
+    enabled: runId != null && runMatchesTask,
     refetchInterval: pollRunDetails ? 3000 : false,
   });
   const resourcesQuery = useQuery({
     queryKey: ['task-resources', runId],
     queryFn: () => tasksApi.resources(runId!),
-    enabled: runId != null,
+    enabled: runId != null && runMatchesTask,
     refetchInterval: pollRunDetails ? 5000 : false,
   });
   useEffect(() => {
@@ -224,51 +242,97 @@ export function ConsoleTaskDetailPage() {
   if (taskQuery.isLoading) return <PageContainer><LoadingState /></PageContainer>;
   if (taskQuery.isError || !taskQuery.data) return <PageContainer><ErrorState error={taskQuery.error} onRetry={taskQuery.refetch} /></PageContainer>;
   const task = taskQuery.data;
+  if (invalidRunId) return <PageContainer><Empty description="运行编号无效" /></PageContainer>;
+  if (runQuery.isLoading && runId) return <PageContainer><LoadingState /></PageContainer>;
+  if (runQuery.isError) return <PageContainer><ErrorState error={runQuery.error} onRetry={runQuery.refetch} /></PageContainer>;
+  if (runQuery.data && !runMatchesTask) return <PageContainer><Empty description="此运行不属于当前任务" /></PageContainer>;
   const run = detail?.run;
   if (!runId || !run) return <PageContainer><Empty description="任务还没有可恢复的运行记录" /></PageContainer>;
-  const securityScanSelection = run.input_snapshot.security_scan as { target_id?: number; scan_profile_id?: number } | null | undefined;
+  const historicalRun = run.id !== task.latest_run?.id;
+  const selectedProfile = run.input_snapshot.agent_definition as { name?: string; version?: number; child_agents?: { id: number; name: string; version: number }[] } | null | undefined;
+  const securityAssessmentSelection = run.input_snapshot.security_assessment as { api_id?: number; api_ids?: number[]; web_session_id?: number; strategy_ids?: number[] } | null | undefined;
+  const webAuthoringMode = run.input_snapshot.target_type === 'WEB_AUTHORING';
   const latestPlan = detail?.plans.at(-1);
-  const scanPreview = latestPlan?.plan_json.security_scan_preview as {
-    target?: { name?: string; base_url?: string };
-    profile?: { name?: string; scan_mode?: string };
-    is_active_scan?: boolean;
-    zap_available?: boolean;
-    estimated_requests?: number | null;
-    max_duration_minutes?: number;
-    exclude_paths?: string[];
-    limitations?: string[];
+  const securityAssessmentPreview = latestPlan?.plan_json.security_assessment_preview as {
+    estimated_count?: number;
+    truncated?: boolean;
+    api_ids?: number[];
+    items?: {
+      index: number;
+      name: string;
+      mutation_type: string;
+      method?: string | null;
+      location?: string | null;
+      field?: string | null;
+      severity?: string;
+      risk_level?: string | null;
+      confirmation_required?: boolean;
+      blocked_reason?: string | null;
+    }[];
+    plans?: {
+      api: { id: number; name?: string; method?: string; path?: string };
+      strategies?: { id: number; name: string }[];
+      plan: {
+        estimated_count?: number;
+        truncated?: boolean;
+        items?: {
+          index: number;
+          name: string;
+          mutation_type: string;
+          method?: string | null;
+          location?: string | null;
+          field?: string | null;
+          severity?: string;
+          risk_level?: string | null;
+          confirmation_required?: boolean;
+          blocked_reason?: string | null;
+        }[];
+      };
+    }[];
+    web_inspection?: {
+      session_id?: number;
+      page?: { https?: boolean; response_status?: number | null };
+      dom?: Record<string, number | boolean>;
+      interpretation?: string;
+      signals?: { code: string; title: string; severity: string }[];
+    } | null;
   } | null | undefined;
-  const canPause = ['QUEUED', 'RUNNING', 'WAITING_CONFIRMATION'].includes(run.status);
-  const canCancel = !TERMINAL.has(run.status) && run.status !== 'CANCEL_REQUESTED';
-  const canResume = run.status === 'PAUSED';
+  const securityApiIds = securityAssessmentSelection?.api_ids?.length
+    ? securityAssessmentSelection.api_ids
+    : securityAssessmentSelection?.api_id ? [securityAssessmentSelection.api_id] : [];
+  const securityPreviewItems = securityAssessmentPreview?.plans?.flatMap((item) => item.plan.items ?? [])
+    ?? securityAssessmentPreview?.items
+    ?? [];
+  const canPause = !historicalRun && ['QUEUED', 'RUNNING', 'WAITING_CONFIRMATION'].includes(run.status);
+  const canCancel = !historicalRun && !TERMINAL.has(run.status) && run.status !== 'CANCEL_REQUESTED';
+  const canResume = !historicalRun && run.status === 'PAUSED';
   const mainSelected = selectedAgent?.role === 'MAIN';
   const canMessageWorker = selectedAgent != null && ['API_WORKER', 'UI_WORKER'].includes(selectedAgent.role) && workItems.some(
     (item) => item.agent_instance_id === selectedAgent.id && ['PENDING', 'FAILED'].includes(item.status),
   );
 
   const requestCommand = (type: 'APPROVE_PLAN' | 'PAUSE' | 'RESUME' | 'CANCEL') => {
-    if (type === 'APPROVE_PLAN' && securityScanSelection) {
-      let approvalNote = '';
+    if (type === 'APPROVE_PLAN' && securityAssessmentSelection) {
+      let riskConfirmed = false;
+      const highRiskCount = securityPreviewItems.filter((item) => item.confirmation_required && !item.blocked_reason).length;
       modal.confirm({
-        title: '确认测试方案并附加 ZAP 扫描？',
+        title: '确认自研安全评估计划？',
         content: (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Typography.Text>
-              已选择扫描目标 #{securityScanSelection.target_id} 和策略 #{securityScanSelection.scan_profile_id}。确认后安全 Worker 会在 TestRun 创建后调用现有 ZAP 队列；主动扫描仍会由后端再次校验项目角色、目标授权和执行环境。
+              本次评估绑定 {securityApiIds.length} 个 API（{securityApiIds.map((id) => `#${id}`).join('、')}）和 {securityAssessmentSelection.strategy_ids?.length ?? 0} 个安全策略，共预览 {securityAssessmentPreview?.estimated_count ?? securityPreviewItems.length} 条结构化变异{securityAssessmentSelection.web_session_id ? `，并被动检查 Web 会话 #${securityAssessmentSelection.web_session_id} 的当前页面` : ''}。确认后系统将创建安全用例并通过现有安全执行器运行。
             </Typography.Text>
-            <Input.TextArea
-              rows={3}
-              maxLength={500}
-              placeholder="主动扫描必填批准说明；被动扫描可留空"
-              onChange={(event) => { approvalNote = event.target.value; }}
-            />
+            {highRiskCount > 0 && (
+              <Checkbox onChange={(event) => { riskConfirmed = event.target.checked; }}>
+                我已审阅 {highRiskCount} 条高风险变异，并明确授权执行
+              </Checkbox>
+            )}
           </Space>
         ),
-        okText: '确认方案并请求扫描',
+        okText: '确认计划并执行',
         onOk: () => commandMutation.mutateAsync({
           command_type: 'APPROVE_PLAN',
-          security_scan_confirmed: true,
-          security_scan_approval_note: approvalNote,
+          security_risk_confirmed: riskConfirmed,
         }),
       });
       return;
@@ -276,7 +340,7 @@ export function ConsoleTaskDetailPage() {
     if (type === 'CANCEL') {
       modal.confirm({
         title: '取消当前运行？',
-        content: '系统会在安全边界停止后续调度；已发出的 HTTP 请求不会被撤销，关联 ZAP 扫描会收到取消请求。',
+        content: '系统会在安全边界停止后续调度；已经发出的 HTTP 请求不会被撤销。',
         okButtonProps: { danger: true },
         onOk: () => commandMutation.mutateAsync({ command_type: type }),
       });
@@ -296,7 +360,7 @@ export function ConsoleTaskDetailPage() {
       <Flex justify="space-between" align="start" gap={16} wrap="wrap">
         <div>
           <Typography.Title level={4} style={{ marginTop: 0 }}>{task.title}</Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ maxWidth: 860, marginBottom: 8 }}>{task.goal}</Typography.Paragraph>
+          <Typography.Paragraph type="secondary" style={{ maxWidth: 860, marginBottom: 8 }}>{run.goal_snapshot}</Typography.Paragraph>
           <Space wrap>
             <Tag>{STATUS_LABEL[run.status] ?? run.status}</Tag>
             <Tag color="blue">{STAGE_LABEL[run.stage] ?? run.stage}</Tag>
@@ -304,12 +368,15 @@ export function ConsoleTaskDetailPage() {
           </Space>
         </div>
         <Space wrap>
-          {run.status === 'WAITING_CONFIRMATION' && <Button type="primary" icon={<CheckOutlined />} onClick={() => requestCommand('APPROVE_PLAN')}>{securityScanSelection ? '确认方案并请求 ZAP 扫描' : '确认方案并执行'}</Button>}
+          {!historicalRun && webAuthoringMode && run.stage !== 'PLAN_REVIEW' && <Button type="primary" onClick={() => navigate(`/console/web-ui-agent?taskId=${task.id}&runId=${run.id}&projectId=${task.project_id}`)}>打开任务 Web 工作区</Button>}
+          {!historicalRun && run.status === 'WAITING_CONFIRMATION' && <Button type="primary" icon={<CheckOutlined />} onClick={() => requestCommand('APPROVE_PLAN')}>{securityAssessmentSelection ? '确认安全计划并执行' : webAuthoringMode ? '批准方案并启动 UI Worker' : '确认方案并执行'}</Button>}
           {canPause && <Button icon={<PauseOutlined />} onClick={() => requestCommand('PAUSE')}>暂停</Button>}
           {canResume && <Button icon={<PlayCircleOutlined />} onClick={() => requestCommand('RESUME')}>继续</Button>}
           {canCancel && <Button danger icon={<StopOutlined />} onClick={() => requestCommand('CANCEL')}>取消运行</Button>}
         </Space>
       </Flex>
+
+      {historicalRun && <Alert style={{ marginTop: 16 }} type="info" showIcon message="当前查看的是历史运行" description={<Link to={`/console/tasks/${task.id}`}>查看最新运行</Link>} />}
 
       {run.stage === 'WAITING_MODEL' && run.error_message && (
         <Alert
@@ -324,6 +391,8 @@ export function ConsoleTaskDetailPage() {
       {taskQuery.isError && <Alert type="error" message="刷新任务失败" />}
       <Flex gap={12} style={{ margin: '18px 0' }} wrap="wrap">
         <Card size="small"><Statistic title="团队成员" value={agents.length} /></Card>
+        <Card size="small"><Statistic title="任务 Agent" value={selectedProfile?.name ? `${selectedProfile.name} v${selectedProfile.version ?? 1}` : '平台默认'} /></Card>
+        {selectedProfile?.child_agents?.length ? <Card size="small"><Statistic title="子 Agent 节点" value={selectedProfile.child_agents.length} /></Card> : null}
         <Card size="small"><Statistic title="待处理工作" value={activeWork} /></Card>
         <Card size="small"><Statistic title="方案版本" value={run.current_plan_version} /></Card>
         <Card size="small"><Statistic title="事件序号" value={run.event_seq} /></Card>
@@ -370,9 +439,9 @@ export function ConsoleTaskDetailPage() {
                     <List
                       dataSource={selectedMessages}
                       locale={{ emptyText: <Empty description="该参与者暂无消息" /> }}
-                      renderItem={(item) => <MessageRow key={item.id} message={item} />}
+                      renderItem={(item) => <MessageRow key={item.id} message={item} projectId={task.project_id} />}
                     />
-                    {selectedAgent && (mainSelected ? !TERMINAL.has(run.status) : canMessageWorker) && (
+                    {!historicalRun && selectedAgent && (mainSelected ? !TERMINAL.has(run.status) : canMessageWorker) && (
                       <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 16 }}>
                         <Space style={{ marginBottom: 8 }}>
                           {mainSelected ? (
@@ -419,22 +488,84 @@ export function ConsoleTaskDetailPage() {
                         <Typography.Text type="secondary">用例范围：{((latestPlan.plan_json.case_ids as number[] | undefined) ?? []).map((id) => `#${id}`).join('、')}</Typography.Text>
                       </Card>
                     )}
-                    {securityScanSelection && (
-                      <Alert
-                        type={scanPreview?.zap_available ? 'warning' : 'error'}
-                        showIcon
-                        message={`ZAP 扫描计划预览 · ${scanPreview?.is_active_scan ? '主动扫描' : '被动扫描'}`}
-                        description={scanPreview ? (
-                          <Space direction="vertical">
-                            <span>目标：{scanPreview.target?.name ?? `#${securityScanSelection.target_id}`} · {scanPreview.target?.base_url ?? '地址未知'}</span>
-                            <span>策略：{scanPreview.profile?.name ?? `#${securityScanSelection.scan_profile_id}`} · {scanPreview.profile?.scan_mode ?? '模式未知'}</span>
-                            <span>请求预算：{scanPreview.estimated_requests ?? '未知'} · 最长时长：{scanPreview.max_duration_minutes ?? '未知'} 分钟</span>
-                            {scanPreview.exclude_paths?.length ? <span>排除路径：{scanPreview.exclude_paths.join('、')}</span> : null}
-                            {scanPreview.limitations?.map((item) => <span key={item}>限制：{item}</span>)}
-                            {!scanPreview.zap_available && <span>当前部署未配置可用 ZAP；确认后安全扫描无法启动。</span>}
-                          </Space>
-                        ) : '正在读取扫描目标与策略的最新范围；确认前请核对完整预览。'}
+                    {agents.some((item) => item.role === 'SUB_AGENT') && <Card size="small" title="LangGraph 子 Agent 节点">
+                      <List size="small" dataSource={agents.filter((item) => item.role === 'SUB_AGENT')} renderItem={(item) => <List.Item><Space><Typography.Text strong>{item.display_name}</Typography.Text><Tag>v{String(item.config_snapshot.agent_version ?? 1)}</Tag><Tag color={item.status === 'SUCCEEDED' ? 'green' : item.status === 'FAILED' ? 'red' : 'blue'}>{STATUS_LABEL[item.status] ?? item.status}</Tag></Space></List.Item>} />
+                    </Card>}
+                    <Card size="small" title={`工具调用审计 · ${detail?.tool_invocations.length ?? 0}`}>
+                      <Typography.Text type="secondary">仅展示调用身份和状态，不展示工具参数或结果。</Typography.Text>
+                      <Table<TaskToolInvocation>
+                        size="small"
+                        rowKey="id"
+                        pagination={false}
+                        dataSource={detail?.tool_invocations ?? []}
+                        locale={{ emptyText: <Empty description="暂无工具调用记录" /> }}
+                        columns={[
+                          { title: '工具', dataIndex: 'tool_name' },
+                          { title: '状态', dataIndex: 'status', render: (state: string) => <Tag color={state === 'SUCCEEDED' ? 'green' : state === 'FAILED' ? 'red' : 'blue'}>{TOOL_CALL_STATUS[state] ?? state}</Tag> },
+                          { title: '时间', dataIndex: 'created_at', render: fmtTime },
+                          { title: '错误码', dataIndex: 'error_code', render: (value: string | null) => value || '—' },
+                        ]}
                       />
+                    </Card>
+                    {securityAssessmentSelection && (
+                      <Card size="small" title="自研安全评估计划预览">
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <Typography.Text>
+                            {securityApiIds.length} 个 API（{securityApiIds.map((id) => `#${id}`).join('、')}）· {securityAssessmentSelection.strategy_ids?.length ?? 0} 个策略 · 共 {securityAssessmentPreview?.estimated_count ?? 0} 条计划项
+                          </Typography.Text>
+                          {securityAssessmentPreview?.truncated && <Alert type="error" showIcon message="计划预览已截断，当前不能确认执行；请减少策略后重新创建任务。" />}
+                          {securityAssessmentPreview?.web_inspection && (
+                            <Card size="small" title={`Web 页面被动观察 · 会话 #${securityAssessmentPreview.web_inspection.session_id}`}>
+                              <Typography.Text type="secondary">
+                                页面 HTTPS：{securityAssessmentPreview.web_inspection.page?.https ? '是' : '否'} · HTTP 状态：{securityAssessmentPreview.web_inspection.page?.response_status ?? '未知'}。{securityAssessmentPreview.web_inspection.interpretation}
+                              </Typography.Text>
+                              <List
+                                size="small"
+                                dataSource={securityAssessmentPreview.web_inspection.signals ?? []}
+                                locale={{ emptyText: '未观察到候选信号' }}
+                                renderItem={(signal) => <List.Item><Space><Tag color={signal.severity === 'LOW' ? 'orange' : 'blue'}>{signal.severity}</Tag>{signal.title}</Space></List.Item>}
+                              />
+                            </Card>
+                          )}
+                          <List
+                            size="small"
+                            dataSource={securityAssessmentPreview?.plans ?? []}
+                            locale={{ emptyText: <Empty description="安全计划正在生成" /> }}
+                            renderItem={(apiPlan) => (
+                              <List.Item>
+                                <Space direction="vertical" style={{ width: '100%' }}>
+                                  <Typography.Text strong>API #{apiPlan.api.id} · {apiPlan.api.method} {apiPlan.api.path} · {apiPlan.api.name}</Typography.Text>
+                                  <Typography.Text type="secondary">策略：{apiPlan.strategies?.map((strategy) => strategy.name).join('、') || '—'}</Typography.Text>
+                                  <List
+                                    size="small"
+                                    dataSource={apiPlan.plan.items ?? []}
+                                    locale={{ emptyText: <Empty description="该 API 没有可用变异项" /> }}
+                                    renderItem={(item) => (
+                                      <List.Item>
+                                        <Space direction="vertical" size={0}>
+                                          <Space wrap>
+                                            <Typography.Text strong>#{item.index + 1} {item.name}</Typography.Text>
+                                            <Tag>{item.mutation_type}</Tag>
+                                            <Tag color={item.confirmation_required ? 'red' : 'blue'}>{item.confirmation_required ? '需高风险确认' : item.risk_level ?? item.severity ?? '普通风险'}</Tag>
+                                          </Space>
+                                          <Typography.Text type="secondary">
+                                            {[item.method, item.location, item.field].filter(Boolean).join(' · ') || '按策略规则执行'}
+                                            {item.blocked_reason ? ` · 暂不可执行：${item.blocked_reason}` : ''}
+                                          </Typography.Text>
+                                        </Space>
+                                      </List.Item>
+                                    )}
+                                  />
+                                </Space>
+                              </List.Item>
+                            )}
+                          />
+                          {!securityAssessmentPreview?.plans?.length && securityAssessmentPreview?.items?.length ? (
+                            <List size="small" dataSource={securityAssessmentPreview.items} renderItem={(item) => <List.Item>#{item.index + 1} {item.name} · {item.mutation_type}</List.Item>} />
+                          ) : null}
+                          <Alert type="info" showIcon message="模型只解释预览计划；实际执行目标、策略和变异由服务端固定。高风险项需要在确认窗口显式授权。" />
+                        </Space>
+                      </Card>
                     )}
                     <Table<TaskWorkItem>
                       size="small"
@@ -442,11 +573,33 @@ export function ConsoleTaskDetailPage() {
                       pagination={false}
                       dataSource={workItems}
                       columns={[
-                        { title: '职责', dataIndex: 'kind', render: (kind: string) => ROLE_LABEL[{ PLAN: 'PLANNER', EXECUTE_API: 'API_WORKER', EXECUTE_WEB: 'UI_WORKER', SECURITY_SCAN: 'SECURITY_WORKER', REPORT: 'REPORT_AGENT', REVIEW: 'REVIEWER', FINALIZE: 'MAIN' }[kind] ?? kind] ?? kind },
+                        { title: '职责', dataIndex: 'kind', render: (kind: string) => ROLE_LABEL[{ PLAN: 'PLANNER', EXECUTE_API: 'API_WORKER', EXECUTE_WEB: 'UI_WORKER', EXECUTE_SECURITY: 'SECURITY_WORKER', SECURITY_SCAN: 'SECURITY_WORKER', REPORT: 'REPORT_AGENT', REVIEW: 'REVIEWER', FINALIZE: 'MAIN' }[kind] ?? kind] ?? kind },
                         { title: '状态', dataIndex: 'status', render: (state: string) => STATUS_LABEL[state] ?? state },
                         { title: '尝试', dataIndex: 'attempt_count', width: 80 },
                         { title: '结果/错误', render: (_, row) => row.error_message ?? JSON.stringify(row.output_json ?? {}) },
-                        { title: '操作', width: 90, render: (_, row) => row.status === 'FAILED' ? <Button size="small" icon={<PlayCircleOutlined />} onClick={() => commandMutation.mutate({ command_type: 'RETRY', work_item_id: row.id })}>重试</Button> : null },
+                        {
+                          title: '操作',
+                          width: 110,
+                          render: (_, row) => {
+                            if (historicalRun || row.status !== 'FAILED') return null;
+                            if (!row.retryable) {
+                              return (
+                                <Tooltip title={row.retry_block_reason ?? '当前工作项不可重试'}>
+                                  <Button size="small" disabled>不可重试</Button>
+                                </Tooltip>
+                              );
+                            }
+                            return (
+                              <Button
+                                size="small"
+                                icon={<PlayCircleOutlined />}
+                                onClick={() => commandMutation.mutate({ command_type: 'RETRY', work_item_id: row.id })}
+                              >
+                                重试
+                              </Button>
+                            );
+                          },
+                        },
                       ]}
                     />
                   </Space>
@@ -454,7 +607,7 @@ export function ConsoleTaskDetailPage() {
               },
               {
                 key: 'resources', label: '产物',
-                children: <ResourceList resources={resources} />,
+                children: <ResourceList resources={resources} projectId={task.project_id} targetType={run.input_snapshot.target_type} />,
               },
               {
                 key: 'events', label: '运行记录',
@@ -469,7 +622,7 @@ export function ConsoleTaskDetailPage() {
 }
 
 /** 渲染当前参与者会话消息，不混合其他角色的会话。 */
-function MessageRow({ message }: { message: TaskMessage }) {
+function MessageRow({ message, projectId }: { message: TaskMessage; projectId: number }) {
   const isUser = message.sender_type === 'USER';
   return (
     <List.Item>
@@ -480,7 +633,7 @@ function MessageRow({ message }: { message: TaskMessage }) {
         </Flex>
         <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', margin: '8px 0 0' }}>{message.content}</Typography.Paragraph>
         {message.message_type === 'RESULT' && typeof message.metadata_json.test_run_id === 'number' && (
-          <Link to={`/console/execution-history?runId=${message.metadata_json.test_run_id}`}>打开执行记录 #{message.metadata_json.test_run_id}</Link>
+          <Link to={`/console/execution-history?runId=${message.metadata_json.test_run_id}&projectId=${projectId}`}>打开执行记录 #{message.metadata_json.test_run_id}</Link>
         )}
       </Card>
     </List.Item>
@@ -507,7 +660,7 @@ function EventTimeline({ events }: { events: TaskEvent[] }) {
 }
 
 /** 把任务产物引用还原成已有管理页面地址。 */
-function ResourceList({ resources }: { resources: TaskResourceRef[] }) {
+function ResourceList({ resources, projectId, targetType }: { resources: TaskResourceRef[]; projectId: number; targetType: unknown }) {
   return (
     <List
       dataSource={resources}
@@ -517,16 +670,16 @@ function ResourceList({ resources }: { resources: TaskResourceRef[] }) {
         const href = resource.resource_type === 'REPORT'
           ? `/console/test-reports/${id}`
           : resource.resource_type === 'TEST_RUN'
-            ? `/console/execution-history?runId=${id}`
+            ? `/console/execution-history?runId=${id}&projectId=${projectId}`
+            : resource.resource_type === 'SECURITY_FINDING'
+              ? `/console/security-testing?tab=findings&projectId=${projectId}&findingId=${id}`
             : resource.resource_type === 'TEST_CASE'
-              ? `/console/test-asset?caseId=${id}`
-              : resource.resource_type === 'SECURITY_SCAN_JOB'
-                ? `/console/security-testing?tab=zap&jobId=${id}`
+            ? targetType === 'WEB' || targetType === 'WEB_AUTHORING' ? `/console/web-ui?caseId=${id}&projectId=${projectId}` : targetType === 'API' ? `/console/test-asset?caseId=${id}&projectId=${projectId}` : undefined
               : undefined;
         return (
           <List.Item>
             <List.Item.Meta
-              title={href ? <Link to={href}>{resource.resource_type} #{resource.resource_id}</Link> : `${resource.resource_type} #${resource.resource_id}`}
+              title={href ? <Link to={href}>{resource.display_name ?? `${resource.resource_type} #${resource.resource_id}`}</Link> : (resource.display_name ?? `${resource.resource_type} #${resource.resource_id}`)}
               description={`${resource.direction === 'INPUT' ? '输入引用' : '真实业务产物'} · ${fmtTime(resource.created_at)}`}
             />
           </List.Item>

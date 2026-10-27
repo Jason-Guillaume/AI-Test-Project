@@ -27,6 +27,12 @@ EVENT_TITLES: dict[str, str] = {
     "defect.created": "你报告的缺陷已创建",
     "defect.assigned": "有新的缺陷分配给你",
     "defect.status_changed": "你报告的缺陷状态已变更",
+    "task.plan_ready": "任务方案待确认",
+    "task.completed": "任务已完成",
+    "task.completed_with_issues": "任务完成但有问题",
+    "task.failed": "任务执行失败",
+    "task.waiting_model": "任务等待模型配置恢复",
+    "task.reconciliation_required": "任务执行结果待核对",
 }
 
 # 事件类型中文说明，供 /notifications/events 目录接口返回。
@@ -40,6 +46,12 @@ EVENT_LABELS: dict[str, str] = {
     "defect.created": "缺陷创建",
     "defect.assigned": "缺陷分配",
     "defect.status_changed": "缺陷状态变更",
+    "task.plan_ready": "任务方案待确认",
+    "task.completed": "任务完成",
+    "task.completed_with_issues": "任务完成但有问题",
+    "task.failed": "任务执行失败",
+    "task.waiting_model": "任务等待模型恢复",
+    "task.reconciliation_required": "任务执行结果待核对",
 }
 
 

@@ -35,6 +35,7 @@ class MockExecutionQueryService:
         context_id: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> MockExecutionListResponse:
+        """列出`executions`。"""
         get_project_or_404(db, project_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(MockExecution).filter(MockExecution.project_id == project_id)
@@ -61,6 +62,7 @@ class MockExecutionQueryService:
         )
 
     def get_execution(self, db: Session, execution_id: int, user: User) -> MockExecutionResponse:
+        """获取执行记录。"""
         row = db.get(MockExecution, execution_id)
         if row is None:
             raise not_found("Mock 调用记录不存在")

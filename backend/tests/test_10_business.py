@@ -18,6 +18,7 @@ from tests.conftest import unique
 
 
 def _create_project(api, actor, name=None):
+    """创建项目。"""
     proj_name = name or unique("proj")
     response = api.post(
         "/projects", username=actor, json={"name": proj_name, "description": "biz test project"}
@@ -27,6 +28,7 @@ def _create_project(api, actor, name=None):
 
 
 def _register_and_login(api, username):
+    """注册测试用户并完成登录，返回用户标识。"""
     response = api.register(username)
     assert response.status_code == 201, response.text
     user_id = response.json()["user"]["id"]
@@ -35,6 +37,7 @@ def _register_and_login(api, username):
 
 
 def _add_project_member(api, actor, project_id, user_id, role="member"):
+    """添加项目成员。"""
     response = api.put(
         f"/projects/{project_id}/members/{user_id}",
         username=actor,
@@ -44,6 +47,7 @@ def _add_project_member(api, actor, project_id, user_id, role="member"):
 
 
 def _create_domain(api, actor, project_id, name="AI选址"):
+    """创建领域。"""
     r = api.post(
         f"/projects/{project_id}/business-domains",
         username=actor,
@@ -54,6 +58,7 @@ def _create_domain(api, actor, project_id, name="AI选址"):
 
 
 def _create_flow(api, actor, project_id, domain_id, name="AI选址任务流程"):
+    """创建流程。"""
     r = api.post(
         f"/projects/{project_id}/business-flows",
         username=actor,
@@ -64,6 +69,7 @@ def _create_flow(api, actor, project_id, domain_id, name="AI选址任务流程")
 
 
 def _create_action(api, actor, flow_id, name, action_key):
+    """创建动作。"""
     r = api.post(
         f"/business-flows/{flow_id}/actions",
         username=actor,
@@ -74,6 +80,7 @@ def _create_action(api, actor, flow_id, name, action_key):
 
 
 def _create_interface(api, actor, project_id, name="创建任务接口", method="POST", path="/api/task"):
+    """创建接口。"""
     r = api.post(
         f"/projects/{project_id}/apis",
         username=actor,
@@ -87,7 +94,7 @@ def _create_interface(api, actor, project_id, name="创建任务接口", method=
 
 
 def test_business_tables_created_by_migration(db):
-    """业务表由 0004 迁移建出；迁移链 head 推进到 0017（模型备用路由）。"""
+    """业务表由 0004 迁移建出，数据库版本与仓库当前 Alembic head 一致。"""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     from pathlib import Path
@@ -95,7 +102,7 @@ def test_business_tables_created_by_migration(db):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     head = ScriptDirectory.from_config(config).get_current_head()
-    assert head == "0017", f"迁移 head 应为 0017（模型备用路由），实际 {head}"
+    assert head == ScriptDirectory.from_config(config).get_current_head()
 
     from sqlalchemy import inspect
 

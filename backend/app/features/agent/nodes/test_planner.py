@@ -34,10 +34,12 @@ _PLANNER_SYSTEM = """你是接口测试平台的测试 Agent。基于被测目�
 
 
 def _dump(obj) -> str:
+    """将输入数据转换为可序列化的字典。"""
     return json.dumps(sanitize_context(obj), ensure_ascii=False, default=str)
 
 
 def test_planner_node(ctx: NodeContext, state: AgentState) -> dict:
+    """验证`planner`节点场景及其预期结果。"""
     try:
         user_content = (
             "## 被测目标\n"

@@ -79,6 +79,7 @@ _resolver = ModuleResolver()
 
 
 def _param_to_internal(p: ApiParameter) -> InternalParameter:
+    """将参数转换为内部数据结构。"""
     return InternalParameter(
         name=p.name,
         location=p.location,
@@ -93,6 +94,7 @@ def _param_to_internal(p: ApiParameter) -> InternalParameter:
 
 
 def _body_to_internal(b: ApiRequestBody | None) -> InternalBody:
+    """将请求体转换为内部数据结构。"""
     if b is None:
         return InternalBody(body_type="none")
     return InternalBody(
@@ -104,6 +106,7 @@ def _body_to_internal(b: ApiRequestBody | None) -> InternalBody:
 
 
 def _response_to_internal(r: ApiResponse) -> InternalResponse:
+    """将响应转换为内部数据结构。"""
     return InternalResponse(
         status_code=r.status_code,
         description=r.description,
@@ -145,6 +148,7 @@ class ApiService:
     # ---------------------------------------------------------------- 可见性
 
     def _get_project_or_404(self, db: Session, project_id: int, user: User) -> Project:
+        """获取项目或。"""
         project = db.get(Project, project_id)
         if project is None:
             raise not_found("项目不存在")
@@ -153,11 +157,13 @@ class ApiService:
         return project
 
     def _check_writable(self, db: Session, project: Project, actor: User) -> None:
+        """检查可写。"""
         role = project_role_for(db, project, actor)
         if not has_project_role(role, PROJECT_ROLE_MEMBER):
             raise forbidden("需要项目成员权限")
 
     def _get_interface_or_404(self, db: Session, api_id: int, user: User) -> ApiInterface:
+        """获取接口或。"""
         iface = db.get(ApiInterface, api_id)
         if iface is None:
             raise not_found("接口不存在")
@@ -167,6 +173,7 @@ class ApiService:
         return iface
 
     def _get_writable_interface_or_404(self, db: Session, api_id: int, user: User) -> ApiInterface:
+        """获取可写接口或。"""
         iface = self._get_interface_or_404(db, api_id, user)
         project = db.get(Project, iface.project_id)
         if project is None:
@@ -175,6 +182,7 @@ class ApiService:
         return iface
 
     def _get_module_or_404(self, db: Session, module_id: int, user: User) -> ApiModule:
+        """获取`module`或。"""
         mod = db.get(ApiModule, module_id)
         if mod is None:
             raise not_found("模块不存在")
@@ -186,6 +194,7 @@ class ApiService:
         return mod
 
     def _get_writable_module_or_404(self, db: Session, module_id: int, user: User) -> ApiModule:
+        """获取可写`module`或。"""
         mod = self._get_module_or_404(db, module_id, user)
         project = db.get(Project, mod.project_id)
         if project is None:
@@ -207,6 +216,7 @@ class ApiService:
         summary: str | None = None,
         actor: User,
     ) -> None:
+        """写入`change``log`。"""
         log = ApiChangeLog(
             interface_id=iface.id,
             change_type=change_type,
@@ -250,6 +260,7 @@ class ApiService:
     # ---------------------------------------------------------------- 模块
 
     def list_modules(self, db: Session, project_id: int, user: User) -> list[ApiModuleResponse]:
+        """列出`modules`。"""
         self._get_project_or_404(db, project_id, user)
         # 确保未分类存在，前端树始终能展示。读端点必须提交，否则 get_db 关闭会话时
         # 仅 flush 的默认模块会被回滚，导致后续按 id 访问模块找不到（404）。
@@ -268,6 +279,7 @@ class ApiService:
     def create_module(
         self, db: Session, project_id: int, body: ApiModuleCreate, *, actor: User
     ) -> ApiModuleResponse:
+        """创建`module`。"""
         project = self._get_project_or_404(db, project_id, actor)
         self._check_writable(db, project, actor)
         name = (body.name or "").strip()
@@ -296,6 +308,7 @@ class ApiService:
     def update_module(
         self, db: Session, module_id: int, body: ApiModuleUpdate, *, actor: User
     ) -> ApiModuleResponse:
+        """更新`module`。"""
         mod = self._get_writable_module_or_404(db, module_id, actor)
         data = body.model_dump(exclude_unset=True)
         if "name" in data and data["name"] is not None:
@@ -318,6 +331,7 @@ class ApiService:
     def move_module(
         self, db: Session, module_id: int, body: ApiModuleMove, *, actor: User
     ) -> ApiModuleResponse:
+        """移动模块。"""
         mod = self._get_writable_module_or_404(db, module_id, actor)
         if mod.is_default:
             raise bad_request("未分类模块不可移动")
@@ -351,6 +365,7 @@ class ApiService:
         return _module_response(mod, counts.get(mod.id, 0))
 
     def delete_module(self, db: Session, module_id: int, *, actor: User) -> None:
+        """删除`module`。"""
         mod = self._get_writable_module_or_404(db, module_id, actor)
         if mod.is_default:
             raise bad_request("未分类模块不可删除")
@@ -400,6 +415,7 @@ class ApiService:
         page: int = 1,
         page_size: int = 20,
     ) -> ApiInterfaceListResponse:
+        """列出`interfaces`。"""
         self._get_project_or_404(db, project_id, user)
         query = db.query(ApiInterface).filter(ApiInterface.project_id == project_id)
         kw = (keyword or "").strip()
@@ -442,6 +458,7 @@ class ApiService:
     def create_interface(
         self, db: Session, project_id: int, body: ApiInterfaceCreate, *, actor: User
     ) -> ApiInterfaceDetailResponse:
+        """创建接口。"""
         project = self._get_project_or_404(db, project_id, actor)
         self._check_writable(db, project, actor)
         if body.method.upper() not in HTTP_METHODS:
@@ -483,12 +500,14 @@ class ApiService:
         return _detail_response(db, iface)
 
     def get_interface(self, db: Session, api_id: int, user: User) -> ApiInterfaceDetailResponse:
+        """获取接口。"""
         iface = self._get_interface_or_404(db, api_id, user)
         return _detail_response(db, iface)
 
     def update_interface(
         self, db: Session, api_id: int, body: ApiInterfaceUpdate, *, actor: User
     ) -> ApiInterfaceDetailResponse:
+        """更新接口。"""
         iface = self._get_writable_interface_or_404(db, api_id, actor)
         data = body.model_dump(exclude_unset=True)
         structural = False
@@ -533,6 +552,7 @@ class ApiService:
     def move_interface(
         self, db: Session, api_id: int, body, *, actor: User
     ) -> ApiInterfaceDetailResponse:
+        """移动接口。"""
         iface = self._get_writable_interface_or_404(db, api_id, actor)
         new_module_id = self._resolve_module_for_interface(db, iface.project_id, body.module_id)
         if new_module_id != iface.module_id:
@@ -548,6 +568,7 @@ class ApiService:
         return _detail_response(db, iface)
 
     def delete_interface(self, db: Session, api_id: int, *, actor: User) -> None:
+        """删除接口。"""
         iface = self._get_writable_interface_or_404(db, api_id, actor)
         db.delete(iface)
         db.commit()
@@ -566,6 +587,7 @@ class ApiService:
     # ---------------------------------------------------------------- 请求参数/body
 
     def get_request(self, db: Session, api_id: int, user: User) -> ApiRequestBundleResponse:
+        """获取请求。"""
         iface = self._get_interface_or_404(db, api_id, user)
         params = _load_params(db, iface.id)
         body = _load_body(db, iface.id)
@@ -577,6 +599,7 @@ class ApiService:
     def save_request(
         self, db: Session, api_id: int, body: ApiRequestBundle, *, actor: User
     ) -> ApiRequestBundleResponse:
+        """保存请求。"""
         iface = self._get_writable_interface_or_404(db, api_id, actor)
         old_params = _load_params(db, iface.id)
         old_body = _load_body(db, iface.id)
@@ -599,6 +622,7 @@ class ApiService:
     # ---------------------------------------------------------------- 响应
 
     def get_responses(self, db: Session, api_id: int, user: User) -> ApiResponsesBundleResponse:
+        """获取`responses`。"""
         iface = self._get_interface_or_404(db, api_id, user)
         responses = _load_responses(db, iface.id)
         return ApiResponsesBundleResponse(
@@ -608,6 +632,7 @@ class ApiService:
     def save_responses(
         self, db: Session, api_id: int, body: ApiResponsesBundle, *, actor: User
     ) -> ApiResponsesBundleResponse:
+        """保存`responses`。"""
         iface = self._get_writable_interface_or_404(db, api_id, actor)
         old_responses = _load_responses(db, iface.id)
         _replace_responses(db, iface.id, body.responses)
@@ -628,6 +653,7 @@ class ApiService:
     # ---------------------------------------------------------------- 关联
 
     def list_relations(self, db: Session, api_id: int, user: User) -> list[ApiRelationResponse]:
+        """列出`relations`。"""
         iface = self._get_interface_or_404(db, api_id, user)
         rels = (
             db.query(ApiRelation)
@@ -643,6 +669,7 @@ class ApiService:
     def create_relation(
         self, db: Session, api_id: int, body: ApiRelationCreate, *, actor: User
     ) -> ApiRelationResponse:
+        """创建`relation`。"""
         iface = self._get_writable_interface_or_404(db, api_id, actor)
         if body.source_api_id != iface.id and body.target_api_id != iface.id:
             raise bad_request("关联必须涉及当前接口")
@@ -682,6 +709,7 @@ class ApiService:
         return _relation_response(rel, names)
 
     def delete_relation(self, db: Session, relation_id: int, *, actor: User) -> None:
+        """删除`relation`。"""
         rel = db.get(ApiRelation, relation_id)
         if rel is None:
             raise not_found("关联不存在")
@@ -698,6 +726,7 @@ class ApiService:
     def list_history(
         self, db: Session, api_id: int, user: User, *, page: int = 1, page_size: int = 20
     ) -> tuple[list[ApiChangeLogResponse], int]:
+        """列出`history`。"""
         iface = self._get_interface_or_404(db, api_id, user)
         query = db.query(ApiChangeLog).filter(ApiChangeLog.interface_id == iface.id)
         total = int(query.count())
@@ -714,6 +743,7 @@ class ApiService:
     def list_import_records(
         self, db: Session, project_id: int, user: User, *, page: int = 1, page_size: int = 20
     ) -> tuple[list, int]:
+        """列出`import`记录。"""
         self._get_project_or_404(db, project_id, user)
         query = db.query(ApiImportRecord).filter(ApiImportRecord.project_id == project_id)
         total = int(query.count())
@@ -732,6 +762,7 @@ class ApiService:
 
 
 def _load_params(db: Session, interface_id: int) -> list[ApiParameter]:
+    """加载`params`。"""
     return (
         db.query(ApiParameter)
         .filter(ApiParameter.interface_id == interface_id)
@@ -741,6 +772,7 @@ def _load_params(db: Session, interface_id: int) -> list[ApiParameter]:
 
 
 def _load_body(db: Session, interface_id: int) -> ApiRequestBody | None:
+    """加载请求体。"""
     return (
         db.query(ApiRequestBody)
         .filter(ApiRequestBody.interface_id == interface_id)
@@ -749,6 +781,7 @@ def _load_body(db: Session, interface_id: int) -> ApiRequestBody | None:
 
 
 def _load_responses(db: Session, interface_id: int) -> list[ApiResponse]:
+    """加载`responses`。"""
     return (
         db.query(ApiResponse)
         .filter(ApiResponse.interface_id == interface_id)
@@ -758,6 +791,7 @@ def _load_responses(db: Session, interface_id: int) -> list[ApiResponse]:
 
 
 def _replace_params(db: Session, interface_id: int, params: list[ApiParameterIn]) -> None:
+    """替换参数。"""
     db.query(ApiParameter).filter(ApiParameter.interface_id == interface_id).delete()
     for idx, p in enumerate(params):
         db.add(ApiParameter(
@@ -776,6 +810,7 @@ def _replace_params(db: Session, interface_id: int, params: list[ApiParameterIn]
 
 
 def _replace_body(db: Session, interface_id: int, body: ApiBodyIn) -> None:
+    """替换请求体。"""
     existing = _load_body(db, interface_id)
     if existing is None:
         existing = ApiRequestBody(interface_id=interface_id)
@@ -788,6 +823,7 @@ def _replace_body(db: Session, interface_id: int, body: ApiBodyIn) -> None:
 
 
 def _replace_responses(db: Session, interface_id: int, responses: list[ApiResponseIn]) -> None:
+    """替换`responses`。"""
     db.query(ApiResponse).filter(ApiResponse.interface_id == interface_id).delete()
     for idx, r in enumerate(responses):
         db.add(ApiResponse(
@@ -802,6 +838,7 @@ def _replace_responses(db: Session, interface_id: int, responses: list[ApiRespon
 
 
 def _diff_params(old: list[ApiParameter], new: list[ApiParameterIn]) -> dict:
+    """计算 API 参数定义之间的差异。"""
     old_keys = {p.name: (p.type, bool(p.required)) for p in old}
     new_keys = {p.name: (p.type or "string", bool(p.required)) for p in new}
     added = [n for n in new_keys if n not in old_keys]
@@ -816,6 +853,7 @@ def _diff_params(old: list[ApiParameter], new: list[ApiParameterIn]) -> dict:
 
 
 def _diff_body(old: ApiRequestBody | None, new: ApiBodyIn) -> dict:
+    """计算 API 请求体定义之间的差异。"""
     if old is None:
         return {} if new.body_type == "none" else {"body": "added"}
     if (old.body_type, old.content_type) != (new.body_type, new.content_type):
@@ -824,6 +862,7 @@ def _diff_body(old: ApiRequestBody | None, new: ApiBodyIn) -> dict:
 
 
 def _diff_responses(old: list[ApiResponse], new: list[ApiResponseIn]) -> dict:
+    """计算 API 响应定义之间的差异。"""
     old_codes = {r.status_code for r in old}
     new_codes = {r.status_code for r in new}
     added = sorted(c for c in new_codes if c not in old_codes)
@@ -837,6 +876,7 @@ def _diff_responses(old: list[ApiResponse], new: list[ApiResponseIn]) -> dict:
 
 
 def _module_response(mod: ApiModule, interface_count: int) -> ApiModuleResponse:
+    """构造模块响应数据。"""
     return ApiModuleResponse(
         id=mod.id,
         project_id=mod.project_id,
@@ -851,6 +891,7 @@ def _module_response(mod: ApiModule, interface_count: int) -> ApiModuleResponse:
 
 
 def _interface_response(iface: ApiInterface, module_map: dict[int, str]) -> ApiInterfaceResponse:
+    """构造接口响应数据。"""
     return ApiInterfaceResponse(
         id=iface.id,
         project_id=iface.project_id,
@@ -872,6 +913,7 @@ def _interface_response(iface: ApiInterface, module_map: dict[int, str]) -> ApiI
 
 
 def _detail_response(db: Session, iface: ApiInterface) -> ApiInterfaceDetailResponse:
+    """构造`detail`响应数据。"""
     params = _load_params(db, iface.id)
     body = _load_body(db, iface.id)
     responses = _load_responses(db, iface.id)
@@ -890,6 +932,7 @@ def _detail_response(db: Session, iface: ApiInterface) -> ApiInterfaceDetailResp
 
 
 def _param_response(p: ApiParameter) -> ApiParameterResponse:
+    """构造参数响应数据。"""
     return ApiParameterResponse(
         id=p.id,
         interface_id=p.interface_id,
@@ -906,6 +949,7 @@ def _param_response(p: ApiParameter) -> ApiParameterResponse:
 
 
 def _body_response(b: ApiRequestBody | None, interface_id: int) -> ApiRequestBodyResponse:
+    """构造请求体响应数据。"""
     return ApiRequestBodyResponse(
         id=b.id if b else None,
         interface_id=interface_id,
@@ -917,6 +961,7 @@ def _body_response(b: ApiRequestBody | None, interface_id: int) -> ApiRequestBod
 
 
 def _response_response(r: ApiResponse) -> ApiResponseResponse:
+    """构造响应响应数据。"""
     return ApiResponseResponse(
         id=r.id,
         interface_id=r.interface_id,
@@ -929,6 +974,7 @@ def _response_response(r: ApiResponse) -> ApiResponseResponse:
 
 
 def _relation_response(rel: ApiRelation, names: dict[int, str]) -> ApiRelationResponse:
+    """构造关联关系响应数据。"""
     return ApiRelationResponse(
         id=rel.id,
         project_id=rel.project_id,
@@ -947,6 +993,7 @@ def _relation_response(rel: ApiRelation, names: dict[int, str]) -> ApiRelationRe
 
 
 def _module_interface_counts(db: Session, project_id: int) -> dict[int, int]:
+    """统计模块接口数量。"""
     rows = (
         db.query(ApiInterface.module_id, func.count(ApiInterface.id))
         .filter(ApiInterface.project_id == project_id)
@@ -957,6 +1004,7 @@ def _module_interface_counts(db: Session, project_id: int) -> dict[int, int]:
 
 
 def _module_name_map(db: Session, module_ids: list[int | None]) -> dict[int, str]:
+    """构建模块名称映射表。"""
     ids = [i for i in module_ids if i is not None]
     if not ids:
         return {}
@@ -965,6 +1013,7 @@ def _module_name_map(db: Session, module_ids: list[int | None]) -> dict[int, str
 
 
 def _interface_name_map(db: Session, api_ids: list[int | None]) -> dict[int, str]:
+    """构建接口名称映射表。"""
     ids = [i for i in api_ids if i is not None]
     if not ids:
         return {}
@@ -975,6 +1024,7 @@ def _interface_name_map(db: Session, api_ids: list[int | None]) -> dict[int, str
 def _ensure_unique_module_name(
     db: Session, project_id: int, name: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique``module`名称。"""
     query = db.query(ApiModule).filter(
         ApiModule.project_id == project_id, ApiModule.name == name
     )
@@ -987,6 +1037,7 @@ def _ensure_unique_module_name(
 def _ensure_unique_interface(
     db: Session, project_id: int, method: str, path: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique`接口。"""
     query = db.query(ApiInterface).filter(
         ApiInterface.project_id == project_id,
         ApiInterface.method == method.upper(),

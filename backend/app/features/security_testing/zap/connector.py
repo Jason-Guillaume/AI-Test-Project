@@ -262,6 +262,7 @@ class ZAPConnector:
         return ZAPCapabilities(version=about.version, about=about, capabilities=capabilities)
 
     def _has_capability(self, capabilities: list[ZAPCapability], name: str) -> bool:
+        """判断是否包含`capability`是否成立。"""
         return any(cap.name == name for cap in capabilities)
 
     def _probe_capability(
@@ -502,7 +503,7 @@ class ZAPConnector:
             return False, "手动扫码登录需要人工浏览器交互；本部署未提供该能力，请改用 API Bearer Token 扫描"
         return False, "未配置浏览器可用的认证会话"
 
-    # ------------------------------------------------------------------ OpenAPI
+    # ------------------------------------------------------------------ OpenAPI 接口 文档导出
 
     def import_openapi(self, document: str, *, file_name: str = "openapi.json") -> dict[str, Any]:
         """导入 OpenAPI 3 文档。
@@ -773,7 +774,7 @@ class ZAPConnector:
         urls = 0
         stages: list[str] = []
 
-        # Spider
+        # 爬虫 Spider
         try:
             body = self._call("POST", "/JSON/spider/isRunning", timeout_seconds=10.0)
             spider_running = _as_bool(body.get("Running")) if isinstance(body, dict) else False

@@ -50,9 +50,9 @@ export function PageHeader({
   const { token } = theme.useToken();
 
   return (
-    <div style={{ marginBottom: token.marginLG }}>
+    <div className="page-header" style={{ marginBottom: token.marginLG }}>
       {breadcrumb && breadcrumb.length > 0 ? (
-        <Breadcrumb items={breadcrumb.map((t) => ({ title: t }))} style={{ marginBottom: token.marginXS }} />
+        <Breadcrumb className="page-header-breadcrumb" items={breadcrumb.map((t) => ({ title: t }))} style={{ marginBottom: token.marginXS }} />
       ) : null}
 
       <Flex align="flex-start" justify="space-between" gap={token.margin} wrap="wrap">

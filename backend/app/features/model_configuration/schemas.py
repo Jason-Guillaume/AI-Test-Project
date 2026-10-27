@@ -42,7 +42,6 @@ def _strip(value):
 class ModelConfigurationBase(BaseModel):
     """模型配置共有字段。"""
 
-    domain_id: str = Field(..., min_length=1, max_length=100, description="稳定逻辑ID，用于引用该模型")
     label: str = Field(..., min_length=1, max_length=120, description="前端展示名称")
     provider: str = Field(default="openai-compatible", max_length=50, description="模型供应商")
     api_base: str = Field(..., min_length=1, max_length=500, description="OpenAI 兼容接口根地址")
@@ -57,7 +56,7 @@ class ModelConfigurationBase(BaseModel):
     fallback_model_ids: list[int] = Field(default_factory=list, max_length=3, description="按顺序尝试的备用模型配置 ID")
     sort_order: int = 0
 
-    @field_validator("domain_id", "label", "api_base", "model_name", "provider", mode="before")
+    @field_validator("label", "api_base", "model_name", "provider", mode="before")
     @classmethod
     def strip_text(cls, value):
         """新建场景的入口清洗：在类型校验前去掉文本字段首尾空白。"""
@@ -77,7 +76,6 @@ class ModelConfigurationUpdate(BaseModel):
     api_key 为空或缺省表示保留已有密钥，只有显式传入非空值才覆盖。
     """
 
-    domain_id: str | None = Field(None, min_length=1, max_length=100)
     label: str | None = Field(None, min_length=1, max_length=120)
     provider: str | None = Field(None, max_length=50)
     api_base: str | None = Field(None, min_length=1, max_length=500)
@@ -94,7 +92,7 @@ class ModelConfigurationUpdate(BaseModel):
     sort_order: int | None = None
 
     @field_validator(
-        "domain_id", "label", "api_base", "api_key", "model_name", "provider", mode="before"
+        "label", "api_base", "api_key", "model_name", "provider", mode="before"
     )
     @classmethod
     def strip_optional(cls, value):
@@ -106,7 +104,7 @@ class ModelConfigurationResponse(BaseModel):
     """模型配置响应；不包含任何密钥明文。"""
 
     id: int
-    domain_id: str
+    domain_id: str = Field(..., description="后端生成的稳定引用 ID，供组织授权与模型路由使用")
     label: str
     provider: str
     api_base: str

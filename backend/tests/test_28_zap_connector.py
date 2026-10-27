@@ -82,6 +82,7 @@ def make_connector(world: MockZAPWorld | None = None, **kwargs) -> ZAPConnector:
 
 
 def apply_default_scope(connector: ZAPConnector) -> None:
+    """应用默认范围。"""
     connector.apply_scope(base_url=BASE_URL, allowed_hosts=["test.example.com"])
 
 
@@ -105,11 +106,13 @@ class _FakeResponse:
     """最小 httpx.Response 替身。"""
 
     def __init__(self, status_code: int = 200, body=None, text: str = "") -> None:
+        """初始化对象状态。"""
         self.status_code = status_code
         self._body = body
         self.text = text or (json.dumps(body, ensure_ascii=False) if body is not None else "")
 
     def json(self):
+        """返回模拟 HTTP 响应的 JSON 数据。"""
         if self._body is None:
             raise ValueError("响应体不是 JSON")
         return self._body
@@ -119,12 +122,14 @@ class _FakeClient:
     """记录调用参数的 httpx.Client 替身。"""
 
     def __init__(self, response=_FakeResponse(), raises: Exception | None = None) -> None:
+        """初始化对象状态。"""
         self.response = response
         self.raises = raises
         self.calls: list[dict] = []
         self.closed = False
 
     def request(self, method, path, params=None, json=None, files=None, timeout=None):
+        """记录并返回一次模拟 ZAP 客户端请求。"""
         self.calls.append({"method": method, "path": path, "params": params,
                            "json": json, "files": files, "timeout": timeout})
         if self.raises is not None:
@@ -132,6 +137,7 @@ class _FakeClient:
         return self.response
 
     def close(self) -> None:
+        """关闭对应数据。"""
         self.closed = True
 
 
@@ -156,6 +162,7 @@ def build_transport(
     captured: dict[str, Any] = {}
 
     def fake_client_cls(**kwargs):
+        """构造可捕获请求参数的模拟 ZAP 客户端类。"""
         captured.update(kwargs)
         return client
 
@@ -170,14 +177,17 @@ def build_transport(
 
 class TestTransport:
     def test_requires_base_url(self):
+        """验证需要`base`URL场景及其预期结果。"""
         with pytest.raises(ValueError, match="base_url 不能为空"):
             HttpZAPTransport("")
 
     def test_base_host_only_exposes_netloc(self, monkeypatch):
+        """验证`base``host`仅`exposes``netloc`场景及其预期结果。"""
         transport, _ = build_transport(monkeypatch, base_url="http://10.0.0.10:8090/proxy/api/")
         assert transport.base_host == "http://10.0.0.10:8090"
 
     def test_api_key_sent_as_header_by_default(self, monkeypatch):
+        """验证API键`sent``as`请求头按默认场景及其预期结果。"""
         transport, fake = build_transport(monkeypatch)
         transport.request(method="GET", path="/JSON/core/about")
         assert fake.client_kwargs["headers"][ZAP_API_KEY_HEADER] == "***"
@@ -188,6 +198,7 @@ class TestTransport:
         assert fake.client_kwargs["headers"][ZAP_DISABLE_CSRF_HEADER] == "true"
 
     def test_api_key_query_mode_puts_key_in_query(self, monkeypatch):
+        """验证API键查询参数`mode``puts`键`in`查询参数场景及其预期结果。"""
         transport, fake = build_transport(monkeypatch, api_key_mode="query")
         transport.request(method="GET", path="/JSON/core/about")
         assert "apikey" in fake.calls[0]["params"]
@@ -201,6 +212,7 @@ class TestTransport:
         assert fake.calls == []
 
     def test_timeout_maps_to_transport_error(self, monkeypatch):
+        """验证`timeout``maps`到`transport`错误场景及其预期结果。"""
         transport, _ = build_transport(
             monkeypatch,
             raises=httpx.TimeoutException("超时", request=httpx.Request("GET", "http://x/api")),
@@ -210,12 +222,14 @@ class TestTransport:
         assert "超时" in excinfo.value.message
 
     def test_http_error_maps_to_transport_error(self, monkeypatch):
+        """验证HTTP错误`maps`到`transport`错误场景及其预期结果。"""
         transport, _ = build_transport(monkeypatch, raises=httpx.ConnectError("连接失败"))
         with pytest.raises(ZAPTransportError) as excinfo:
             transport.request(method="GET", path="/JSON/core/about")
         assert "连接失败" in excinfo.value.message
 
     def test_non_json_response_raises(self, monkeypatch):
+        """验证`non`JSON响应`raises`场景及其预期结果。"""
         transport, _ = build_transport(
             monkeypatch, fake_client=_FakeClient(response=_FakeResponse(200, None, "<html>login</html>")),
         )
@@ -223,6 +237,7 @@ class TestTransport:
             transport.request(method="GET", path="/JSON/core/about")
 
     def test_error_body_is_truncated(self, monkeypatch):
+        """验证错误请求体是否`truncated`场景及其预期结果。"""
         transport, _ = build_transport(
             monkeypatch, fake_client=_FakeClient(response=_FakeResponse(500, {"detail": "x" * 4000})),
         )
@@ -232,6 +247,7 @@ class TestTransport:
         assert len(str(excinfo.value.response_body)) <= 505
 
     def test_close_is_idempotent(self, monkeypatch):
+        """验证关闭是否幂等场景及其预期结果。"""
         transport, fake = build_transport(monkeypatch)
         transport.close()
         transport.close()
@@ -240,12 +256,14 @@ class TestTransport:
 
 class TestConnectorBasics:
     def test_health_returns_version_and_addons(self):
+        """验证`health``returns`版本和`addons`场景及其预期结果。"""
         about = make_connector().check_health()
         assert about.version == "2.16.0"
         assert "clientSpider" in about.add_on_names
         assert about.add_on_versions["clientSpider"] == "2.4.0"
 
     def test_version_below_minimum_is_rejected(self):
+        """验证版本`below``minimum`是否被拒绝场景及其预期结果。"""
         connector = ZAPConnector(make_mock(MockZAPWorld(base_host=BASE_URL, version="2.11.0")))
         with pytest.raises(ZAPConnectorError) as excinfo:
             connector.check_health()
@@ -253,10 +271,12 @@ class TestConnectorBasics:
         assert excinfo.value.retryable is False
 
     def test_version_at_minimum_is_accepted(self):
+        """验证版本`at``minimum`是否`accepted`场景及其预期结果。"""
         connector = ZAPConnector(make_mock(MockZAPWorld(base_host=BASE_URL, version="2.12.0")))
         assert connector.check_health().version == "2.12.0"
 
     def test_unparseable_version_is_rejected(self):
+        """验证`unparseable`版本是否被拒绝场景及其预期结果。"""
         connector = ZAPConnector(make_mock(MockZAPWorld(base_host=BASE_URL, version="unknown")))
         with pytest.raises(ZAPConnectorError) as excinfo:
             connector.check_health()
@@ -267,6 +287,7 @@ class TestConnectorBasics:
         connector = make_connector()
 
         def boom(**kwargs):
+            """模拟 ZAP 传输层抛出异常。"""
             raise ZAPTransportError("ZAP 连接失败", path="/JSON/core/about")
 
         monkeypatch.setattr(connector._transport, "request", boom)
@@ -281,6 +302,7 @@ class TestConnectorBasics:
         connector = make_connector()
 
         def boom(**kwargs):
+            """模拟 ZAP 传输层抛出异常。"""
             raise RuntimeError("底层崩溃")
 
         monkeypatch.setattr(connector._transport, "request", boom)
@@ -290,6 +312,7 @@ class TestConnectorBasics:
         assert excinfo.value.reason == "ZAP_BAD_RESPONSE"
 
     def test_api_key_rejected_maps_to_auth_failed(self, monkeypatch):
+        """验证API键被拒绝`maps`到认证失败场景及其预期结果。"""
         transport, _ = build_transport(monkeypatch, api_key="***")
         transport._client = _FakeClient(response=_FakeResponse(401, {"detail": "key rejected"}))
         connector = ZAPConnector(transport)
@@ -301,6 +324,7 @@ class TestConnectorBasics:
         assert "test-zap-key-001" not in excinfo.value.message
 
     def test_server_5xx_is_retryable(self, monkeypatch):
+        """验证服务端`xx`是否`retryable`场景及其预期结果。"""
         transport, _ = build_transport(monkeypatch)
         transport._client = _FakeClient(response=_FakeResponse(503, {"detail": "busy"}))
         connector = ZAPConnector(transport)
@@ -309,6 +333,7 @@ class TestConnectorBasics:
         assert excinfo.value.retryable is True
 
     def test_capabilities_reports_unsupported_components(self):
+        """验证`capabilities``reports``unsupported``components`场景及其预期结果。"""
         caps = make_connector().get_capabilities()
         assert caps.version == "2.16.0"
         names = {cap.name: cap for cap in caps.capabilities}
@@ -319,12 +344,14 @@ class TestConnectorBasics:
         assert "不存在" in names["scannerpool"].detail
 
     def test_capabilities_without_scannerpool_addon(self):
+        """验证`capabilities`不带`scannerpool``addon`场景及其预期结果。"""
         world = MockZAPWorld(base_host=BASE_URL, has_scannerpool=True)
         caps = ZAPConnector(make_mock(world)).get_capabilities()
         names = {cap.name: cap for cap in caps.capabilities}
         assert names["scannerpool"].supported is True
 
     def test_capabilities_degrades_when_unreachable(self, monkeypatch):
+        """验证`capabilities``degrades`当`unreachable`场景及其预期结果。"""
         transport, _ = build_transport(monkeypatch)
         transport._client = _FakeClient(
             response=_FakeResponse(401, {"detail": "key rejected"}),
@@ -348,6 +375,7 @@ class TestConnectorBasics:
         assert transport.active_scan_ids == []
 
     def test_get_version_does_not_gate_on_minimum(self):
+        """验证获取版本是否不`gate``on``minimum`场景及其预期结果。"""
         connector = ZAPConnector(make_mock(MockZAPWorld(base_host=BASE_URL, version="2.11.0")))
         # get_version 只取版本，供能力页展示真实版本用，不做下限拦截。
         assert connector.get_version() == "2.11.0"
@@ -358,6 +386,7 @@ class TestConnectorBasics:
 
 class TestScopeAndContext:
     def test_apply_scope_sets_host_and_regex(self):
+        """验证应用范围`sets``host`和`regex`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(
             base_url=BASE_URL,
@@ -371,11 +400,13 @@ class TestScopeAndContext:
         assert len(transport.excluded_regex) == 2
 
     def test_apply_scope_defaults_to_base_host(self):
+        """验证应用范围`defaults`到`base``host`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL)
         assert connector._transport.in_scope == ["test.example.com"]
 
     def test_apply_scope_escapes_regex_metacharacters(self):
+        """验证应用范围`escapes``regex``metacharacters`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL, exclude_paths=["/a.b(c)", "/x*"])
         joined = "|".join(connector._transport.excluded_regex)
@@ -385,17 +416,20 @@ class TestScopeAndContext:
         assert r"\*" in joined
 
     def test_create_scan_context_rejects_empty_host(self):
+        """验证创建扫描上下文拒绝空值`host`场景及其预期结果。"""
         with pytest.raises(ZAPConnectorError) as excinfo:
             make_connector().create_scan_context(host_pattern="   ")
         assert excinfo.value.reason == ZAP_REASON_CONTEXT_FAILED
 
     def test_create_scan_context_prefix_mode(self):
+        """验证创建扫描上下文`prefix``mode`场景及其预期结果。"""
         connector = make_connector()
         connector.create_scan_context(host_pattern=".example.com")
         assert connector._transport.in_scope_prefix == [".example.com"]
         assert connector._transport.in_scope == []
 
     def test_create_scan_context_exact_mode(self):
+        """验证创建扫描上下文`exact``mode`场景及其预期结果。"""
         connector = make_connector()
         connector.create_scan_context(host_pattern="test.example.com")
         assert connector._transport.in_scope == ["test.example.com"]
@@ -422,6 +456,7 @@ class TestScopeAndContext:
         assert excinfo.value.reason == ZAP_REASON_SCOPE_VIOLATION
 
     def test_excluded_paths_are_not_scanned(self):
+        """验证`excluded``paths`是否为不`scanned`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL, allowed_hosts=["test.example.com"])
         world = connector._transport.world
@@ -432,6 +467,7 @@ class TestScopeAndContext:
         assert not any("/payment" in a.url for a in connector.get_alerts())
 
     def test_clean_scan_context_resets_everything(self):
+        """验证`clean`扫描上下文`resets``everything`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL)
         connector.configure_authentication(bear_auth())
@@ -451,6 +487,7 @@ class TestScopeAndContext:
 
 class TestAuthentication:
     def test_bearer_token_verified_logged_in(self):
+        """验证`bearer`令牌`verified``logged``in`场景及其预期结果。"""
         result = make_connector().configure_authentication(bear_auth())
         assert result.authenticated is True
         assert result.verified is True
@@ -458,6 +495,7 @@ class TestAuthentication:
         assert result.auth_mode == AUTH_MODE_BEARER_TOKEN
 
     def test_bearer_without_value_is_logged_out(self):
+        """验证`bearer`不带值是否`logged``out`场景及其预期结果。"""
         auth = bear_auth()
         auth["session_value"] = ""
         result = make_connector().configure_authentication(auth)
@@ -466,6 +504,7 @@ class TestAuthentication:
         assert result.verified is True
 
     def test_none_mode_is_unverifiable(self):
+        """验证`none``mode`是否`unverifiable`场景及其预期结果。"""
         result = make_connector().configure_authentication({"auth_mode": AUTH_MODE_NONE})
         assert result.status == AUTH_STATUS_UNVERIFIABLE
         assert result.verified is False
@@ -488,6 +527,7 @@ class TestAuthentication:
         assert "Bearer" not in result.detail
 
     def test_credential_stored_only_in_transport_not_in_connector(self):
+        """验证`credential``stored`仅`in``transport`不`in``connector`场景及其预期结果。"""
         connector = make_connector()
         connector.configure_authentication(bear_auth())
         # 连接器只记能力位，不保留值。
@@ -496,6 +536,7 @@ class TestAuthentication:
         assert JWT not in str(connector._auth_mode)
 
     def test_browser_session_established_true_for_cookie_based(self):
+        """验证浏览器会话`established``true`用于`cookie``based`场景及其预期结果。"""
         connector = make_connector()
         connector.configure_authentication({
             "auth_mode": AUTH_MODE_BROWSER_AUTH,
@@ -528,11 +569,13 @@ class TestAuthentication:
         assert "未提供该能力" in reason
 
     def test_browser_session_false_for_none(self):
+        """验证浏览器会话`false`用于`none`场景及其预期结果。"""
         connector = make_connector()
         ok, reason = connector.browser_session_established()
         assert ok is False
 
     def test_browser_session_false_when_cookie_value_missing(self):
+        """验证浏览器会话`false`当`cookie`值缺失场景及其预期结果。"""
         connector = make_connector()
         connector.configure_authentication({
             "auth_mode": AUTH_MODE_BROWSER_AUTH,
@@ -546,6 +589,7 @@ class TestAuthentication:
         assert "未提供会话值" in reason
 
     def test_browser_session_reset_after_cleanup(self):
+        """验证浏览器会话重置之后清理场景及其预期结果。"""
         connector = make_connector()
         connector.configure_authentication(bear_auth())
         connector.clean_scan_context()
@@ -559,6 +603,7 @@ class TestAuthentication:
 
 class TestSpidersAndPassive:
     def test_traditional_spider_skips_spa_and_login_pages(self):
+        """验证`traditional`爬虫`skips``spa`和登录`pages`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
@@ -569,6 +614,7 @@ class TestSpidersAndPassive:
         assert not any("/api/v1/" in p for p in pages)
 
     def test_client_spider_discovers_spa_pages_with_browser_session(self):
+        """验证客户端爬虫`discovers``spa``pages`包含浏览器会话场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication({
@@ -628,6 +674,7 @@ class TestSpidersAndPassive:
         assert any("/api/hidden" in p for p in deep._transport.browser_pages_visited)
 
     def test_client_spider_page_count_limit(self):
+        """验证客户端爬虫页面统计上限场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication({
@@ -638,6 +685,7 @@ class TestSpidersAndPassive:
         assert len(connector._transport.browser_pages_visited) == 2
 
     def test_client_spider_target_regex_filters(self):
+        """验证客户端爬虫目标`regex``filters`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication({
@@ -649,6 +697,7 @@ class TestSpidersAndPassive:
         assert visited and all("/app/dashboard" in p for p in visited)
 
     def test_client_spider_missing_component_raises_plugin_missing(self):
+        """验证客户端爬虫缺失`component``raises``plugin`缺失场景及其预期结果。"""
         connector = make_connector(MockZAPWorld(base_host=BASE_URL, has_client_spider=False))
         apply_default_scope(connector)
         with pytest.raises(ZAPConnectorError) as excinfo:
@@ -657,6 +706,7 @@ class TestSpidersAndPassive:
         assert "Client Spider" in excinfo.value.message
 
     def test_wait_passive_scan_completes(self):
+        """验证`wait``passive`扫描`completes`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
@@ -672,6 +722,7 @@ class TestSpidersAndPassive:
         assert progress.running is True
 
     def test_hung_spider_is_stoppable(self):
+        """验证`hung`爬虫是否`stoppable`场景及其预期结果。"""
         connector = make_connector(MockZAPWorld(base_host=BASE_URL, simulate_hang=True))
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
@@ -680,12 +731,14 @@ class TestSpidersAndPassive:
         assert connector._transport.spider_running is False
 
     def test_spider_rejects_url_outside_scope(self):
+        """验证爬虫拒绝URL`outside`范围场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL, allowed_hosts=["test.example.com"])
         with pytest.raises(ZAPConnectorError):
             connector.start_spider("https://out.of.scope/")
 
     def test_progress_reports_stage_and_counts(self):
+        """验证`progress``reports``stage`和`counts`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
@@ -703,6 +756,7 @@ class TestSpidersAndPassive:
 
 class TestActiveScan:
     def test_limits_are_hard_capped(self):
+        """验证`limits`是否为`hard``capped`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -722,6 +776,7 @@ class TestActiveScan:
         assert connector._transport.scan_policy["maxAlertsPerRule"] == ACTIVE_MAX_ALERTS_PER_RULE_HARD_CAP
 
     def test_only_selected_rules_are_enabled(self):
+        """验证仅`selected``rules`是否为启用状态场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -729,6 +784,7 @@ class TestActiveScan:
         assert connector._transport.ascan_enabled == {"30001", "60001"}
 
     def test_all_default_rules_enabled_when_no_selection(self):
+        """验证`all`默认`rules`启用状态当无`selection`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -737,6 +793,7 @@ class TestActiveScan:
         assert "30001" in connector._transport.ascan_enabled
 
     def test_excluded_paths_are_not_active_scanned(self):
+        """验证`excluded``paths`是否为不启用状态`scanned`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -746,6 +803,7 @@ class TestActiveScan:
         assert not any("/payment" in a.url for a in connector.get_alerts())
 
     def test_active_scan_requires_login_session_for_protected_endpoints(self):
+        """验证启用状态扫描需要登录会话用于`protected``endpoints`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         # 未配置认证：登录保护接口不参与主动扫描。
@@ -753,6 +811,7 @@ class TestActiveScan:
         assert not any("/api/v1/dashboard" in a.url for a in connector.get_alerts())
 
     def test_active_scan_rejected_when_attack_disabled(self):
+        """验证启用状态扫描被拒绝当`attack``disabled`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector._transport.attack_policy["attackEnabled"] = False
@@ -761,12 +820,14 @@ class TestActiveScan:
         assert excinfo.value.reason == ZAP_REASON_ACTIVE_FAILED
 
     def test_active_scan_rejected_when_out_of_scope(self):
+        """验证启用状态扫描被拒绝当`out``of`范围场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL, allowed_hosts=["test.example.com"])
         with pytest.raises(ZAPConnectorError):
             connector.start_active_scan("https://other.example/")
 
     def test_active_scan_zero_duration_is_clamped(self):
+        """验证启用状态扫描`zero``duration`是否`clamped`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.start_active_scan(BASE_URL, max_duration=0, max_concurrency=0)
@@ -774,6 +835,7 @@ class TestActiveScan:
         assert connector._transport.attack_policy["concurrency"] == "1"
 
     def test_set_active_scan_limits_also_clamps(self):
+        """验证设置启用状态扫描`limits``also``clamps`场景及其预期结果。"""
         connector = make_connector()
         connector.set_active_scan_limits(max_duration=9999, max_rule_duration=0,
                                          max_concurrency=9999, request_delay_ms=-5)
@@ -784,6 +846,7 @@ class TestActiveScan:
         assert policy["requestTimingInMs"] == 0
 
     def test_stop_scan_stops_active_scan(self):
+        """验证停止扫描`stops`启用状态扫描场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -792,6 +855,7 @@ class TestActiveScan:
         assert connector._scan_ids == []
 
     def test_progress_is_not_running_when_scan_finished(self):
+        """验证`progress`是否不`running`当扫描`finished`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -806,6 +870,7 @@ class TestActiveScan:
 
 class TestAlertsAndStatistics:
     def test_alert_fields_are_mapped(self):
+        """验证告警`fields`是否为`mapped`场景及其预期结果。"""
         connector = make_connector()
         connector._transport.seed_raw_alert({
             "id": "30001",
@@ -838,6 +903,7 @@ class TestAlertsAndStatistics:
         assert map_zap_risk(alert.risk) == "HIGH"
 
     def test_alert_evidence_is_redacted(self):
+        """验证告警`evidence`是否`redacted`场景及其预期结果。"""
         connector = make_connector()
         connector._transport.seed_raw_alert({
             "id": "60103",
@@ -853,6 +919,7 @@ class TestAlertsAndStatistics:
         assert REDACTED_PLACEHOLDER in alert.evidence
 
     def test_alert_url_credentials_are_redacted(self):
+        """验证告警URL`credentials`是否为`redacted`场景及其预期结果。"""
         connector = make_connector()
         connector._transport.seed_raw_alert({
             "id": "10021",
@@ -879,6 +946,7 @@ class TestAlertsAndStatistics:
         assert alert.risk == "High"
 
     def test_alert_counts_group_by_severity(self):
+        """验证告警`counts``group`按严重级别场景及其预期结果。"""
         connector = make_connector()
         for risk, rule in (("High", "60001"), ("Medium", "40015"), ("Low", "10010"),
                            ("Informational", "10021"), ("Bogus", "99999")):
@@ -890,6 +958,7 @@ class TestAlertsAndStatistics:
         assert counts.as_dict() == {"total": 5, "high": 1, "medium": 2, "low": 1, "info": 1}
 
     def test_alert_filter_by_rule_ids(self):
+        """验证告警筛选条件按规则`ids`场景及其预期结果。"""
         connector = make_connector()
         connector._transport.seed_raw_alert({"id": "1", "alert": "A", "risk": "Low", "confidence": "3",
                                             "url": BASE_URL, "method": "GET"})
@@ -926,6 +995,7 @@ class TestAlertsAndStatistics:
             _HANDLERS[("POST", "/JSON/core/alertJson")] = handler
 
     def test_list_urls_empty_when_endpoint_missing(self):
+        """验证列出`urls`空值当接口缺失场景及其预期结果。"""
         connector = make_connector()
         handler = _HANDLERS.pop(("GET", "/JSON/core/urls"))
         try:
@@ -934,6 +1004,7 @@ class TestAlertsAndStatistics:
             _HANDLERS[("GET", "/JSON/core/urls")] = handler
 
     def test_scan_statistics_counts_urls_and_alerts(self):
+        """验证扫描`statistics``counts``urls`和`alerts`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
@@ -943,6 +1014,7 @@ class TestAlertsAndStatistics:
         assert counts.total == len(connector.get_alerts())
 
     def test_list_urls_redacts_credentials(self):
+        """验证列出`urls``redacts``credentials`场景及其预期结果。"""
         connector = make_connector()
         connector._transport._urls.add(f"https://test.example.com/cb?token={JWT}&x=1")
         urls = connector.list_urls()
@@ -951,28 +1023,33 @@ class TestAlertsAndStatistics:
         assert "x=1" in urls[0]
 
     def test_openapi_import_missing_component_raises(self):
+        """验证`openapi``import`缺失`component``raises`场景及其预期结果。"""
         connector = make_connector(MockZAPWorld(base_host=BASE_URL, has_openapi=False))
         with pytest.raises(ZAPConnectorError) as excinfo:
             connector.import_openapi("{}", file_name="spec.json")
         assert excinfo.value.reason == ZAP_REASON_PLUGIN_MISSING
 
     def test_openapi_import_empty_document_rejected(self):
+        """验证`openapi``import`空值`document`被拒绝场景及其预期结果。"""
         with pytest.raises(ZAPConnectorError) as excinfo:
             make_connector().import_openapi("   ")
         assert excinfo.value.reason == ZAP_REASON_CONTEXT_FAILED
 
     def test_openapi_import_records_upload(self):
+        """验证`openapi``import`记录`upload`场景及其预期结果。"""
         connector = make_connector()
         result = connector.import_openapi('{"openapi": "3.0.3"}', file_name="spec.json")
         assert "openapi_id" in result
         assert connector._transport.openapi_imports[0]["size"] > 0
 
     def test_passive_rules_are_listable(self):
+        """验证`passive``rules`是否为`listable`场景及其预期结果。"""
         rules = make_connector().list_passive_rules()
         assert rules
         assert all({"rule_id", "description"} <= set(rule) for rule in rules)
 
     def test_stop_scan_clears_scan_ids(self):
+        """验证停止扫描`clears`扫描`ids`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
@@ -986,6 +1063,7 @@ class TestAlertsAndStatistics:
 
 class TestContracts:
     def test_risk_mapping_only_goes_down(self):
+        """验证风险映射仅`goes``down`场景及其预期结果。"""
         assert map_zap_risk("High") == "HIGH"
         assert map_zap_risk("Medium") == "MEDIUM"
         assert map_zap_risk("Low") == "LOW"
@@ -995,6 +1073,7 @@ class TestContracts:
         assert map_zap_risk("Critical") == "MEDIUM"
 
     def test_parse_zap_version(self):
+        """验证解析ZAP版本场景及其预期结果。"""
         assert parse_zap_version("2.16.0") == (2, 16, 0)
         assert parse_zap_version("2.11") == (2, 11, 0)
         assert parse_zap_version("x") is None
@@ -1003,6 +1082,7 @@ class TestContracts:
         assert is_supported_version("") is False
 
     def test_redact_text_bearer_and_cookie(self):
+        """验证`redact`文本`bearer`和`cookie`场景及其预期结果。"""
         text = f"Authorization: Bearer {JWT}\nCookie: session=abc; sid=xyz"
         result = redact_text(text)
         assert JWT not in result
@@ -1010,6 +1090,7 @@ class TestContracts:
         assert REDACTED_PLACEHOLDER in result
 
     def test_redact_url_keeps_non_credential_params(self):
+        """验证`redact`URL`keeps``non``credential``params`场景及其预期结果。"""
         result = redact_url(f"{BASE_URL}/cb?token={JWT}&refresh_token=rt&page=3&q=hi")
         assert "token=******" in result
         assert "refresh_token=******" in result
@@ -1018,6 +1099,7 @@ class TestContracts:
         assert JWT not in result
 
     def test_redact_url_without_query_is_untouched(self):
+        """验证`redact`URL不带查询参数是否`untouched`场景及其预期结果。"""
         assert redact_url(BASE_URL) == BASE_URL
         assert redact_url("") == ""
 
@@ -1029,6 +1111,7 @@ class TestContracts:
         assert "未实现端点" in excinfo.value.message
 
     def test_mock_closed_transport_raises(self):
+        """验证模拟`closed``transport``raises`场景及其预期结果。"""
         transport = make_mock()
         transport.close()
         with pytest.raises(ZAPTransportError):
@@ -1051,10 +1134,12 @@ class TestContracts:
 
 class TestMockWorldConfig:
     def test_world_without_client_spider_addon(self):
+        """验证`world`不带客户端爬虫`addon`场景及其预期结果。"""
         world = MockZAPWorld(base_host=BASE_URL, has_client_spider=False)
         assert world.has_client_spider is False
 
     def test_world_custom_rules_can_disable_rules(self):
+        """验证`world`自定义`rules`可以`disable``rules`场景及其预期结果。"""
         rules = [MockRule(1, "OnlyRule", "Low", 3, category="pscan", enabled=True)]
         world = MockZAPWorld(base_host=BASE_URL, rules=rules)
         transport = MockZAPTransport(world)

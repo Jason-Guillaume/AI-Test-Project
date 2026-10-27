@@ -54,16 +54,19 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _flow_response(flow: BusinessFlow) -> BusinessFlowResponse:
+    """构造流程响应数据。"""
     return BusinessFlowResponse.model_validate(flow)
 
 
 def _action_response(action: BusinessAction) -> BusinessActionResponse:
+    """构造动作响应数据。"""
     return BusinessActionResponse.model_validate(action)
 
 
 def _ensure_unique_flow_name(
     db: Session, domain_id: int, name: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique`流程名称。"""
     query = db.query(BusinessFlow).filter(
         BusinessFlow.domain_id == domain_id, BusinessFlow.name == name
     )
@@ -76,6 +79,7 @@ def _ensure_unique_flow_name(
 def _ensure_unique_action_key(
     db: Session, flow_id: int, action_key: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique`动作键。"""
     query = db.query(BusinessAction).filter(
         BusinessAction.flow_id == flow_id, BusinessAction.action_key == action_key
     )
@@ -102,6 +106,7 @@ class FlowService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> BusinessFlowListResponse:
+        """列出`flows`。"""
         get_project_or_404(db, project_id, user)
         query = db.query(BusinessFlow).filter(BusinessFlow.project_id == project_id)
         if domain_id is not None:
@@ -129,6 +134,7 @@ class FlowService:
     def create_flow(
         self, db: Session, project_id: int, body: BusinessFlowCreate, *, actor: User
     ) -> BusinessFlowResponse:
+        """创建流程。"""
         project = require_writable_project(db, project_id, actor)
         # domain_id 必须属于本项目（跨资源 → 404）。
         domain = db.get(BusinessDomain, body.domain_id)
@@ -163,6 +169,7 @@ class FlowService:
         return _flow_response(flow)
 
     def get_flow(self, db: Session, flow_id: int, user: User) -> BusinessFlowResponse:
+        """获取流程。"""
         flow = self._get_flow_or_404(db, flow_id, user)
         return _flow_response(flow)
 
@@ -250,6 +257,7 @@ class FlowService:
     def update_flow(
         self, db: Session, flow_id: int, body: BusinessFlowUpdate, *, actor: User
     ) -> BusinessFlowResponse:
+        """更新流程。"""
         flow = self._get_writable_flow_or_404(db, flow_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -276,6 +284,7 @@ class FlowService:
         return _flow_response(flow)
 
     def delete_flow(self, db: Session, flow_id: int, *, actor: User) -> None:
+        """删除流程。"""
         flow = self._get_writable_flow_or_404(db, flow_id, actor)
         # 级联由外键承担：流程删除 → 动作 → 绑定/前置条件/变量/状态/映射 → 变量引用/规则。
         db.delete(flow)
@@ -284,6 +293,7 @@ class FlowService:
     # ---------------------------------------------------------------- 动作
 
     def list_actions(self, db: Session, flow_id: int, user: User) -> list[BusinessActionResponse]:
+        """列出`actions`。"""
         self._get_flow_or_404(db, flow_id, user)
         items = (
             db.query(BusinessAction)
@@ -296,6 +306,7 @@ class FlowService:
     def create_action(
         self, db: Session, flow_id: int, body: BusinessActionCreate, *, actor: User
     ) -> BusinessActionResponse:
+        """创建动作。"""
         project = require_writable_project(db, resolve_flow_project_id(db, flow_id), actor)
         action_key = body.action_key.strip()
         if not action_key:
@@ -339,6 +350,7 @@ class FlowService:
     def update_action(
         self, db: Session, action_id: int, body: BusinessActionUpdate, *, actor: User
     ) -> BusinessActionResponse:
+        """更新动作。"""
         action = self._get_writable_action_or_404(db, action_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -372,6 +384,7 @@ class FlowService:
         return _action_response(action)
 
     def delete_action(self, db: Session, action_id: int, *, actor: User) -> None:
+        """删除动作。"""
         action = self._get_writable_action_or_404(db, action_id, actor)
         db.delete(action)
         db.commit()
@@ -402,6 +415,7 @@ class FlowService:
     # ---------------------------------------------------------------- 取实体
 
     def _get_flow_or_404(self, db: Session, flow_id: int, user: User) -> BusinessFlow:
+        """获取流程或。"""
         flow = db.get(BusinessFlow, flow_id)
         if flow is None:
             raise not_found("业务流程不存在")
@@ -411,6 +425,7 @@ class FlowService:
     def _get_writable_flow_or_404(
         self, db: Session, flow_id: int, actor: User
     ) -> BusinessFlow:
+        """获取可写流程或。"""
         flow = db.get(BusinessFlow, flow_id)
         if flow is None:
             raise not_found("业务流程不存在")
@@ -420,6 +435,7 @@ class FlowService:
     def _get_writable_action_or_404(
         self, db: Session, action_id: int, actor: User
     ) -> BusinessAction:
+        """获取可写动作或。"""
         action = db.get(BusinessAction, action_id)
         if action is None:
             raise not_found("业务动作不存在")

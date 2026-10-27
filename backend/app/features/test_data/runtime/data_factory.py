@@ -99,9 +99,10 @@ class DataFactory:
     """造数编排器。无状态，进程级复用。"""
 
     def __init__(self, masker: SensitiveDataMasker | None = None) -> None:
+        """初始化对象状态。"""
         self._masker = masker or SensitiveDataMasker()
 
-    # ---------------------------------------------------------------- 入口：Fixture
+    # ---------------------------------------------------------------- 入口：固定数据 Fixture
 
     def generate(
         self,
@@ -309,7 +310,7 @@ class DataFactory:
             )
         return data_exec
 
-    # ---------------------------------------------------------------- 单 Fixture
+    # ---------------------------------------------------------------- 单 固定数据 Fixture
 
     def _generate_one(
         self,
@@ -635,6 +636,7 @@ class DataFactory:
         rec.error_message = None if result.success else (result.error_message or None)
 
     def _mask(self, value: Any) -> Any:
+        """脱敏对应数据。"""
         return self._masker.mask_body(value)
 
     @staticmethod
@@ -646,6 +648,7 @@ class DataFactory:
         error_code: str | None = None,
         error_message: str | None = None,
     ) -> None:
+        """保存固定数据生成结果并关闭执行记录。"""
         data_exec.status = status
         data_exec.finished_at = datetime.now()
         data_exec.duration_ms = int((time.perf_counter() - started) * 1000)

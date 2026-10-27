@@ -37,6 +37,7 @@ class FlowExecution(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     def __init__(self, **kwargs):
+        """初始化对象状态。"""
         # 乐观锁版本号在创建时即置 1。Column 的 default 仅在 INSERT 时生效，
         # 未 flush 的实例读到的仍是 None；此处让新建实例就能读到 revision=1，
         # 与乐观锁「新建即版本 1」的语义一致。

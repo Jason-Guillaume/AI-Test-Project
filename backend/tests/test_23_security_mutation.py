@@ -194,6 +194,7 @@ def _body_rule(mutation_type: str, target_field: str = "priority", **overrides) 
 
 
 def _spec(**overrides) -> FieldSpec:
+    """构造安全测试字段规范。"""
     base = dict(location="BODY", name="priority", type="integer", required=True)
     base.update(overrides)
     return FieldSpec(**base)
@@ -227,6 +228,7 @@ class TestSourceGuards:
     """
 
     def test_runtime_modules_do_no_http_db_or_eval(self) -> None:
+        """验证运行时`modules``do`无HTTP数据库或`eval`场景及其预期结果。"""
         for path in sorted(RUNTIME_DIR.glob("*.py")):
             is_runner = path.name == "runner.py"
             tree = ast.parse(path.read_text())
@@ -271,13 +273,14 @@ class TestSourceGuards:
         assert "VULNERABLE" not in result.security_result.upper()
 
 
-# --------------------------------------------------------------------------- Schema Reader
+# --------------------------------------------------------------------------- 结构读取器 Schema Reader
 
 
 class TestSchemaReader:
     """§6.5：字段 schema 读取与取值生成。"""
 
     def test_parameter_row_schema_overrides_column_type(self) -> None:
+        """验证`parameter``row`结构定义`overrides``column`类型场景及其预期结果。"""
         row = ApiParameter(
             name="limit", location="QUERY", type="string", required=True,
             schema_json={"type": "integer", "minimum": 0, "maximum": 100},
@@ -291,12 +294,14 @@ class TestSchemaReader:
         assert spec.required is True
 
     def test_parameter_row_without_schema_keeps_column_type(self) -> None:
+        """验证`parameter``row`不带结构定义`keeps``column`类型场景及其预期结果。"""
         row = ApiParameter(name="trace", location="HEADER", type="string", required=False)
         spec = field_spec_from_parameter(row)
         assert spec.primary_type == "string"
         assert spec.maximum is None
 
     def test_body_json_schema_expands_first_level_only(self) -> None:
+        """验证请求体JSON结构定义`expands``first``level`仅场景及其预期结果。"""
         body = ApiRequestBody(
             body_type="json",
             schema_json={
@@ -322,6 +327,7 @@ class TestSchemaReader:
         assert resolve_nested_spec(body, "$.nested.missing") is None
 
     def test_nullable_type_marks_spec_nullable(self) -> None:
+        """验证可空类型`marks``spec`可空场景及其预期结果。"""
         body = ApiRequestBody(
             body_type="json",
             schema_json={"properties": {"remark": {"type": ["string", "null"]}}},
@@ -331,6 +337,7 @@ class TestSchemaReader:
         assert spec.nullable is True
 
     def test_form_field_tree(self) -> None:
+        """验证`form`字段`tree`场景及其预期结果。"""
         body = ApiRequestBody(
             body_type="form",
             schema_json={"fields": [
@@ -352,6 +359,7 @@ class TestSchemaReader:
         assert body_fields(ApiRequestBody(body_type="raw", schema_json={"raw": "x"})) == []
 
     def test_find_field_case_rules(self) -> None:
+        """验证查找字段用例`rules`场景及其预期结果。"""
         specs = [
             FieldSpec(location="HEADER", name="X-Request-Id"),
             FieldSpec(location="BODY", name="trace", json_path="$.trace"),
@@ -368,16 +376,19 @@ class TestSchemaReader:
         assert integer_variants(_spec(type="integer")) == [None, "abc", -1, 0]
 
     def test_over_max_value_for_number_and_string(self) -> None:
+        """验证`over``max`值用于`number`和`string`场景及其预期结果。"""
         assert over_max_value(_spec(type="integer", maximum=10)) == 11
         assert len(over_max_value(_spec(type="string", max_length=10))) == 11
         assert over_max_capped(_spec(type="string", max_length=10)) is False
 
     def test_over_max_string_is_capped_at_256(self) -> None:
+        """验证`over``max``string`是否`capped``at`场景及其预期结果。"""
         spec = _spec(type="string", max_length=100000)
         assert over_max_capped(spec) is True
         assert len(over_max_value(spec)) == MAX_MUTATION_STRING_LENGTH
 
     def test_under_min_value(self) -> None:
+        """验证`under``min`值场景及其预期结果。"""
         assert under_min_value(_spec(type="integer", minimum=1)) == 0
         assert len(under_min_value(_spec(type="string", min_length=5))) == 4
         _expect_error(
@@ -390,6 +401,7 @@ class TestSchemaReader:
         )
 
     def test_invalid_enum_prefers_unknown_then_fallback(self) -> None:
+        """验证无效`enum``prefers`未知`then``fallback`场景及其预期结果。"""
         assert invalid_enum_value(_spec(enum=["A", "B"])) == "UNKNOWN"
         assert invalid_enum_value(_spec(enum=["A", "UNKNOWN"])) == "__INVALID__"
         _expect_error(
@@ -399,17 +411,20 @@ class TestSchemaReader:
 
     @pytest.mark.parametrize("fmt,sample", sorted(INVALID_FORMAT_SAMPLES.items()))
     def test_invalid_format_samples(self, fmt: str, sample: str) -> None:
+        """验证无效格式化`samples`场景及其预期结果。"""
         spec = _spec(type="string", format=fmt)
         assert invalid_format_value(spec) == sample
         assert value_for(spec, "INVALID_FORMAT") == sample
 
     def test_invalid_format_rejects_unknown_format(self) -> None:
+        """验证无效格式化拒绝未知格式化场景及其预期结果。"""
         _expect_error(
             RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
             lambda: invalid_format_value(_spec(type="string", format="phone")),
         )
 
     def test_type_mutation_matrix(self) -> None:
+        """验证类型变异`matrix`场景及其预期结果。"""
         assert type_mutation_value(_spec(type="integer")) == "abc"
         assert type_mutation_value(_spec(type="number")) == "abc"
         assert type_mutation_value(_spec(type="string")) == 1
@@ -420,6 +435,7 @@ class TestSchemaReader:
         )
 
     def test_value_for_rejects_null_when_nullable_and_optional(self) -> None:
+        """验证值用于拒绝`null`当可空和可选场景及其预期结果。"""
         _expect_error(
             RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
             lambda: value_for(_spec(type="string|null", required=False), "NULL_VALUE"),
@@ -427,6 +443,7 @@ class TestSchemaReader:
         assert value_for(_spec(type="string|null", required=True), "NULL_VALUE") is None
 
     def test_value_for_rejects_mismatched_operators(self) -> None:
+        """验证值用于拒绝`mismatched``operators`场景及其预期结果。"""
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: value_for(_spec(type="integer"), "EMPTY_STRING"))
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
@@ -457,6 +474,7 @@ class TestAuthenticationOperators:
         assert TOKEN not in result.to_dicts()[0]["before"]
 
     def test_engine_does_not_mutate_baseline(self) -> None:
+        """验证引擎是否不`mutate`基线场景及其预期结果。"""
         baseline = _baseline()
         snapshot = baseline.copy()
         _apply(_rule("REMOVE_TOKEN"), baseline=baseline)
@@ -465,10 +483,12 @@ class TestAuthenticationOperators:
         assert baseline.json_body == {"name": "任务A", "priority": 3}
 
     def test_empty_token_keeps_bearer_prefix(self) -> None:
+        """验证空值令牌`keeps``bearer``prefix`场景及其预期结果。"""
         result = _apply(_rule("EMPTY_TOKEN"))
         assert result.request.headers["Authorization"] == "Bearer "
 
     def test_empty_token_without_scheme_becomes_empty_string(self) -> None:
+        """验证空值令牌不带`scheme``becomes`空值`string`场景及其预期结果。"""
         result = _apply(
             _rule("EMPTY_TOKEN"),
             baseline=_baseline(headers={"Authorization": "dG9rZW4=", "Content-Type": "application/json"}),
@@ -476,14 +496,17 @@ class TestAuthenticationOperators:
         assert result.request.headers["Authorization"] == ""
 
     def test_invalid_token_uses_fixed_sentinel(self) -> None:
+        """验证无效令牌`uses``fixed``sentinel`场景及其预期结果。"""
         result = _apply(_rule("INVALID_TOKEN"))
         assert result.request.headers["Authorization"] == INVALID_TOKEN_VALUE
 
     def test_malformed_token_uses_fixed_sentinel(self) -> None:
+        """验证`malformed`令牌`uses``fixed``sentinel`场景及其预期结果。"""
         result = _apply(_rule("MALFORMED_TOKEN"))
         assert result.request.headers["Authorization"] == MALFORMED_TOKEN_VALUE
 
     def test_wrong_auth_scheme_uses_fixed_invalid_basic(self) -> None:
+        """验证`wrong`认证`scheme``uses``fixed`无效基础场景及其预期结果。"""
         result = _apply(_rule("WRONG_AUTH_SCHEME"))
         assert result.request.headers["Authorization"] == WRONG_AUTH_SCHEME_VALUE
         assert "Bearer" not in result.request.headers["Authorization"]
@@ -538,6 +561,7 @@ class TestAuthenticationOperators:
         ],
     )
     def test_resolve_auth_header(self, auth_type: str, headers: dict, expected: str) -> None:
+        """验证解析并确定认证请求头场景及其预期结果。"""
         assert resolve_auth_header(auth_type, headers) == expected
 
     def test_expired_token_requires_fixture_source(self) -> None:
@@ -549,6 +573,7 @@ class TestAuthenticationOperators:
         assert "EXPIRED_TOKEN" in err.message
 
     def test_expired_token_missing_fixture_output(self) -> None:
+        """验证`expired`令牌缺失固定数据输出场景及其预期结果。"""
         err = _expect_error(
             AppError, CODE_SECURITY_FIXTURE_REQUIRED,
             lambda: _apply(
@@ -579,6 +604,7 @@ class TestAuthenticationOperators:
         assert result.traces[0].note == "鉴权头取自 Fixture 输出"
 
     def test_authorization_mutation_without_source_removes_header(self) -> None:
+        """验证授权变异不带`source``removes`请求头场景及其预期结果。"""
         result = _apply(_rule("AUTHORIZATION_MUTATION"))
         assert "Authorization" not in result.request.headers
 
@@ -590,12 +616,14 @@ class TestParameterOperators:
     """§6.4 参数类算子：只执行规则点名的字段。"""
 
     def test_remove_field_on_required_body_field(self) -> None:
+        """验证移除字段`on`必填请求体字段场景及其预期结果。"""
         spec = _spec()
         result = _apply(_body_rule("REMOVE_FIELD"), fields=_fields_for(_body_rule("REMOVE_FIELD"), spec))
         assert "priority" not in result.request.json_body
         assert result.traces[0].before == 3
 
     def test_remove_field_refuses_optional_field(self) -> None:
+        """验证移除字段`refuses`可选字段场景及其预期结果。"""
         spec = _spec(required=False)
         _expect_error(
             RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
@@ -610,17 +638,20 @@ class TestParameterOperators:
         )
 
     def test_parameter_mutation_requires_schema(self) -> None:
+        """验证`parameter`变异需要结构定义场景及其预期结果。"""
         _expect_error(
             RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
             lambda: _apply(_body_rule("ZERO"), fields=[]),
         )
 
     def test_null_value(self) -> None:
+        """验证`null`值场景及其预期结果。"""
         result = _apply(_body_rule("NULL_VALUE"), fields=_fields_for(_body_rule("NULL_VALUE"), _spec()))
         assert result.request.json_body["priority"] is None
         assert result.traces[0].after is None
 
     def test_empty_string(self) -> None:
+        """验证空值`string`场景及其预期结果。"""
         spec = _spec(name="name", type="string", max_length=20)
         result = _apply(_body_rule("EMPTY_STRING", "name"), fields=_fields_for(_body_rule("EMPTY_STRING", "name"), spec))
         assert result.request.json_body["name"] == ""
@@ -630,11 +661,13 @@ class TestParameterOperators:
         [("integer", "abc"), ("number", "abc"), ("string", 1), ("boolean", "yes")],
     )
     def test_type_mutation(self, field_type: str, expected) -> None:
+        """验证类型变异场景及其预期结果。"""
         spec = _spec(name="priority", type=field_type)
         result = _apply(_body_rule("TYPE_MUTATION"), fields=_fields_for(_body_rule("TYPE_MUTATION"), spec))
         assert result.request.json_body["priority"] == expected
 
     def test_zero_and_negative(self) -> None:
+        """验证`zero`和`negative`场景及其预期结果。"""
         spec = _spec(name="priority", type="integer", minimum=0)
         rule = _body_rule("ZERO")
         assert _apply(rule, fields=_fields_for(rule, spec)).request.json_body["priority"] == 0
@@ -642,12 +675,14 @@ class TestParameterOperators:
         assert _apply(rule, fields=_fields_for(rule, spec)).request.json_body["priority"] == -1
 
     def test_negative_refuses_when_schema_allows_negative(self) -> None:
+        """验证`negative``refuses`当结构定义`allows``negative`场景及其预期结果。"""
         spec = _spec(name="delta", type="integer", minimum=-10)
         rule = _body_rule("NEGATIVE", "delta")
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: _apply(rule, fields=_fields_for(rule, spec)))
 
     def test_over_max_writes_value_and_reports_capping(self) -> None:
+        """验证`over``max``writes`值和`reports``capping`场景及其预期结果。"""
         spec = _spec(name="remark", type="string", max_length=100000)
         rule = _body_rule("OVER_MAX", "remark")
         result = _apply(rule, fields=_fields_for(rule, spec))
@@ -658,11 +693,13 @@ class TestParameterOperators:
         assert _apply(rule, fields=_fields_for(rule, spec)).request.json_body["priority"] == 11
 
     def test_under_min(self) -> None:
+        """验证`under``min`场景及其预期结果。"""
         spec = _spec(name="priority", type="integer", minimum=5)
         rule = _body_rule("UNDER_MIN")
         assert _apply(rule, fields=_fields_for(rule, spec)).request.json_body["priority"] == 4
 
     def test_invalid_enum(self) -> None:
+        """验证无效`enum`场景及其预期结果。"""
         spec = _spec(name="status", type="string", enum=["A", "B"])
         rule = _body_rule("INVALID_ENUM", "status")
         result = _apply(rule, fields=_fields_for(rule, spec))
@@ -670,12 +707,14 @@ class TestParameterOperators:
         assert result.request.json_body["status"] not in spec.enum
 
     def test_invalid_format(self) -> None:
+        """验证无效格式化场景及其预期结果。"""
         spec = _spec(name="contact", type="string", format="email")
         rule = _body_rule("INVALID_FORMAT", "contact")
         result = _apply(rule, fields=_fields_for(rule, spec))
         assert result.request.json_body["contact"] == "not-an-email"
 
     def test_nested_body_field_by_json_path(self) -> None:
+        """验证`nested`请求体字段按JSON路径场景及其预期结果。"""
         spec = _spec(name="priority", type="integer", json_path="$.filter.priority")
         rule = _body_rule("ZERO", "priority")
         rule.mutation_config = {"location": "BODY", "field": "filter.priority"}
@@ -713,6 +752,7 @@ class TestParameterOperators:
             assert result.request.path == "/api/l{limit}"
 
     def test_header_case_insensitive_lookup(self) -> None:
+        """验证请求头用例`insensitive``lookup`场景及其预期结果。"""
         baseline = _baseline(headers={"authorization": TOKEN, "Content-Type": "application/json"})
         result = _apply(_rule("REMOVE_TOKEN"), baseline=baseline)
         assert "authorization" not in result.request.headers
@@ -726,18 +766,21 @@ class TestHeaderAndMethodOperators:
     """§6.4 请求头与方法算子，含 Content-Type 必须走 raw_body 的风险项。"""
 
     def test_remove_header_defaults_to_content_type(self) -> None:
+        """验证移除请求头`defaults`到内容类型场景及其预期结果。"""
         rule = _rule("REMOVE_HEADER", target_location="HEADER", target_field=None)
         result = _apply(rule)
         assert "Content-Type" not in result.request.headers
         assert result.traces[0].field == "Content-Type"
 
     def test_remove_header_records_json_content_type_limitation(self) -> None:
+        """验证移除请求头记录JSON内容类型`limitation`场景及其预期结果。"""
         rule = _rule("REMOVE_HEADER", target_location="HEADER", target_field="Content-Type")
         result = _apply(rule)
         assert "Content-Type" not in result.request.headers
         assert "httpx" in result.traces[0].note
 
     def test_remove_header_missing_records_note(self) -> None:
+        """验证移除请求头缺失记录`note`场景及其预期结果。"""
         baseline = _baseline(headers={"Authorization": TOKEN})
         rule = _rule("REMOVE_HEADER", target_location="HEADER", target_field="X-Trace")
         result = _apply(rule, baseline=baseline)
@@ -745,18 +788,21 @@ class TestHeaderAndMethodOperators:
         assert result.traces[0].note == "基线无此头"
 
     def test_empty_header(self) -> None:
+        """验证空值请求头场景及其预期结果。"""
         baseline = _baseline(headers={"Authorization": TOKEN, "X-Trace": "t-1"})
         rule = _rule("EMPTY_HEADER", target_location="HEADER", target_field="X-Trace")
         result = _apply(rule, baseline=baseline)
         assert result.request.headers["X-Trace"] == ""
 
     def test_invalid_header_value(self) -> None:
+        """验证无效请求头值场景及其预期结果。"""
         baseline = _baseline(headers={"Authorization": TOKEN, "X-Request-Id": "r-1"})
         rule = _rule("INVALID_HEADER_VALUE", target_location="HEADER", target_field="X-Request-Id")
         result = _apply(rule, baseline=baseline)
         assert result.request.headers["X-Request-Id"] == "invalid"
 
     def test_invalid_header_value_refuses_auth_header(self) -> None:
+        """验证无效请求头值`refuses`认证请求头场景及其预期结果。"""
         rule = _rule("INVALID_HEADER_VALUE", target_location="HEADER", target_field="Authorization")
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID, lambda: _apply(rule))
 
@@ -774,6 +820,7 @@ class TestHeaderAndMethodOperators:
         assert _baseline().json_body == {"name": "任务A", "priority": 3}
 
     def test_content_type_mutation_requires_json_body(self) -> None:
+        """验证内容类型变异需要JSON请求体场景及其预期结果。"""
         baseline = _baseline(json_body=None, query={"id": "1"})
         rule = _rule("CONTENT_TYPE_MUTATION", target_location="HEADER")
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
@@ -783,6 +830,7 @@ class TestHeaderAndMethodOperators:
         "original,expected", [("POST", "GET"), ("post", "GET"), ("GET", "POST")]
     )
     def test_method_mutation_default_pair(self, original: str, expected: str) -> None:
+        """验证方法变异默认`pair`场景及其预期结果。"""
         baseline = _baseline(method=original)
         rule = _rule("METHOD_MUTATION", target_location="METHOD", target_field=None,
                      expected_security_behavior="EXPECTED_DENY")
@@ -791,6 +839,7 @@ class TestHeaderAndMethodOperators:
         assert result.traces[0].before == original.upper()
 
     def test_method_mutation_uses_config_whitelist(self) -> None:
+        """验证方法变异`uses`配置`whitelist`场景及其预期结果。"""
         baseline = _baseline(method="POST")
         rule = _rule("METHOD_MUTATION", target_location="METHOD", target_field=None,
                      mutation_config={"methods": ["PUT", "PATCH"]})
@@ -798,12 +847,14 @@ class TestHeaderAndMethodOperators:
         assert result.request.method == "PUT"
 
     def test_method_mutation_rejects_unknown_method(self) -> None:
+        """验证方法变异拒绝未知方法场景及其预期结果。"""
         rule = _rule("METHOD_MUTATION", target_location="METHOD", target_field=None,
                      mutation_config={"methods": ["FETCH"]})
         err = _expect_error(AppError, CODE_SECURITY_MUTATION_INVALID, lambda: _apply(rule))
         assert "FETCH" in err.message
 
     def test_method_mutation_without_target_requires_whitelist(self) -> None:
+        """验证方法变异不带目标需要`whitelist`场景及其预期结果。"""
         rule = _rule("METHOD_MUTATION", target_location="METHOD", target_field=None)
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: _apply(rule, baseline=_baseline(method="PUT")))
@@ -820,6 +871,7 @@ class TestHeaderAndMethodOperators:
                       lambda: _apply(rule, baseline=baseline, confirmed=True))
 
     def test_delete_allowed_when_rule_and_case_are_confirmed(self) -> None:
+        """验证删除`allowed`当规则和用例是否为`confirmed`场景及其预期结果。"""
         rule = _rule("METHOD_MUTATION", target_location="METHOD", target_field=None,
                      mutation_config={"methods": ["DELETE"]}, confirmation_required=True)
         result = _apply(rule, baseline=_baseline(method="POST"), confirmed=True)
@@ -833,10 +885,12 @@ class TestEngine:
     """§6.3 引擎流程：校验、定位、调算子、写 trace、返回副本。"""
 
     def test_unknown_mutation_type_is_rejected(self) -> None:
+        """验证未知变异类型是否被拒绝场景及其预期结果。"""
         _expect_error(AppError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: _apply(_rule("SCAN_FOR_SQLI")))
 
     def test_script_key_in_config_is_rejected(self) -> None:
+        """验证`script`键`in`配置是否被拒绝场景及其预期结果。"""
         _expect_error(
             AppError, CODE_SECURITY_MUTATION_INVALID,
             lambda: _apply(_rule("INVALID_TOKEN", mutation_config={"script": "import os"})),
@@ -865,6 +919,7 @@ class TestEngine:
                       lambda: _apply(_rule(mutation_type)))
 
     def test_confirmation_gate_blocks_before_operator(self) -> None:
+        """验证`confirmation``gate``blocks`之前运算符场景及其预期结果。"""
         _expect_error(
             ConfirmationRequiredError, CODE_SECURITY_CONFIRMATION_REQUIRED,
             lambda: _apply(_rule("REMOVE_TOKEN", confirmation_required=True)),
@@ -893,6 +948,7 @@ class TestEngine:
         assert SecurityMutationEngine.apply(_baseline(), as_dict).request.headers["Content-Type"] == "application/json"
 
     def test_rule_view_defaults_for_missing_columns(self) -> None:
+        """验证规则`view``defaults`用于缺失`columns`场景及其预期结果。"""
         view = MutationRuleView.from_row({"mutation_type": "REMOVE_TOKEN", "target_location": "HEADER"})
         assert view.target_field is None
         assert view.expected_security_behavior == "EXPECTED_DENY"
@@ -927,6 +983,7 @@ class TestCandidateResolver:
     """§10 数据约定：候选只来自 Fixture 输出契约，没有第二条数据来源。"""
 
     def test_parse_source_normalises_and_drops_incomplete(self) -> None:
+        """验证解析`source``normalises`和`drops``incomplete`场景及其预期结果。"""
         assert parse_source({"fixture_key": " USER_B ", "output": "token"}) == {
             "fixture_key": "USER_B", "output": "token",
         }
@@ -936,6 +993,7 @@ class TestCandidateResolver:
         assert parse_source({"fixture_key": "USER_B", "output": ""}) is None
 
     def test_read_sources_prefers_explicit_keys(self) -> None:
+        """验证读取`sources``prefers``explicit``keys`场景及其预期结果。"""
         rule = _rule("CROSS_USER", mutation_config={
             "token_source": {"fixture_key": "USER_B", "output": "token"},
             "resource_source": {"fixture_key": "TASK_B", "output": "task_id"},
@@ -957,10 +1015,12 @@ class TestCandidateResolver:
         assert resource == {"fixture_key": "TASK_B", "output": "task_id"}
 
     def test_read_sources_ignores_malformed_candidates(self) -> None:
+        """验证读取`sources``ignores``malformed``candidates`场景及其预期结果。"""
         rule = _rule("CROSS_USER", mutation_config={"candidates": [{"fixture_key": "USER_B"}, "junk"]})
         assert read_sources(rule) == (None, None)
 
     def test_resolve_value_accepts_numeric_id(self) -> None:
+        """验证解析并确定值`accepts``numeric`标识场景及其预期结果。"""
         scope = ResolveScope.from_mapping({"TASK_B": {"task_id": 42}})
         assert resolve_value({"fixture_key": "TASK_B", "output": "task_id"}, scope,
                              label="IDOR 的资源候选") == 42
@@ -975,6 +1035,7 @@ class TestCandidateResolver:
         assert "USER_B.token" in err.message
 
     def test_resolve_value_blank_string_counts_as_missing(self) -> None:
+        """验证解析并确定值`blank``string``counts``as`缺失场景及其预期结果。"""
         scope = ResolveScope.from_mapping({"TASK_B": {"task_id": "   "}})
         _expect_error(AppError, CODE_SECURITY_FIXTURE_REQUIRED,
                       lambda: resolve_value({"fixture_key": "TASK_B", "output": "task_id"}, scope,
@@ -986,6 +1047,7 @@ class TestCandidateResolver:
                       lambda: resolve_value(None, ResolveScope(), label="IDOR 的资源候选"))
 
     def test_resource_target_requires_location_and_field(self) -> None:
+        """验证`resource`目标需要`location`和字段场景及其预期结果。"""
         rule = _rule("IDOR", mutation_config={"resource_source": {"fixture_key": "TASK_B", "output": "task_id"}})
         scope = ResolveScope.from_mapping({"TASK_B": {"task_id": 42}})
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
@@ -1015,10 +1077,12 @@ class TestAuthorizationAndIdor:
     })
 
     def _task_path(self, task_id: str = "5") -> BaselineRequest:
+        """生成安全测试任务的请求路径。"""
         return _baseline(path="/api/projects/{project_id}/tasks/{task_id}",
                          path_params={"project_id": "7", "task_id": task_id})
 
     def test_cross_user_swaps_token_and_resource_id(self) -> None:
+        """验证跨项目用户`swaps`令牌和`resource`标识场景及其预期结果。"""
         rule = _rule("CROSS_USER", mutation_config={
             "token_source": {"fixture_key": "USER_B", "output": "token"},
             "resource_source": {"fixture_key": "TASK_B", "output": "task_id"},
@@ -1055,10 +1119,12 @@ class TestAuthorizationAndIdor:
         assert "USER_B.token" in err.message
 
     def test_cross_user_without_named_source_is_skipped(self) -> None:
+        """验证跨项目用户不带`named``source`是否跳过场景及其预期结果。"""
         _expect_error(RuleNotApplicableError, CODE_SECURITY_MUTATION_INVALID,
                       lambda: _apply(_rule("CROSS_USER"), scope=self.SCOPE))
 
     def test_idor_in_path(self) -> None:
+        """验证`idor``in`路径场景及其预期结果。"""
         rule = _rule("IDOR", mutation_config={"resource_source": {"fixture_key": "TASK_B", "output": "task_id"},
                                               "location": "PATH", "field": "task_id"})
         result = _apply(rule, baseline=self._task_path(), scope=self.SCOPE)
@@ -1068,6 +1134,7 @@ class TestAuthorizationAndIdor:
         assert result.request.path == "/api/projects/{project_id}/tasks/{task_id}"
 
     def test_idor_in_body_supports_nested_field(self) -> None:
+        """验证`idor``in`请求体`supports``nested`字段场景及其预期结果。"""
         rule = _rule("IDOR", mutation_config={"resource_source": {"fixture_key": "USER_C", "output": "user_id"},
                                               "location": "BODY", "field": "filter.owner_id"})
         result = _apply(rule, baseline=_baseline(json_body={"filter": {"owner_id": 5}}), scope=self.SCOPE)
@@ -1075,6 +1142,7 @@ class TestAuthorizationAndIdor:
         assert result.traces[0].before == 5
 
     def test_idor_in_query(self) -> None:
+        """验证`idor``in`查询参数场景及其预期结果。"""
         rule = _rule("IDOR", mutation_config={"resource_source": {"fixture_key": "TASK_B", "output": "task_id"},
                                               "location": "QUERY", "field": "task_id"})
         result = _apply(rule, baseline=_baseline(), scope=self.SCOPE)
@@ -1114,6 +1182,7 @@ class TestAuthorizationAndIdor:
                       lambda: _apply(rule, baseline=self._task_path(), scope=ResolveScope()))
 
     def test_role_downgrade_uses_low_privilege_token_from_fixture(self) -> None:
+        """验证角色`downgrade``uses`低风险`privilege`令牌从固定数据场景及其预期结果。"""
         rule = _rule("ROLE_DOWNGRADE", mutation_config={
             "token_source": {"fixture_key": "USER_B", "output": "low_priv_token"},
         })
@@ -1136,6 +1205,7 @@ class TestAuthorizationAndIdor:
         assert "USER_B.low_priv_token" in err.message
 
     def test_resource_owner_change_replaces_body_owner(self) -> None:
+        """验证`resource``owner``change``replaces`请求体`owner`场景及其预期结果。"""
         rule = _rule("RESOURCE_OWNER_CHANGE", mutation_config={
             "resource_source": {"fixture_key": "USER_C", "output": "user_id"},
             "location": "BODY",
@@ -1171,6 +1241,7 @@ class TestTraceMasking:
                                      "Cookie", "password", "api_key", "X-Api-Key", "x-auth-token",
                                      "signature", "session_id"])
     def test_sensitive_keys_are_masked(self, key: str) -> None:
+        """验证`sensitive``keys`是否为`masked`场景及其预期结果。"""
         assert mask_value(key, "secret-value") == MASKED
 
     @pytest.mark.parametrize("key,value", [
@@ -1182,12 +1253,14 @@ class TestTraceMasking:
         assert mask_value(key, value) == value
 
     def test_mask_value_handles_containers_and_none(self) -> None:
+        """验证脱敏值`handles``containers`和`none`场景及其预期结果。"""
         assert mask_value("body", {"token": "***", "task_id": 1}) == {"token": MASKED, "task_id": 1}
         assert mask_value("items", [{"access_token": "***"}]) == [{"access_token": MASKED}]
         assert mask_value("task_id", None) is None
         assert mask_value(None, "plain") == "plain"
 
     def test_trace_entry_to_dict_masks_before_and_after(self) -> None:
+        """验证`trace``entry`到字典`masks`之前和之后场景及其预期结果。"""
         entry = MutationTraceEntry("EMPTY_TOKEN", "HEADER", "Authorization", TOKEN, "Bearer ")
         dumped = entry.to_dict()
         assert dumped["before"] == MASKED
@@ -1195,10 +1268,12 @@ class TestTraceMasking:
         assert dumped["location"] == "HEADER"
 
     def test_trace_entry_note_is_carried(self) -> None:
+        """验证`trace``entry``note`是否`carried`场景及其预期结果。"""
         entry = MutationTraceEntry("REMOVE_TOKEN", "HEADER", "Authorization", TOKEN, None, note="基线无此头")
         assert entry.to_dict()["note"] == "基线无此头"
 
     def test_entries_to_dicts_is_the_persist_shape(self) -> None:
+        """验证`entries`到`dicts`是否`the`持久化`shape`场景及其预期结果。"""
         entries = [MutationTraceEntry("REMOVE_TOKEN", "HEADER", "Authorization", TOKEN, None)]
         dumped = entries_to_dicts(entries)
         assert dumped == [{
@@ -1210,6 +1285,7 @@ class TestTraceMasking:
         }]
 
     def test_request_snapshot_masks_every_channel(self) -> None:
+        """验证请求`snapshot``masks``every`渠道场景及其预期结果。"""
         baseline = _baseline(query={"page": "1", "token": "***"}, cookies={"session_id": "s1"})
         snapshot = request_snapshot(baseline)
         assert snapshot["headers"]["Authorization"] == MASKED
@@ -1221,6 +1297,7 @@ class TestTraceMasking:
         assert snapshot["path"] == "/api/projects/{project_id}/tasks"
 
     def test_request_diff_records_each_changed_field(self) -> None:
+        """验证请求`diff`记录`each``changed`字段场景及其预期结果。"""
         before = _baseline(query={"page": "1", "size": "10"})
         after = before.copy()
         after.query["page"] = "2"
@@ -1234,6 +1311,7 @@ class TestTraceMasking:
         assert all(e.mutation_type == "ZERO" for e in entries)
 
     def test_request_diff_masks_sensitive_keys(self) -> None:
+        """验证请求`diff``masks``sensitive``keys`场景及其预期结果。"""
         before = _baseline()
         after = before.copy()
         after.headers["Authorization"] = "Bearer changed"
@@ -1250,58 +1328,69 @@ class TestAssertion:
 
     @pytest.mark.parametrize("code", [401, 403, 404])
     def test_deny_expected_codes_pass(self, code: int) -> None:
+        """验证`deny``expected``codes`通过场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", code, rule_name="去掉 Token", mutation_type="REMOVE_TOKEN")
         assert result.security_result == "PASS"
         assert result.classification == "EXPECTED_DENY_MET"
         assert "去掉 Token" in result.message
 
     def test_deny_2xx_is_potential_issue(self) -> None:
+        """验证`deny``xx`是否`potential``issue`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", 200, rule_name="去掉 Token", mutation_type="REMOVE_TOKEN")
         assert result.security_result == "POTENTIAL_ISSUE"
         assert result.classification == "POTENTIAL_ISSUE"
         assert "401" in result.message and "403" in result.message
 
     def test_deny_5xx_is_unexpected_server_error(self) -> None:
+        """验证`deny``xx`是否`unexpected`服务端错误场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", 500, rule_name="去掉 Token")
         assert result.security_result == "POTENTIAL_ISSUE"
         assert result.classification == "UNEXPECTED_SERVER_ERROR"
 
     def test_deny_redirect_is_inconclusive(self) -> None:
+        """验证`deny``redirect`是否`inconclusive`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", 302, rule_name="去掉 Token")
         assert result.security_result == "INCONCLUSIVE"
         assert "重定向" in result.message
 
     def test_deny_unexpected_4xx_is_inconclusive(self) -> None:
+        """验证`deny``unexpected``xx`是否`inconclusive`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", 400, rule_name="去掉 Token")
         assert result.security_result == "INCONCLUSIVE"
 
     def test_deny_without_baseline_auth_is_inconclusive(self) -> None:
+        """验证`deny`不带基线认证是否`inconclusive`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", 200, rule_name="去掉 Token",
                                     baseline_auth_present=False)
         assert result.security_result == "INCONCLUSIVE"
         assert "基线" in result.message
 
     def test_deny_respects_rule_status_codes(self) -> None:
+        """验证`deny``respects`规则状态`codes`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_DENY", 400, rule_name="错误方案",
                                     expected_status_codes=[401, 400, 403])
         assert result.security_result == "PASS"
 
     def test_no_status_code_is_inconclusive(self) -> None:
+        """验证无状态代码是否`inconclusive`场景及其预期结果。"""
         assert assert_expectation("EXPECTED_DENY", [], rule_name="去掉 Token").security_result == "INCONCLUSIVE"
         assert assert_expectation("EXPECTED_DENY", 0, rule_name="去掉 Token").security_result == "INCONCLUSIVE"
 
     @pytest.mark.parametrize("code", [400, 422])
     def test_validation_expected_codes_pass(self, code: int) -> None:
+        """验证校验`expected``codes`通过场景及其预期结果。"""
         result = assert_expectation("EXPECTED_VALIDATION_ERROR", code, rule_name="空字符串",
                                     mutation_type="EMPTY_STRING")
         assert result.security_result == "PASS"
         assert result.classification == "EXPECTED_VALIDATION_MET"
 
     def test_validation_5xx_is_unexpected_server_error(self) -> None:
+        """验证校验`xx`是否`unexpected`服务端错误场景及其预期结果。"""
         result = assert_expectation("EXPECTED_VALIDATION_ERROR", 500, rule_name="空字符串")
         assert (result.security_result, result.classification) == ("POTENTIAL_ISSUE", "UNEXPECTED_SERVER_ERROR")
 
     def test_validation_2xx_without_echo_is_inconclusive(self) -> None:
+        """验证校验`xx`不带`echo`是否`inconclusive`场景及其预期结果。"""
         trace = [MutationTraceEntry("EMPTY_STRING", "BODY", "name", "任务A", "")]
         result = assert_expectation("EXPECTED_VALIDATION_ERROR", 200, rule_name="空字符串",
                                     response_body={"id": 5, "priority": 3}, trace=trace)
@@ -1315,6 +1404,7 @@ class TestAssertion:
         assert result.security_result == "POTENTIAL_ISSUE"
 
     def test_validation_2xx_echo_in_list_body(self) -> None:
+        """验证校验`xx``echo``in`列出请求体场景及其预期结果。"""
         trace = [MutationTraceEntry("INVALID_ENUM", "BODY", "status", "A", "UNKNOWN")]
         result = assert_expectation("EXPECTED_VALIDATION_ERROR", 200, rule_name="非法枚举",
                                     response_body=[{"status": "UNKNOWN"}], trace=trace)
@@ -1325,6 +1415,7 @@ class TestAssertion:
         ([200, 200], "POTENTIAL_ISSUE"),
     ])
     def test_idempotent_second_response(self, codes: list[int], expected: str) -> None:
+        """验证幂等`second`响应场景及其预期结果。"""
         result = assert_expectation(
             "EXPECTED_IDEMPOTENT", codes, rule_name="重放", mutation_type="REPLAY_SAME_REQUEST",
             response_bodies=[{"id": 1}, {"id": 2}],
@@ -1332,18 +1423,21 @@ class TestAssertion:
         assert result.security_result == expected
 
     def test_idempotent_same_business_id_passes(self) -> None:
+        """验证幂等相同业务标识`passes`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_IDEMPOTENT", [200, 200], rule_name="重放",
                                     response_bodies=[{"id": 1}, {"id": 1}])
         assert result.security_result == "PASS"
         assert result.classification == "EXPECTED_IDEMPOTENT_MET"
 
     def test_idempotent_missing_id_is_inconclusive(self) -> None:
+        """验证幂等缺失标识是否`inconclusive`场景及其预期结果。"""
         result = assert_expectation("EXPECTED_IDEMPOTENT", [200, 200], rule_name="重放",
                                     response_bodies=[{"message": "ok"}, {"message": "ok"}])
         assert result.security_result == "INCONCLUSIVE"
         assert "业务 ID" in result.message
 
     def test_idempotent_single_execution_is_inconclusive(self) -> None:
+        """验证幂等`single`执行记录是否`inconclusive`场景及其预期结果。"""
         assert assert_expectation("EXPECTED_IDEMPOTENT", [200], rule_name="重放").security_result == "INCONCLUSIVE"
 
     def test_idempotent_accepts_integer_status_code(self) -> None:
@@ -1351,10 +1445,12 @@ class TestAssertion:
         assert assert_expectation("EXPECTED_DENY", 403, rule_name="去掉 Token").security_result == "PASS"
 
     def test_allow_expectation(self) -> None:
+        """验证`allow``expectation`场景及其预期结果。"""
         assert assert_expectation("EXPECTED_ALLOW", 200, rule_name="允许公开访问").security_result == "PASS"
         assert assert_expectation("EXPECTED_ALLOW", 403, rule_name="允许公开访问").security_result == "INCONCLUSIVE"
 
     def test_unknown_expectation_is_rejected(self) -> None:
+        """验证未知`expectation`是否被拒绝场景及其预期结果。"""
         _expect_error(AppError, CODE_SECURITY_EXPECTATION_INVALID,
                       lambda: assert_expectation("VOLNERABLE", 200, rule_name="去掉 Token"))
 
@@ -1378,11 +1474,13 @@ class TestSeverity:
     """§8 严重级别规则表：级别只由表算出。"""
 
     def _ctx(self, **overrides) -> SeverityContext:
+        """构造安全变异执行上下文。"""
         base = dict(mutation_type="REMOVE_TOKEN", status_codes=[200], auth_type="bearer")
         base.update(overrides)
         return SeverityContext(**base)
 
     def test_auth_without_token_is_high(self) -> None:
+        """验证认证不带令牌是否高风险场景及其预期结果。"""
         assert resolve_severity(self._ctx()) == "HIGH"
 
     def test_auth_on_unauthenticated_endpoint_builds_no_finding(self) -> None:
@@ -1390,24 +1488,29 @@ class TestSeverity:
         assert resolve_severity(self._ctx(auth_type="none")) is None
 
     def test_idor_with_candidate_in_response_is_critical(self) -> None:
+        """验证`idor`包含`candidate``in`响应是否严重场景及其预期结果。"""
         ctx = self._ctx(mutation_type="IDOR", response_body={"data": {"task_id": 99}},
                         candidate_resource_id=99)
         assert resolve_severity(ctx) == "CRITICAL"
 
     def test_idor_without_candidate_in_response_is_high(self) -> None:
+        """验证`idor`不带`candidate``in`响应是否高风险场景及其预期结果。"""
         ctx = self._ctx(mutation_type="IDOR", response_body={"data": {"task_id": 5}},
                         candidate_resource_id=99)
         assert resolve_severity(ctx) == "HIGH"
 
     def test_cross_user_critical_when_candidate_leaks(self) -> None:
+        """验证跨项目用户严重当`candidate``leaks`场景及其预期结果。"""
         ctx = self._ctx(mutation_type="CROSS_USER", response_body=[{"id": 99}],
                         candidate_resource_id=99)
         assert resolve_severity(ctx) == "CRITICAL"
 
     def test_cross_project_is_high(self) -> None:
+        """验证跨项目项目是否高风险场景及其预期结果。"""
         assert resolve_severity(self._ctx(mutation_type="CROSS_PROJECT")) == "HIGH"
 
     def test_server_error_is_medium(self) -> None:
+        """验证服务端错误是否中风险场景及其预期结果。"""
         ctx = self._ctx(mutation_type="EMPTY_STRING", status_codes=[500],
                         classification="UNEXPECTED_SERVER_ERROR")
         assert resolve_severity(ctx) == "MEDIUM"
@@ -1419,23 +1522,28 @@ class TestSeverity:
         assert resolve_severity(ctx) == "LOW"
 
     def test_critical_is_not_lowered_by_rule_default(self) -> None:
+        """验证严重是否不`lowered`按规则默认场景及其预期结果。"""
         ctx = self._ctx(mutation_type="IDOR", response_body={"task_id": 1}, candidate_resource_id=1,
                         rule_severity="LOW")
         assert resolve_severity(ctx) == "CRITICAL"
 
     def test_method_mutation_levels(self) -> None:
+        """验证方法变异`levels`场景及其预期结果。"""
         assert resolve_severity(self._ctx(mutation_type="METHOD_MUTATION", method="POST")) == "MEDIUM"
         assert resolve_severity(self._ctx(mutation_type="METHOD_MUTATION", method="DELETE")) == "HIGH"
 
     def test_idempotent_new_result_is_high(self) -> None:
+        """验证幂等`new`结果是否高风险场景及其预期结果。"""
         assert resolve_severity(self._ctx(mutation_type="REPLAY_SAME_REQUEST")) == "HIGH"
         assert resolve_severity(self._ctx(mutation_type="DUPLICATE_SUBMIT")) == "HIGH"
 
     def test_business_state_levels_by_method(self) -> None:
+        """验证业务状态`levels`按方法场景及其预期结果。"""
         assert resolve_severity(self._ctx(mutation_type="BUSINESS_STATE", method="POST")) == "HIGH"
         assert resolve_severity(self._ctx(mutation_type="BUSINESS_STATE", method="GET")) == "LOW"
 
     def test_uncovered_case_falls_back_to_rule_severity(self) -> None:
+        """验证`uncovered`用例`falls``back`到规则严重级别场景及其预期结果。"""
         assert resolve_severity(self._ctx(mutation_type="INVALID_FORMAT", rule_severity="LOW")) == "LOW"
         assert resolve_severity(self._ctx(mutation_type="INVALID_FORMAT")) == DEFAULT_FINDING_SEVERITY
         assert resolve_severity(self._ctx(mutation_type="INVALID_FORMAT",

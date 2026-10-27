@@ -23,6 +23,7 @@ from app.features.agent.tools import test_asset_tool
 
 
 def save_asset_node(ctx: NodeContext, state: AgentState) -> dict:
+    """保存资产节点。"""
     project_id = state["project_id"]
     session_id = state["session_id"]
     drafts_data = state.get("generated_test_cases") or []

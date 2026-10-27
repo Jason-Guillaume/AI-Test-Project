@@ -76,6 +76,7 @@ def _get(row: Any, name: str, default: Any = None) -> Any:
 
 
 def _upper(value: Any) -> str:
+    """将字符串首字母转换为大写形式。"""
     return str(value or "").upper()
 
 
@@ -87,6 +88,7 @@ def default_state_fixture_key(state: Any) -> str:
 
 
 def _action_sort(action: Any) -> int:
+    """按配置顺序排列业务动作。"""
     value = _get(action, "sort")
     return int(value) if isinstance(value, (int, float)) else 0
 

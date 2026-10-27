@@ -71,6 +71,7 @@ def _label(rule_name: str | None, mutation_type: str) -> str:
 
 
 def _result(security_result: str, classification: str | None, message: str) -> AssertionResult:
+    """根据断言条件生成断言结果。"""
     return AssertionResult(security_result=security_result, classification=classification, message=message)
 
 

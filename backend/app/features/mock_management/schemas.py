@@ -55,7 +55,7 @@ class _ORM(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --------------------------------------------------------------------------- MockService
+# --------------------------------------------------------------------------- 模拟服务 MockService
 
 
 class MockServiceCreate(BaseModel):
@@ -116,7 +116,7 @@ class MockServiceListResponse(BaseModel):
     page_size: int
 
 
-# --------------------------------------------------------------------------- MockEndpoint
+# --------------------------------------------------------------------------- 模拟接口 MockEndpoint
 
 
 class MockEndpointCreate(BaseModel):
@@ -160,7 +160,7 @@ class MockEndpointListResponse(BaseModel):
     page_size: int
 
 
-# --------------------------------------------------------------------------- MockScenario
+# --------------------------------------------------------------------------- 模拟场景 MockScenario
 
 
 class MockScenarioCreate(BaseModel):
@@ -225,7 +225,7 @@ class MockScenarioListResponse(BaseModel):
     page_size: int
 
 
-# --------------------------------------------------------------------------- MockMatcher
+# --------------------------------------------------------------------------- 模拟匹配规则 MockMatcher
 
 
 class MockMatcherCreate(BaseModel):
@@ -260,7 +260,7 @@ class MockMatchersReplace(BaseModel):
     revision: int | None = None
 
 
-# --------------------------------------------------------------------------- MockExecution
+# --------------------------------------------------------------------------- 模拟执行记录 MockExecution
 
 
 class MockExecutionResponse(_ORM):
@@ -324,7 +324,7 @@ class ScenarioTestResponse(BaseModel):
     delay_ms: int = 0
 
 
-# --------------------------------------------------------------------------- MockContext
+# --------------------------------------------------------------------------- 模拟上下文 MockContext
 
 
 class MockContextResponse(_ORM):
@@ -375,7 +375,7 @@ class TestCaseMocksReplace(BaseModel):
     mocks: list[TestCaseMockCreate] = Field(default_factory=list)
 
 
-# --------------------------------------------------------------------------- API Catalog 创建 Mock（§二十）
+# --------------------------------------------------------------------------- API 接口 Catalog 创建 Mock（§二十）
 
 
 class CreateMockFromApiRequest(BaseModel):

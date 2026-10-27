@@ -53,10 +53,12 @@ class ScriptedProvider(FakeLLMProvider):
     """
 
     def __init__(self, decisions: list[dict]):
+        """初始化对象状态。"""
         super().__init__()
         self._decisions = list(decisions)
 
     def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None):
+        """生成`structured`。"""
         if kind != "web_decide":
             return super().generate_structured(
                 system, user_content, schema, kind=kind, history=history,
@@ -115,6 +117,7 @@ def _open_browser_session(db, project_id, env_id, *, budget=10):
 
 
 def _close_browser_session(db, wsid):
+    """关闭浏览器会话。"""
     web_ui_service.close_session(db, wsid, _actor(db))
 
 
@@ -371,6 +374,7 @@ class TestIntentPromptContract:
     """
 
     def test_every_intent_is_advertised_in_intent_prompt(self):
+        """验证`every`意图是否`advertised``in`意图提示词场景及其预期结果。"""
         from app.features.agent.prompts import load_prompt
         from app.features.agent.schemas import AGENT_INTENTS
 
@@ -445,6 +449,7 @@ class TestHttpEntry:
     """
 
     def test_http_injects_web_session_and_persists_pause(self, api, admin, db, web_setup, monkeypatch):
+        """验证HTTP`injects`Web会话和`persists``pause`场景及其预期结果。"""
         from app.features.agent import router as agent_router
 
         project_id, env_id = web_setup

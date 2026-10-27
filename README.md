@@ -7,6 +7,8 @@
 以及后续测试业务能力（AI 用例、接口执行、UI 自动化……）接入所需的明确扩展点。
 **尚未接入的业务能力全部标记「未接入」，不做假数据、不假装可用。**
 
+本地首次启动与日常开发请看 [根目录启动指南](local-startup-guide.md)；更完整的联调说明见 [docs/getting-started.md](docs/getting-started.md)。
+
 ---
 
 ## 1. 目录结构
@@ -16,9 +18,10 @@ ai-test-project/
 ├── backend/                     FastAPI 后端
 │   ├── app/
 │   │   ├── main.py              应用装配（无启动期建表、无内置种子）
+│   │   ├── models/              平台核心 ORM 模型
 │   │   ├── shared/              配置 / 数据库 / 错误信封 / 角色 / 认证依赖 / 分页
-│   │   └── features/            users · organizations · projects · environment_configuration
-│   │                            model_configuration · dashboard · notifications
+│   │   └── features/            按业务域组织，模块内部按 router / schemas / services / models 拆分
+│   │                            复杂模块按需增加 executors / providers / runtime 等子目录
 │   ├── alembic/                 唯一合法的表结构来源
 │   ├── scripts/seed_admin.py    初始化命令（建库 + 迁移 + 管理员 + 内置环境）
 │   ├── scripts/e2e_smoke.sh     端到端冒烟（13 组，118 项断言）
@@ -38,6 +41,7 @@ ai-test-project/
 │   ├── current-system-analysis.md   旧项目现状分析（逐模块、逐端点）
 │   ├── target-architecture.md       目标架构与阶段一设计
 │   └── migration-plan.md            旧→新 API 映射、字段与状态码差异
+├── local-startup-guide.md       本地首次初始化与日常启动
 ├── compose.yaml                 本地 PostgreSQL（仅平台主库）
 └── README.md
 ```
@@ -57,34 +61,7 @@ react-router-dom 6.26 / dayjs。
 
 ## 2. 快速开始
 
-```bash
-# 0) 起库（首次；数据落在 compose 卷 postgres-data 里）
-docker compose up -d postgres
-docker compose ps                                   # 等 healthcheck 变 healthy
-
-# 1) 后端依赖（backend/ 只有 requirements.txt，没有 pyproject.toml，不要 pip install -e .）
-cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-
-# 2) 配置（仓库里只有不带凭据的样例）
-cp .env.example .env
-#   编辑 .env：DATABASE_URL 指向你的库、SECRET_KEY 换成足够长的随机串
-#   SECRET_KEY 生成：python -c "import secrets;print(secrets.token_urlsafe(48))"
-
-# 3) 初始化数据库 + 首个管理员（凭据只走环境变量，不在 .env、不内置默认值）
-INIT_ADMIN_USERNAME=admin \
-INIT_ADMIN_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(18))')" \
-  .venv/bin/python scripts/seed_admin.py
-
-# 4) 起后端（注意：本项目不自动建表，表结构一律来自 Alembic）
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
-
-# 5) 起前端（另一个终端）
-cd ../frontend && npm install && npm run dev        # http://localhost:5173
-```
-
-浏览器打开 `http://localhost:5173/` 用第 3 步的账号登录；平台管理端在 `/admin/*`，
-用户控制台在 `/console/*`。两个入口共用同一套登录态与权限上下文。
+首次初始化、管理员安全设置、数据库迁移、日常启动和测试命令统一维护在[根目录启动指南](local-startup-guide.md)，避免 README 与实际配置分叉。
 
 ---
 

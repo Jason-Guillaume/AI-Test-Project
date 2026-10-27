@@ -27,10 +27,12 @@ from app.features.agent.tools.test_asset_tool import semantic_key
 
 
 def _dump(obj) -> str:
+    """将输入数据转换为可序列化的字典。"""
     return json.dumps(sanitize_context(obj), ensure_ascii=False, default=str)
 
 
 def test_point_generator_node(ctx: NodeContext, state: AgentState) -> dict:
+    """验证检查点生成器节点场景及其预期结果。"""
     project_id = state["project_id"]
     session_id = state["session_id"]
     try:

@@ -116,6 +116,7 @@ def _clamp_confidence(value: object) -> int:
 
 
 def _truncate(text: str, limit: int = MAX_EVIDENCE_TEXT_LENGTH) -> str:
+    """截断对应数据。"""
     text = text or ""
     return text if len(text) <= limit else text[:limit] + "…（已截断）"
 

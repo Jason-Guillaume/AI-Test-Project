@@ -30,6 +30,7 @@ class MockLifecycle:
     """用例级 MockContext 激活 / 关闭协调器。无状态，run_service 复用单例。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self._runtime = MockRuntimeService()
 
     def activate_for_case(

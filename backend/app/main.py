@@ -26,9 +26,9 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
 from app.features.agent.providers.langfuse_tracer import flush_langfuse
 from app.features.agent.router import router as agent_router
+from app.features.agent_governance.router import router as agent_governance_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.business.router import router as business_router
-from app.features.captcha.router import router as captcha_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
 from app.features.environment_configuration.router import router as environments_router
@@ -41,8 +41,6 @@ from app.features.organizations.router import router as organizations_router
 from app.features.projects.router import router as projects_router
 from app.features.reports.router import router as reports_router
 from app.features.security_testing.router import router as security_testing_router
-from app.features.security_testing.zap.router import router as security_scan_router
-from app.features.security_testing.zap.worker import ScanWorker
 from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.features.tasks.router import router as tasks_router
@@ -97,16 +95,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.info("AUTO_CREATE_SCHEMA 已开启，create_all 完成（连接探测：%s）", probe)
         finally:
             session.close()
-    scan_worker = ScanWorker()
-    scan_worker.start()
     # 任务工作项、租约与命令已持久化，应用重启后由同一调度器安全续跑。
     task_worker.start()
     yield
-    # 停止期先停掉扫描后台任务（已领取的任务会在下一个检查点看到取消位），
-    # 再把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
+    # 把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
     # 最后回收连接池，避免 gunicorn worker 反复退出时留下半开连接
-    scan_worker.stop()
     task_worker.stop()
+    # 本进程拥有的浏览器句柄必须随服务退出释放，重启后不能假称恢复。
+    from app.features.web_ui.runtime.session_manager import registry
+    registry.close_all()
     flush_langfuse()
     engine.dispose()
     logger.info("应用已停止")
@@ -185,8 +182,6 @@ def create_app() -> FastAPI:
         return {"name": settings.PROJECT_NAME, "version": settings.VERSION, "docs": "/docs"}
 
     # 路由装配：每个 feature 自带 prefix 时只补 API_PREFIX，不在此处改路由前缀。
-    # 验证码接口不要求登录（注册前置），与 auth_router 同层装配，便于错误日志归因。
-    application.include_router(captcha_router, prefix=API_PREFIX)
     application.include_router(auth_router, prefix=API_PREFIX)
     application.include_router(users_admin_router, prefix=API_PREFIX)
     application.include_router(organizations_router, prefix=API_PREFIX)
@@ -199,6 +194,7 @@ def create_app() -> FastAPI:
     # 报告依赖 test_management（TestRun / CaseExecution），紧随其后装配。
     application.include_router(reports_router, prefix=API_PREFIX)
     application.include_router(agent_router, prefix=API_PREFIX)
+    application.include_router(agent_governance_router, prefix=API_PREFIX)
     application.include_router(notifications_router, prefix=API_PREFIX)
     # 通知渠道（飞书 Webhook 配置/测试/触发/审计），挂在通知之后便于故障隔离。
     application.include_router(notification_channel_router, prefix=API_PREFIX)
@@ -209,7 +205,6 @@ def create_app() -> FastAPI:
     application.include_router(web_ui_router, prefix=API_PREFIX)
     # Security Testing：只改请求与解释结果，执行仍走现有 RunService（开发计划 §16.1）。
     application.include_router(security_testing_router, prefix=API_PREFIX)
-    application.include_router(security_scan_router, prefix=API_PREFIX)
     # Mock Management：管理面（需平台 JWT）与执行面（X-Mock-Token）分离（§十四）。
     # 执行面 router 自带 prefix=/mock，catch-all 挂在 /api/v1/mock 下，必须最后装配，
     # 避免其 {path:path} 吞掉其它路由（/mock/ 与 /mock-services/ 不冲突）。

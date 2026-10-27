@@ -10,24 +10,55 @@ from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from app.features.agent.schemas import SendMessageRequest
 
 
-class TaskSecurityScanSelection(BaseModel):
-    """可选 ZAP 扫描配置；批准说明只允许从人工方案确认命令进入。"""
+class TaskSecurityAssessmentSelection(BaseModel):
+    """自研安全评估范围；目标和策略都必须属于当前项目或平台模板。"""
 
-    target_id: int = Field(gt=0)
-    scan_profile_id: int = Field(gt=0)
+    model_config = ConfigDict(extra="forbid")
+
+    api_ids: list[int] = Field(default_factory=list, max_length=10)
+    # 兼容上一版单 API 客户端；新客户端统一传 api_ids。
+    api_id: int | None = Field(default=None, gt=0)
+    web_session_id: int | None = Field(default=None, gt=0)
+    strategy_ids: list[int] = Field(min_length=1, max_length=50)
+
+
+class TaskWebAuthoringSelection(BaseModel):
+    """交互式 Web 编写的受控会话范围。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    auth_profile_id: int | None = Field(default=None, gt=0)
+    target_page_path: str = Field(default="", max_length=2000)
+    step_budget: int = Field(default=20, ge=1, le=100)
 
 
 class TaskCreate(BaseModel):
-    """创建 API / Web 测试任务并登记首个异步运行。"""
+    """创建 API / Web / 自研安全评估任务并登记首个异步运行。"""
+
+    model_config = ConfigDict(extra="forbid")
 
     title: str | None = Field(None, max_length=200)
     goal: str = Field(min_length=3, max_length=8000)
+    agent_definition_id: int | None = Field(default=None, gt=0)
     environment_id: int = Field(gt=0)
-    case_ids: list[int] = Field(min_length=1, max_length=100)
-    security_scan: TaskSecurityScanSelection | None = None
+    case_ids: list[int] = Field(default_factory=list, max_length=100)
+    security_assessment: TaskSecurityAssessmentSelection | None = None
+    task_mode: Literal["TEST_EXECUTION", "WEB_AUTHORING"] = "TEST_EXECUTION"
+    web_authoring: TaskWebAuthoringSelection | None = None
     request_key: str | None = Field(None, max_length=100)
+
+
+class AvailableTaskAgentResponse(BaseModel):
+    """当前项目与执行类型可选择的 Agent 摘要，不返回内部指令或 Skill 内容。"""
+
+    id: int
+    name: str
+    description: str
+    workflow_template: str
+    version: int
 
 
 class TaskRunResponse(BaseModel):
@@ -62,6 +93,7 @@ class TaskResponse(BaseModel):
     environment_id: int | None = None
     input_case_ids: list[int]
     status: str
+    task_mode: str = "TEST_EXECUTION"
     archived: bool
     created_at: datetime
     updated_at: datetime
@@ -123,8 +155,25 @@ class TaskWorkItemResponse(BaseModel):
     status: str
     output_json: dict[str, Any] | None = None
     attempt_count: int
+    retryable: bool = False
+    retry_block_reason: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskToolInvocationResponse(BaseModel):
+    """对任务成员公开的工具调用审计摘要；不返回工具参数或远端结果。"""
+
+    id: int
+    work_item_id: int
+    agent_instance_id: int | None = None
+    tool_name: str
+    status: str
+    error_code: str | None = None
     created_at: datetime
     finished_at: datetime | None = None
 
@@ -138,6 +187,7 @@ class TaskRunDetailResponse(BaseModel):
     plans: list[TaskPlanResponse]
     agents: list[TaskAgentInstanceResponse]
     work_items: list[TaskWorkItemResponse]
+    tool_invocations: list[TaskToolInvocationResponse]
 
 
 class TaskMessageCreate(BaseModel):
@@ -147,6 +197,12 @@ class TaskMessageCreate(BaseModel):
     message_type: Literal["TEXT", "GOAL_UPDATE", "REQUIREMENT"] = "TEXT"
     content: str = Field(min_length=1, max_length=8000)
     client_message_id: str = Field(min_length=1, max_length=100)
+
+
+class TaskWebAuthoringTurn(SendMessageRequest):
+    """任务 Web 对话的幂等客户端键；动作集合由任务服务再次收窄。"""
+
+    request_key: str = Field(min_length=1, max_length=100)
 
 
 class TaskMessageResponse(BaseModel):
@@ -175,8 +231,7 @@ class TaskCommandCreate(BaseModel):
     command_type: Literal["APPROVE_PLAN", "PAUSE", "RESUME", "CANCEL", "RETRY"]
     idempotency_key: str = Field(min_length=1, max_length=100)
     work_item_id: int | None = Field(None, gt=0)
-    security_scan_confirmed: bool = False
-    security_scan_approval_note: str | None = Field(None, max_length=500)
+    security_risk_confirmed: bool = False
 
 
 class TaskCommandResponse(BaseModel):
@@ -210,7 +265,7 @@ class TaskEventResponse(BaseModel):
 
 
 class TaskResourceRefResponse(BaseModel):
-    """原业务资源的方向、类型和稳定 ID。"""
+    """原业务资源的方向、类型、稳定 ID 与可读关联名称。"""
 
     id: int
     task_run_id: int
@@ -221,6 +276,10 @@ class TaskResourceRefResponse(BaseModel):
     version: str | None = None
     metadata_json: dict[str, Any]
     created_at: datetime
+    display_name: str | None = None
+    task_id: int | None = None
+    task_title: str | None = None
+    run_number: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

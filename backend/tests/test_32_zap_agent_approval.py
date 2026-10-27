@@ -75,11 +75,13 @@ def _scene(db, api, admin, *, scan_mode: str = "API_PASSIVE", active_enabled: bo
 
 
 def _open_session(db, api, admin, pid: int):
+    """打开会话。"""
     session_id = _create_session_http(api, admin, pid)
     return db.get(AgentSession, session_id), _actor(db)
 
 
 def _scan_intent_payload(**extra) -> dict:
+    """构造请求安全扫描的智能体意图数据。"""
     payload = {
         "intent": "REQUEST_SECURITY_SCAN",
         "target_type": None,

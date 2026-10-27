@@ -45,7 +45,7 @@ def send_report_notification(
 
     鉴权：报告 viewer+（get_report_orm）→ 触发外发升级 member+（require_writable_project）。
     """
-    report = _REPORT.get_report_orm(db, report_id, user)  # viewer+ + 404
+    report = _REPORT.get_report_orm(db, report_id, user)  # viewer+ 及以上角色无权访问时返回 404
     require_writable_project(db, report.project_id, user)  # member+ 触发外发
     if report.project_id != project_id:
         raise not_found("测试报告不存在")

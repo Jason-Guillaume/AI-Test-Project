@@ -2,9 +2,9 @@
 
 业务动作是业务管理的核心：一个不可分割的业务步骤（如「登录」「创建任务」「执行任务」）。
 action_key 是稳定业务标识（LOGIN/CREATE_TASK 等），不依赖具体接口 ID——这是业务层与
-执行方式解耦的关键：同一个 action 将来可绑定 API、Web、Mobile 等不同通道。
+执行方式解耦的关键：同一个 action 将来可绑定 API 或 Web 通道。
 
-sort 决定在流程中的顺序（第一阶段为简单顺序流程）。feature-local 表，由迁移 0004 建立。
+sort 决定在流程中的顺序；当前执行器只支持普通顺序动作。feature-local 表，由迁移 0004 建立。
 """
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
@@ -45,7 +45,7 @@ class BusinessAction(Base):
     )
     action_type = Column(
         String(30), nullable=False, default="NORMAL", server_default=text("'NORMAL'"),
-        comment="动作类型：NORMAL/SYSTEM/MANUAL/WAIT/DECISION（通道类型由 Binding 承载）",
+        comment="动作类型：当前仅支持 NORMAL；通道类型由 Binding 承载",
     )
     revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")

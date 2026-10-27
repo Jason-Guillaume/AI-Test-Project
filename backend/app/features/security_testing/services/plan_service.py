@@ -27,6 +27,7 @@ from app.features.security_testing.models import (
     SecurityStrategy,
 )
 from app.features.security_testing.runtime import business_plan as bp
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.security_testing.schemas import (
     MAX_PREVIEW_ITEMS,
     MUTATION_TYPES,
@@ -72,6 +73,8 @@ class PlanService:
     ) -> PlanPreviewResponse:
         """按目标 + 策略展开成预览项，写一条 DRAFT 计划。"""
         get_project_or_404(db, project_id, actor)
+        if body.environment_id is not None:
+            resolve_project_environment(db, project_id, body.environment_id)
 
         target_type, api_id, baseline_case, business_action_id = _resolve_target(db, project_id, body)
         strategy_rows = _load_strategies(db, project_id, body.strategy_ids)
@@ -220,11 +223,13 @@ class PlanService:
 
 
 def _plan_project_id(db: Session, plan_id: int) -> int:
+    """获取计划项目标识。"""
     plan = _get_plan_or_404(db, plan_id)
     return plan.project_id
 
 
 def _get_plan_or_404(db: Session, plan_id: int) -> SecurityPlan:
+    """获取计划或。"""
     plan = db.get(SecurityPlan, plan_id)
     if plan is None:
         raise not_found("安全计划不存在")
@@ -232,6 +237,7 @@ def _get_plan_or_404(db: Session, plan_id: int) -> SecurityPlan:
 
 
 def _item_at(items: list[dict[str, Any]], index: int) -> dict[str, Any]:
+    """按索引读取计划条目，索引越界时返回空值。"""
     for item in items:
         if int(item.get("index") or 0) == index:
             return item
@@ -372,6 +378,7 @@ def _available_fixture_keys(db: Session, case_id: int | None) -> set[str] | None
 
 
 def _api_name(db: Session, api_id: int | None) -> Any:
+    """组合 API 名称、方法和路径用于展示。"""
     return db.get(ApiInterface, api_id) if api_id is not None else None
 
 
@@ -456,6 +463,7 @@ def _items_for_rule(
 
 
 def _project_actions(db: Session, project_id: int) -> list[BusinessAction]:
+    """读取项目内配置的业务动作。"""
     return (
         db.query(BusinessAction)
         .join(BusinessFlow, BusinessFlow.id == BusinessAction.flow_id)
@@ -468,6 +476,7 @@ def _project_actions(db: Session, project_id: int) -> list[BusinessAction]:
 def _states_for_actions(
     db: Session, actions: list[BusinessAction]
 ) -> dict[int, BusinessState]:
+    """计算业务动作执行后的状态集合。"""
     ids = [action.id for action in actions]
     if not ids:
         return {}
@@ -521,6 +530,7 @@ def _duplicate_items(
 def _business_state_items(
     db: Session, *, rule, strategy, index: int, available_fixtures, project_id: int
 ) -> list[dict[str, Any]]:
+    """构造业务状态检查项。"""
     actions = _project_actions(db, project_id)
     states = _states_for_actions(db, actions)
     out: list[dict[str, Any]] = []

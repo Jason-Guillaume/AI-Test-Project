@@ -4,12 +4,9 @@
 保留旧项目的自助注册规则：注册即创建个人组织并写入 owner 成员行，
 因此任意注册用户都拥有至少一个组织，可直接进入控制台创建项目。
 
-注册与验证码：
-- POST /register 需要携带 captcha_id 与 captcha_code，service 层用一次性
-  verify_challenge 校验；校验通过后立即返回 TokenResponse（含 JWT），
+注册：
+- POST /register 按 IP 限流，创建账号与个人组织后直接返回 TokenResponse（含 JWT）；
   前端写 localStorage 后直接进入对应控制台，无需二次登录
-- 校验顺序：限流 → 验证码 → 用户名 → 密码 → 建用户 → 签发 token；
-  验证码失败不泄露用户名/密码是否存在，避免通过错误差异做账号枚举
 
 令牌语义（与旧项目一致）：
 - 修改密码、禁用账号、调整平台角色都会递增 token_version，旧令牌立即失效
@@ -21,7 +18,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
-from app.features.captcha.services.captcha_service import verify_challenge
 from app.features.organizations.schemas import OrganizationResponse, PaginatedOrganizationResponse
 from app.features.organizations.services.organization_service import (
     count_members,
@@ -39,7 +35,7 @@ from app.models.identity import Organization, OrganizationMember, User
 from app.shared.auth import create_access_token, get_current_user
 from app.shared.config import ACCESS_TOKEN_EXPIRE_MINUTES
 from app.shared.database import get_db
-from app.shared.errors import bad_request, conflict
+from app.shared.errors import conflict
 from app.shared.passwords import hash_password
 from app.shared.rate_limit import enforce_auth_rate_limit
 from app.shared.roles import is_platform_admin, organization_role
@@ -72,19 +68,13 @@ def register_user(body: UserCreate, request: Request, db: Session = Depends(get_
     """自助注册：创建账号与个人组织，并直接签发访问令牌。
 
     Args:
-        body: 用户名、密码与验证码 challenge。
+        body: 用户名与密码。
         request: 用于取客户端地址做限流。
         db: 数据库会话。
     Returns:
         TokenResponse：含 access_token 与用户信息，前端写入后直接进入控制台。
     """
     enforce_auth_rate_limit(request, "register")  # 限流：按「注册」桶计数
-
-    # 验证码先于任何业务校验：不匹配则不发任何用户名/密码错误信息，
-    # 避免攻击者通过错误差异判断验证码是否通过、用户名是否被占用。
-    # 校验是「一次性」的：无论成功失败，服务端都删除 challenge，防止重放。
-    if not verify_challenge(body.captcha_id, body.captcha_code):
-        raise bad_request("验证码错误或已过期")
 
     username = body.username.strip()
     SERVICE.validate_password(body.password)  # 业务层密码长度校验

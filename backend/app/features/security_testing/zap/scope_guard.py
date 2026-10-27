@@ -284,6 +284,7 @@ def _host_port_or_raise(raw: Any) -> tuple[str, int | None]:
 
 
 def _host_or_raise(raw: Any) -> str:
+    """校验目标主机是否位于允许范围内，不符合时抛出错误。"""
     host, _port = _host_port_or_raise(raw)
     return host
 

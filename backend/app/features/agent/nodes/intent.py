@@ -33,6 +33,7 @@ def _dump(obj) -> str:
 
 
 def intent_node(ctx: NodeContext, state: AgentState) -> dict:
+    """识别用户意图并更新智能体状态。"""
     project_id = state["project_id"]
     try:
         # 候选目标：供 LLM 解析 target_ids（只给 ID 级概要，细节由 context_loader 拉取）。

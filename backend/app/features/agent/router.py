@@ -53,6 +53,7 @@ def create_session(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AgentSessionResponse:
+    """创建会话。"""
     session = session_service.create_session(db, project_id, user, title=body.title)
     return AgentSessionResponse.model_validate(session)
 
@@ -67,6 +68,7 @@ def list_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list:
+    """列出`sessions`。"""
     sessions = session_service.list_sessions(db, project_id, user)
     return [AgentSessionResponse.model_validate(s) for s in sessions]
 
@@ -100,6 +102,7 @@ def delete_session(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除会话。"""
     session_service.delete_session(db, session_id, user)
     return None
 
@@ -117,6 +120,7 @@ def get_workspace(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AgentWorkspace:
+    """获取`workspace`。"""
     session = session_service.get_session_or_404(db, session_id, user)
     state = session_service.load_state(db, session)
     return _build_workspace(state, session)
@@ -136,6 +140,7 @@ def send_message(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
+    """发送消息。"""
     if not body.content and not body.action:
         raise bad_request("请提供 content（自然语言消息）或 action（快捷操作）")
 
@@ -165,9 +170,6 @@ def send_message(
         channel_id=body.channel_id,
         security_item_indexes=body.security_item_indexes,
         security_case_ids=body.security_case_ids,
-        zap_scan_target_id=body.zap_scan_target_id,
-        zap_scan_profile_id=body.zap_scan_profile_id,
-        approval_note=body.approval_note,
         web_session_id=body.web_session_id,
     )
 
@@ -200,8 +202,6 @@ _STAGE_ACTIONS: dict[str, list[str]] = {
     "CLARIFY": [],
     # Phase F：安全计划已生成但未确认（用例还没落库）。
     "SECURITY_PLAN_REVIEW": ["confirm_security_plan"],
-    # Phase 2：ZAP 扫描计划已生成但未确认（任务还没创建，§二十三）。
-    "ZAP_SCAN_REVIEW": ["confirm_security_scan"],
     # Web 智能体二轮：步骤提案待确认。只给确认执行与驳回两个出口——
     # 提升入口在前端提案面板上，直接调 /web-agent/sessions/{id}/promote。
     "WEB_STEP_REVIEW": ["confirm_web_step", "reject_web_step"],
@@ -241,9 +241,6 @@ def _build_workspace(state: AgentState, session) -> AgentWorkspace:
         error=state.get("error"),
         security_plan=state.get("security_plan"),
         security_findings=state.get("security_finding_brief", []),
-        zap_scan_plan=state.get("zap_scan_plan"),
-        zap_scan_job_id=state.get("zap_scan_job_id"),
-        zap_scan_note=state.get("zap_scan_note"),
         web_agent_session_id=state.get("web_agent_session_id"),
         web_goal=state.get("web_goal"),
         web_step_budget=state.get("web_step_budget") or 20,

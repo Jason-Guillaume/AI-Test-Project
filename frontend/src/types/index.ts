@@ -136,7 +136,7 @@ export interface OutboundTarget {
 // 单个大模型调用配置。
 export interface ModelConfiguration {
   id: number; // 配置主键 ID
-  domain_id: string; // 业务域标识，用于区分模型归属领域
+  domain_id: string; // 后端生成的内部稳定标识，用于组织授权与模型路由，不在模型配置页展示
   label: string; // 展示名称
   provider: string; // 服务商标识，如 openai / dashscope
   api_base: string; // 服务端点 base URL
@@ -162,6 +162,7 @@ export interface ModelConfiguration {
 // 测试环境条目：描述被测网关的地址与默认请求头。
 export interface Environment {
   id: number | null; // 环境 ID；null 表示尚未保存的新建草稿
+  project_id?: number | null; // 项目环境配置的归属项目；全局模板为 null
   name: string; // 环境标识（slug），用于 URL 拼接
   display_name: string; // 展示名称
   base_url: string; // 被测服务 base URL
@@ -227,6 +228,33 @@ export interface StatCard {
 export interface DashboardOverview {
   scope: DashboardScope; // 统计口径
   stats: StatCard[]; // 卡片数据列表
+}
+
+// 工作台统计图。
+export interface DashboardExecutionTrendItem {
+  date: string;
+  total: number;
+  passed: number;
+  failed: number;
+}
+
+export interface DashboardDailyCount {
+  date: string;
+  count: number;
+}
+
+export interface DashboardDefectSeverityItem {
+  severity: 1 | 2 | 3 | 4;
+  label: string;
+  value: number;
+}
+
+export interface DashboardCharts {
+  scope: DashboardScope;
+  days: number;
+  execution_trend: DashboardExecutionTrendItem[];
+  defect_severity: DashboardDefectSeverityItem[];
+  case_generation: DashboardDailyCount[];
 }
 
 // 项目摘要条目（看板/搜索场景的精简项目视图）。
@@ -675,8 +703,8 @@ export interface ApiDebugResult {
 
 export type BusinessDomainStatus = 'ACTIVE' | 'INACTIVE';
 export type BusinessFlowStatus = 'DRAFT' | 'ACTIVE' | 'DEPRECATED';
-export type BusinessActionType = 'NORMAL' | 'SYSTEM' | 'MANUAL' | 'WAIT' | 'DECISION';
-export type BusinessBindingType = 'API' | 'WEB' | 'MOBILE';
+export type BusinessActionType = 'NORMAL';
+export type BusinessBindingType = 'API' | 'WEB';
 export type BusinessPreconditionType = 'VARIABLE' | 'STATE' | 'BUSINESS' | 'TEXT';
 export type BusinessPreconditionOperator = 'EQ' | 'NE' | 'IN' | 'CONTAINS' | 'EXISTS' | 'NOT_EXISTS';
 export type BusinessVariableDirection = 'INPUT' | 'OUTPUT';
@@ -746,7 +774,7 @@ export interface BusinessAction {
   description: string | null;
   action_key: string;
   sort: number;
-  action_type: BusinessActionType;
+  action_type: string;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -3015,6 +3043,7 @@ export interface WebAgentSession {
   base_url: string; // 环境基础地址
   target_page_path: string; // 目标页相对路径
   status: WebAgentSessionStatus; // 会话状态
+  status_reason?: string | null; // 句柄不可用时提示重新启动
   step_budget: number; // 智能体步数预算上限
   step_count: number; // 已执行步数
   created_at: string | null; // 创建时间

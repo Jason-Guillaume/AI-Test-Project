@@ -65,5 +65,5 @@ export function ErrorState({
  * 纯排版组件，不发请求：统一各页面的内边距，保证视觉一致。
  */
 export function PageContainer({ children }: { children: ReactNode }) {
-  return <div style={{ padding: 24 }}>{children}</div>;
+  return <div className="page-container">{children}</div>;
 }

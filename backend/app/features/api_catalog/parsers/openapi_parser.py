@@ -30,7 +30,7 @@ from app.features.api_catalog.schemas import (
 )
 from app.features.api_catalog.services.module_resolver import infer_module_name_from_path
 
-_HTTP_METHOD_KEYS = {"get", "post", "put", "patch", "delete", "head", "options"}
+_HTTP_METHOD_KEYS = ("get", "post", "put", "patch", "delete", "head", "options")
 # 路径参数 {var} 与 swagger 的 {var} 风格统一；不支持 :var。
 _PATH_PARAM_RE = re.compile(r"\{([A-Za-z_]\w*)\}")
 
@@ -49,6 +49,8 @@ def parse_openapi(content: str) -> list[InternalApiSchema]:
     is_swagger2 = "swagger" in spec
     is_openapi3 = "openapi" in spec
     if not (is_swagger2 or is_openapi3):
+        if isinstance(spec.get("info"), dict) and "item" in spec:
+            raise ValueError("该文件是 Postman Collection，暂不支持导入；请使用 OpenAPI 或 Swagger 文档")
         raise ValueError("缺少 openapi/swagger 版本字段，无法识别文档类型")
 
     paths = spec.get("paths") or {}
@@ -191,6 +193,7 @@ def _build_body(spec: dict, operation: dict, *, swagger2: bool) -> InternalBody:
 
 
 def _build_body_openapi3(spec: dict, operation: dict) -> InternalBody:
+    """构建请求体`openapi`。"""
     request_body = operation.get("requestBody")
     if not isinstance(request_body, dict):
         return InternalBody(body_type="none")
@@ -221,6 +224,7 @@ def _build_body_openapi3(spec: dict, operation: dict) -> InternalBody:
 
 
 def _build_body_swagger2(spec: dict, operation: dict) -> InternalBody:
+    """构建请求体`swagger`。"""
     consumes = operation.get("consumes") or spec.get("consumes") or []
     ct = _pick_content_type(list(consumes)) if consumes else "application/json"
     params = operation.get("parameters") or []
@@ -323,6 +327,7 @@ def _build_responses(spec: dict, responses: dict, *, swagger2: bool) -> list[Int
 
 
 def _visited() -> set[str]:
+    """检查并记录已经处理的 OpenAPI schema 节点，避免循环引用。"""
     return set()
 
 

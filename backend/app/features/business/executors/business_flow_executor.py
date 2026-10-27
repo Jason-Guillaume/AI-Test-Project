@@ -43,6 +43,7 @@ from app.features.business.executors.mapping_resolver import (
 )
 from app.features.business.executors.precondition_evaluator import evaluate_preconditions
 from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.business.models.business_action import BusinessAction
 from app.features.business.models.business_api_mapping import BusinessApiMapping
 from app.features.business.models.business_binding import BusinessBinding
@@ -149,13 +150,10 @@ def execute_flow(
     # 1. 加载环境与流程。
     # 资源不存在统一返 404（AppError 体系）：裸 ValueError 会被全局 handler
     # 归为 500「服务器内部错误」，用户看不到可读提示。
-    environment = db.get(Environment, environment_id)
-    if environment is None or not environment.is_active:
-        raise not_found("环境不存在或已停用")
-
     flow = db.get(_FlowModel, flow_id)
     if flow is None:
         raise not_found("业务流程不存在")
+    environment = resolve_project_environment(db, flow.project_id, environment_id)
 
     # 2. 创建执行记录。
     execution = FlowExecution(

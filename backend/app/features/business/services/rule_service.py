@@ -30,6 +30,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _rule_response(rule: BusinessRule) -> BusinessRuleResponse:
+    """构造规则响应数据。"""
     return BusinessRuleResponse.model_validate(rule)
 
 
@@ -47,6 +48,7 @@ class RuleService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> BusinessRuleListResponse:
+        """列出`rules`。"""
         get_project_or_404(db, project_id, user)
         query = db.query(BusinessRule).filter(BusinessRule.project_id == project_id)
         if flow_id is not None:
@@ -67,6 +69,7 @@ class RuleService:
     def create_rule(
         self, db: Session, project_id: int, body: BusinessRuleCreate, *, actor: User
     ) -> BusinessRuleResponse:
+        """创建规则。"""
         project = require_writable_project(db, project_id, actor)
         # flow_id / action_id 若指定，须属于本项目（跨资源不一致 → 400）。
         flow: BusinessFlow | None = None
@@ -106,6 +109,7 @@ class RuleService:
     def update_rule(
         self, db: Session, rule_id: int, body: BusinessRuleUpdate, *, actor: User
     ) -> BusinessRuleResponse:
+        """更新规则。"""
         rule = self._get_writable_rule_or_404(db, rule_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -122,6 +126,7 @@ class RuleService:
         return _rule_response(rule)
 
     def delete_rule(self, db: Session, rule_id: int, *, actor: User) -> None:
+        """删除规则。"""
         rule = self._get_writable_rule_or_404(db, rule_id, actor)
         db.delete(rule)
         db.commit()
@@ -129,6 +134,7 @@ class RuleService:
     def _get_writable_rule_or_404(
         self, db: Session, rule_id: int, actor: User
     ) -> BusinessRule:
+        """获取可写规则或。"""
         rule = db.get(BusinessRule, rule_id)
         if rule is None:
             raise not_found("业务规则不存在")

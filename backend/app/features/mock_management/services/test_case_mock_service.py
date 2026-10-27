@@ -34,6 +34,7 @@ class TestCaseMockService:
     def list_case_mocks(
         self, db: Session, test_case_id: int, user: User,
     ) -> list[TestCaseMockResponse]:
+        """列出用例`mocks`。"""
         case = self._get_case_or_404(db, test_case_id, user)
         rows = (
             db.query(TestCaseMock)
@@ -46,11 +47,12 @@ class TestCaseMockService:
     def replace_case_mocks(
         self, db: Session, test_case_id: int, body: TestCaseMocksReplace, *, actor: User,
     ) -> list[TestCaseMockResponse]:
+        """替换用例`mocks`。"""
         case = self._get_case_writable(db, test_case_id, actor)
 
         # 先校验全部声明合法（service/endpoint/scenario 同项目 + 归属一致 + 唯一 scenario）。
         seen_scenarios: set[int] = set()
-        validated: list[tuple[TestCaseMockCreate, int]] = []  # (m, project_id)
+        validated: list[tuple[TestCaseMockCreate, int]] = []  # 已校验映射项及其所属项目标识：（m, project_id）。
         for m in body.mocks:
             service = db.get(MockService, m.mock_service_id)
             if service is None or service.project_id != case.project_id:
@@ -98,6 +100,7 @@ class TestCaseMockService:
     # ---------------------------------------------------------------- 内部
 
     def _get_case_or_404(self, db: Session, test_case_id: int, user: User) -> TestCase:
+        """获取用例或。"""
         from app.features.test_management.services._access import get_project_or_404
 
         case = db.get(TestCase, test_case_id)
@@ -107,6 +110,7 @@ class TestCaseMockService:
         return case
 
     def _get_case_writable(self, db: Session, test_case_id: int, actor: User) -> TestCase:
+        """获取用例可写。"""
         from app.features.test_management.services._access import (
             require_writable_project,
             resolve_case_project_id,

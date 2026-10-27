@@ -169,10 +169,8 @@ def mark_all_read(
     """批量标记已读；不传 ids 或 ids 为空时标记全部为已读。"""
     # body 可空：不传 body 或 ids 为空都表示「全部标记已读」，两种写法等价。
     ids = [int(item) for item in (body.ids if body else [])]
-    # user_id 过滤先生效，ids 里混入他人通知 ID 也不会越权标记。
-    query = db.query(Notification).filter(Notification.user_id == user.id)
-    if ids:
-        query = query.filter(Notification.id.in_(ids))
+    # 批量响应也会返回通知内容，必须与列表使用相同的项目可见性过滤。
+    query = _visible_in_scope(db, user, ids=ids if ids else None)
     rows = query.all()
     now = datetime.now()
     # changed 只统计本次真正发生状态变化的行数，用于回写响应的 unread_total。

@@ -24,7 +24,7 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { securityApi } from '@/api/securityTesting';
 import type {
   ScanTarget,
@@ -235,6 +235,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
 
       {drawer && (
         <TargetDrawer
+          projectId={projectId}
           mode={drawer.mode}
           data={drawer.data}
           submitting={createMutation.isPending || updateMutation.isPending}
@@ -251,12 +252,14 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
 
 /** 新建 / 编辑扫描目标抽屉。 */
 function TargetDrawer({
+  projectId,
   mode,
   data,
   submitting,
   onCancel,
   onSubmit,
 }: {
+  projectId: number;
   mode: 'create' | 'edit';
   data?: ScanTarget;
   submitting: boolean;
@@ -275,8 +278,8 @@ function TargetDrawer({
   const formKey = `${mode}-${data?.id ?? 'new'}`;
 
   const environmentQuery = useQuery({
-    queryKey: ['environments', 'zap-targets'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
+    queryKey: ['project-environments', projectId, 'zap-targets'],
+    queryFn: () => projectsApi.listEnvironments(projectId),
     enabled: mode === 'create',
   });
 

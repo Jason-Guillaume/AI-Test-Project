@@ -23,7 +23,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/api/testManagement';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { getErrorMessage } from '@/api/client';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
@@ -71,8 +71,9 @@ export function ConsoleTestPlansPage() {
     enabled: currentProjectId != null,
   });
   const envsQuery = useQuery({
-    queryKey: ['environments'],
-    queryFn: () => environmentsApi.list({ include_inactive: false }),
+    queryKey: ['project-environments', currentProjectId],
+    queryFn: () => projectsApi.listEnvironments(currentProjectId!),
+    enabled: currentProjectId != null,
   });
   const environments: Environment[] = envsQuery.data?.items ?? [];
   const envName = (eid: number | null) =>

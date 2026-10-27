@@ -119,15 +119,6 @@ class Settings(BaseSettings):
     AUTH_LOGIN_USERNAME_LIMIT_PER_MINUTE: int = 10
     AUTH_REGISTER_IP_LIMIT_PER_HOUR: int = 10
 
-    # 图形验证码：签发频率与图片参数。
-    # AUTH_CAPTCHA_IP_LIMIT_PER_MINUTE 是每个 IP 每分钟的签发次数上限，
-    # 独立于注册桶计数，用于阻止自动化脚本刷图。
-    AUTH_CAPTCHA_IP_LIMIT_PER_MINUTE: int = 30
-    CAPTCHA_TTL_SECONDS: int = 300
-    CAPTCHA_LENGTH: int = 5
-    CAPTCHA_IMAGE_WIDTH: int = 120
-    CAPTCHA_IMAGE_HEIGHT: int = 40
-
     # 初始化管理员凭据，只被 scripts/seed_admin.py 读取，运行期无作用。
     INIT_ADMIN_USERNAME: str | None = None
     INIT_ADMIN_PASSWORD: str | None = None

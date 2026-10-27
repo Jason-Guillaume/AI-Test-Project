@@ -716,9 +716,11 @@ class ScanOrchestrator:
         self._emit(snap, EVENT_TYPE_STAGE, stage, message)
 
     def _effective_duration(self, snap: ScanSnapshot) -> float:
+        """计算本次扫描允许的最长执行时长。"""
         return float(min(self._max_duration, int(snap.max_duration or 30) * 60))
 
     def _cancel_requested(self, snap: ScanSnapshot) -> bool:
+        """判断扫描任务是否收到取消请求。"""
         with self._db_factory() as db:
             row = db.get(SecurityScanJob, snap.job_id)
             return bool(row.cancel_requested) if row is not None else False
@@ -794,6 +796,7 @@ class ScanOrchestrator:
             db.commit()
 
     def _load_auth_profile(self, snap: ScanSnapshot) -> SecurityScanAuthProfile | None:
+        """加载认证配置档案。"""
         with self._db_factory() as db:
             row = db.get(SecurityScanProfile, snap.profile_id)
             if row is None or not row.authentication_profile_id:
@@ -802,6 +805,7 @@ class ScanOrchestrator:
 
     def _emit(self, snap: ScanSnapshot, event_type: str, stage: str, message: str,
               payload: dict[str, Any] | None = None) -> None:
+        """发送事件对应数据。"""
         with self._db_factory() as db:
             self._emit_db(db, snap, event_type, stage, message, payload)
 

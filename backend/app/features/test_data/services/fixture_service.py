@@ -84,22 +84,26 @@ def _raise_cycle(path_keys: list[str]) -> None:
 
 
 def _raise_not_found(message: str = "Fixture 不存在") -> None:
+    """资源不存在或不可见时抛出 404 错误。"""
     raise AppError(message, status_code=404, code=CODE_FIXTURE_NOT_FOUND)
 
 
 def _validate_scope(value: str) -> str:
+    """校验范围。"""
     if value not in FIXTURE_SCOPES:
         raise bad_request("作用域取值非法：CASE/RUN/PROJECT/GLOBAL")
     return value
 
 
 def _validate_status(value: str) -> str:
+    """校验状态。"""
     if value not in FIXTURE_STATUSES:
         raise bad_request("状态取值非法：DRAFT/ACTIVE/DISABLED")
     return value
 
 
 def _validate_cleanup_policy(value: str) -> str:
+    """校验清理策略。"""
     if value not in FIXTURE_CLEANUP_POLICIES:
         raise bad_request("清理策略取值非法：AFTER_CASE/AFTER_RUN/MANUAL/NEVER")
     return value
@@ -118,6 +122,7 @@ def _validate_step(step: FixtureStepInput) -> None:
 
 
 def _validate_output(out: FixtureOutputInput) -> None:
+    """校验输出。"""
     if out.value_type not in VALUE_TYPES:
         raise bad_request(f"输出值类型取值非法：{out.value_type}")
     if not out.source_path.strip():
@@ -127,6 +132,7 @@ def _validate_output(out: FixtureOutputInput) -> None:
 
 
 def _validate_outputs_unique(outputs: list[FixtureOutputInput]) -> None:
+    """校验`outputs``unique`。"""
     names = [out.name.strip() for out in outputs]
     if len(set(names)) != len(names):
         raise conflict("输出契约名称必须唯一")
@@ -215,6 +221,7 @@ def _find_cycle(db: Session, start_ids: set[int], *, max_nodes: int = 256) -> li
     result: list[int] | None = None
 
     def successors(fixture_id: int) -> list[int]:
+        """获取当前节点的后继节点。"""
         return [
             row[0]
             for row in db.query(FixtureDependency.depends_on_fixture_id)
@@ -224,6 +231,7 @@ def _find_cycle(db: Session, start_ids: set[int], *, max_nodes: int = 256) -> li
         ]
 
     def dfs(start: int) -> None:
+        """按深度优先顺序遍历依赖节点。"""
         nonlocal result, counter
         stack: list[tuple[int, list[int]]] = [(start, successors(start))]
         color[start] = GRAY
@@ -277,6 +285,7 @@ def _cycle_message(db: Session, path_ids: list[int]) -> list[str]:
 
 
 def _steps_from_inputs(fixture_id: int, steps: list[FixtureStepInput]) -> list[FixtureStep]:
+    """从`steps`输入。"""
     rows: list[FixtureStep] = []
     for step in steps:
         on_failure = step.on_failure or ("CONTINUE" if step.phase == "CLEANUP" else "ABORT")
@@ -296,6 +305,7 @@ def _steps_from_inputs(fixture_id: int, steps: list[FixtureStepInput]) -> list[F
 
 
 def _outputs_from_inputs(fixture_id: int, outputs: list[FixtureOutputInput]) -> list[FixtureOutput]:
+    """从输出输入。"""
     return [
         FixtureOutput(
             fixture_id=fixture_id,
@@ -476,6 +486,7 @@ class FixtureService:
         status: str | None = None, scope: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> FixtureListResponse:
+        """列出`fixtures`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(Fixture).filter(Fixture.project_id == project_id)
         if entity_type:
@@ -502,6 +513,7 @@ class FixtureService:
         )
 
     def get_fixture(self, db: Session, fixture_id: int, user: User) -> FixtureDetailResponse:
+        """获取固定数据。"""
         return _detail_response(db, self._get_or_404(db, fixture_id, user))
 
     # ---------------------------------------------------------------- 创建 / 删除
@@ -509,6 +521,7 @@ class FixtureService:
     def create_fixture(
         self, db: Session, project_id: int, body: FixtureCreate, *, actor: User,
     ) -> FixtureDetailResponse:
+        """创建固定数据。"""
         project = require_writable_project(db, project_id, actor)
         fixture_key = body.fixture_key.strip()
         if not re.fullmatch(FIXTURE_KEY_PATTERN, fixture_key):
@@ -561,6 +574,7 @@ class FixtureService:
         return _detail_response(db, fixture)
 
     def delete_fixture(self, db: Session, fixture_id: int, *, actor: User) -> None:
+        """删除固定数据。"""
         fixture = self._get_writable_or_404(db, fixture_id, actor)
         ref_count = int(
             db.query(TestCaseFixture.id).filter(TestCaseFixture.fixture_id == fixture.id).count()
@@ -582,6 +596,7 @@ class FixtureService:
     def update_fixture(
         self, db: Session, fixture_id: int, body: FixtureUpdate, *, actor: User,
     ) -> FixtureDetailResponse:
+        """更新固定数据。"""
         fixture = self._get_writable_or_404(db, fixture_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -628,6 +643,7 @@ class FixtureService:
     def replace_steps(
         self, db: Session, fixture_id: int, body: FixtureStepsReplace, *, actor: User,
     ) -> FixtureDetailResponse:
+        """替换`steps`。"""
         fixture = self._get_writable_or_404(db, fixture_id, actor)
         for step in body.steps:
             _validate_step(step)
@@ -660,6 +676,7 @@ class FixtureService:
     def replace_outputs(
         self, db: Session, fixture_id: int, body: FixtureOutputsReplace, *, actor: User,
     ) -> FixtureDetailResponse:
+        """替换输出。"""
         fixture = self._get_writable_or_404(db, fixture_id, actor)
         for out in body.outputs:
             _validate_output(out)
@@ -684,6 +701,7 @@ class FixtureService:
         seen: set[int] = set()
 
         def build(fid: int, depth: int) -> FixtureTreeNodeResponse:
+            """构建对应数据。"""
             row = db.get(Fixture, fid)
             if row is None:
                 return FixtureTreeNodeResponse(
@@ -718,6 +736,7 @@ class FixtureService:
             db.add(row)
 
     def _save_outputs(self, db: Session, fixture: Fixture, outputs: list[FixtureOutputInput]) -> None:
+        """保存`outputs`。"""
         for row in _outputs_from_inputs(fixture.id, outputs):
             db.add(row)
         db.flush()
@@ -731,11 +750,13 @@ class FixtureService:
         _add_dependency_row(db, fixture.id, target.id)
 
     def _check_cycles(self, db: Session, start_ids: set[int]) -> None:
+        """检查`cycles`。"""
         path = _find_cycle(db, start_ids)
         if path is not None:
             _raise_cycle(_cycle_message(db, path))
 
     def _get_or_404(self, db: Session, fixture_id: int, user: User) -> Fixture:
+        """获取或。"""
         row = db.get(Fixture, fixture_id)
         if row is None:
             _raise_not_found()
@@ -743,6 +764,7 @@ class FixtureService:
         return row
 
     def _get_writable_or_404(self, db: Session, fixture_id: int, actor: User) -> Fixture:
+        """获取可写或。"""
         row = db.get(Fixture, fixture_id)
         if row is None:
             _raise_not_found()

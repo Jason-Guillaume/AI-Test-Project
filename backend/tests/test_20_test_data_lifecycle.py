@@ -76,6 +76,7 @@ def _add_data(api, admin, case_id, *, name, source_type, config=None, required=T
 
 
 def _data_executions(db, *, test_run_id=None, scope=None):
+    """查询项目的造数执行记录。"""
     from app.features.test_data.models.execution import DataExecution
 
     query = db.query(DataExecution)
@@ -87,6 +88,7 @@ def _data_executions(db, *, test_run_id=None, scope=None):
 
 
 def _provider_executions(db, data_execution_id):
+    """查询造数步骤的提供器执行记录。"""
     from app.features.test_data.models.execution import ProviderExecution
 
     return (
@@ -97,6 +99,7 @@ def _provider_executions(db, data_execution_id):
 
 
 def _status_code_assertion(expected="200", sort=0):
+    """构造 HTTP 状态码断言配置。"""
     return {
         "assertion_type": "STATUS_CODE", "operator": "EQ",
         "expected_value": expected, "required": True, "sort": sort,
@@ -104,6 +107,7 @@ def _status_code_assertion(expected="200", sort=0):
 
 
 def _sandbox_count(db):
+    """统计沙箱任务记录数量。"""
     return db.execute(text("SELECT count(*) FROM td_sandbox_task")).scalar()
 
 
@@ -114,6 +118,7 @@ class TestScenarioOneApiThenBusinessAction:
     """接口造数 → API 创建任务 → BUSINESS_ACTION 运行任务；Cleanup 被调用。"""
 
     def test_fixture_output_feeds_api_and_action(self, api, admin, db):
+        """验证固定数据输出`feeds`API和动作场景及其预期结果。"""
         with StubServer() as stub:
             task_bodies: list[dict] = []
             deleted: list[str] = []
@@ -242,6 +247,7 @@ class TestScenarioTwoDatabaseSpecialState:
     """DATABASE_PATCH 改特殊状态；白名单之外 → 用例 ERROR。"""
 
     def test_patch_status_is_assertable(self, api, admin, db):
+        """验证局部更新状态是否`assertable`场景及其预期结果。"""
         from tests.test_15_test_executor import _admin_id, _make_env, _make_iface, _whitelist
 
         with StubServer() as stub:
@@ -296,6 +302,7 @@ class TestScenarioTwoDatabaseSpecialState:
             assert _task_status(db, seed_id) == "FAILED"
 
     def test_non_whitelisted_table_marks_case_error(self, api, admin, db):
+        """验证`non``whitelisted``table``marks`用例错误场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("GET", "/health", 200, {"code": 0, "data": {}})
             # 连接、策略和这次运行必须是同一个环境，否则会先报环境不一致。
@@ -348,6 +355,7 @@ class TestScenarioThreeFakerWhitelist:
     """FAKER 数据项：白名单生成器，两次取值不相等，且不出现字面值。"""
 
     def test_faker_values_are_generated_and_unique(self, api, admin, db):
+        """验证`faker``values`是否为`generated`和`unique`场景及其预期结果。"""
         with StubServer() as stub:
             captured: list[dict] = []
             stub.add_fn("POST", "/users",
@@ -400,6 +408,7 @@ class TestScenarioFourRunScopeShared:
     """RUN 作用域夹具：20 条用例只生成一次、只清理一次。"""
 
     def test_run_scope_fixture_generated_once(self, api, admin, db):
+        """验证运行范围固定数据`generated``once`场景及其预期结果。"""
         with StubServer() as stub:
             generated: list[dict] = []
             deleted: list[str] = []
@@ -473,6 +482,7 @@ class TestSetupFailureIsError:
     """Setup（造数）失败 → 用例 ERROR，不是 FAILED。"""
 
     def test_disabled_fixture_is_error_not_failed(self, api, admin, db):
+        """验证`disabled`固定数据是否错误不失败场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("GET", "/health", 200, {"code": 0, "data": {}})
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
@@ -525,6 +535,7 @@ class TestSetupFailureIsError:
             assert _data_executions(db, test_run_id=run["id"]) == []
 
     def test_missing_fixture_key_is_error_not_failed(self, api, admin, db):
+        """验证缺失固定数据键是否错误不失败场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("GET", "/health", 200, {"code": 0, "data": {}})
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
@@ -564,6 +575,7 @@ class TestCleanupFailureKeepsResult:
     """Cleanup 失败 → 原结论与原错误码不动，只写 cleanup_*。"""
 
     def test_cleanup_failure_does_not_overwrite_assertion_result(self, api, admin, db):
+        """验证清理失败是否不`overwrite`断言结果场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"task_id": 7}})
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
@@ -675,6 +687,7 @@ class TestProjectIsolation:
     """造数记录只属于本次运行的项目与环境。"""
 
     def test_execution_records_stay_in_project(self, api, admin, db):
+        """验证执行记录记录`stay``in`项目场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"task_id": 4}})
             pid, env_id, _aid, iface = _stub_env(api, admin, db, stub)
@@ -737,6 +750,7 @@ class TestProjectIsolation:
 
 
 def _make_run_ctx(db, user):
+    """构造运行`ctx`。"""
     from app.features.agent.nodes._context import NodeContext
     from app.features.agent.providers.llm_provider import FakeLLMProvider
 
@@ -744,6 +758,7 @@ def _make_run_ctx(db, user):
 
 
 def _user_of(db, username):
+    """按用户名查询用户记录。"""
     from app.models.identity import User
 
     return db.query(User).filter(User.username == username).first()
@@ -753,6 +768,7 @@ class TestAgentFixtureReference:
     """Agent 只能引用已注册 Fixture，不创建 Provider，不执行 SQL。"""
 
     def test_validator_rejects_missing_fixture(self, api, admin, db):
+        """验证校验器拒绝缺失固定数据场景及其预期结果。"""
         from app.features.agent.nodes.validator import validator_node
         from app.features.agent.schemas import TestCaseDraft
 
@@ -779,6 +795,7 @@ class TestAgentFixtureReference:
         assert "当前缺少 FAILED_TASK Fixture" in result["error"]["message"], result
 
     def test_save_cases_persists_required_fixtures(self, api, admin, db):
+        """验证保存`cases``persists`必填`fixtures`场景及其预期结果。"""
         from app.features.agent.schemas import TestCaseDraft
         from app.features.agent.tools.test_asset_tool import save_cases
         from app.features.test_data.models.case_fixture import TestCaseFixture
@@ -834,11 +851,13 @@ class TestAgentFixtureReference:
 
     @staticmethod
     def _provider_count(db, project_id):
+        """统计数据提供器记录数量。"""
         from app.features.test_data.models.provider import DataProvider
 
         return db.query(DataProvider).filter(DataProvider.project_id == project_id).count()
 
     def test_save_cases_refuses_missing_fixture_without_side_effects(self, api, admin, db):
+        """验证保存`cases``refuses`缺失固定数据不带`side``effects`场景及其预期结果。"""
         from fastapi import HTTPException
 
         from app.features.agent.schemas import TestCaseDraft
@@ -877,6 +896,7 @@ class TestAgentFixtureReference:
 
     @staticmethod
     def _fixture_count(db, project_id):
+        """统计固定数据记录数量。"""
         from app.features.test_data.models.fixture import Fixture
 
         return db.query(Fixture).filter(Fixture.project_id == project_id).count()

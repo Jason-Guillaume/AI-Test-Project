@@ -98,6 +98,7 @@ class ScanTargetCreate(BaseModel):
     @field_validator("base_url")
     @classmethod
     def _strip_base_url(cls, value: str) -> str:
+        """清理`base`URL。"""
         return value.strip()
 
 
@@ -171,6 +172,7 @@ class ScanAuthProfileCreate(BaseModel):
     @field_validator("auth_mode")
     @classmethod
     def _check_auth_mode(cls, value: str) -> str:
+        """检查认证`mode`。"""
         if value not in AUTH_MODES:
             raise ValueError(f"不支持的认证模式：{value}")
         return value
@@ -256,6 +258,7 @@ class ScanProfileCreate(BaseModel):
     @field_validator("scan_mode")
     @classmethod
     def _check_scan_mode(cls, value: str) -> str:
+        """检查扫描`mode`。"""
         if value not in SCAN_MODES:
             raise ValueError(f"不支持的扫描模式：{value}")
         return value
@@ -341,6 +344,7 @@ class ScanJobCreate(BaseModel):
     @field_validator("target_id", "scan_profile_id")
     @classmethod
     def _positive(cls, value: int) -> int:
+        """校验正数对应数据。"""
         if value <= 0:
             raise ValueError("必须为正整数")
         return value

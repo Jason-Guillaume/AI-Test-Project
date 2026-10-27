@@ -49,6 +49,7 @@ _STATUS_ERROR_MESSAGES = {"DEPRECATED": "API_DEPRECATED"}
 
 
 def _try_parse_json(text: str) -> object:
+    """尝试将响应文本解析为 JSON；解析失败时返回空结果。"""
     if not text:
         return None
     try:
@@ -61,6 +62,7 @@ class ApiCreateProvider(BaseProvider):
     provider_type = "API_CREATE"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import ApiCreateProviderConfig
 
         cfg = self.load_config(config_of(ctx), ApiCreateProviderConfig)
@@ -211,6 +213,7 @@ class ApiCreateProvider(BaseProvider):
 
     @staticmethod
     def _load_interface(db, api_id: int, project_id: int) -> ApiInterface:
+        """加载接口。"""
         iface = db.get(ApiInterface, api_id)
         if iface is None or iface.project_id != project_id:
             raise AppError(

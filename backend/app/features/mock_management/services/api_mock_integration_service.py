@@ -57,6 +57,7 @@ class ApiMockIntegrationService:
         self, db: Session, project_id: int, api_id: int,
         body: CreateMockFromApiRequest, *, actor: User,
     ) -> CreateMockFromApiResponse:
+        """创建从API。"""
         project = require_manage_project(db, project_id, actor)
         key = (body.service_key or "").strip()
         if not re.fullmatch(SCENARIO_KEY_PATTERN, key):

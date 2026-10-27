@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Alert, App, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { webUIApi } from '@/api/webUI';
@@ -11,6 +11,7 @@ import { businessApi } from '@/api/business';
 import { getErrorMessage } from '@/api/client';
 import { AuthEditor, CaseEditor, PageEditor } from '@/pages/console/WebUI/Editors';
 import { WebArtifacts } from '@/pages/console/WebUI/Artifacts';
+import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
 import type { WebAuthProfile, WebCase, WebExecution, WebPage } from '@/types';
 
 /** 作用域变化后重建工作区，防止旧项目弹窗或执行选择残留。 */
@@ -24,6 +25,9 @@ function Workspace({ projectId }: { projectId: number }) {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const caseId = Number(searchParams.get('caseId'));
+  const requestedCaseId = Number.isSafeInteger(caseId) && caseId > 0 ? caseId : null;
   const [tab, setTab] = useState('cases');
   const [casePage, setCasePage] = useState(1);
   const [pageModal, setPageModal] = useState<{ row: WebPage | null } | null>(null);
@@ -39,6 +43,7 @@ function Workspace({ projectId }: { projectId: number }) {
   const [actionId, setActionId] = useState<number>();
   const [agentForm] = Form.useForm();
   const cases = useQuery({ queryKey: ['project', projectId, 'web', 'cases', casePage], queryFn: () => webUIApi.cases(projectId, casePage) });
+  const requestedCase = useQuery({ queryKey: ['web-case-link', requestedCaseId], queryFn: () => webUIApi.case(requestedCaseId!), enabled: requestedCaseId != null });
   const pages = useQuery({ queryKey: ['project', projectId, 'web', 'pages'], queryFn: () => webUIApi.pages(projectId) });
   const auth = useQuery({ queryKey: ['project', projectId, 'web', 'auth'], queryFn: () => webUIApi.auth(projectId) });
   const environments = useQuery({ queryKey: ['project', projectId, 'web', 'environments', environmentKeyword], queryFn: () => webUIApi.environments(projectId, environmentKeyword) });
@@ -74,12 +79,23 @@ function Workspace({ projectId }: { projectId: number }) {
   const authRows = auth.data?.items ?? [];
   const environmentRows = environments.data?.items.filter(e => e.is_active) ?? [];
   return <Space direction="vertical" style={{ width: '100%' }} size="middle">
-    <Typography.Title level={4} style={{ margin: 0 }}>Web UI 自动化</Typography.Title>
+    <Typography.Title level={4} style={{ margin: 0 }}>Web UI 工作区</Typography.Title>
+    {requestedCaseId != null && (requestedCase.isPending ? <LoadingState /> : requestedCase.isError ? (
+      <Alert type="warning" showIcon message="用例不存在或无访问权限" />
+    ) : requestedCase.data?.project_id !== projectId ? (
+      <Alert type="warning" showIcon message={`该用例属于项目 #${requestedCase.data?.project_id}，请先在顶部切换项目`} />
+    ) : (
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Alert type="info" showIcon message={`已定位 Web 用例 #${requestedCase.data.id}：${requestedCase.data.name}`} action={<Button size="small" onClick={() => setCaseModal({ row: requestedCase.data })}>查看与编辑步骤</Button>} />
+        <TaskSourceLinks resourceType="TEST_CASE" resourceId={String(requestedCase.data.id)} />
+      </Space>
+    ))}
     <Alert type="info" showIcon message="Chromium 隔离执行 · 稳定元素定位 · 结构化步骤 · 人工确认" description="请先在项目设置中授权测试目标，再维护页面对象和登录态。Fixture、Mock、数据变量及正式测试报告沿用现有平台能力。" />
     <Tabs activeKey={tab} onChange={setTab} items={[
       { key: 'cases', label: 'UI 用例与调试', children: <Space direction="vertical" style={{ width: '100%' }}>
         <Space wrap><Button type="primary" onClick={() => setCaseModal({ row: null })}>新增 UI 用例</Button>
           <Button onClick={() => setAgentOpen(true)}>Agent 生成草稿</Button>
+          <Button onClick={() => navigate('/console/web-ui-agent')}>浏览器智能编写</Button>
           <Select showSearch filterOption={false} onSearch={setEnvironmentKeyword} style={{ width: 280 }} placeholder="选择执行环境" value={environmentId} onChange={setEnvironmentId} options={environmentRows.map(e => ({ value: e.id, label: `${e.display_name || e.name}（${e.name}）` }))} />
           {environments.isError && <Typography.Text type="danger">环境读取失败</Typography.Text>}
         </Space>
@@ -88,6 +104,7 @@ function Workspace({ projectId }: { projectId: number }) {
           { title: '状态', render: (_, row) => <Tag color={row.confirmed ? 'green' : 'gold'}>{row.confirmed ? '已确认' : '待人工确认'} · {row.source_type}</Tag> },
           { title: '操作', render: (_, row) => <Space wrap>
             <Button onClick={() => setCaseModal({ row })}>编辑步骤</Button>
+            <Button disabled={!row.confirmed} onClick={() => navigate(`/console/tasks?create=1&projectId=${projectId}&type=WEB&caseId=${row.id}`)}>用此用例创建任务</Button>
             <Button disabled={row.confirmed} loading={write.isPending} onClick={() => modal.confirm({ title: '确认已审核全部步骤、登录态与页面目标？', content: '后续修改用例、页面对象或认证配置后，需要重新确认。', onOk: () => write.mutateAsync(() => webUIApi.confirm(row.id, row.revision)) })}>人工确认</Button>
             <Button type="primary" disabled={!row.confirmed || !environmentId} loading={write.isPending} onClick={() => debug(row)}>调试执行</Button>
             <Button onClick={() => { setBindCase(row); setFlowId(undefined); setActionId(undefined); }}>绑定业务动作</Button>

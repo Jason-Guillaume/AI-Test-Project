@@ -52,6 +52,7 @@ class SecurityStrategyService:
     """策略服务。所有 commit 都在这里发生。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self._rules = SecurityRuleService()
 
     # ---------------------------------------------------------------- 查询
@@ -188,6 +189,7 @@ class SecurityStrategyService:
 
     @staticmethod
     def _get_or_404(db: Session, strategy_id: int) -> SecurityStrategy:
+        """获取或。"""
         strategy = db.get(SecurityStrategy, strategy_id)
         if strategy is None:
             raise AppError(
@@ -220,6 +222,7 @@ class SecurityStrategyService:
     def _to_response(
         db: Session, strategy: SecurityStrategy, *, with_rules: bool = False,
     ) -> SecurityStrategyResponse:
+        """构造`to`响应数据。"""
         response = SecurityStrategyResponse.model_validate(strategy)
         if with_rules:
             response.rules = SecurityRuleService().list_rules(db, strategy)

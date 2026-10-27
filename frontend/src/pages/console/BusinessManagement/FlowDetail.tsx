@@ -22,7 +22,7 @@ import {
 import { EditOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { businessApi } from '@/api/business';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { getErrorMessage } from '@/api/client';
 import { ErrorState } from '@/components/PageState';
 import { FLOW_STATUS_OPTIONS } from './constants';
@@ -97,8 +97,8 @@ export function FlowDetail({ flowId, projectId }: { flowId: number; projectId: n
 
   // ---- 环境列表（供执行选择器使用）----
   const envQuery = useQuery({
-    queryKey: ['environments', 'list', 'active'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100, include_inactive: false }),
+    queryKey: ['project-environments', projectId, 'active'],
+    queryFn: () => projectsApi.listEnvironments(projectId),
     staleTime: 60_000,
   });
 

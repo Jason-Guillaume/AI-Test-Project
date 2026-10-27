@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
@@ -127,13 +128,19 @@ def _require_admin(actor: User) -> None:
         raise forbidden("仅管理员可执行该操作")
 
 
-def _unique_domain(db: Session, domain_id: str, *, exclude_id: int | None = None) -> None:
-    """校验 domain_id 全局唯一；更新场景排除自身以免误判重复。"""
+def _unique_domain(db: Session, domain_id: str) -> None:
+    """校验新生成的 domain_id 全局唯一。"""
     query = db.query(ModelConfiguration).filter(ModelConfiguration.domain_id == domain_id)
-    if exclude_id is not None:
-        query = query.filter(ModelConfiguration.id != exclude_id)
     if query.first() is not None:
         raise bad_request("该 domain_id 已存在")
+
+
+def _generate_domain_id(db: Session) -> str:
+    """生成供授权与任务路由使用的内部稳定 ID。"""
+    while True:
+        domain_id = f"model_{uuid4().hex}"
+        if db.query(ModelConfiguration.id).filter(ModelConfiguration.domain_id == domain_id).first() is None:
+            return domain_id
 
 
 def _validate_fallback_models(db: Session, model_ids: list[int], *, primary_id: int | None = None) -> list[int]:
@@ -204,7 +211,7 @@ def create_configuration(db: Session, body: ModelConfigurationCreate, *, actor: 
         raise bad_request("启用状态的模型必须配置 API Key")
     is_enabled = bool(body.is_enabled and api_key)
     domain_id, api_base = _validate_payload(
-        domain_id=body.domain_id,
+        domain_id=_generate_domain_id(db),
         api_base=body.api_base,
         is_enabled=is_enabled,
         is_default=body.is_default,
@@ -263,9 +270,6 @@ def update_configuration(
         data["provider"] = normalize_provider(data["provider"])
     if "api_base" in data and data["api_base"] is not None:
         data["api_base"] = data["api_base"].strip()
-    if "domain_id" in data and data["domain_id"] is not None:
-        data["domain_id"] = data["domain_id"].strip()
-        _unique_domain(db, data["domain_id"], exclude_id=row.id)
     for text_field in ("label", "model_name"):
         if data.get(text_field):
             data[text_field] = data[text_field].strip()

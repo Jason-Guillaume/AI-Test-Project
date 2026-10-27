@@ -17,6 +17,20 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.features.environment_configuration.schemas import (
+    EnvironmentListResponse,
+    EnvironmentResponse,
+    ProjectEnvironmentCreate,
+    ProjectEnvironmentUpdate,
+)
+from app.features.environment_configuration.services.environment_service import (
+    create_project_environment,
+    deactivate_project_environment,
+    list_project_environment_options,
+    project_environment_response,
+    set_project_default_environment,
+    update_project_environment,
+)
 from app.features.projects.schemas import (
     OutboundTargetCreate,
     OutboundTargetResponse,
@@ -164,6 +178,82 @@ def get_project(
         for row in members
     ]
     return ProjectDetailResponse(**data)
+
+
+@router.get("/{project_id}/environments", response_model=EnvironmentListResponse)
+def list_project_environments(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    include_inactive: bool = False,
+):
+    """列出当前用户可见项目中已绑定的环境；选择器响应不包含请求头密文。"""
+    SERVICE.get_accessible_or_404(db, project_id, user)
+    items = [
+        EnvironmentResponse(**row)
+        for row in list_project_environment_options(db, project_id, include_inactive=include_inactive)
+    ]
+    return EnvironmentListResponse(total=len(items), items=items, page=1, page_size=max(1, len(items)))
+
+
+@router.post(
+    "/{project_id}/environments",
+    response_model=EnvironmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_project_environment_endpoint(
+    project_id: int,
+    body: ProjectEnvironmentCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """创建项目环境接口。"""
+    SERVICE.get_accessible_or_404(db, project_id, user)
+    row = create_project_environment(db, project_id, body, actor=user)
+    return project_environment_response(db, row)
+
+
+@router.patch("/{project_id}/environments/{environment_id}", response_model=EnvironmentResponse)
+def update_project_environment_endpoint(
+    project_id: int,
+    environment_id: int,
+    body: ProjectEnvironmentUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """更新项目环境接口。"""
+    SERVICE.get_accessible_or_404(db, project_id, user)
+    row = update_project_environment(db, project_id, environment_id, body, actor=user)
+    return project_environment_response(db, row)
+
+
+@router.post(
+    "/{project_id}/environments/{environment_id}/set-default",
+    response_model=EnvironmentResponse,
+)
+def set_project_default_environment_endpoint(
+    project_id: int,
+    environment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """设置项目默认环境接口。"""
+    SERVICE.get_accessible_or_404(db, project_id, user)
+    row = set_project_default_environment(db, project_id, environment_id, actor=user)
+    return project_environment_response(db, row)
+
+
+@router.delete("/{project_id}/environments/{environment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_project_environment_endpoint(
+    project_id: int,
+    environment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """停用项目环境绑定。"""
+    SERVICE.get_accessible_or_404(db, project_id, user)
+    deactivate_project_environment(db, project_id, environment_id, actor=user)
+    return None
 
 
 @router.patch("/{project_id}", response_model=ProjectResponse)

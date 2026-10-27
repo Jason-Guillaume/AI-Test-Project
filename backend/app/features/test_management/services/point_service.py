@@ -34,10 +34,12 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(p: TestPoint) -> TestPointResponse:
+    """构造接口响应数据。"""
     return TestPointResponse.model_validate(p)
 
 
 def _ensure_unique_name(db: Session, project_id: int, name: str, *, exclude_id: int | None = None) -> None:
+    """确保`unique`名称。"""
     q = db.query(TestPoint).filter(TestPoint.project_id == project_id, TestPoint.name == name)
     if exclude_id is not None:
         q = q.filter(TestPoint.id != exclude_id)
@@ -54,6 +56,7 @@ class PointService:
         status: str | None = None, keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestPointListResponse:
+        """列出`points`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TestPoint).filter(TestPoint.project_id == project_id)
         if strategy_id is not None:
@@ -76,6 +79,7 @@ class PointService:
     def create_point(
         self, db: Session, project_id: int, body: TestPointCreate, *, actor: User,
     ) -> TestPointResponse:
+        """创建检查点。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -109,11 +113,13 @@ class PointService:
         return _response(point)
 
     def get_point(self, db: Session, point_id: int, user: User) -> TestPointResponse:
+        """获取检查点。"""
         return _response(self._get_or_404(db, point_id, user))
 
     def update_point(
         self, db: Session, point_id: int, body: TestPointUpdate, *, actor: User,
     ) -> TestPointResponse:
+        """更新检查点。"""
         point = self._get_writable_or_404(db, point_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -145,11 +151,13 @@ class PointService:
         return _response(point)
 
     def delete_point(self, db: Session, point_id: int, *, actor: User) -> None:
+        """删除检查点。"""
         point = self._get_writable_or_404(db, point_id, actor)
         db.delete(point)
         db.commit()
 
     def _get_or_404(self, db: Session, point_id: int, user: User) -> TestPoint:
+        """获取或。"""
         p = db.get(TestPoint, point_id)
         if p is None:
             raise not_found("测试点不存在")
@@ -157,6 +165,7 @@ class PointService:
         return p
 
     def _get_writable_or_404(self, db: Session, point_id: int, actor: User) -> TestPoint:
+        """获取可写或。"""
         p = db.get(TestPoint, point_id)
         if p is None:
             raise not_found("测试点不存在")

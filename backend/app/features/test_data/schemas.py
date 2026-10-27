@@ -128,7 +128,7 @@ class PageResponse(BaseModel):
     total: int
 
 
-# --------------------------------------------------------------------------- Fixture
+# --------------------------------------------------------------------------- 固定数据 Fixture
 
 
 class MappingRule(BaseModel):
@@ -235,6 +235,7 @@ class FixtureCreate(BaseModel):
     @field_validator("fixture_key")
     @classmethod
     def _check_key(cls, v: str) -> str:
+        """检查键。"""
         import re
 
         if not re.fullmatch(FIXTURE_KEY_PATTERN, v):
@@ -244,6 +245,7 @@ class FixtureCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str) -> str:
+        """检查名称。"""
         return v.strip()
 
 
@@ -260,6 +262,7 @@ class FixtureUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str | None) -> str | None:
+        """检查名称。"""
         return v.strip() if v is not None else v
 
 
@@ -347,6 +350,7 @@ class TestDataAssetCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str) -> str:
+        """检查名称。"""
         return v.strip()
 
 
@@ -363,6 +367,7 @@ class TestDataAssetUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str | None) -> str | None:
+        """检查名称。"""
         return v.strip() if v is not None else v
 
 
@@ -387,7 +392,7 @@ class TestDataAssetResponse(BaseModel):
     updated_at: datetime
 
 
-# --------------------------------------------------------------------------- Data Provider
+# --------------------------------------------------------------------------- 数据提供器 数据提供器 Data Provider
 
 # Provider 配置统一 `extra=forbid`：配置里出现 sql 等未声明键直接 422（§10.1）。
 class _StrictConfig(BaseModel):
@@ -472,6 +477,7 @@ class DataProviderCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str) -> str:
+        """检查名称。"""
         return v.strip()
 
 
@@ -486,6 +492,7 @@ class DataProviderUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str | None) -> str | None:
+        """检查名称。"""
         return v.strip() if v is not None else v
 
 
@@ -529,6 +536,7 @@ class DataPoolCreate(BaseModel):
     @field_validator("pool_key")
     @classmethod
     def _check_key(cls, v: str) -> str:
+        """检查键。"""
         import re
 
         if not re.fullmatch(FIXTURE_KEY_PATTERN, v):
@@ -538,6 +546,7 @@ class DataPoolCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str) -> str:
+        """检查名称。"""
         return v.strip()
 
 
@@ -550,6 +559,7 @@ class DataPoolUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str | None) -> str | None:
+        """检查名称。"""
         return v.strip() if v is not None else v
 
 
@@ -632,6 +642,7 @@ class TargetDbConnectionCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str) -> str:
+        """检查名称。"""
         return v.strip()
 
 
@@ -650,6 +661,7 @@ class TargetDbConnectionUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def _check_name(cls, v: str | None) -> str | None:
+        """检查名称。"""
         return v.strip() if v is not None else v
 
 

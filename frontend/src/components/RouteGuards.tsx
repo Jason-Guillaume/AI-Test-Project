@@ -64,8 +64,7 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
 /**
  * 游客守卫：只允许未登录访问的路由（如登录页本身）。
  *
- * 不发请求，只读登录态。已登录用户会被按角色分流：
- * 平台管理员回 /admin/dashboard，其余回 /console，防止登录后仍停在登录页。
+ * 不发请求，只读登录态。已登录用户统一回到用户工作台，防止登录后仍停在登录页。
  */
 export function GuestOnly({ children }: { children: React.ReactNode }) {
   const { ready, user } = useAuth();
@@ -77,7 +76,7 @@ export function GuestOnly({ children }: { children: React.ReactNode }) {
     );
   }
   if (user) {
-    return <Navigate to={user.role === 'admin' ? '/admin/dashboard' : '/console'} replace />;
+    return <Navigate to="/console" replace />;
   }
   return <>{children}</>;
 }

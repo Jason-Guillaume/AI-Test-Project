@@ -67,6 +67,9 @@ class WebAgentSession(Base):
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"))
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     closed_at = Column(DateTime)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=True, index=True)
+    task_agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    agent_session_id = Column(Integer, ForeignKey("agent_session.id", ondelete="SET NULL"), nullable=True, index=True)
 
 
 class WebAgentStep(Base):

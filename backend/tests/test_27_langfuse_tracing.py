@@ -50,9 +50,11 @@ class _FakeGeneration:
     """记录 update 调用的假 generation。"""
 
     def __init__(self):
+        """初始化对象状态。"""
         self.updates: list[dict] = []
 
     def update(self, **kwargs):
+        """更新对应数据。"""
         self.updates.append(kwargs)
 
 
@@ -60,16 +62,19 @@ class _FakeSpanCM:
     """假 span 上下文管理器，enter 可配置抛错。"""
 
     def __init__(self, generation, *, enter_error: Exception | None = None):
+        """初始化对象状态。"""
         self._generation = generation
         self._enter_error = enter_error
         self.exited = False
 
     def __enter__(self):
+        """进入上下文并返回所需资源。"""
         if self._enter_error is not None:
             raise self._enter_error
         return self._generation
 
     def __exit__(self, *exc_info):
+        """退出上下文并释放资源。"""
         self.exited = True
         return False
 
@@ -80,6 +85,7 @@ class _FakeLangfuse:
     instances: list["_FakeLangfuse"] = []
 
     def __init__(self, **kwargs):
+        """初始化对象状态。"""
         self.kwargs = kwargs
         self.observations: list[dict] = []
         self.generation = _FakeGeneration()
@@ -88,10 +94,12 @@ class _FakeLangfuse:
         _FakeLangfuse.instances.append(self)
 
     def start_as_current_observation(self, **kwargs):
+        """启动`as``current``observation`。"""
         self.observations.append(kwargs)
         return _FakeSpanCM(self.generation, enter_error=self.enter_error)
 
     def flush(self):
+        """标记模拟追踪器已完成数据刷新。"""
         self.flushed = True
 
 
@@ -191,6 +199,7 @@ def test_client_build_failure_falls_back_to_none(monkeypatch):
     import langfuse
 
     def _broken(**kwargs):
+        """模拟追踪器因参数不兼容而抛出异常。"""
         raise TypeError("unexpected keyword argument")
 
     monkeypatch.setattr(langfuse, "Langfuse", _broken)

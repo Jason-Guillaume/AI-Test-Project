@@ -1,7 +1,7 @@
 """业务绑定 / API 映射服务层。
 
-业务动作通过独立的 Binding 与具体执行接口建立关系；第一阶段 binding_type 固定 API，
-通过 api_id 引用接口管理（api_catalog）的 api_interface 表。
+业务动作通过独立的 Binding 与 API 或 Web 用例建立关系；API 绑定使用 api_id 引用
+接口管理（api_catalog）的 api_interface 表，Web 绑定通过 config_json 引用 Web 用例。
 
 失效判定（「失效可见」要求）：
 - api_id 为 None（接口被硬删 → ondelete=SET NULL 置空）→ valid=False，「已删除」。
@@ -45,6 +45,7 @@ _INPUT_LOCATIONS = {"BODY", "HEADER", "QUERY", "PATH"}
 
 
 def _mapping_response(m: BusinessApiMapping) -> BusinessApiMappingResponse:
+    """构造映射响应数据。"""
     return BusinessApiMappingResponse.model_validate(m)
 
 
@@ -69,12 +70,12 @@ def _binding_detail(db: Session, binding: BusinessBinding) -> BusinessBindingDet
     if binding.api_id is None:
         # api_id 为 None 的情况：
         # - API 绑定：ondelete=SET NULL 置空 → 接口已被硬删，绑定失效
-        # - WEB/MOBILE 绑定：api_id 设计上为空，不视为失效
+        # - WEB 绑定：api_id 设计上为空，不视为失效
         if binding.binding_type == "API":
             valid = False
             invalid_reason = "绑定接口已失效（已删除）"
         else:
-            # 非 API 通道绑定（WEB/MOBILE），api_id 为空属正常，无失效
+            # WEB 通道绑定的 api_id 为空属正常，具体有效性由 Web 用例关系判断。
             pass
     else:
         iface = db.get(ApiInterface, binding.api_id)
@@ -97,6 +98,10 @@ def _binding_detail(db: Session, binding: BusinessBinding) -> BusinessBindingDet
         case = db.get(TestCase, case_id) if isinstance(case_id, int) else None
         valid = bool(case and case.project_id == resolve_binding_project_id(db, binding.id) and db.get(WebCase, case_id))
         invalid_reason = None if valid else "绑定的 Web 用例已失效"
+    elif binding.binding_type == "MOBILE":
+        # 历史预留值只保留可读性，不再允许新建、更新或参与流程执行。
+        valid = False
+        invalid_reason = "移动端绑定尚未接入，不能用于执行"
 
     mappings = (
         db.query(BusinessApiMapping)
@@ -150,6 +155,7 @@ class BindingService:
     def list_bindings(
         self, db: Session, action_id: int, user: User
     ) -> list[BusinessBindingDetailResponse]:
+        """列出`bindings`。"""
         get_project_or_404(db, resolve_action_project_id(db, action_id), user)
         bindings = (
             db.query(BusinessBinding)
@@ -160,12 +166,14 @@ class BindingService:
         return [_binding_detail(db, b) for b in bindings]
 
     def get_binding(self, db: Session, binding_id: int, user: User) -> BusinessBindingDetailResponse:
+        """获取绑定。"""
         binding = self._get_binding_or_404(db, binding_id, user)
         return _binding_detail(db, binding)
 
     def create_binding(
         self, db: Session, action_id: int, body: BusinessBindingCreate, *, actor: User
     ) -> BusinessBindingDetailResponse:
+        """创建绑定。"""
         project = require_writable_project(db, resolve_action_project_id(db, action_id), actor)
         _ensure_api_in_project(db, body.api_id, project.id)
         if body.binding_type == "WEB":
@@ -220,6 +228,7 @@ class BindingService:
     def update_binding(
         self, db: Session, binding_id: int, body: BusinessBindingUpdate, *, actor: User
     ) -> BusinessBindingDetailResponse:
+        """更新绑定。"""
         binding = self._get_writable_binding_or_404(db, binding_id, actor)
         data = body.model_dump(exclude_unset=True)
         # 过滤 NOT NULL 字段的 None 值，避免写入空值导致 DB 错误
@@ -260,6 +269,7 @@ class BindingService:
         return _binding_detail(db, binding)
 
     def delete_binding(self, db: Session, binding_id: int, *, actor: User) -> None:
+        """删除绑定。"""
         binding = self._get_writable_binding_or_404(db, binding_id, actor)
         # 级联：删除绑定 → 其下 api_mapping 由外键 ondelete=CASCADE 一并清理。
         db.delete(binding)
@@ -270,6 +280,7 @@ class BindingService:
     def list_mappings(
         self, db: Session, binding_id: int, user: User
     ) -> list[BusinessApiMappingResponse]:
+        """列出`mappings`。"""
         self._get_binding_or_404(db, binding_id, user)
         items = (
             db.query(BusinessApiMapping)
@@ -282,6 +293,7 @@ class BindingService:
     def create_mapping(
         self, db: Session, binding_id: int, body: BusinessApiMappingCreate, *, actor: User
     ) -> BusinessApiMappingResponse:
+        """创建映射。"""
         project = require_writable_project(db, resolve_binding_project_id(db, binding_id), actor)
         _validate_mapping_location(body.direction, body.api_location)
         # 唯一约束 (binding_id, direction, business_variable)：同绑定同方向同变量重复 → 冲突。
@@ -323,6 +335,7 @@ class BindingService:
     def update_mapping(
         self, db: Session, mapping_id: int, body: BusinessApiMappingUpdate, *, actor: User
     ) -> BusinessApiMappingResponse:
+        """更新映射。"""
         mapping = self._get_writable_mapping_or_404(db, mapping_id, actor)
         data = body.model_dump(exclude_unset=True)
         # 过滤 NOT NULL 字段的 None 值，避免写入空值导致 DB 错误
@@ -340,6 +353,7 @@ class BindingService:
         return _mapping_response(mapping)
 
     def delete_mapping(self, db: Session, mapping_id: int, *, actor: User) -> None:
+        """删除映射。"""
         mapping = self._get_writable_mapping_or_404(db, mapping_id, actor)
         db.delete(mapping)
         db.commit()
@@ -349,6 +363,7 @@ class BindingService:
     def _get_binding_or_404(
         self, db: Session, binding_id: int, user: User
     ) -> BusinessBinding:
+        """获取绑定或。"""
         binding = db.get(BusinessBinding, binding_id)
         if binding is None:
             raise not_found("业务绑定不存在")
@@ -358,6 +373,7 @@ class BindingService:
     def _get_writable_binding_or_404(
         self, db: Session, binding_id: int, actor: User
     ) -> BusinessBinding:
+        """获取可写绑定或。"""
         binding = db.get(BusinessBinding, binding_id)
         if binding is None:
             raise not_found("业务绑定不存在")
@@ -367,6 +383,7 @@ class BindingService:
     def _get_writable_mapping_or_404(
         self, db: Session, mapping_id: int, actor: User
     ) -> BusinessApiMapping:
+        """获取可写映射或。"""
         mapping = db.get(BusinessApiMapping, mapping_id)
         if mapping is None:
             raise not_found("业务映射不存在")

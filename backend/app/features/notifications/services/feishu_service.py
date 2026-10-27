@@ -138,6 +138,7 @@ class FeishuNotificationService:
 
     @staticmethod
     def _config(channel: NotificationChannel) -> dict[str, Any]:
+        """读取飞书通知配置。"""
         return channel.config_json or {}
 
     @staticmethod

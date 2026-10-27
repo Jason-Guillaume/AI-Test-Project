@@ -19,6 +19,7 @@ from app.shared.errors import AppError
 
 
 def notification_sender_node(ctx: NodeContext, state: AgentState) -> dict:
+    """发送通知并记录发送结果。"""
     action = state.get("action")
     report_id = state.get("report_id")
     project_id = state["project_id"]

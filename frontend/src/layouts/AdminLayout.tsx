@@ -1,6 +1,6 @@
 // 平台管理端布局：左侧菜单 + 顶部用户菜单。仅平台管理员可进入。
 // 真正的权限拦截由路由层的 RequireAdmin 完成，本组件只做展示与导航。
-import { Layout, Menu, Dropdown, Avatar, Space, theme } from 'antd';
+import { Button, Layout, Menu, Dropdown, Avatar, Space, theme } from 'antd';
 import {
   AppstoreOutlined,
   DashboardOutlined,
@@ -10,6 +10,9 @@ import {
   TeamOutlined,
   LogoutOutlined,
   UserOutlined,
+  RobotOutlined,
+  BulbOutlined,
+  ToolOutlined,
 } from '@ant-design/icons';
 import { useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -30,6 +33,10 @@ const MENU_ITEMS = [
   { key: '/admin/projects', icon: <ProjectOutlined />, label: '项目管理' }, // 项目管理
   { key: '/admin/model-configs', icon: <ApiOutlined />, label: '模型配置' }, // 模型配置
   { key: '/admin/environments', icon: <CloudOutlined />, label: '环境配置' }, // 环境配置
+  { key: '/admin/agents', icon: <RobotOutlined />, label: 'Agent' },
+  { key: '/admin/mcp', icon: <ApiOutlined />, label: 'MCP' },
+  { key: '/admin/skills', icon: <BulbOutlined />, label: 'Skill' },
+  { key: '/admin/tools', icon: <ToolOutlined />, label: '工具' },
 ];
 
 /**
@@ -78,23 +85,24 @@ export function AdminLayout() {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" width={220} breakpoint="lg">
-        <div
-          style={{
-            height: 56,
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 600,
-            fontSize: 15,
-          }}
-        >
-          测试开发平台
+    <Layout className="app-layout">
+      <Sider
+        className="app-sidebar"
+        theme="light"
+        width={248}
+        collapsedWidth={72}
+        breakpoint="lg"
+      >
+        <div className="app-brand">
+          <span className="app-brand-mark" aria-hidden="true">Q</span>
+          <span className="app-brand-copy">
+            <span className="app-brand-name">测试开发平台</span>
+            <span className="app-brand-caption">PLATFORM CONTROL</span>
+          </span>
         </div>
         <Menu
-          theme="dark"
+          className="app-sidebar-menu"
+          theme="light"
           mode="inline"
           selectedKeys={[selectedKey]}
           items={MENU_ITEMS.map((item) => ({
@@ -105,25 +113,27 @@ export function AdminLayout() {
         />
       </Sider>
       <Layout>
-        <Header
-          style={{
-            background: themeToken.colorBgContainer,
-            padding: '0 24px',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-            borderBottom: `1px solid ${themeToken.colorBorderSecondary}`,
-          }}
-        >
-          <Dropdown menu={userMenu} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
-              <Avatar icon={<UserOutlined />} />
-              <span>{user?.username}</span>
-              {user && <PlatformRoleTag role={user.role} />}
-            </Space>
-          </Dropdown>
+        <Header className="app-topbar">
+          <div className="app-admin-context">
+            平台管理<span>/ 全局治理</span>
+          </div>
+          <Space size="middle">
+            <Button
+              icon={<AppstoreOutlined />}
+              onClick={() => navigate('/console')}
+            >
+              用户工作台
+            </Button>
+            <Dropdown menu={userMenu} placement="bottomRight">
+              <Space className="app-user-trigger" style={{ cursor: 'pointer' }}>
+                <Avatar size={30} icon={<UserOutlined />} />
+                <span>{user?.username}</span>
+                {user && <PlatformRoleTag role={user.role} />}
+              </Space>
+            </Dropdown>
+          </Space>
         </Header>
-        <Content style={{ background: themeToken.colorBgLayout }}>
+        <Content className="app-content">
           <Outlet />
         </Content>
       </Layout>

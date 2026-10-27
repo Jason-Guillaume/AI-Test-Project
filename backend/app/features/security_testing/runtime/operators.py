@@ -76,6 +76,7 @@ def register_operator(type_: str):
     """把算子函数登记进注册表。"""
 
     def decorator(fn: OperatorFn) -> OperatorFn:
+        """为业务计划步骤注册所需的函数装饰器。"""
         OPERATORS[type_] = fn
         return fn
 

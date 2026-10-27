@@ -175,7 +175,7 @@ def is_valid_identifier(name: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""))
 
 
-# --------------------------------------------------------------------------- ResolveScope
+# --------------------------------------------------------------------------- 解析范围 ResolveScope
 
 _MISSING = object()
 
@@ -248,6 +248,7 @@ class ResolveScope:
         return walk_path(source, path)
 
     def _faker(self) -> Any:
+        """按允许的生成器名称创建测试数据。"""
         if self.faker is None:
             self.faker = _make_faker(self.locale)
         return self.faker
@@ -394,6 +395,7 @@ def resolve_token_str(
             return value if found else ("" if not required else value)
 
         def repl(m: "re.Match[str]") -> str:
+            """解析模板并替换运行时变量。"""
             found, value = _lookup(m.group(1), m.group(2), scope, required=required)
             return str(value) if found else ""
 

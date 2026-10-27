@@ -108,6 +108,7 @@ def _open_session(db, api, admin, project_id: int):
 
 
 def _intent_payload(scene: SimpleNamespace) -> dict:
+    """构造请求安全测试的智能体意图数据。"""
     return {
         "intent": "GENERATE_SECURITY_TEST",
         "target_type": "API",
@@ -149,6 +150,7 @@ class ExplodingProvider(FakeLLMProvider):
 
     def generate_structured(self, system, user_content, schema=None, *,
                             kind=None, history=None, validator=None):
+        """生成`structured`。"""
         if kind == "report_summary":
             raise RuntimeError("LLM 不可用")
         return super().generate_structured(
@@ -160,6 +162,7 @@ class ExplodingProvider(FakeLLMProvider):
 
 
 def _security_cases(db, project_id: int) -> list[TestCase]:
+    """查询项目下的安全测试用例。"""
     return (
         db.query(TestCase)
         .filter(TestCase.project_id == project_id, TestCase.case_type == "SECURITY")
@@ -168,14 +171,17 @@ def _security_cases(db, project_id: int) -> list[TestCase]:
 
 
 def _plans(db, project_id: int) -> list[SecurityPlan]:
+    """查询项目下的安全测试计划。"""
     return db.query(SecurityPlan).filter(SecurityPlan.project_id == project_id).all()
 
 
 def _findings(db, project_id: int) -> list[SecurityFinding]:
+    """查询项目下的安全发现项。"""
     return db.query(SecurityFinding).filter(SecurityFinding.project_id == project_id).all()
 
 
 def _execution(db, run_id: int) -> SecurityExecution:
+    """按标识查询安全执行记录。"""
     return (
         db.query(SecurityExecution)
         .filter(SecurityExecution.test_run_id == run_id)
@@ -184,6 +190,7 @@ def _execution(db, run_id: int) -> SecurityExecution:
 
 
 def _case_execution(db, run_id: int) -> CaseExecution:
+    """查询用例执行记录。"""
     return (
         db.query(CaseExecution)
         .filter(CaseExecution.test_run_id == run_id)
@@ -192,10 +199,12 @@ def _case_execution(db, run_id: int) -> CaseExecution:
 
 
 def _report(db, report_id: int) -> TestReport:
+    """按标识查询测试报告。"""
     return db.get(TestReport, report_id)
 
 
 def _report_summary(db, report_id: int) -> dict:
+    """读取测试报告摘要。"""
     return _report(db, report_id).summary or {}
 
 
@@ -206,6 +215,7 @@ class TestSecurityIntent:
     """意图识别：一次一个目标、策略可解析、拒绝夹带脚本。"""
 
     def test_generate_security_test_intent_stops_at_plan_review(self, db, api, admin):
+        """验证生成安全测试意图`stops``at`计划`review`场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, port=stub.port, env_base_url=stub.base_url)
             state, session, user, provider = _drive_to_review(db, api, admin, scene)
@@ -239,6 +249,7 @@ class TestSecurityIntent:
         assert _findings(db, scene.project_id) == []
 
     def test_multi_target_returns_clarify(self, db, api, admin):
+        """验证`multi`目标`returns``clarify`场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, port=stub.port, env_base_url=stub.base_url)
             other = _make_iface(db, scene.project_id, path="/tasks/detail")
@@ -262,6 +273,7 @@ class TestSecurityIntent:
         assert _plans(db, scene.project_id) == []
 
     def test_unmatched_strategy_gives_readable_error(self, db, api, admin):
+        """验证`unmatched`策略`gives``readable`错误场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, port=stub.port, env_base_url=stub.base_url)
             session, user = _open_session(db, api, admin, scene.project_id)
@@ -282,6 +294,7 @@ class TestSecurityIntent:
         assert _plans(db, scene.project_id) == []
 
     def test_llm_output_with_script_is_rejected(self, db, api, admin):
+        """验证LLM输出包含`script`是否被拒绝场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, port=stub.port, env_base_url=stub.base_url)
             session, user = _open_session(db, api, admin, scene.project_id)
@@ -307,6 +320,7 @@ class TestWorkspaceActions:
     """review 暂停点的按钮由持久化状态重建，刷新后不丢。"""
 
     def test_plan_review_offers_confirm_security_plan(self, db, api, admin):
+        """验证计划`review``offers`确认安全计划场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, port=stub.port, env_base_url=stub.base_url)
             state, session, user, provider = _drive_to_review(db, api, admin, scene)
@@ -324,6 +338,7 @@ class TestWorkspaceActions:
         assert workspace["report_id"] is None
 
     def test_pending_risk_adds_confirm_security_risk(self, db, api, admin):
+        """验证`pending`风险`adds`确认安全风险场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, port=stub.port, env_base_url=stub.base_url)
             state, session, user, provider = _drive_to_review(db, api, admin, scene)
@@ -355,6 +370,7 @@ class TestPlanBaselineResolution:
     """计划预览的目标解析：基线用例是变异请求的唯一事实来源。"""
 
     def test_preview_by_api_id_resolves_baseline_case(self, db, api, admin):
+        """验证预览按API标识`resolves`基线用例场景及其预期结果。"""
         scene = _scene(db, api, admin)
 
         preview = PlanService.preview(
@@ -378,6 +394,7 @@ class TestPlanBaselineResolution:
     def test_preview_by_api_id_requires_a_usable_baseline(
         self, db, api, admin, variant,
     ):
+        """验证预览按API标识需要`a``usable`基线场景及其预期结果。"""
         scene = _scene(db, api, admin, with_baseline=False)
 
         if variant == "security_case_only":
@@ -405,6 +422,7 @@ class TestPlanBaselineResolution:
         assert "基线" in excinfo.value.message
 
     def test_missing_baseline_reaches_agent_as_readable_error(self, db, api, admin):
+        """验证缺失基线`reaches`智能体`as``readable`错误场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _scene(db, api, admin, with_baseline=False, port=stub.port,
                            env_base_url=stub.base_url)
@@ -427,6 +445,7 @@ class TestSecurityExecutionAndReport:
     """确认链路、执行结果与报告安全摘要。"""
 
     def test_execute_without_risk_confirmation_is_skipped(self, db, api, admin):
+        """验证执行不带风险`confirmation`是否跳过场景及其预期结果。"""
         with CountingStub() as stub:
             _route_by_auth(
                 stub, denied_status=200, denied_body={"code": 0, "data": {"id": 101}},
@@ -467,6 +486,7 @@ class TestSecurityExecutionAndReport:
         assert summary["findings"] == {"INFO": 0, "LOW": 0, "MEDIUM": 0, "HIGH": 0, "CRITICAL": 0}
 
     def test_confirm_execute_report_security_summary(self, db, api, admin):
+        """验证确认执行报告安全摘要场景及其预期结果。"""
         hits: list[str] = []
         with CountingStub() as stub:
             _route_by_auth(
@@ -540,6 +560,7 @@ class TestSecurityExecutionAndReport:
         assert _case_execution(db, state["test_run_id"]).status == "FAILED"
 
     def test_ai_summary_failure_does_not_break_security_summary(self, db, api, admin):
+        """验证`ai`摘要失败是否不`break`安全摘要场景及其预期结果。"""
         with CountingStub() as stub:
             _route_by_auth(
                 stub, denied_status=200, denied_body={"code": 0, "data": {"id": 101}},

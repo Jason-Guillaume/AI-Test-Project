@@ -401,7 +401,7 @@ export function ConsoleNotificationChannelsPage() {
             飞书通知渠道
           </Typography.Title>
           <Typography.Text type="secondary">
-            配置飞书群机器人后，测试报告可推送风险等级、通过率与 AI 总结到群内。
+            当前支持飞书群机器人；测试报告可推送到群内。任务与缺陷的站内消息不会自动通过此渠道发送。
           </Typography.Text>
         </Flex>
         <Button

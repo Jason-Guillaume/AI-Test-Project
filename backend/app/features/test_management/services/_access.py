@@ -62,6 +62,7 @@ def require_writable_project(db: Session, project_id: int, user: User) -> Projec
 
 
 def resolve_strategy_project_id(db: Session, strategy_id: int) -> int:
+    """解析并确定策略项目标识。"""
     strategy = db.get(TestStrategy, strategy_id)
     if strategy is None:
         raise not_found("测试策略不存在")
@@ -69,6 +70,7 @@ def resolve_strategy_project_id(db: Session, strategy_id: int) -> int:
 
 
 def resolve_point_project_id(db: Session, point_id: int) -> int:
+    """解析并确定检查点项目标识。"""
     point = db.get(TestPoint, point_id)
     if point is None:
         raise not_found("测试点不存在")
@@ -76,6 +78,7 @@ def resolve_point_project_id(db: Session, point_id: int) -> int:
 
 
 def resolve_case_project_id(db: Session, case_id: int) -> int:
+    """解析并确定用例项目标识。"""
     case = db.get(TestCase, case_id)
     if case is None:
         raise not_found("测试用例不存在")
@@ -83,6 +86,7 @@ def resolve_case_project_id(db: Session, case_id: int) -> int:
 
 
 def resolve_suite_project_id(db: Session, suite_id: int) -> int:
+    """解析并确定套件项目标识。"""
     suite = db.get(TestSuite, suite_id)
     if suite is None:
         raise not_found("测试套件不存在")
@@ -90,6 +94,7 @@ def resolve_suite_project_id(db: Session, suite_id: int) -> int:
 
 
 def resolve_plan_project_id(db: Session, plan_id: int) -> int:
+    """解析并确定计划项目标识。"""
     plan = db.get(TestPlan, plan_id)
     if plan is None:
         raise not_found("测试计划不存在")
@@ -97,6 +102,7 @@ def resolve_plan_project_id(db: Session, plan_id: int) -> int:
 
 
 def resolve_run_project_id(db: Session, run_id: int) -> int:
+    """解析并确定运行项目标识。"""
     run = db.get(TestRun, run_id)
     if run is None:
         raise not_found("测试执行记录不存在")

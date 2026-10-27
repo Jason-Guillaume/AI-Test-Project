@@ -22,6 +22,7 @@ from app.features.security_testing.zap.schemas import (
     ScanTargetUpdate,
 )
 from app.features.security_testing.zap.services import _access
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.models.configuration import Environment
 from app.models.identity import User
 from app.shared.errors import AppError, CODE_SECURITY_SCAN_TARGET_NOT_FOUND
@@ -33,6 +34,7 @@ _TARGET_NOT_FOUND = AppError(
 
 
 def _get(db: Session, project_id: int, target_id: int) -> SecurityScanTarget:
+    """获取对应数据。"""
     row = (
         db.query(SecurityScanTarget)
         .filter(SecurityScanTarget.id == target_id, SecurityScanTarget.project_id == project_id)
@@ -44,6 +46,7 @@ def _get(db: Session, project_id: int, target_id: int) -> SecurityScanTarget:
 
 
 def _netloc(url: str) -> str:
+    """解析 URL 的网络位置，包括主机和端口。"""
     return (urlsplit(url or "").netloc or "").lower()
 
 
@@ -88,7 +91,7 @@ def create(db: Session, project_id: int, user: User, payload: ScanTargetCreate) 
     base, entry, allowed_hosts = _validate_base_and_entry(
         payload.base_url, payload.entry_url, requested_hosts,
     )
-    _check_environment(db, payload.environment_id)
+    _check_environment(db, project_id, payload.environment_id)
     row = SecurityScanTarget(
         project_id=project_id,
         name=payload.name.strip(),
@@ -132,7 +135,7 @@ def update(
     data["entry_url"] = validated_entry
     data["allowed_hosts"] = validated_hosts
     if "environment_id" in data:
-        _check_environment(db, data["environment_id"])
+        _check_environment(db, project_id, data["environment_id"])
 
     for key in ("include_paths", "exclude_paths"):
         if key in data and data[key] is not None:
@@ -204,12 +207,8 @@ def to_read(db: Session, row: SecurityScanTarget) -> ScanTargetRead:
     return base
 
 
-def _check_environment(db: Session, environment_id: int | None) -> None:
-    """环境存在性与启用性校验；不存在时按 404 处理，不泄露更多细节。"""
+def _check_environment(db: Session, project_id: int, environment_id: int | None) -> None:
+    """校验扫描目标引用当前项目已关联且启用的环境。"""
     if not environment_id:
         return
-    row = db.get(Environment, environment_id)
-    if row is None:
-        raise AppError("被测环境不存在", status_code=404)
-    if not row.is_active:
-        raise AppError("被测环境已停用", status_code=400)
+    resolve_project_environment(db, project_id, environment_id)

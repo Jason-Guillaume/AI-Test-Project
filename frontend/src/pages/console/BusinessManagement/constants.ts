@@ -25,10 +25,6 @@ export const FLOW_STATUS_OPTIONS = [
 
 export const ACTION_TYPE_OPTIONS = [
   { value: 'NORMAL' as BusinessActionType, label: '常规动作' },
-  { value: 'SYSTEM' as BusinessActionType, label: '系统动作' },
-  { value: 'MANUAL' as BusinessActionType, label: '人工动作' },
-  { value: 'WAIT' as BusinessActionType, label: '等待动作' },
-  { value: 'DECISION' as BusinessActionType, label: '决策动作' },
 ];
 
 export const PRECONDITION_TYPE_OPTIONS = [

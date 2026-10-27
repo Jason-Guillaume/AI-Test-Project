@@ -32,6 +32,7 @@ import {
 import { ProjectRoleTag } from '@/components/RoleTag';
 import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
 import { getErrorMessage } from '@/api/client';
+import { PageHeader } from '@/components/PageHeader';
 
 // 项目角色下拉选项：viewer < member < editor 三级
 const PROJECT_ROLE_OPTIONS: { label: string; value: ProjectRole }[] = [
@@ -132,6 +133,7 @@ export function AdminProjectsPage() {
 
   return (
     <PageContainer>
+      <PageHeader title="项目管理" subtitle="管理全平台项目归属、负责人和成员角色" />
       <Space
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >

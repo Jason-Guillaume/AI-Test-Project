@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp, ConfigProvider, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { type ReactNode, useState } from 'react';
-import { buildTheme, prefersDarkScheme } from '@/theme';
+import { buildTheme } from '@/theme';
 
 // 全局 QueryClient：失败重试有限，避免 401 类错误反复重试。
 function makeClient() {
@@ -27,7 +27,7 @@ function makeClient() {
 export function AppProviders({ children }: { children: ReactNode }) {
   const [client] = useState(makeClient);
   return (
-    <ConfigProvider locale={zhCN} theme={buildTheme(prefersDarkScheme())}>
+    <ConfigProvider locale={zhCN} theme={buildTheme()}>
       <AntdApp>
         <QueryClientProvider client={client}>{children}</QueryClientProvider>
       </AntdApp>

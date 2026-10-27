@@ -13,7 +13,7 @@ import threading
 import time
 from queue import Queue
 from datetime import datetime, timezone
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from app.features.web_ui.runtime.observer import _clean_url, observe as observe_page
 from app.features.web_ui.runtime.playwright_executor import BrowserResult, PlaywrightExecutor, scrub
@@ -40,6 +40,7 @@ class BrowserSession:
     """单个受控浏览器会话句柄。不进入 AgentState，由 SessionRegistry 管理生命周期。"""
 
     def __init__(self):
+        """初始化对象状态。"""
         self._playwright = None
         self._browser = None
         self._context = None
@@ -48,6 +49,8 @@ class BrowserSession:
         self._base_url = ""
         self._secrets: list[str] = []
         self._sensitive_locators: list[dict] = []
+        # 只保存主文档响应的安全属性，不保留原始头值（尤其是 Set-Cookie）。
+        self._main_response_security: dict = {}
         self._last_active = time.time()
         self._closed = False
         self._step_count = 0
@@ -144,12 +147,39 @@ class BrowserSession:
         self._context.route("**/*", self._policy.route)
         self._context.route_web_socket("**/*", lambda ws: ws.close())
         self._page = self._context.new_page()
+        self._page.on("response", self._capture_main_response)
         if target_page_path:
             target_url = self._policy.require(urljoin(self._base_url + "/", target_page_path))
             self._page.set_default_timeout(timeout_ms)
             self._page.set_default_navigation_timeout(timeout_ms)
             self._page.goto(target_url, wait_until="domcontentloaded")
         self._touch()
+
+    def _capture_main_response(self, response):
+        """捕获主文档响应状态和白名单头部布尔值，不保存头内容。"""
+        try:
+            if not response.request.is_navigation_request() or response.frame != self._page.main_frame:
+                return
+            raw_headers = {str(key).lower(): str(value).strip() for key, value in response.headers.items()}
+            csp = raw_headers.get("content-security-policy", "").lower()
+            self._main_response_security = {
+                "status": int(response.status),
+                "headers": {
+                    key: bool(raw_headers.get(key))
+                    for key in (
+                        "content-security-policy", "strict-transport-security",
+                        "x-frame-options", "x-content-type-options", "referrer-policy",
+                        "permissions-policy", "cross-origin-opener-policy",
+                        "cross-origin-resource-policy", "cross-origin-embedder-policy",
+                    )
+                },
+                "csp_frame_ancestors": any(
+                    directive.strip().split(maxsplit=1)[:1] == ["frame-ancestors"]
+                    for directive in csp.split(";")
+                ),
+            }
+        except Exception:
+            self._main_response_security = {}
 
     def _touch(self):
         """更新最后活动时间。"""
@@ -181,13 +211,115 @@ class BrowserSession:
             return ""
 
     def _page_url(self):
+        """读取当前浏览器页面的 URL。"""
         return _clean_url(self._page.url) if self._page else ""
 
     def observe(self, timeout_ms=5000):
         """观察当前页面，返回脱敏语义树与遮罩截图。"""
         return self._call(self._observe, timeout_ms)
 
+    def security_snapshot(self):
+        """被动检查当前已打开页面的响应头和有限 DOM 信号；不导航、不点击、不读取表单值。"""
+        return self._call(self._security_snapshot)
+
+    def _security_snapshot(self):
+        """生成安全上下文快照。"""
+        self._touch()
+        if self._closed or self._page is None or not self._page.url:
+            raise RuntimeError("浏览器会话没有可检查的当前页面")
+        current_url = self._page.url
+        if not self._policy or not self._policy.allows(current_url):
+            raise RuntimeError("当前页面不在项目授权范围内")
+        parsed = urlsplit(current_url)
+        https = parsed.scheme.lower() == "https"
+        response = dict(self._main_response_security or {})
+        headers = dict(response.get("headers") or {})
+        forms_count = self._page.locator("form").count()
+        external_post_forms = 0
+        get_password_forms = 0
+        for index in range(min(forms_count, 20)):
+            form = self._page.locator("form").nth(index)
+            method = (form.get_attribute("method", timeout=200) or "get").strip().lower()
+            action = form.get_attribute("action", timeout=200) or current_url
+            try:
+                action_parsed = urlsplit(urljoin(current_url, action))
+                same_origin = (
+                    action_parsed.scheme.lower() == parsed.scheme.lower()
+                    and action_parsed.hostname == parsed.hostname
+                    and (action_parsed.port or (443 if action_parsed.scheme == "https" else 80))
+                    == (parsed.port or (443 if parsed.scheme == "https" else 80))
+                )
+            except ValueError:
+                same_origin = False
+            if method == "post" and not same_origin:
+                external_post_forms += 1
+            if method == "get" and form.locator('input[type="password"]').count():
+                get_password_forms += 1
+        mixed_content_count = 0
+        resource_locators = [
+            (self._page.locator(selector), attribute)
+            for selector, attribute in (("img[src]", "src"), ("script[src]", "src"), ("iframe[src]", "src"), ("link[href]", "href"))
+        ]
+        resource_counts = [(locator, attribute, locator.count()) for locator, attribute in resource_locators]
+        mixed_content_scan_truncated = sum(count for _, _, count in resource_counts) > 100
+        remaining_resource_budget = 100
+        for locator, attribute, resource_count in resource_counts:
+            observed_count = min(resource_count, remaining_resource_budget)
+            for index in range(observed_count):
+                try:
+                    value = locator.nth(index).get_attribute(attribute, timeout=200)
+                except Exception:
+                    continue
+                if value:
+                    try:
+                        if urlsplit(urljoin(current_url, value)).scheme.lower() == "http":
+                            mixed_content_count += 1
+                    except ValueError:
+                        continue
+            remaining_resource_budget -= observed_count
+            if remaining_resource_budget <= 0:
+                break
+        signals = []
+
+        def add_signal(code: str, title: str, severity: str = "INFO"):
+            """添加`signal`。"""
+            signals.append({"code": code, "title": title, "severity": severity})
+
+        if https and not headers.get("strict-transport-security"):
+            add_signal("HSTS_HEADER_ABSENT", "HTTPS 主文档未返回 Strict-Transport-Security", "LOW")
+        if not headers.get("content-security-policy"):
+            add_signal("CSP_HEADER_ABSENT", "主文档未返回 Content-Security-Policy", "LOW")
+        if not headers.get("x-frame-options") and not response.get("csp_frame_ancestors"):
+            add_signal("FRAME_EMBEDDING_POLICY_ABSENT", "未观察到 X-Frame-Options 或 CSP frame-ancestors", "LOW")
+        if not headers.get("x-content-type-options"):
+            add_signal("NOSNIFF_HEADER_ABSENT", "主文档未返回 X-Content-Type-Options", "INFO")
+        if not headers.get("referrer-policy"):
+            add_signal("REFERRER_POLICY_ABSENT", "主文档未返回 Referrer-Policy", "INFO")
+        if not headers.get("permissions-policy"):
+            add_signal("PERMISSIONS_POLICY_ABSENT", "主文档未返回 Permissions-Policy", "INFO")
+        if mixed_content_count:
+            add_signal("MIXED_CONTENT_REFERENCE", "当前页面包含 HTTP 子资源引用", "LOW")
+        if external_post_forms:
+            add_signal("EXTERNAL_POST_FORM", "当前页面包含提交目标为其他源的 POST 表单", "LOW")
+        if get_password_forms:
+            add_signal("PASSWORD_FORM_GET", "当前页面包含使用 GET 方法的密码表单", "LOW")
+        return {
+            "page": {"https": https, "response_status": response.get("status")},
+            "headers": headers,
+            "dom": {
+                "forms_observed": min(forms_count, 20),
+                "forms_scan_truncated": forms_count > 20,
+                "mixed_content_resources": mixed_content_count,
+                "mixed_content_scan_truncated": mixed_content_scan_truncated,
+                "external_post_forms": external_post_forms,
+                "get_password_forms": get_password_forms,
+            },
+            "signals": signals,
+            "interpretation": "被动检查信号仅供分诊，不代表漏洞已确认。",
+        }
+
     def _observe(self, timeout_ms):
+        """读取浏览器当前页面和可见内容。"""
         self._touch()
         if self._closed or self._page is None:
             return {"url": "", "title": "", "accessibility_tree": "error:SESSION_CLOSED", "screenshot_b64": ""}
@@ -198,6 +330,7 @@ class BrowserSession:
         return self._call(self._execute_step, step_dict)
 
     def _execute_step(self, step_dict):
+        """执行`step`。"""
         self._touch()
         if self._closed or self._page is None:
             return {"status": "ERROR", "error_code": "SESSION_CLOSED", "error_message": "会话已关闭"}

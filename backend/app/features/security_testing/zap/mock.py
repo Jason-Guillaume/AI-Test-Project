@@ -40,7 +40,7 @@ class MockRule:
     name: str
     risk: str
     confidence: int
-    category: str = "both"  # pscan / ascan / both
+    category: str = "both"  # 扫描模式：pscan / ascan / both
     reference: str = "https://owasp.org/www-project-top-ten/"
     enabled: bool = True
 
@@ -319,6 +319,7 @@ class MockZAPTransport:
 
     @staticmethod
     def _rule_map(world: MockZAPWorld) -> dict[int, MockRule]:
+        """构建规则映射表。"""
         return {rule.rule_id: rule for rule in world.rules}
 
     def _split(self, url: str) -> tuple[str, str]:
@@ -333,9 +334,11 @@ class MockZAPTransport:
         return netloc, path
 
     def _host_of(self, url: str) -> str:
+        """提取主机信息。"""
         return self._split(url)[0]
 
     def _path_of(self, url: str) -> str:
+        """提取路径信息。"""
         return self._split(url)[1]
 
     def is_in_scope(self, url: str) -> bool:
@@ -544,6 +547,7 @@ class MockZAPTransport:
 
 
 def _about(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """构造 ZAP 版本与服务信息响应。"""
     return {
         "name": "OWASP ZAP",
         "version": self.world.version,
@@ -553,35 +557,42 @@ def _about(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
 
 
 def _core_version(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """返回模拟 ZAP 核心组件版本。"""
     return {"ZAP": self.world.version}
 
 
 def _set_in_scope(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置`in`范围。"""
     self.in_scope.append((b.get("host") or "").rstrip("/"))
     return {"host": b.get("host", "")}
 
 
 def _set_in_scope_prefix(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置`in`范围`prefix`。"""
     self.in_scope_prefix.append((b.get("host") or "").rstrip("/"))
     return {"host": b.get("host", "")}
 
 
 def _set_in_scope_regex(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置`in`范围`regex`。"""
     self.in_scope_regex.append(b.get("regex") or "")
     return {"regex": b.get("regex", "")}
 
 
 def _set_out_of_scope(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置`out``of`范围。"""
     self.out_of_scope.append((b.get("host") or "").rstrip("/"))
     return {"host": b.get("host", "")}
 
 
 def _set_excluded(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置`excluded`。"""
     self.excluded_regex.append(b.get("regex") or "")
     return {"regex": b.get("regex", "")}
 
 
 def _set_scan_out_of_scope(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置扫描`out``of`范围。"""
     self.scan_out_of_scope = bool(int(b.get("value") or 0))
     return {"value": str(int(b.get("value") or 0))}
 
@@ -614,12 +625,14 @@ def _spider(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
 
 
 def _stop_spider(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """停止爬虫。"""
     self.spider_running = False
     self._cancelled = True
     return {"Running": "false"}
 
 
 def _spider_is_running(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """判断爬虫任务是否正在运行。"""
     return {"Running": "true" if self.spider_running else "false"}
 
 
@@ -684,39 +697,47 @@ def _visit(self: MockZAPTransport, target: str, endpoint: MockEndpoint | None, b
 
 
 def _stop_client_spider(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """停止客户端爬虫。"""
     self.client_spider_running = False
     self._cancelled = True
     return {"Running": "false"}
 
 
 def _client_spider_is_running(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """判断客户端爬虫任务是否正在运行。"""
     return {"Running": "true" if self.client_spider_running else "false"}
 
 
 def _client_spider_set_depth(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置客户端爬虫深度。"""
     self.client_spider_max_depth = int(b.get("maxCrawlDepth") or 5)
     return {"maxCrawlDepth": str(self.client_spider_max_depth)}
 
 
 def _client_spider_set_pages(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置客户端爬虫页面。"""
     self.client_spider_page_limit = max(0, int(b.get("pageCount") or 0))
     return {"pageCount": str(self.client_spider_page_limit)}
 
 
 def _client_spider_set_regex(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置客户端爬虫正则表达式。"""
     self.client_spider_target_regex = b.get("targetRegex") or ""
     return {"targetRegex": self.client_spider_target_regex}
 
 
 def _client_spider_set_state(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置客户端爬虫状态。"""
     return {"maxCrawlState": b.get("maxCrawlState") or "0"}
 
 
 def _pscan_get_rules(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> list:
+    """获取被动扫描规则。"""
     return sorted(self.pscan_enabled)
 
 
 def _pscan_get_policy(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """获取被动扫描策略。"""
     return {
         str(rule.rule_id): {
             "description": rule.name,
@@ -728,15 +749,18 @@ def _pscan_get_policy(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> d
 
 
 def _pscan_get_mode(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """获取被动扫描模式。"""
     return {"mode": self.pscan_mode}
 
 
 def _pscan_set_mode(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置被动扫描模式。"""
     self.pscan_mode = b.get("mode") or "minimum"
     return {"mode": self.pscan_mode}
 
 
 def _pscan_set_alert(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置被动扫描告警。"""
     rule_id = str(b.get("ruleId") or "")
     state = bool(int(b.get("state") or 0))
     if state:
@@ -747,6 +771,7 @@ def _pscan_set_alert(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dic
 
 
 def _pscan_is_alert(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """判断被动扫描结果是否需要生成告警。"""
     rule_id = str(b.get("ruleId") or "")
     return {"alert": "true" if rule_id in self.pscan_enabled else "false"}
 
@@ -782,59 +807,71 @@ def _pscan_progress(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dic
 
 
 def _ascan_get_policy(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """获取主动扫描策略。"""
     return dict(self.attack_policy)
 
 
 def _ascan_set_policy(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描策略。"""
     self.attack_policy.update({k: v for k, v in b.items() if k in self.attack_policy})
     return dict(self.attack_policy)
 
 
 def _ascan_get_scan_policy(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """获取主动扫描`scan`策略。"""
     return dict(self.scan_policy)
 
 
 def _ascan_set_scan_policy(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描`scan`策略。"""
     self.scan_policy.update(b)
     return dict(self.scan_policy)
 
 
 def _ascan_set_concurrency(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描`concurrency`。"""
     self.attack_policy["concurrency"] = str(int(b.get("concurrency") or 1))
     return {"concurrency": self.attack_policy["concurrency"]}
 
 
 def _ascan_set_timing(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描时间参数。"""
     self.attack_policy["requestTimingInMs"] = int(b.get("requestTimingInMs") or 0)
     return {"requestTimingInMs": str(self.attack_policy["requestTimingInMs"])}
 
 
 def _ascan_set_max_duration(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描最大时长。"""
     self.attack_policy["maxDurationInMinutes"] = int(b.get("maxDurationInMinutes") or 0)
     return {"maxDurationInMinutes": str(self.attack_policy["maxDurationInMinutes"])}
 
 
 def _ascan_set_max_rule_duration(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描最大规则时长。"""
     self.attack_policy["maxRuleDurationInMinutes"] = int(b.get("maxRuleDurationInMinutes") or 0)
     return {"maxRuleDurationInMinutes": str(self.attack_policy["maxRuleDurationInMinutes"])}
 
 
 def _ascan_set_max_alerts(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描最大告警。"""
     self.scan_policy["maxAlertsPerRule"] = int(b.get("maxAlertsPerRule") or 10)
     return {"maxAlertsPerRule": str(self.scan_policy["maxAlertsPerRule"])}
 
 
 def _ascan_set_threshold(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描阈值。"""
     self.attack_policy["threshold"] = b.get("threshold") or "default"
     return {"threshold": self.attack_policy["threshold"]}
 
 
 def _ascan_set_attack(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描攻击参数。"""
     self.attack_policy["attackEnabled"] = bool(int(b.get("state") or 0))
     return {"attackEnabled": "true" if self.attack_policy["attackEnabled"] else "false"}
 
 
 def _ascan_set_rule(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置主动扫描规则。"""
     rule_id = str(b.get("ruleId") or "")
     state = bool(int(b.get("state") or 0))
     if state:
@@ -912,12 +949,14 @@ def _ascan_scan(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
 
 
 def _ascan_stop(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """停止主动扫描。"""
     self.active_scan_running = False
     self._cancelled = True
     return {"Scans stopped": "true"}
 
 
 def _ascan_progress(self: MockZAPTransport, p: dict, _b: dict, _f: dict) -> dict:
+    """读取主动扫描的当前进度。"""
     scan_id = str(p.get("scanId") or "1")
     if scan_id not in self.active_scan_progress:
         raise ZAPTransportError("扫描不存在", status_code=404, path="/JSON/ascan/progress")
@@ -933,29 +972,35 @@ def _core_alert(self: MockZAPTransport, p: dict, _b: dict, _f: dict) -> list:
 
 
 def _core_alert_json(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> list:
+    """将安全告警转换为 JSON 数据。"""
     return list(self._alerts)
 
 
 def _core_count_alerts(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """统计核心模块告警。"""
     return {"Total": str(len(self._alerts))}
 
 
 def _core_urls(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> list:
+    """列出模拟扫描器已经访问的 URL。"""
     return sorted(self._urls)
 
 
 def _core_history(self: MockZAPTransport, p: dict, _b: dict, _f: dict) -> list:
+    """查询模拟扫描器的请求历史。"""
     start = max(0, int(p.get("start") or 0))
     count = int(p.get("count") or len(self._history))
     return self._history[start : start + count]
 
 
 def _core_is_alert(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """判断模拟扫描结果是否包含安全告警。"""
     rule_id = str(b.get("ruleId") or "")
     return {"alert": "true" if (rule_id in self.pscan_enabled or rule_id in self.ascan_enabled) else "false"}
 
 
 def _core_set_alert(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置核心模块告警。"""
     rule_id = str(b.get("ruleId") or "")
     state = bool(int(b.get("state") or 0))
     for bucket in (self.pscan_enabled, self.ascan_enabled):
@@ -967,6 +1012,7 @@ def _core_set_alert(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict
 
 
 def _core_reset_all(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """重置核心模块`all`。"""
     self._alerts.clear()
     self._history.clear()
     self._urls.clear()
@@ -986,26 +1032,31 @@ def _core_reset_all(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dic
 
 
 def _authentication_set_method(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置认证方法。"""
     self.auth_method = b.get("value") or "none"
     return {"value": self.auth_method}
 
 
 def _authentication_set_strategy(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置认证策略。"""
     self.auth_strategy = b.get("value") or "manual"
     return {"value": self.auth_strategy}
 
 
 def _authentication_set_logged_in(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置认证登录状态。"""
     self.logged_in_indicator = b.get("regex") or ""
     return {"regex": self.logged_in_indicator}
 
 
 def _authentication_set_logged_out(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置认证登录状态外。"""
     self.logged_out_indicator = b.get("regex") or ""
     return {"regex": self.logged_out_indicator}
 
 
 def _authentication_set_user_agent(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置认证`user`智能体。"""
     self.user_agent_script = b.get("script") or ""
     return {"script": self.user_agent_script[:80]}
 
@@ -1027,26 +1078,31 @@ def _authentication_verify(self: MockZAPTransport, _p: dict, b: dict, _f: dict) 
 
 
 def _session_set_method(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置会话方法。"""
     self.session_method = b.get("value") or "none"
     return {"value": self.session_method}
 
 
 def _session_set_name(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置会话名称。"""
     self.session_name = b.get("value") or ""
     return {"value": self.session_name}
 
 
 def _session_set_header(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置会话请求头。"""
     self.session_header = b.get("header") or ""
     return {"header": self.session_header}
 
 
 def _session_set_value(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置会话值。"""
     self.session_value = b.get("value") or ""
     return {"value": "******" if self.session_value else ""}
 
 
 def _session_set_token_name(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """设置会话令牌名称。"""
     self.session_token_name = b.get("value") or ""
     return {"value": self.session_token_name}
 
@@ -1070,18 +1126,21 @@ def _openapi_add(self: MockZAPTransport, _p: dict, _b: dict, files: dict) -> dic
 
 
 def _scannerpool_list(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> list:
+    """列出`scannerpool`。"""
     if not self.world.has_scannerpool:
         raise ZAPTransportError("scannerpool 组件不可用", status_code=404, path="/JSON/scannerpool/list")
     return [{"name": "default", "id": 1}]
 
 
 def _ajax_spider(self: MockZAPTransport, _p: dict, b: dict, _f: dict) -> dict:
+    """执行模拟 AJAX 爬虫扫描。"""
     if not self.world.has_ajax_spider:
         raise ZAPTransportError("AJAX Spider 组件不可用", status_code=404)
     return _client_spider(self, _p, b, _f)
 
 
 def _ajax_spider_stop(self: MockZAPTransport, _p: dict, _b: dict, _f: dict) -> dict:
+    """停止AJAX爬虫。"""
     if not self.world.has_ajax_spider:
         raise ZAPTransportError("AJAX Spider 组件不可用", status_code=404)
     return _stop_client_spider(self, _p, _b, _f)

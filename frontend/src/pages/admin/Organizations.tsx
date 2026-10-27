@@ -22,6 +22,7 @@ import type { Organization, OrganizationMember, OrganizationRole } from '@/types
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { OrgRoleTag } from '@/components/RoleTag';
 import { getErrorMessage } from '@/api/client';
+import { PageHeader } from '@/components/PageHeader';
 
 // 组织角色下拉选项：owner > admin > member 三级
 const ORG_ROLE_OPTIONS: { label: string; value: OrganizationRole }[] = [
@@ -140,8 +141,8 @@ export function AdminOrganizationsPage() {
 
   return (
     <PageContainer>
+      <PageHeader title="组织管理" subtitle="维护组织成员、角色与模型授权" />
       <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <span style={{ fontSize: 16, fontWeight: 500 }}>组织管理</span>
         <Button type="primary" onClick={() => setCreating(true)}>
           新建组织
         </Button>

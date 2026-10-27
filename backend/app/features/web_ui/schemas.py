@@ -193,6 +193,7 @@ class SessionResponse(StrictModel):
     base_url: str
     target_page_path: str
     status: str
+    status_reason: str | None = None
     step_budget: int
     step_count: int = 0
     created_at: datetime | None = None

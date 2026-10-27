@@ -1,7 +1,7 @@
 """验收项 22：Security Testing Phase A —— 迁移、系统模板、设置与策略/规则 CRUD。
 
 覆盖开发计划 §12 Phase A 与 §16.1：
-- 迁移：head==0017、7 张 feature-local 安全表、两个部分唯一索引、ORM 与建表逐列对齐
+- 迁移：当前 head、7 张 feature-local 安全表、两个部分唯一索引、ORM 与建表逐列对齐
 - 降级：删除 0011 之后新增表，Mock（0010）表与数据保留
 - 系统模板：8 套 SYSTEM 策略与规则由 0011 幂等插入，重复 upgrade 不重复插；
   预留攻击类不插可执行规则
@@ -23,6 +23,7 @@ from tests.conftest import (
     BACKEND_DIR,
     TEST_DSN,
     TEST_DATABASE_NAME,
+    migration_head,
     unique,
 )
 
@@ -79,6 +80,7 @@ BUILTIN_STRATEGIES = {
 
 
 def _create_project(api, admin, name=None):
+    """创建项目。"""
     r = api.post(
         "/projects", username=admin,
         json={"name": name or unique("sec-proj"), "description": "security project"},
@@ -96,6 +98,7 @@ def _register(api, username):
 
 
 def _add_member(api, admin, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}", username=admin,
         json={"user_id": user_id, "role": role},
@@ -121,7 +124,7 @@ def _user_id(username):
 
 
 def _skey(prefix="PROJ"):
-    """strategy_key：^[A-Z][A-Z0-9_]{0,99}$。"""
+    """策略键格式：strategy_key：^[A-Z][A-Z0-9_]{0,99}。"""
     return f"{prefix}_{uuid4().hex[:8].upper()}"
 
 
@@ -155,6 +158,7 @@ def _rule_body(
 
 def _create_strategy(api, actor, project_id, *, key=None, category="AUTHENTICATION",
                      rules=None, enabled=True, name=None, risk_level="MEDIUM"):
+    """创建策略。"""
     body = {
         "name": name or (key or unique("sec")),
         "strategy_key": key or _skey(),
@@ -172,6 +176,7 @@ def _create_strategy(api, actor, project_id, *, key=None, category="AUTHENTICATI
 
 
 def _tables(db):
+    """构造安全策略相关表结构的测试快照。"""
     return {
         row[0]
         for row in db.execute(
@@ -184,6 +189,7 @@ def _tables(db):
 
 
 def _indexes(db):
+    """构造安全策略相关索引的测试快照。"""
     return {
         row[0]
         for row in db.execute(text("select indexname from pg_indexes where schemaname='public'"))
@@ -206,9 +212,10 @@ def _alembic(config=None):
 
 
 class TestMigration:
-    def test_head_is_0017_and_tables_created(self, db):
+    def test_head_and_tables_created(self, db):
+        """验证`head`是否和`tables`创建场景及其预期结果。"""
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == "0017"
+        assert head == migration_head()
         assert SECURITY_TABLES.issubset(_tables(db))
 
     def test_partial_unique_indexes(self, db):
@@ -261,7 +268,7 @@ class TestMigration:
             assert table not in init_source
 
     def test_downgrade_removes_only_security_tables(self, db):
-        """downgrade 到 0010 删除 0011 之后的表：Mock 表与数据保留，升级后 head 回到 0017。"""
+        """downgrade 到 0010 删除后续 feature 表，Mock 保留；再升级至当前 head。"""
         from alembic import command
 
         config = _alembic()
@@ -281,11 +288,12 @@ class TestMigration:
         assert _tables(db) >= SECURITY_TABLES
         assert WEB_AGENT_TABLES.issubset(_tables(db)), _tables(db)
         assert TASK_TABLES.issubset(_tables(db)), _tables(db)
-        assert db.execute(text("select version_num from alembic_version")).scalar() == "0017"
+        assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
 
 
 class TestBuiltinStrategies:
     def test_builtin_strategies_seeded(self, db):
+        """验证内置`strategies``seeded`场景及其预期结果。"""
         rows = db.execute(
             text("select strategy_key, category, scope, builtin, enabled, project_id "
                  "from security_strategy where project_id is null order by strategy_key")
@@ -297,6 +305,7 @@ class TestBuiltinStrategies:
         assert len(rows) == len(BUILTIN_STRATEGIES)
 
     def test_builtin_rule_counts(self, db):
+        """验证内置规则`counts`场景及其预期结果。"""
         got = {
             s_key: count
             for s_key, count in db.execute(
@@ -331,6 +340,7 @@ class TestBuiltinStrategies:
         assert rows and all(r[0] is None for r in rows)
 
     def test_migration_insert_is_idempotent(self, db):
+        """验证`migration``insert`是否幂等场景及其预期结果。"""
         from app.features.security_testing.builtins import ensure_builtin_strategies
 
         before = db.execute(text("select count(*) from security_strategy")).scalar()
@@ -343,6 +353,7 @@ class TestBuiltinStrategies:
         assert db.execute(text("select count(*) from security_mutation_rule")).scalar() == before_rules
 
     def test_builtin_rules_have_no_script_keys(self, db):
+        """验证内置`rules``have`无`script``keys`场景及其预期结果。"""
         rows = db.execute(
             text("select mutation_config from security_mutation_rule where strategy_id in "
                  "(select id from security_strategy where project_id is null)")
@@ -357,6 +368,7 @@ class TestBuiltinStrategies:
 
 class TestSecuritySetting:
     def test_get_returns_defaults_without_insert(self, api, admin, db):
+        """验证获取`returns``defaults`不带`insert`场景及其预期结果。"""
         pid = _create_project(api, admin)
         assert db.execute(
             text("select count(*) from security_project_setting")
@@ -377,6 +389,7 @@ class TestSecuritySetting:
         ).scalar() == 0
 
     def test_update_then_conflict_on_stale_revision(self, api, admin):
+        """验证更新`then``conflict``on``stale``revision`场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.put(
             f"/projects/{pid}/security-setting", username=admin,
@@ -422,6 +435,7 @@ class TestSecuritySetting:
         ).json()["production_enforced"] is False
 
     def test_viewer_cannot_update_setting(self, api, admin):
+        """验证`viewer`不能更新`setting`场景及其预期结果。"""
         pid = _create_project(api, admin)
         viewer = _user(api, admin, pid, "sec-viewer", "viewer")
         r = api.put(
@@ -436,6 +450,7 @@ class TestSecuritySetting:
 
 class TestStrategyCrud:
     def test_create_list_get_update_delete(self, api, admin):
+        """验证创建列出获取更新删除场景及其预期结果。"""
         pid = _create_project(api, admin)
         key = _skey()
         created = _create_strategy(
@@ -476,6 +491,7 @@ class TestStrategyCrud:
         assert api.get(f"/security-strategies/{created['id']}", username=admin).status_code == 404
 
     def test_list_filters(self, api, admin):
+        """验证列出`filters`场景及其预期结果。"""
         pid = _create_project(api, admin)
         _create_strategy(api, admin, pid, category="AUTHENTICATION")
         _create_strategy(api, admin, pid, category="PARAMETER", enabled=False)
@@ -497,6 +513,7 @@ class TestStrategyCrud:
         assert own and all(i["enabled"] is False for i in own)
 
     def test_list_includes_system_templates(self, api, admin):
+        """验证列出`includes``system``templates`场景及其预期结果。"""
         pid = _create_project(api, admin)
         _create_strategy(api, admin, pid, category="AUTHENTICATION")
         items = api.get(f"/projects/{pid}/security-strategies", username=admin,
@@ -505,6 +522,7 @@ class TestStrategyCrud:
         assert {s["scope"] for s in items} >= {"SYSTEM", "PROJECT"}
 
     def test_duplicate_strategy_key_conflict(self, api, admin):
+        """验证重复策略键`conflict`场景及其预期结果。"""
         pid = _create_project(api, admin)
         key = _skey()
         _create_strategy(api, admin, pid, key=key)
@@ -515,6 +533,7 @@ class TestStrategyCrud:
         assert r.status_code == 409
 
     def test_stale_revision_conflict(self, api, admin):
+        """验证`stale``revision``conflict`场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid)
         r = api.patch(
@@ -524,6 +543,7 @@ class TestStrategyCrud:
         assert r.status_code == 409
 
     def test_empty_patch_is_noop(self, api, admin):
+        """验证空值局部更新是否`noop`场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid)
         r = api.patch(f"/security-strategies/{created['id']}", username=admin, json={})
@@ -533,6 +553,7 @@ class TestStrategyCrud:
 
 class TestReservedCategory:
     def test_create_reserved_forces_enabled_false(self, api, admin, db):
+        """验证创建`reserved``forces`启用状态`false`场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(
             api, admin, pid, category="INJECTION", enabled=True,
@@ -548,6 +569,7 @@ class TestReservedCategory:
         assert row is False
 
     def test_reserved_strategy_cannot_be_enabled(self, api, admin):
+        """验证`reserved`策略不能`be`启用状态场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid, category="SSRF", enabled=False)
         r = api.patch(
@@ -557,6 +579,7 @@ class TestReservedCategory:
         assert r.status_code == 403
 
     def test_reserved_rule_cannot_be_enabled(self, api, admin):
+        """验证`reserved`规则不能`be`启用状态场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid, category="RATE_LIMIT", enabled=False)
         rule = created["rules"][0]
@@ -567,6 +590,7 @@ class TestReservedCategory:
         assert r.status_code == 403
 
     def test_reserved_rule_can_be_disabled(self, api, admin):
+        """验证`reserved`规则可以`be``disabled`场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid, category="UPLOAD")
         rule = created["rules"][0]
@@ -589,6 +613,7 @@ class TestReservedCategory:
 
 class TestRuleCrud:
     def test_create_rule_under_strategy(self, api, admin):
+        """验证创建规则`under`策略场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -606,6 +631,7 @@ class TestRuleCrud:
         assert len(detail["rules"]) == 1
 
     def test_script_keys_rejected(self, api, admin):
+        """验证`script``keys`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         for bad in ("script", "python", "sql", "shell", "command", "payload_file"):
@@ -617,6 +643,7 @@ class TestRuleCrud:
             assert r.json()["code"] == "SECURITY_MUTATION_INVALID"
 
     def test_nested_script_key_rejected(self, api, admin):
+        """验证`nested``script`键被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -627,6 +654,7 @@ class TestRuleCrud:
         assert r.json()["code"] == "SECURITY_MUTATION_INVALID"
 
     def test_unknown_config_key_rejected(self, api, admin):
+        """验证未知配置键被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -637,6 +665,7 @@ class TestRuleCrud:
         assert r.json()["code"] == "SECURITY_MUTATION_INVALID"
 
     def test_unsupported_mutation_type_rejected(self, api, admin):
+        """验证`unsupported`变异类型被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -646,6 +675,7 @@ class TestRuleCrud:
         assert r.status_code == 422, r.text
 
     def test_expectation_mismatch_rejected(self, api, admin):
+        """验证`expectation``mismatch`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -657,6 +687,7 @@ class TestRuleCrud:
         assert r.json()["code"] == "SECURITY_EXPECTATION_INVALID"
 
     def test_unknown_expectation_rejected(self, api, admin):
+        """验证未知`expectation`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -667,6 +698,7 @@ class TestRuleCrud:
         assert r.json()["code"] == "SECURITY_EXPECTATION_INVALID"
 
     def test_status_code_out_of_range_rejected(self, api, admin):
+        """验证状态代码`out``of``range`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         r = api.post(
@@ -676,6 +708,7 @@ class TestRuleCrud:
         assert r.status_code == 422, r.text
 
     def test_replay_count_capped(self, api, admin):
+        """验证`replay`统计`capped`场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid, rules=[])
         for bad in (1, 4, 100):
@@ -689,6 +722,7 @@ class TestRuleCrud:
             assert r.status_code == 400, (bad, r.text)
 
     def test_update_and_delete_rule(self, api, admin):
+        """验证更新和删除规则场景及其预期结果。"""
         pid = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid)
         rule_id = strategy["rules"][0]["id"]
@@ -728,6 +762,7 @@ class TestRuleCrud:
 
 class TestBuiltinReadonly:
     def test_builtin_strategy_is_read_only(self, api, admin, db):
+        """验证内置策略是否读取仅场景及其预期结果。"""
         strategy_id = db.execute(
             text("select id from security_strategy where strategy_key='AUTH_BASIC'")
         ).scalar_one()
@@ -753,6 +788,7 @@ class TestBuiltinReadonly:
         ).one()[:2] == ("认证基础检查", True)
 
     def test_builtin_rule_is_read_only(self, api, admin, db):
+        """验证内置规则是否读取仅场景及其预期结果。"""
         rule_id = db.execute(
             text("select r.id from security_mutation_rule r "
                  "join security_strategy s on s.id = r.strategy_id "
@@ -772,6 +808,7 @@ class TestBuiltinReadonly:
 
 class TestPermissions:
     def test_viewer_can_read_not_write(self, api, admin):
+        """验证`viewer`可以读取不写入场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid)
         viewer = _user(api, admin, pid, "sec-viewer", "viewer")
@@ -788,6 +825,7 @@ class TestPermissions:
         assert api.delete(f"/security-strategies/{created['id']}", username=viewer).status_code == 403
 
     def test_member_can_read_but_not_manage(self, api, admin):
+        """验证成员可以读取`but`不`manage`场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid)
         member = _user(api, admin, pid, "sec-member", "member")
@@ -807,6 +845,7 @@ class TestPermissions:
         ).status_code == 403
 
     def test_editor_can_manage(self, api, admin):
+        """验证`editor`可以`manage`场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid)
         editor = _user(api, admin, pid, "sec-editor", "editor")
@@ -826,6 +865,7 @@ class TestPermissions:
         ).status_code == 200
 
     def test_platform_admin_can_manage_any_project(self, api, admin):
+        """验证`platform``admin`可以`manage``any`项目场景及其预期结果。"""
         pid = _create_project(api, admin)
         created = _create_strategy(api, admin, pid)
         r = api.patch(
@@ -835,6 +875,7 @@ class TestPermissions:
         assert r.status_code == 200, r.text
 
     def test_cross_project_is_hidden_as_not_found(self, api, admin):
+        """验证跨项目项目是否`hidden``as`不`found`场景及其预期结果。"""
         pid_a = _create_project(api, admin)
         pid_b = _create_project(api, admin)
         strategy = _create_strategy(api, admin, pid_a)
@@ -882,6 +923,7 @@ class TestPermissions:
 
 class TestValidation:
     def test_invalid_category_rejected(self, api, admin):
+        """验证无效`category`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/security-strategies", username=admin,
@@ -890,6 +932,7 @@ class TestValidation:
         assert r.status_code == 422, r.text
 
     def test_bad_strategy_key_rejected(self, api, admin):
+        """验证`bad`策略键被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/security-strategies", username=admin,
@@ -898,6 +941,7 @@ class TestValidation:
         assert r.status_code == 422, r.text
 
     def test_bad_risk_level_rejected(self, api, admin):
+        """验证`bad`风险`level`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/security-strategies", username=admin,
@@ -907,6 +951,7 @@ class TestValidation:
         assert r.status_code == 422, r.text
 
     def test_bad_target_location_rejected(self, api, admin):
+        """验证`bad`目标`location`被拒绝场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/security-strategies", username=admin,
@@ -916,6 +961,7 @@ class TestValidation:
         assert r.status_code == 422, r.text
 
     def test_missing_ids_are_not_found(self, api, admin):
+        """验证缺失`ids`是否为不`found`场景及其预期结果。"""
         assert api.get("/projects/999999/security-strategies", username=admin).status_code == 404
         assert api.get("/security-strategies/999999", username=admin).status_code == 404
         assert api.patch(
@@ -926,6 +972,7 @@ class TestValidation:
         ).status_code == 404
 
     def test_unauthenticated_rejected(self, api):
+        """验证`unauthenticated`被拒绝场景及其预期结果。"""
         assert api.get("/projects/1/security-strategies").status_code == 401
 
     def test_finding_partial_index_only_covers_open_status(self, db):

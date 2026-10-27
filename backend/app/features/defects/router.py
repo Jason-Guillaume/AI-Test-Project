@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -19,8 +21,11 @@ from app.features.defects.schemas import (
     BugListResponse,
     BugResponse,
     BugUpdate,
+    DefectSourceRequest,
+    DefectSourceResponse,
 )
 from app.features.defects.services.defect_service import DefectService
+from app.features.defects.services.source_service import DefectSourceService
 from app.models.identity import User
 from app.models.project import Project
 from app.shared.auth import get_current_user
@@ -30,6 +35,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 router = APIRouter(prefix="/bugs", tags=["缺陷管理"])
 # 服务实例无状态，路由层复用一个单例即可。
 SERVICE = DefectService()
+SOURCE_SERVICE = DefectSourceService()
 
 
 def _response(db: Session, bug: Bug) -> BugResponse:
@@ -92,6 +98,30 @@ def list_bugs(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/sources/context")
+def source_context(source_type: Literal["CASE_EXECUTION", "SECURITY_FINDING"], source_id: int = Query(gt=0), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """读取授权来源的项目和测试运行编号，不返回敏感证据。"""
+    return SOURCE_SERVICE.source_context(db, source_type, source_id, user)
+
+
+@router.get("/sources", response_model=list[DefectSourceResponse])
+def list_source_links(source_type: Literal["CASE_EXECUTION", "SECURITY_FINDING"], source_id: int = Query(gt=0), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """按真实来源查询授权范围内的缺陷关联。"""
+    return SOURCE_SERVICE.list_for_source(db, source_type, source_id, user)
+
+
+@router.post("/sources", response_model=DefectSourceResponse)
+def link_source(body: DefectSourceRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """人工创建或关联缺陷，重复请求安全返回已有关系。"""
+    return SOURCE_SERVICE.link(db, body, user)
+
+
+@router.get("/{bug_id}/sources", response_model=list[DefectSourceResponse])
+def list_bug_sources(bug_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """查询缺陷的真实来源。"""
+    return SOURCE_SERVICE.list_for_bug(db, bug_id, user)
 
 
 @router.get("/{bug_id}", response_model=BugResponse)

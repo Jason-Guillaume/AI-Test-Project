@@ -29,7 +29,7 @@ import {
   Typography,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/api/testManagement';
@@ -37,6 +37,7 @@ import { testDataApi } from '@/api/testData';
 import { getErrorMessage } from '@/api/client';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
 import {
   TEST_ASSERTION_TYPE_OPTIONS,
   TEST_CASE_TYPE_OPTIONS,
@@ -88,10 +89,21 @@ interface TreeNode {
 
 /** 测试资产页。 */
 export function ConsoleTestAssetPage() {
+  const { currentProjectId } = useConsoleScope();
+  // 切换项目时卸载旧详情和编辑弹窗，避免对上一项目继续操作。
+  return <TestAssetWorkspace key={currentProjectId ?? 'none'} />;
+}
+
+/** 展示当前项目的测试资产并恢复来自任务的用例链接。 */
+function TestAssetWorkspace() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedCaseId = Number(searchParams.get('caseId'));
+  const requestedProjectId = Number(searchParams.get('projectId'));
+  const restoredCase = useRef('');
 
   const [selectedStrategyId, setSelectedStrategyId] = useState<number | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
@@ -132,6 +144,24 @@ export function ConsoleTestAssetPage() {
   const points = pointsQuery.data ?? [];
   const cases = casesQuery.data ?? [];
   const detail = detailQuery.data;
+
+  useEffect(() => {
+    if (!Number.isSafeInteger(requestedCaseId) || requestedCaseId <= 0) {
+      restoredCase.current = '';
+      return;
+    }
+    if (!currentProjectId || (requestedProjectId > 0 && requestedProjectId !== currentProjectId) || !casesQuery.isSuccess || !pointsQuery.isSuccess) return;
+    const restoreKey = `${currentProjectId}:${requestedCaseId}`;
+    if (restoredCase.current === restoreKey) return;
+    const selected = casesQuery.data.find((item) => item.id === requestedCaseId);
+    if (!selected) return;
+    const point = pointsQuery.data.find((item) => item.id === selected.test_point_id);
+    setSelectedCaseId(selected.id);
+    setSelectedPointId(selected.test_point_id ?? null);
+    setSelectedStrategyId(point?.strategy_id ?? null);
+    setSelectedKey(`c:${selected.id}`);
+    restoredCase.current = restoreKey;
+  }, [casesQuery.data, casesQuery.isSuccess, currentProjectId, pointsQuery.data, pointsQuery.isSuccess, requestedCaseId, requestedProjectId]);
 
   const treeData = useMemo<TreeNode[]>(() => {
     const buildPoints = (parentId: number | null) =>
@@ -274,8 +304,17 @@ export function ConsoleTestAssetPage() {
     });
   };
 
+  if (requestedProjectId > 0 && requestedProjectId !== currentProjectId) return <PageContainer><Alert type="warning" showIcon message={`此链接指向项目 #${requestedProjectId}，请先在顶部切换项目`} /></PageContainer>;
+
   return (
     <PageContainer>
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="测试资产与专业工作区"
+        description={<Space wrap>在此管理测试策略、测试点和用例；Web 页面对象与安全策略可在对应工作区维护。<Button size="small" onClick={() => navigate('/console/web-ui')}>Web UI 工作区</Button><Button size="small" onClick={() => navigate('/console/security-testing')}>安全测试工作区</Button></Space>}
+      />
       <Row gutter={16}>
         {/* 左侧树 */}
         <Col flex="300px">
@@ -355,11 +394,12 @@ export function ConsoleTestAssetPage() {
                           用此用例创建任务
                         </Button>
                       )}
-                      <Button size="small" icon={<EditOutlined />} onClick={openCaseEdit}>编辑用例</Button>
+                      {detail.target_type === 'WEB' ? <Button size="small" onClick={() => navigate(`/console/web-ui?caseId=${detail.id}`)}>打开 Web 用例</Button> : <Button size="small" icon={<EditOutlined />} onClick={openCaseEdit}>编辑用例</Button>}
                     </Space>
                   )}
                   style={{ marginBottom: 12 }}
                 >
+                  <TaskSourceLinks resourceType="TEST_CASE" resourceId={detail.id} />
                   <Descriptions size="small" column={3}>
                     <Descriptions.Item label="优先级"><Tag>{detail.priority}</Tag></Descriptions.Item>
                     <Descriptions.Item label="类型">{detail.case_type}</Descriptions.Item>
@@ -371,7 +411,7 @@ export function ConsoleTestAssetPage() {
                   </Descriptions>
                 </Card>
 
-                <Tabs
+                {detail.target_type === 'WEB' ? <Alert type="info" showIcon message="Web 步骤在 Web UI 工作区维护，请使用上方入口查看和编辑。" /> : <Tabs
                   items={[
                     { key: 'preconditions', label: '前置条件', children: <PreconditionsTab caseId={detail.id} items={detail.preconditions} /> },
                     { key: 'data', label: '测试数据', children: <DataTab caseId={detail.id} items={detail.test_data} fixtures={detail.fixtures} /> },
@@ -379,7 +419,7 @@ export function ConsoleTestAssetPage() {
                     { key: 'steps', label: '步骤', children: <StepsTab caseId={detail.id} items={detail.steps} /> },
                     { key: 'assertions', label: '断言', children: <AssertionsTab caseId={detail.id} items={detail.assertions} /> },
                   ]}
-                />
+                />}
               </>
             )}
           </div>

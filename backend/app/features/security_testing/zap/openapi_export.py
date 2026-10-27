@@ -232,6 +232,7 @@ def _is_sensitive_parameter(param: ApiParameter) -> bool:
 
 
 def _parameter_to_openapi(param: ApiParameter) -> dict[str, Any] | None:
+    """将参数转换为 OpenAPI 格式。"""
     param_in = _PARAM_IN_MAP.get(str(param.location or "").upper())
     if param_in is None:
         return None
@@ -286,6 +287,7 @@ def _normalize_path(path: Any) -> str:
 
 
 def _interface_rows(db: Session, project_id: int) -> dict[int, ApiInterface]:
+    """查询项目下的 API 接口记录。"""
     rows = (
         db.query(ApiInterface)
         .filter(ApiInterface.project_id == project_id, ApiInterface.status != "DEPRECATED")
@@ -296,6 +298,7 @@ def _interface_rows(db: Session, project_id: int) -> dict[int, ApiInterface]:
 
 
 def _parameters_for(db: Session, interface_id: int) -> list[ApiParameter]:
+    """生成 OpenAPI 参数定义。"""
     return (
         db.query(ApiParameter)
         .filter(ApiParameter.interface_id == interface_id)
@@ -305,10 +308,12 @@ def _parameters_for(db: Session, interface_id: int) -> list[ApiParameter]:
 
 
 def _body_for(db: Session, interface_id: int) -> ApiRequestBody | None:
+    """生成 OpenAPI 请求体定义。"""
     return db.query(ApiRequestBody).filter(ApiRequestBody.interface_id == interface_id).first()
 
 
 def _responses_for(db: Session, interface_id: int) -> list[ApiResponse]:
+    """生成 OpenAPI 响应定义。"""
     return (
         db.query(ApiResponse)
         .filter(ApiResponse.interface_id == interface_id)

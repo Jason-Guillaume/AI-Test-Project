@@ -68,7 +68,7 @@ export function ApiDetail({
         {
           key: 'debug',
           label: '调试',
-          children: <DebugTab api={api} />,
+          children: <DebugTab api={api} projectId={projectId} />,
         },
         {
           key: 'history',

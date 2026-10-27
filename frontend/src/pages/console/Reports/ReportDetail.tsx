@@ -46,7 +46,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
 
-import { environmentsApi } from '@/api/environments';
 import { getErrorMessage } from '@/api/client';
 import { notificationChannelsApi } from '@/api/notificationChannels';
 import { projectsApi } from '@/api/projects';
@@ -301,8 +300,9 @@ export function ConsoleReportDetailPage() {
     staleTime: 60_000,
   });
   const envsQuery = useQuery({
-    queryKey: ['environments'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
+    queryKey: ['project-environments', reportProjectId],
+    queryFn: () => projectsApi.listEnvironments(reportProjectId!),
+    enabled: reportProjectId != null,
     staleTime: 60_000,
   });
 
@@ -330,7 +330,7 @@ export function ConsoleReportDetailPage() {
   const openNotifyModal = () => {
     if (channelsQuery.isError) return;
     if (channels.length === 0) {
-      msg.warning('请先在「通知中心 · 通知渠道」配置启用且连通测试通过的渠道');
+      msg.warning('请先在「项目配置 · 通知渠道」配置启用且连通测试通过的渠道');
       return;
     }
     if (channels.length === 1) setNotifyChannelId(channels[0].id);
@@ -899,7 +899,7 @@ export function ConsoleReportDetailPage() {
                       type="warning"
                       showIcon
                       message="没有可用的通知渠道"
-                      description="请在「通知中心 · 通知渠道」配置启用且连通测试通过的渠道后重试。"
+                      description="请在「项目配置 · 通知渠道」配置启用且连通测试通过的渠道后重试。"
                     />
                   ) : null}
                   {recordsQuery.isError ? (

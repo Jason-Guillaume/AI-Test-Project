@@ -28,6 +28,7 @@ class MockContextService:
     """Mock 执行作用域管理。无状态，路由层复用单例。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self._runtime = MockRuntimeService()
 
     def list_contexts(
@@ -35,6 +36,7 @@ class MockContextService:
         status: str | None = None, test_run_id: int | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> list[MockContextResponse]:
+        """列出`contexts`。"""
         get_project_or_404(db, project_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(MockContext).filter(MockContext.project_id == project_id)
@@ -52,6 +54,7 @@ class MockContextService:
         return [MockContextResponse.model_validate(c) for c in items]
 
     def get_context(self, db: Session, context_id: str, user: User) -> MockContextResponse:
+        """获取上下文。"""
         ctx = (
             db.query(MockContext)
             .filter(MockContext.context_id == context_id)
@@ -63,6 +66,7 @@ class MockContextService:
         return MockContextResponse.model_validate(ctx)
 
     def close_context(self, db: Session, context_id: str, *, actor: User) -> MockContextResponse:
+        """关闭上下文。"""
         ctx = (
             db.query(MockContext)
             .filter(MockContext.context_id == context_id)

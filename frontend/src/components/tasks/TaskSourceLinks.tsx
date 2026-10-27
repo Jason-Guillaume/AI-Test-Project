@@ -22,16 +22,19 @@ export function TaskSourceLinks({ resourceType, resourceId }: Props) {
   return (
     <Space wrap>
       <Typography.Text type="secondary">关联任务：</Typography.Text>
-      {(query.data ?? []).map((ref) => (
-        <Button
-          key={ref.id}
-          size="small"
-          type="link"
-          onClick={() => navigate(`/console/tasks/${ref.metadata_json.task_id ?? ref.task_run_id}`)}
-        >
-          任务运行 #{ref.task_run_id}
-        </Button>
-      ))}
+      {(query.data ?? []).map((ref) => {
+        const taskId = ref.task_id ?? (typeof ref.metadata_json.task_id === 'number' ? ref.metadata_json.task_id : null);
+        return taskId != null ? (
+          <Button
+            key={ref.id}
+            size="small"
+            type="link"
+            onClick={() => navigate(`/console/tasks/${taskId}?runId=${ref.task_run_id}`)}
+          >
+            {ref.task_title ?? `任务 #${taskId}`} · 运行 #{ref.run_number ?? ref.task_run_id}
+          </Button>
+        ) : <Typography.Text key={ref.id} type="secondary">运行 #{ref.task_run_id}（缺少任务来源）</Typography.Text>;
+      })}
     </Space>
   );
 }

@@ -3,16 +3,22 @@
 import {
   App,
   Button,
+  Card,
+  Col,
   Form,
   Input,
   InputNumber,
   Modal,
+  Pagination,
+  Row,
   Select,
   Space,
   Switch,
   Table,
   Tag,
+  Typography,
 } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import {
@@ -24,11 +30,13 @@ import {
 import type { ModelConfiguration, Paginated } from '@/types';
 import {
   ErrorState,
+  EmptyState,
   LoadingState,
   PageContainer,
 } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
+import { type PaginationState } from '@/components/ResourceTable';
 import { getErrorMessage } from '@/api/client';
+import { PageHeader } from '@/components/PageHeader';
 
 /**
  * 模型配置管理页。
@@ -41,7 +49,7 @@ import { getErrorMessage } from '@/api/client';
  * 空态：无搜索结果时表格空态由 antd 默认展示。
  */
 export function AdminModelConfigsPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   // 分页初值：第一页，每页 10 条
   const [pagination, setPagination] = useState<PaginationState>({
@@ -80,6 +88,7 @@ export function AdminModelConfigsPage() {
     onSuccess: () => {
       message.success('已创建');
       invalidate();
+      setPagination((p) => ({ ...p, page: 1 }));
       setCreating(false);
     },
     onError: (e) => message.error(getErrorMessage(e)),
@@ -108,69 +117,10 @@ export function AdminModelConfigsPage() {
     onSuccess: () => {
       message.success('已删除');
       invalidate();
+      setPagination((p) => ({ ...p, page: 1 }));
     },
     onError: (e) => message.error(getErrorMessage(e)),
   });
-
-  // 表格列定义：memo 依赖 setDefaultMutation/deleteMutation，mutation 实例变化时重建 render
-  const columns = useMemo(
-    () => [
-      { title: '展示名', dataIndex: 'label' },
-      { title: 'domain_id', dataIndex: 'domain_id' },
-      { title: '供应商', dataIndex: 'provider' },
-      { title: '模型', dataIndex: 'model_name' },
-      {
-        title: 'API Key',
-        key: 'key',
-        // API Key 从不回读明文；只展示 masked 值，未配置则显示「未配置」
-        render: (_: unknown, row: ModelConfiguration) =>
-          row.has_api_key ? (
-            <Tag color="green">{row.masked_api_key || '已配置'}</Tag>
-          ) : (
-            <Tag>未配置</Tag>
-          ),
-      },
-      {
-        title: '状态',
-        key: 'state',
-        render: (_: unknown, row: ModelConfiguration) => (
-          <Space size="small">
-            {row.is_enabled ? <Tag color="blue">启用</Tag> : <Tag>停用</Tag>}
-            {row.is_default && <Tag color="gold">默认</Tag>}
-          </Space>
-        ),
-      },
-      {
-        title: '操作',
-        key: 'actions',
-        width: 220,
-        // 保护：默认项不允许再改默认或删除
-        render: (_: unknown, row: ModelConfiguration) => (
-          <Space>
-            <Button size="small" onClick={() => setEditing(row)}>
-              编辑
-            </Button>
-            <Button
-              size="small"
-              disabled={row.is_default || !row.is_enabled}
-              onClick={() => setDefaultMutation.mutate(row.id)}
-            >
-              设为默认
-            </Button>
-            <Button
-              size="small"
-              danger
-              disabled={row.is_default}
-              onClick={() => deleteMutation.mutate(row.id)}
-            >
-              删除
-            </Button>
-          </Space>
-        ),
-      },
-    ],
-    [setDefaultMutation, deleteMutation],
-  );
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
   if (listQuery.isPending) return <LoadingState />;
@@ -185,34 +135,74 @@ export function AdminModelConfigsPage() {
 
   return (
     <PageContainer>
-      <Space
-        style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
-      >
+      <PageHeader title="模型配置" subtitle="维护模型连接、启用状态与默认模型" />
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <Input.Search
           placeholder="按名称/供应商搜索"
           allowClear
           enterButton
-          style={{ width: 320 }}
-          // 搜索触发：更新关键词并把页码重置回第一页
+          style={{ width: 320, maxWidth: '100%' }}
           onSearch={(v) => {
             setKeyword(v);
             setPagination((p) => ({ ...p, page: 1 }));
           }}
         />
-        <Button type="primary" onClick={() => setCreating(true)}>
-          新增模型配置
-        </Button>
-      </Space>
-
-      <ResourceTable<ModelConfiguration>
-        rowKey={(r) => r.id}
-        columns={columns}
-        dataSource={data.items}
-        loading={listQuery.isFetching}
+        <Button type="primary" onClick={() => setCreating(true)}>新增模型配置</Button>
+      </div>
+      <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>共 {data.total} 个模型配置</Typography.Text>
+      {data.items.length ? <Row gutter={[12, 12]}>
+        {data.items.map((model) => <Col xs={24} md={12} xl={8} xxl={6} key={model.id}>
+          <Card size="small" style={{ height: '100%', background: model.is_default ? '#fffaf0' : undefined }} styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', padding: 12 } }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <Typography.Text strong ellipsis={{ tooltip: model.label }} style={{ display: 'block' }}>{model.label}</Typography.Text>
+                <Space size={4} style={{ marginTop: 4 }}>
+                  <Tag>{model.provider.toUpperCase()}</Tag>
+                  {model.is_default && <Tag color="gold">默认</Tag>}
+                </Space>
+              </div>
+              <Tag color={model.is_enabled ? 'green' : 'default'}>{model.is_enabled ? '正常' : '已停用'}</Tag>
+            </div>
+            <Typography.Text type="secondary" ellipsis={{ tooltip: model.model_name }} style={{ display: 'block', marginTop: 8 }}>{model.model_name}</Typography.Text>
+            <Space wrap size={[4, 4]} style={{ marginTop: 8 }}>
+              {model.has_api_key ? <Tag color="green">{model.masked_api_key || '密钥已配置'}</Tag> : <Tag color="orange">密钥未配置</Tag>}
+              <Tag>{model.fallback_model_ids.length} 个备用模型</Tag>
+            </Space>
+            <div style={{ marginTop: 'auto', paddingTop: 10 }}>
+              <Button
+                block
+                disabled={model.is_default || !model.is_enabled}
+                loading={setDefaultMutation.isPending && setDefaultMutation.variables === model.id}
+                onClick={() => setDefaultMutation.mutate(model.id)}
+              >
+                {model.is_default ? '已设为默认' : '设为默认'}
+              </Button>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <Button type="link" style={{ paddingInline: 0 }} onClick={() => setEditing(model)}>编辑配置</Button>
+                <Button
+                  danger
+                  type="text"
+                  aria-label={`删除模型配置 ${model.label}`}
+                  disabled={model.is_default}
+                  loading={deleteMutation.isPending && deleteMutation.variables === model.id}
+                  icon={<DeleteOutlined />}
+                  onClick={() => modal.confirm({ title: `删除模型配置「${model.label}」？`, okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(model.id) })}
+                />
+              </div>
+            </div>
+          </Card>
+        </Col>)}
+      </Row> : <EmptyState description={keyword ? '没有匹配的模型配置' : '还没有模型配置'} />}
+      {data.total > pagination.page_size && <Pagination
+        current={pagination.page}
+        pageSize={pagination.page_size}
         total={data.total}
-        pagination={pagination}
-        onPaginationChange={setPagination}
-      />
+        showSizeChanger
+        showTotal={(total) => `共 ${total} 个模型配置`}
+        pageSizeOptions={[10, 20, 50]}
+        onChange={(page, pageSize) => setPagination({ page, page_size: pageSize })}
+        style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}
+      />}
 
       {creating && (
         <ModelFormModal
@@ -247,7 +237,7 @@ export function AdminModelConfigsPage() {
  *       留空表示保留原密钥（后端语义），填写新值表示覆盖。
  * 数据来源：providers 通过 useQuery 单独拉取，用于「供应商」下拉。
  * 是否发请求：本组件不发写请求，仅通过 onSubmit 抛 body 给父组件。
- * 校验：domain_id/label/model_name 必填；is_enabled=true 时 api_key 必填（与后端一致）。
+ * 校验：label/model_name 必填；is_enabled=true 时 api_key 必填（与后端一致）。
  * 失败呈现：Form 就地展示 rules 提示；提交进行中标记 loading。
  */
 function ModelFormModal({
@@ -289,7 +279,6 @@ function ModelFormModal({
         initialValues={
           editing
             ? {
-                domain_id: editing.domain_id,
                 label: editing.label,
                 provider: editing.provider,
                 api_base: editing.api_base,
@@ -316,13 +305,6 @@ function ModelFormModal({
               }
         }
       >
-        <Form.Item
-          name="domain_id"
-          label="domain_id（稳定逻辑 ID）"
-          rules={[{ required: true, message: '请输入 domain_id' }]}
-        >
-          <Input />
-        </Form.Item>
         <Form.Item name="label" label="展示名称" rules={[{ required: true }]}>
           <Input />
         </Form.Item>

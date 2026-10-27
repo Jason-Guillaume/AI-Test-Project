@@ -68,10 +68,12 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(c: TestCase) -> TestCaseResponse:
+    """构造接口响应数据。"""
     return TestCaseResponse.model_validate(c)
 
 
 def _ensure_unique_name(db: Session, project_id: int, name: str, *, exclude_id: int | None = None) -> None:
+    """确保`unique`名称。"""
     q = db.query(TestCase).filter(TestCase.project_id == project_id, TestCase.name == name)
     if exclude_id is not None:
         q = q.filter(TestCase.id != exclude_id)
@@ -90,6 +92,7 @@ class CaseService:
         status: str | None = None, keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestCaseListResponse:
+        """列出`cases`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TestCase).filter(TestCase.project_id == project_id)
         if test_point_id is not None:
@@ -112,6 +115,7 @@ class CaseService:
     def create_case(
         self, db: Session, project_id: int, body: TestCaseCreate, *, actor: User,
     ) -> TestCaseResponse:
+        """创建用例。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -149,9 +153,11 @@ class CaseService:
         return _response(case)
 
     def get_case(self, db: Session, case_id: int, user: User) -> TestCaseResponse:
+        """获取用例。"""
         return _response(self._get_or_404(db, case_id, user))
 
     def get_case_detail(self, db: Session, case_id: int, user: User) -> TestCaseDetailResponse:
+        """获取用例详情。"""
         case = self._get_or_404(db, case_id, user)
         preconditions = (
             db.query(TestCasePrecondition).filter(TestCasePrecondition.test_case_id == case_id)
@@ -181,6 +187,7 @@ class CaseService:
     def update_case(
         self, db: Session, case_id: int, body: TestCaseUpdate, *, actor: User,
     ) -> TestCaseResponse:
+        """更新用例。"""
         case = self._get_writable_or_404(db, case_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -222,6 +229,7 @@ class CaseService:
         return _response(case)
 
     def delete_case(self, db: Session, case_id: int, *, actor: User) -> None:
+        """删除用例。"""
         case = self._get_writable_or_404(db, case_id, actor)
         db.delete(case)
         db.commit()
@@ -229,6 +237,7 @@ class CaseService:
     # -------------------------------------------------------------- 前置条件
 
     def list_preconditions(self, db: Session, case_id: int, user: User) -> list[TestCasePreconditionResponse]:
+        """列出`preconditions`。"""
         self._get_or_404(db, case_id, user)
         rows = (
             db.query(TestCasePrecondition).filter(TestCasePrecondition.test_case_id == case_id)
@@ -239,6 +248,7 @@ class CaseService:
     def create_precondition(
         self, db: Session, case_id: int, body: TestCasePreconditionCreate, *, actor: User,
     ) -> TestCasePreconditionResponse:
+        """创建前置条件。"""
         self._get_writable_or_404(db, case_id, actor)
         row = TestCasePrecondition(
             test_case_id=case_id, type=body.type, target=body.target, operator=body.operator,
@@ -254,6 +264,7 @@ class CaseService:
     def update_precondition(
         self, db: Session, precondition_id: int, body: TestCasePreconditionUpdate, *, actor: User,
     ) -> TestCasePreconditionResponse:
+        """更新前置条件。"""
         row = self._get_writable_sub_or_404(db, precondition_id, TestCasePrecondition, "前置条件", actor)
         data = body.model_dump(exclude_unset=True)
         for field in ("type", "target", "operator", "expected_value", "description", "config_json", "sort"):
@@ -267,6 +278,7 @@ class CaseService:
         return TestCasePreconditionResponse.model_validate(row)
 
     def delete_precondition(self, db: Session, precondition_id: int, *, actor: User) -> None:
+        """删除前置条件。"""
         row = self._get_writable_sub_or_404(db, precondition_id, TestCasePrecondition, "前置条件", actor)
         db.delete(row)
         db.commit()
@@ -274,6 +286,7 @@ class CaseService:
     # -------------------------------------------------------------- 测试数据
 
     def list_data(self, db: Session, case_id: int, user: User) -> list[TestCaseDataResponse]:
+        """列出数据。"""
         self._get_or_404(db, case_id, user)
         rows = (
             db.query(TestCaseData).filter(TestCaseData.test_case_id == case_id)
@@ -284,6 +297,7 @@ class CaseService:
     def create_data(
         self, db: Session, case_id: int, body: TestCaseDataCreate, *, actor: User,
     ) -> TestCaseDataResponse:
+        """创建数据。"""
         self._get_writable_or_404(db, case_id, actor)
         name = (body.name or "").strip()
         if not name:
@@ -309,6 +323,7 @@ class CaseService:
     def update_data(
         self, db: Session, data_id: int, body: TestCaseDataUpdate, *, actor: User,
     ) -> TestCaseDataResponse:
+        """更新数据。"""
         row = self._get_writable_sub_or_404(db, data_id, TestCaseData, "测试数据", actor)
         data = body.model_dump(exclude_unset=True)
         for field in ("value_type", "value", "source_type", "required", "description", "config_json", "sort"):
@@ -325,13 +340,15 @@ class CaseService:
         return TestCaseDataResponse.model_validate(row)
 
     def delete_data(self, db: Session, data_id: int, *, actor: User) -> None:
+        """删除数据。"""
         row = self._get_writable_sub_or_404(db, data_id, TestCaseData, "测试数据", actor)
         db.delete(row)
         db.commit()
 
-    # -------------------------------------------------------------- 所需 Fixture
+    # -------------------------------------------------------------- 所需 固定数据 Fixture
 
     def list_fixtures(self, db: Session, case_id: int, user: User) -> list[TestCaseFixtureResponse]:
+        """列出`fixtures`。"""
         self._get_or_404(db, case_id, user)
         return self._fixture_rows(db, case_id)
 
@@ -365,6 +382,7 @@ class CaseService:
 
     @staticmethod
     def _fixture_rows(db: Session, case_id: int) -> list[TestCaseFixtureResponse]:
+        """处理固定数据记录相关数据。"""
         rows = (
             db.query(TestCaseFixture).filter(TestCaseFixture.test_case_id == case_id)
             .order_by(TestCaseFixture.sort.asc(), TestCaseFixture.id.asc()).all()
@@ -464,6 +482,7 @@ class CaseService:
     # -------------------------------------------------------------- 步骤
 
     def list_steps(self, db: Session, case_id: int, user: User) -> list[TestStepResponse]:
+        """列出`steps`。"""
         self._get_or_404(db, case_id, user)
         rows = (
             db.query(TestStep).filter(TestStep.test_case_id == case_id)
@@ -474,6 +493,7 @@ class CaseService:
     def create_step(
         self, db: Session, case_id: int, body: TestStepCreate, *, actor: User,
     ) -> TestStepResponse:
+        """创建`step`。"""
         self._get_writable_or_404(db, case_id, actor)
         row = TestStep(
             test_case_id=case_id, name=body.name, step_type=body.step_type,
@@ -489,6 +509,7 @@ class CaseService:
     def update_step(
         self, db: Session, step_id: int, body: TestStepUpdate, *, actor: User,
     ) -> TestStepResponse:
+        """更新`step`。"""
         row = self._get_writable_sub_or_404(db, step_id, TestStep, "测试步骤", actor)
         data = body.model_dump(exclude_unset=True)
         for field in ("name", "step_type", "target_type", "target_id", "sort", "config_json"):
@@ -500,6 +521,7 @@ class CaseService:
         return TestStepResponse.model_validate(row)
 
     def delete_step(self, db: Session, step_id: int, *, actor: User) -> None:
+        """删除`step`。"""
         row = self._get_writable_sub_or_404(db, step_id, TestStep, "测试步骤", actor)
         db.delete(row)
         db.commit()
@@ -507,6 +529,7 @@ class CaseService:
     # -------------------------------------------------------------- 断言
 
     def list_assertions(self, db: Session, case_id: int, user: User) -> list[TestAssertionResponse]:
+        """列出`assertions`。"""
         self._get_or_404(db, case_id, user)
         rows = (
             db.query(TestAssertion).filter(TestAssertion.test_case_id == case_id)
@@ -517,6 +540,7 @@ class CaseService:
     def create_assertion(
         self, db: Session, case_id: int, body: TestAssertionCreate, *, actor: User,
     ) -> TestAssertionResponse:
+        """创建断言。"""
         self._get_writable_or_404(db, case_id, actor)
         if body.step_id is not None:
             step = db.get(TestStep, body.step_id)
@@ -536,6 +560,7 @@ class CaseService:
     def update_assertion(
         self, db: Session, assertion_id: int, body: TestAssertionUpdate, *, actor: User,
     ) -> TestAssertionResponse:
+        """更新断言。"""
         row = self._get_writable_sub_or_404(db, assertion_id, TestAssertion, "断言", actor)
         data = body.model_dump(exclude_unset=True)
         if "step_id" in data and data["step_id"] is not None:
@@ -556,6 +581,7 @@ class CaseService:
         return TestAssertionResponse.model_validate(row)
 
     def delete_assertion(self, db: Session, assertion_id: int, *, actor: User) -> None:
+        """删除断言。"""
         row = self._get_writable_sub_or_404(db, assertion_id, TestAssertion, "断言", actor)
         db.delete(row)
         db.commit()
@@ -563,6 +589,7 @@ class CaseService:
     # -------------------------------------------------------------- 取实体
 
     def _get_or_404(self, db: Session, case_id: int, user: User) -> TestCase:
+        """获取或。"""
         c = db.get(TestCase, case_id)
         if c is None:
             raise not_found("测试用例不存在")
@@ -570,6 +597,7 @@ class CaseService:
         return c
 
     def _get_writable_or_404(self, db: Session, case_id: int, actor: User) -> TestCase:
+        """获取可写或。"""
         c = db.get(TestCase, case_id)
         if c is None:
             raise not_found("测试用例不存在")

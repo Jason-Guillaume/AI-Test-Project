@@ -69,6 +69,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 def _raise_not_found(message: str = "Mock 场景不存在") -> None:
+    """资源不存在或不可见时抛出 404 错误。"""
     raise not_found(message)
 
 
@@ -83,6 +84,7 @@ class MockScenarioService:
         is_default: bool | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> MockScenarioListResponse:
+        """列出`scenarios`。"""
         endpoint = self._get_endpoint_or_404(db, endpoint_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(MockScenario).filter(MockScenario.mock_endpoint_id == endpoint.id)
@@ -111,6 +113,7 @@ class MockScenarioService:
         )
 
     def get_scenario(self, db: Session, scenario_id: int, user: User) -> MockScenarioResponse:
+        """获取场景。"""
         row = self._get_or_404(db, scenario_id, user)
         return scenario_response(db, row)
 
@@ -119,6 +122,7 @@ class MockScenarioService:
     def create_scenario(
         self, db: Session, endpoint_id: int, body: MockScenarioCreate, *, actor: User,
     ) -> MockScenarioResponse:
+        """创建场景。"""
         endpoint = self._get_endpoint_writable(db, endpoint_id, actor)
         self._validate_body(body)
         key = (body.scenario_key or "").strip()
@@ -166,6 +170,7 @@ class MockScenarioService:
         return scenario_response(db, scenario)
 
     def delete_scenario(self, db: Session, scenario_id: int, *, actor: User) -> None:
+        """删除场景。"""
         from app.features.mock_management.models import TestCaseMock
 
         scenario = self._get_writable_or_404(db, scenario_id, actor)
@@ -182,6 +187,7 @@ class MockScenarioService:
     def update_scenario(
         self, db: Session, scenario_id: int, body: MockScenarioUpdate, *, actor: User,
     ) -> MockScenarioResponse:
+        """更新场景。"""
         scenario = self._get_writable_or_404(db, scenario_id, actor)
         if body.revision != scenario.revision:
             raise conflict("该场景已被他人修改，请刷新后重试")
@@ -230,6 +236,7 @@ class MockScenarioService:
     def replace_matchers(
         self, db: Session, scenario_id: int, body: MockMatchersReplace, *, actor: User,
     ) -> MockScenarioResponse:
+        """替换匹配器。"""
         scenario = self._get_writable_or_404(db, scenario_id, actor)
         # 与 PATCH 同样的乐观锁：matcher 是整体重建，不加校验时两个会话会互相覆盖
         # （最后写入者静默丢掉对方刚保存的规则集）。不传 revision 保持向后兼容。
@@ -251,6 +258,7 @@ class MockScenarioService:
     # ---------------------------------------------------------------- 默认 / 复制
 
     def set_default(self, db: Session, scenario_id: int, *, actor: User) -> MockScenarioResponse:
+        """设置默认。"""
         scenario = self._get_writable_or_404(db, scenario_id, actor)
         if not scenario.is_default:
             self._clear_other_defaults(db, scenario.mock_endpoint_id, exclude_id=scenario.id)
@@ -365,6 +373,7 @@ class MockScenarioService:
     # ---------------------------------------------------------------- 内部：校验
 
     def _validate_body(self, body: MockScenarioCreate) -> None:
+        """校验请求体。"""
         name = (body.name or "").strip()
         if not name:
             raise bad_request("场景名称不能为空")
@@ -388,6 +397,7 @@ class MockScenarioService:
         return delay_ms
 
     def _validate_matcher(self, m) -> None:
+        """校验匹配器。"""
         if m.source not in MOCK_MATCHER_SOURCES:
             raise AppError(
                 f"Matcher source 取值非法：{m.source}",
@@ -422,6 +432,7 @@ class MockScenarioService:
             )
 
     def _matcher_row(self, scenario_id: int, project_id: int, m) -> MockMatcher:
+        """将请求匹配器记录转换为接口响应数据。"""
         return MockMatcher(
             project_id=project_id,
             scenario_id=scenario_id,
@@ -451,6 +462,7 @@ class MockScenarioService:
     # ---------------------------------------------------------------- 内部：取实体
 
     def _get_endpoint_or_404(self, db: Session, endpoint_id: int, user: User) -> MockEndpoint:
+        """获取接口或。"""
         endpoint = db.get(MockEndpoint, endpoint_id)
         if endpoint is None:
             raise not_found("Mock 接口不存在")
@@ -458,6 +470,7 @@ class MockScenarioService:
         return endpoint
 
     def _get_endpoint_writable(self, db: Session, endpoint_id: int, actor: User) -> MockEndpoint:
+        """获取接口可写。"""
         endpoint = db.get(MockEndpoint, endpoint_id)
         if endpoint is None:
             raise not_found("Mock 接口不存在")
@@ -465,6 +478,7 @@ class MockScenarioService:
         return endpoint
 
     def _get_or_404(self, db: Session, scenario_id: int, user: User) -> MockScenario:
+        """获取或。"""
         row = db.get(MockScenario, scenario_id)
         if row is None:
             _raise_not_found()
@@ -472,6 +486,7 @@ class MockScenarioService:
         return row
 
     def _get_writable_or_404(self, db: Session, scenario_id: int, actor: User) -> MockScenario:
+        """获取可写或。"""
         row = db.get(MockScenario, scenario_id)
         if row is None:
             _raise_not_found()

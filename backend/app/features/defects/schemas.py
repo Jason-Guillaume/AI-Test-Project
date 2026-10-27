@@ -95,6 +95,26 @@ class BugListResponse(BaseModel):
     page_size: int = 1
 
 
+class DefectSourceRequest(BaseModel):
+    """关联现有缺陷，或提交人工填写的缺陷并原子创建关联。"""
+    source_type: Literal["CASE_EXECUTION", "SECURITY_FINDING"]
+    source_id: int = Field(gt=0)
+    bug_id: int | None = Field(default=None, gt=0)
+    bug: BugCreate | None = None
+    request_key: str = Field(min_length=1, max_length=100)
+
+
+class DefectSourceResponse(BaseModel):
+    """只返回授权后的标识，不复制请求、凭据或证据。"""
+    id: int
+    project_id: int
+    bug_id: int
+    case_execution_id: int | None
+    security_finding_id: int | None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 __all__ = [
     "BUG_STATUSES",
     "BugBase",

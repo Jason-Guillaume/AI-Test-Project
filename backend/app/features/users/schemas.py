@@ -40,19 +40,9 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    """注册入参。
-
-    图形验证码为必填：注册前必须通过一次 ``GET /captcha`` 拿到的 challenge，
-    后端在 service 层用一次性 ``verify_challenge`` 校验。
-    """
+    """公开注册入参。"""
 
     password: str = Field(..., min_length=6, max_length=100, description="密码")  # 初始密码
-    captcha_id: str = Field(
-        ..., min_length=1, max_length=64, description="验证码 challenge_id"
-    )
-    captcha_code: str = Field(
-        ..., min_length=4, max_length=8, description="用户输入的验证码"
-    )
 
 
 class AdminUserCreate(BaseModel):

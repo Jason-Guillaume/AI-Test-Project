@@ -17,6 +17,7 @@ from app.shared.errors import AppError
 
 
 def report_generator_node(ctx: NodeContext, state: AgentState) -> dict:
+    """根据执行结果生成测试报告。"""
     project_id = state["project_id"]
     run_id = state.get("test_run_id")
     if not run_id:

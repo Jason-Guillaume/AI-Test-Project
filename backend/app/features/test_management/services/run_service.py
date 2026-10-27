@@ -20,7 +20,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.configuration import Environment
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.business.executors.context import ExecutionContext
 from app.features.test_data.models.case_fixture import TestCaseFixture
 from app.features.test_data.models.fixture import Fixture
@@ -56,6 +56,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 def _response(r: TestRun) -> TestRunResponse:
+    """构造接口响应数据。"""
     return TestRunResponse.model_validate(r)
 
 
@@ -63,12 +64,14 @@ class RunService:
     """测试执行编排服务。无状态，路由层复用单例。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self._lifecycle = LifecycleManager()
         self._mock = MockLifecycle()
 
     def create_and_execute_run(
         self, db: Session, plan_id: int, body: TestRunCreateRequest, *, actor: User,
     ) -> TestRunResponse:
+        """创建和执行运行。"""
         plan = db.get(TestPlan, plan_id)
         if plan is None:
             raise not_found("测试计划不存在")
@@ -78,9 +81,7 @@ class RunService:
         env_id = body.environment_id if body.environment_id is not None else plan.environment_id
         if env_id is None:
             raise bad_request("未指定执行环境（计划未配置环境且请求体未提供）")
-        environment = db.get(Environment, env_id)
-        if environment is None or not environment.is_active:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment(db, plan.project_id, env_id)
 
         # 2. 收集有序用例（plan_suite → suite_case，去重保序，仅启用）。
         case_ids = self._collect_case_ids(db, plan_id)
@@ -103,9 +104,7 @@ class RunService:
         require_writable_project(db, case.project_id, actor)
         if not case.enabled:
             raise bad_request("测试用例已停用")
-        environment = db.get(Environment, environment_id)
-        if environment is None or not environment.is_active:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment(db, case.project_id, environment_id)
         return self._execute_cases(db, case.project_id, [case], environment, actor)
 
     def _execute_cases(self, db, project_id, ordered_cases, environment, actor, *, plan_id=None):
@@ -251,6 +250,7 @@ class RunService:
         return _response(run)
 
     def get_run(self, db: Session, run_id: int, user: User) -> TestRunResponse:
+        """获取运行。"""
         run = db.get(TestRun, run_id)
         if run is None:
             raise not_found("测试执行记录不存在")
@@ -261,6 +261,7 @@ class RunService:
         self, db: Session, project_id: int, user: User, *,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestRunListResponse:
+        """列出`runs`。"""
         get_project_or_404(db, project_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(TestRun).filter(TestRun.project_id == project_id)
@@ -269,6 +270,7 @@ class RunService:
         return TestRunListResponse(items=[_response(r) for r in items], total=total, page=page, page_size=page_size)
 
     def list_case_executions(self, db: Session, run_id: int, user: User) -> CaseExecutionListResponse:
+        """列出用例`executions`。"""
         run = db.get(TestRun, run_id)
         if run is None:
             raise not_found("测试执行记录不存在")
@@ -350,6 +352,7 @@ class RunService:
         return ordered
 
     def _bump_counter(self, run: TestRun, status: str) -> None:
+        """处理`bump``counter`相关数据。"""
         if status == "PASSED":
             run.passed = (run.passed or 0) + 1
         elif status == "FAILED":

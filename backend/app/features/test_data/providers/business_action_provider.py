@@ -20,6 +20,7 @@ class BusinessActionProvider(BaseProvider):
     provider_type = "BUSINESS_ACTION"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import BusinessActionProviderConfig
 
         cfg = self.load_config(config_of(ctx), BusinessActionProviderConfig)

@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6595FF"/><stop offset="1" stop-color="#42C7B7"/></linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#EAF1FF"/><stop offset="1" stop-color="#E8F8F5"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="5" stdDeviation="12" flood-color="#203250" flood-opacity=".055"/></filter>
+    <style>
+      .cn{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+      .title{font-size:25px;font-weight:700;fill:#17243B}.body{font-size:14px;fill:#35445D}.muted{font-size:12px;fill:#8591A5}.small{font-size:11px;fill:#8B97A9}.nav{font-size:13px;fill:#536176}.nav-on{font-size:13px;font-weight:600;fill:#4268C9}.section{font-size:10px;font-weight:700;letter-spacing:1.4px;fill:#8995A7}.metric{font-size:27px;font-weight:700;fill:#1A2941}.card-title{font-size:14px;font-weight:650;fill:#25334A}
+    </style>
+  </defs>
+  <rect width="1600" height="1000" fill="#F5F7FB"/>
+  <!-- side navigation -->
+  <rect width="248" height="1000" fill="#EEF2F7"/><line x1="247.5" y1="0" x2="247.5" y2="1000" stroke="#E0E6EF"/>
+  <rect x="24" y="23" width="34" height="34" rx="11" fill="url(#brand)"/>
+  <path d="M34 40h14M41 33v14" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="70" y="38" class="cn" font-size="14" font-weight="700" fill="#26354B">测试开发平台</text>
+  <text x="70" y="54" class="cn" font-size="10" fill="#8996A8">QUALITY ENGINEERING</text>
+  <line x1="20" y1="77" x2="228" y2="77" stroke="#DDE4ED"/>
+  <text x="25" y="104" class="cn section">工作空间</text>
+  <rect x="12" y="116" width="224" height="40" rx="9" fill="#DFE9FF"/>
+  <rect x="12" y="124" width="3" height="24" rx="2" fill="#5479E6"/>
+  <rect x="28" y="129" width="13" height="13" rx="3" fill="none" stroke="#4B6FD0" stroke-width="1.5"/>
+  <path d="M31 138l3-3 2 2 3-4" fill="none" stroke="#4B6FD0" stroke-width="1.3"/>
+  <text x="52" y="141" class="cn nav-on">工作台</text>
+  <circle cx="211" cy="136" r="3" fill="#69D6C1"/>
+  <rect x="28" y="166" width="14" height="13" rx="3" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M31 170h8M31 174h5" stroke="#76849A" stroke-width="1.2"/>
+  <text x="52" y="178" class="cn nav">项目管理</text>
+  <text x="25" y="218" class="cn section">测试设计</text>
+  <circle cx="35" cy="242" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M35 237v10M30 242h10" stroke="#76849A" stroke-width="1.2"/>
+  <text x="52" y="247" class="cn nav">接口管理</text>
+  <circle cx="35" cy="276" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M32 276h6M35 273v6" stroke="#76849A" stroke-width="1.1"/>
+  <text x="52" y="281" class="cn nav">业务管理</text>
+  <rect x="29" y="296" width="13" height="14" rx="2" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M32 300h7M32 304h7" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="309" class="cn nav">测试资产</text>
+  <rect x="29" y="329" width="13" height="13" rx="3" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M33 333h5M33 337h5" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="342" class="cn nav">测试套件</text>
+  <text x="25" y="384" class="cn section">测试执行</text>
+  <circle cx="35" cy="408" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M33 404l6 4-6 4z" fill="#76849A"/>
+  <text x="52" y="413" class="cn nav">测试计划</text>
+  <circle cx="35" cy="442" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M33 438l6 4-6 4z" fill="#76849A"/>
+  <text x="52" y="447" class="cn nav">执行中心</text>
+  <circle cx="35" cy="476" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M31 476h8M35 472v8" stroke="#76849A" stroke-width="1.1"/>
+  <text x="52" y="481" class="cn nav">执行历史</text>
+  <rect x="29" y="495" width="13" height="14" rx="2" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M32 499h7M32 503h6" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="508" class="cn nav">测试报告</text>
+  <text x="25" y="550" class="cn section">测试能力</text>
+  <circle cx="35" cy="574" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M31 574h8M35 570v8" stroke="#76849A" stroke-width="1.1"/>
+  <text x="52" y="579" class="cn nav">测试数据</text>
+  <circle cx="35" cy="608" r="7" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M31 608h8M33 605l-2 3 2 3M37 605l2 3-2 3" fill="none" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="613" class="cn nav">接口 Mock</text>
+  <rect x="29" y="628" width="13" height="13" rx="3" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M33 632l5 5M38 632l-5 5" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="641" class="cn nav">Web UI 自动化</text>
+  <path d="M35 662l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10v-5z" fill="none" stroke="#76849A" stroke-width="1.3"/>
+  <text x="52" y="676" class="cn nav">安全测试</text>
+  <text x="25" y="718" class="cn section">任务与协作</text>
+  <circle cx="35" cy="742" r="7" fill="none" stroke="#76849A" stroke-width="1.3"/><circle cx="35" cy="742" r="2" fill="#76849A"/>
+  <text x="52" y="747" class="cn nav">AI Agent</text>
+  <rect x="29" y="760" width="13" height="13" rx="3" fill="none" stroke="#76849A" stroke-width="1.4"/><path d="M32 764h7M32 768h7" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="773" class="cn nav">统一任务</text>
+  <path d="M31 795h8l3 3v8H29v-8z" fill="none" stroke="#76849A" stroke-width="1.3"/><path d="M32 801h6M32 804h5" stroke="#76849A" stroke-width="1"/>
+  <text x="52" y="807" class="cn nav">缺陷管理</text>
+  <circle cx="35" cy="836" r="7" fill="none" stroke="#76849A" stroke-width="1.3"/><path d="M35 832v5l3 2" fill="none" stroke="#76849A" stroke-width="1.2"/>
+  <text x="52" y="841" class="cn nav">通知中心</text>
+  <line x1="18" y1="930" x2="230" y2="930" stroke="#DDE4ED"/>
+  <circle cx="42" cy="962" r="17" fill="#D1DCEE"/><text x="42" y="967" text-anchor="middle" class="cn" font-size="12" font-weight="700" fill="#536A95">林</text>
+  <text x="68" y="960" class="cn" font-size="12" font-weight="600" fill="#26354B">林同学</text><text x="68" y="976" class="cn" font-size="10" fill="#718096">测试工程师</text>
+  <!-- top bar -->
+  <rect x="248" y="0" width="1352" height="68" fill="#FFFFFF"/>
+  <line x1="248" y1="67.5" x2="1600" y2="67.5" stroke="#E8ECF2"/>
+  <rect x="278" y="16" width="205" height="36" rx="9" fill="#F7F9FC" stroke="#E7EBF2"/>
+  <circle cx="298" cy="34" r="7" fill="#547AF6"/><text x="314" y="39" class="cn body">云栈科技</text><path d="M463 31l5 5 5-5" fill="none" stroke="#8491A4" stroke-width="1.4"/>
+  <rect x="496" y="16" width="234" height="36" rx="9" fill="#F7F9FC" stroke="#E7EBF2"/>
+  <rect x="513" y="26" width="16" height="16" rx="4" fill="#D8E7FF"/><path d="M517 31h8M517 35h5" stroke="#4E70D9" stroke-width="1.3"/><text x="539" y="39" class="cn body">电商稳定性平台</text><path d="M707 31l5 5 5-5" fill="none" stroke="#8491A4" stroke-width="1.4"/>
+  <rect x="1000" y="15" width="272" height="38" rx="10" fill="#F8FAFC" stroke="#E7EBF2"/><circle cx="1020" cy="33" r="6" fill="none" stroke="#98A3B4" stroke-width="1.5"/><path d="M1024 37l5 5" stroke="#98A3B4" stroke-width="1.5"/><text x="1040" y="38" class="cn muted">搜索项目、接口、任务</text><rect x="1223" y="23" width="34" height="20" rx="5" fill="#FFFFFF" stroke="#E6EAF0"/><text x="1240" y="37" text-anchor="middle" class="cn small">⌘ K</text>
+  <circle cx="1313" cy="33" r="17" fill="#F5F7FB"/><path d="M1313 25v10l5 3" fill="none" stroke="#77869C" stroke-width="1.5"/><circle cx="1325" cy="22" r="4" fill="#EF7C67"/>
+  <circle cx="1364" cy="33" r="17" fill="#EEF2FA"/><text x="1364" y="38" text-anchor="middle" class="cn" font-size="11" font-weight="700" fill="#59739D">林</text><text x="1392" y="38" class="cn body">林同学</text><path d="M1460 31l5 5 5-5" fill="none" stroke="#8491A4" stroke-width="1.4"/>
+  <!-- main content -->
+  <text x="284" y="103" class="cn muted">控制台　/　工作台</text>
+  <text x="284" y="151" class="cn title">工作台</text>
+  <text x="284" y="177" class="cn muted">聚焦当前团队的测试资产、执行动态与待处理事项</text>
+  <rect x="1272" y="126" width="137" height="40" rx="9" fill="#FFFFFF" stroke="#E4E9F1"/><text x="1291" y="151" class="cn body">最近 7 天</text><path d="M1387 143l5 5 5-5" fill="none" stroke="#8491A4" stroke-width="1.4"/>
+  <rect x="1422" y="126" width="144" height="40" rx="9" fill="#466FE8"/><text x="1441" y="151" class="cn" font-size="13" font-weight="600" fill="#fff">＋　新建任务</text>
+  <!-- scope banner -->
+  <rect x="284" y="197" width="1282" height="82" rx="14" fill="url(#hero)"/>
+  <circle cx="326" cy="238" r="23" fill="#FFFFFF" fill-opacity=".72"/><path d="M317 242l7-9 5 5 6-8" fill="none" stroke="#4C77E9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="365" y="230" class="cn" font-size="14" font-weight="700" fill="#253B62">当前工作范围</text>
+  <text x="365" y="253" class="cn" font-size="12" fill="#677995">云栈科技　·　电商稳定性平台　·　角色：项目成员</text>
+  <text x="1499" y="243" text-anchor="end" class="cn" font-size="11" fill="#71829D">数据按当前可见范围统计</text>
+  <!-- metrics -->
+  <g filter="url(#shadow)">
+    <rect x="284" y="298" width="304" height="127" rx="13" fill="#FFFFFF"/><rect x="608" y="298" width="304" height="127" rx="13" fill="#FFFFFF"/><rect x="932" y="298" width="304" height="127" rx="13" fill="#FFFFFF"/><rect x="1256" y="298" width="310" height="127" rx="13" fill="#FFFFFF"/>
+  </g>
+  <circle cx="321" cy="335" r="16" fill="#EAF0FF"/><rect x="315" y="329" width="12" height="12" rx="2" fill="none" stroke="#557BF0" stroke-width="1.5"/><path d="M318 333h6M318 337h5" stroke="#557BF0" stroke-width="1"/>
+  <text x="350" y="340" class="cn muted">可见项目</text><text x="308" y="390" class="cn metric">12</text><text x="354" y="389" class="cn small">按当前可见范围</text>
+  <circle cx="645" cy="335" r="16" fill="#E6F7F3"/><path d="M639 335h12M645 329v12" stroke="#36A994" stroke-width="1.7"/><text x="674" y="340" class="cn muted">未读通知</text><text x="632" y="390" class="cn metric">03</text><text x="678" y="389" class="cn small">需要你关注</text>
+  <circle cx="969" cy="335" r="16" fill="#FFF3E5"/><path d="M967 327l-5 9h6l-1 7 7-10h-6l1-6z" fill="none" stroke="#DB923B" stroke-width="1.5" stroke-linejoin="round"/><text x="998" y="340" class="cn muted">测试执行</text><text x="956" y="390" class="cn" font-size="20" font-weight="650" fill="#A97532">未接入</text><text x="1026" y="389" class="cn small">数据能力接入后展示</text>
+  <circle cx="1293" cy="335" r="16" fill="#EEF3FF"/><path d="M1293 326l8 3v6c0 5-4 8-8 10-4-2-8-5-8-10v-6z" fill="none" stroke="#6384D8" stroke-width="1.4"/><text x="1322" y="340" class="cn muted">可用环境</text><text x="1280" y="390" class="cn metric">04</text><text x="1326" y="389" class="cn small">已启用执行环境</text>
+  <!-- project list -->
+  <rect x="284" y="445" width="806" height="356" rx="13" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="310" y="481" class="cn card-title">最近项目</text><text x="310" y="501" class="cn small">最近更新的项目与协作状态</text><text x="1059" y="483" text-anchor="end" class="cn" font-size="12" font-weight="600" fill="#4E72DE">查看全部　›</text>
+  <line x1="310" y1="521" x2="1064" y2="521" stroke="#EDF0F5"/>
+  <rect x="310" y="540" width="39" height="39" rx="10" fill="#EEF2FF"/><text x="329" y="565" text-anchor="middle" class="cn" font-size="14" font-weight="700" fill="#5879DC">支</text>
+  <text x="365" y="554" class="cn body" font-weight="600">支付核心链路</text><text x="365" y="574" class="cn small">云栈科技　·　12 位成员</text><rect x="838" y="548" width="78" height="24" rx="12" fill="#E9F7F1"/><circle cx="850" cy="560" r="3" fill="#37A878"/><text x="860" y="564" class="cn" font-size="10" fill="#27885E">进行中</text><text x="1048" y="563" text-anchor="end" class="cn small">今天 09:42</text>
+  <line x1="310" y1="598" x2="1064" y2="598" stroke="#F0F2F6"/>
+  <rect x="310" y="617" width="39" height="39" rx="10" fill="#F4EDFF"/><text x="329" y="642" text-anchor="middle" class="cn" font-size="14" font-weight="700" fill="#8964C5">用</text>
+  <text x="365" y="631" class="cn body" font-weight="600">用户中心 2.0</text><text x="365" y="651" class="cn small">云栈科技　·　8 位成员</text><rect x="838" y="625" width="78" height="24" rx="12" fill="#EEF3FF"/><circle cx="850" cy="637" r="3" fill="#6486E5"/><text x="860" y="641" class="cn" font-size="10" fill="#5575D0">稳定</text><text x="1048" y="640" text-anchor="end" class="cn small">昨天 16:18</text>
+  <line x1="310" y1="675" x2="1064" y2="675" stroke="#F0F2F6"/>
+  <rect x="310" y="694" width="39" height="39" rx="10" fill="#FFF3E8"/><text x="329" y="719" text-anchor="middle" class="cn" font-size="14" font-weight="700" fill="#CC854B">营</text>
+  <text x="365" y="708" class="cn body" font-weight="600">营销活动平台</text><text x="365" y="728" class="cn small">云栈科技　·　5 位成员</text><rect x="838" y="702" width="78" height="24" rx="12" fill="#F2F3F6"/><circle cx="850" cy="714" r="3" fill="#9AA4B3"/><text x="860" y="718" class="cn" font-size="10" fill="#788498">待启动</text><text x="1048" y="717" text-anchor="end" class="cn small">10 月 24 日</text>
+  <rect x="310" y="757" width="754" height="26" rx="7" fill="#F7F9FC"/><text x="323" y="774" class="cn small">项目成员与更新时间来自项目列表接口；切换组织或项目后自动更新</text>
+  <!-- notification list -->
+  <rect x="1110" y="445" width="456" height="356" rx="13" fill="#FFFFFF" filter="url(#shadow)"/>
+  <text x="1136" y="481" class="cn card-title">最近通知</text><text x="1136" y="501" class="cn small">只显示当前账号收件箱内容</text><text x="1535" y="483" text-anchor="end" class="cn" font-size="12" font-weight="600" fill="#4E72DE">通知中心　›</text>
+  <line x1="1136" y1="521" x2="1540" y2="521" stroke="#EDF0F5"/>
+  <circle cx="1150" cy="550" r="5" fill="#5679E6"/><text x="1166" y="550" class="cn body" font-weight="600">项目成员权限已更新</text><text x="1166" y="570" class="cn small">支付核心链路　·　组织管理员</text><text x="1537" y="570" text-anchor="end" class="cn small">09:42</text>
+  <line x1="1136" y1="592" x2="1540" y2="592" stroke="#F0F2F6"/>
+  <circle cx="1150" cy="620" r="5" fill="#C6CEDA"/><text x="1166" y="620" class="cn body" font-weight="600">模型配置已分配给组织</text><text x="1166" y="640" class="cn small">云栈科技　·　平台管理员</text><text x="1537" y="640" text-anchor="end" class="cn small">昨天</text>
+  <line x1="1136" y1="662" x2="1540" y2="662" stroke="#F0F2F6"/>
+  <circle cx="1150" cy="690" r="5" fill="#C6CEDA"/><text x="1166" y="690" class="cn body" font-weight="600">欢迎加入测试开发平台</text><text x="1166" y="710" class="cn small">账户通知　·　系统</text><text x="1537" y="710" text-anchor="end" class="cn small">10 月 22 日</text>
+  <rect x="1136" y="748" width="404" height="34" rx="8" fill="#F7F9FC"/><text x="1150" y="769" class="cn small">通知按真实未读状态显示；不生成演示消息</text>
+  <!-- quick actions -->
+  <text x="284" y="847" class="cn card-title">快速开始</text><text x="284" y="867" class="cn small">常用工作入口，继续当前项目的测试流程</text>
+  <g filter="url(#shadow)">
+    <rect x="284" y="884" width="405" height="84" rx="12" fill="#FFFFFF"/><rect x="703" y="884" width="405" height="84" rx="12" fill="#FFFFFF"/><rect x="1122" y="884" width="444" height="84" rx="12" fill="#FFFFFF"/>
+  </g>
+  <rect x="305" y="904" width="42" height="42" rx="11" fill="#EEF2FF"/><path d="M316 925h20M326 915v20" stroke="#5778E6" stroke-width="1.8"/><text x="362" y="918" class="cn body" font-weight="650">管理测试资产</text><text x="362" y="940" class="cn small">接口、业务流与用例统一维护</text><text x="666" y="930" text-anchor="end" fill="#8996A8">›</text>
+  <rect x="724" y="904" width="42" height="42" rx="11" fill="#E8F7F3"/><path d="M738 915v20l16-10z" fill="none" stroke="#37A48E" stroke-width="1.7" stroke-linejoin="round"/><text x="781" y="918" class="cn body" font-weight="650">安排测试计划</text><text x="781" y="940" class="cn small">组合套件并查看执行进度</text><text x="1085" y="930" text-anchor="end" fill="#8996A8">›</text>
+  <rect x="1143" y="904" width="42" height="42" rx="11" fill="#FFF2E7"/><path d="M1164 913l9 4v7c0 6-5 9-9 11-4-2-9-5-9-11v-7z" fill="none" stroke="#CF8A4D" stroke-width="1.6"/><text x="1200" y="918" class="cn body" font-weight="650">查看安全测试</text><text x="1200" y="940" class="cn small">目标、扫描策略与发现项</text><text x="1544" y="930" text-anchor="end" fill="#8996A8">›</text>
+</svg>

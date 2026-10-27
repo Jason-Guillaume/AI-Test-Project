@@ -316,6 +316,7 @@ def validate_no_script_keys(config: dict[str, Any] | None, *, what: str = "变�
     from app.shared.errors import CODE_SECURITY_MUTATION_INVALID, AppError
 
     def walk(node: Any, path: str) -> None:
+        """遍历对应数据。"""
         if isinstance(node, dict):
             for key, value in node.items():
                 if str(key).lower() in FORBIDDEN_CONFIG_KEYS:
@@ -351,6 +352,7 @@ class MutationRuleCreate(BaseModel):
     @field_validator("expected_status_codes")
     @classmethod
     def _check_codes(cls, value: list[int] | None) -> list[int] | None:
+        """检查`codes`。"""
         if value is None:
             return None
         for code in value:
@@ -361,6 +363,7 @@ class MutationRuleCreate(BaseModel):
     @field_validator("severity")
     @classmethod
     def _check_severity(cls, value: str | None) -> str | None:
+        """检查严重级别。"""
         if value is None:
             return None
         if value not in SEVERITY_LEVELS:
@@ -370,6 +373,7 @@ class MutationRuleCreate(BaseModel):
     @field_validator("mutation_type")
     @classmethod
     def _check_type(cls, value: str) -> str:
+        """检查类型。"""
         if value not in MUTATION_TYPES:
             raise ValueError(f"不支持的变异类型：{value}")
         return value
@@ -377,6 +381,7 @@ class MutationRuleCreate(BaseModel):
     @field_validator("target_location")
     @classmethod
     def _check_location(cls, value: str) -> str:
+        """检查`location`。"""
         if value not in TARGET_LOCATIONS:
             raise ValueError(f"不支持的目标位置：{value}")
         return value
@@ -401,6 +406,7 @@ class MutationRuleUpdate(BaseModel):
     @field_validator("expected_status_codes")
     @classmethod
     def _check_codes(cls, value: list[int] | None) -> list[int] | None:
+        """检查`codes`。"""
         if value is None:
             return None
         for code in value:
@@ -411,6 +417,7 @@ class MutationRuleUpdate(BaseModel):
     @field_validator("severity")
     @classmethod
     def _check_severity(cls, value: str | None) -> str | None:
+        """检查严重级别。"""
         if value is None:
             return None
         if value not in SEVERITY_LEVELS:
@@ -420,6 +427,7 @@ class MutationRuleUpdate(BaseModel):
     @field_validator("mutation_type")
     @classmethod
     def _check_type(cls, value: str | None) -> str | None:
+        """检查类型。"""
         if value is not None and value not in MUTATION_TYPES:
             raise ValueError(f"不支持的变异类型：{value}")
         return value
@@ -427,6 +435,7 @@ class MutationRuleUpdate(BaseModel):
     @field_validator("target_location")
     @classmethod
     def _check_location(cls, value: str | None) -> str | None:
+        """检查`location`。"""
         if value is not None and value not in TARGET_LOCATIONS:
             raise ValueError(f"不支持的目标位置：{value}")
         return value
@@ -542,6 +551,7 @@ class SecurityStrategyCreate(BaseModel):
     @field_validator("category")
     @classmethod
     def _check_category(cls, value: str) -> str:
+        """检查`category`。"""
         if value not in STRATEGY_CATEGORIES:
             raise ValueError(f"不支持的策略类别：{value}")
         return value
@@ -549,6 +559,7 @@ class SecurityStrategyCreate(BaseModel):
     @field_validator("risk_level")
     @classmethod
     def _check_risk(cls, value: str) -> str:
+        """检查风险。"""
         if value not in SEVERITY_LEVELS:
             raise ValueError(f"不支持的风险级别：{value}")
         return value
@@ -566,6 +577,7 @@ class SecurityStrategyUpdate(BaseModel):
     @field_validator("risk_level")
     @classmethod
     def _check_risk(cls, value: str | None) -> str | None:
+        """检查风险。"""
         if value is not None and value not in SEVERITY_LEVELS:
             raise ValueError(f"不支持的风险级别：{value}")
         return value
@@ -617,6 +629,7 @@ class PlanPreviewRequest(BaseModel):
     @field_validator("strategy_ids")
     @classmethod
     def _dedupe(cls, value: list[int]) -> list[int]:
+        """去重对应数据。"""
         return list(dict.fromkeys(value))
 
 
@@ -778,7 +791,7 @@ class SecurityExecutionRead(_ORM):
     created_at: datetime | None = None
 
 
-# --------------------------------------------------------------------------- Finding（Phase E）
+# --------------------------------------------------------------------------- 安全发现项（阶段 E）Finding
 
 
 class SecurityFindingRead(_ORM):
@@ -816,6 +829,7 @@ class SecurityFindingUpdate(BaseModel):
     @field_validator("status")
     @classmethod
     def _check_status(cls, value: str) -> str:
+        """检查状态。"""
         if value not in FINDING_STATUSES:
             raise ValueError(f"不支持的 Finding 状态：{value}")
         return value

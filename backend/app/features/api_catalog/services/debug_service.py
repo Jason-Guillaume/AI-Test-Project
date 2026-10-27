@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.schemas import ApiDebugRequest, ApiDebugResponse
 from app.features.api_catalog.services.api_service import _load_body, _load_params
-from app.models.configuration import Environment
+from app.features.environment_configuration.services.environment_service import resolve_project_environment_by_name
 from app.models.project import ProjectOutboundTarget
 from app.shared.errors import bad_request, forbidden, not_found
 
@@ -39,6 +39,7 @@ class DebugService:
     def execute(
         self, db: Session, api_id: int, body: ApiDebugRequest, *, actor
     ) -> ApiDebugResponse:
+        """执行对应数据。"""
         # actor 已由 require_platform_admin 保证为平台管理员；二次校验防御误挂。
         from app.shared.roles import is_platform_admin
 
@@ -49,13 +50,7 @@ class DebugService:
         if iface is None:
             raise not_found("接口不存在")
 
-        environment = (
-            db.query(Environment)
-            .filter(Environment.name == body.environment_name, Environment.is_active.is_(True))
-            .one_or_none()
-        )
-        if environment is None:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment_by_name(db, iface.project_id, body.environment_name)
 
         # 拼接 URL 并替换 path 参数。
         base = (environment.base_url or "").rstrip("/")
@@ -195,7 +190,7 @@ class DebugService:
                     return {"json": _json.loads(raw)}
                 except (ValueError, TypeError):
                     # 不能带 "headers" 键：调用点已用 headers= 关键字传入，重复即
-                    # TypeError: got multiple values for keyword argument 'headers'，
+                    # 异常说明：传入 headers 关键字参数时重复赋值会触发 TypeError。
                     # 且该 TypeError 不在下面的 except 列表里 → 直接 500。
                     return {"content": raw}
             if isinstance(body_obj.schema_json, dict) and "example" in body_obj.schema_json:
@@ -212,6 +207,7 @@ class DebugService:
         return {}
 
     def _form_fields(self, body_obj) -> dict[str, str]:
+        """提取表单请求字段。"""
         props = (body_obj.schema_json or {}).get("properties") or {}
         out: dict[str, str] = {}
         for name, info in props.items():
@@ -221,6 +217,7 @@ class DebugService:
         return out
 
     def _multipart_fields(self, body_obj) -> list[tuple[str, str]]:
+        """提取 multipart 请求字段及文件信息。"""
         props = (body_obj.schema_json or {}).get("properties") or {}
         out: list[tuple[str, str]] = []
         for name, info in props.items():

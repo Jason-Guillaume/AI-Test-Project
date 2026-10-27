@@ -6,16 +6,21 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from sqlalchemy.orm import Session
 
 from app.features.environment_configuration.schemas import (
     EnvironmentCreate,
     EnvironmentUpdate,
+    ProjectEnvironmentCreate,
+    ProjectEnvironmentUpdate,
     builtin_environments,
     normalize_environment_name,
 )
 from app.models.configuration import Environment
-from app.shared.errors import bad_request, conflict
+from app.features.environment_configuration.models import ProjectEnvironment
+from app.shared.errors import bad_request, conflict, not_found
 from app.shared.roles import is_platform_admin
 
 BUILTIN_NAMES = frozenset({"dev", "test", "staging", "prod"})
@@ -36,6 +41,7 @@ def response_for(row: Environment) -> dict:
     """
     return {
         "id": row.id,
+        "project_id": None,
         "name": row.name,
         "display_name": row.display_name or row.name,
         "base_url": row.base_url or "",
@@ -149,6 +155,289 @@ def _normalize_default(db: Session, keep: Environment | None) -> None:
         row.is_default = bool(fallback and row.id == fallback.id)
 
 
+def _normalize_project_default(db: Session, project_id: int, keep: ProjectEnvironment | None) -> None:
+    """每个项目单独维护唯一默认环境。"""
+    active = (
+        db.query(ProjectEnvironment)
+        .filter(
+            ProjectEnvironment.project_id == project_id,
+            ProjectEnvironment.is_active.is_(True),
+        )
+        .order_by(ProjectEnvironment.id.asc())
+        .all()
+    )
+    if keep is not None and keep.is_active:
+        for row in active:
+            row.is_default = row.id == keep.id
+        return
+    default = next((row for row in active if row.is_default), active[0] if active else None)
+    for row in db.query(ProjectEnvironment).filter(ProjectEnvironment.project_id == project_id).all():
+        row.is_default = bool(default and row.id == default.id)
+
+
+def ensure_project_environments(db: Session, project_id: int, *, actor_id: int | None = None) -> None:
+    """为没有环境绑定的项目复制模板配置；兼容迁移前已存在的项目。"""
+    if db.query(ProjectEnvironment.id).filter(ProjectEnvironment.project_id == project_id).first() is not None:
+        return
+
+    templates = _list_environments(db, include_inactive=True)
+    if actor_id is not None:
+        # 新项目默认只获得内置环境类型；其它类型由管理员显式加入，避免把
+        # 某一个项目新建的自定义环境自动扩散到之后创建的所有项目。
+        templates = [row for row in templates if row.name in BUILTIN_NAMES]
+    if not templates:
+        configs = builtin_environments()
+        if actor_id is not None:
+            configs = [config for config in configs if config["name"] in BUILTIN_NAMES]
+        for config in configs:
+            row = Environment(
+                name=config["name"], display_name=config["display_name"],
+                base_url=config["base_url"], gateway_prefix=config["gateway_prefix"],
+                default_headers=config["default_headers"], description=config["description"],
+                is_default=config["is_default"], is_active=config["is_active"],
+                created_by=actor_id, updated_by=actor_id,
+            )
+            db.add(row)
+            templates.append(row)
+        db.flush()
+
+    for template in templates:
+        db.add(ProjectEnvironment(
+            project_id=project_id,
+            environment_id=template.id,
+            display_name=template.display_name or template.name,
+            base_url=template.base_url or "",
+            gateway_prefix=template.gateway_prefix or "",
+            default_headers=dict(template.default_headers or {}),
+            description=template.description,
+            is_default=bool(template.is_default),
+            is_active=bool(template.is_active),
+            created_by=actor_id,
+            updated_by=actor_id,
+        ))
+    db.flush()
+    _normalize_project_default(db, project_id, None)
+
+
+def project_environment_response(db: Session, binding: ProjectEnvironment) -> dict:
+    """管理端响应：项目环境字段覆盖模板中的旧全局目标值。"""
+    template = db.get(Environment, binding.environment_id)
+    if template is None:
+        return {}
+    return {
+        **response_for(template),
+        "project_id": binding.project_id,
+        "display_name": binding.display_name or template.display_name or template.name,
+        "base_url": binding.base_url or "",
+        "gateway_prefix": binding.gateway_prefix or "",
+        "default_headers": dict(binding.default_headers or {}),
+        "description": binding.description or "",
+        "is_default": bool(binding.is_default),
+        "is_active": bool(binding.is_active),
+        "created_by": binding.created_by,
+        "updated_by": binding.updated_by,
+        "created_at": binding.created_at,
+        "updated_at": binding.updated_at,
+    }
+
+
+def list_project_environment_configs(
+    db: Session, project_id: int, *, include_inactive: bool = True
+) -> list[dict]:
+    """列出项目环境`configs`。"""
+    ensure_project_environments(db, project_id)
+    query = db.query(ProjectEnvironment).filter(ProjectEnvironment.project_id == project_id)
+    if not include_inactive:
+        query = query.filter(ProjectEnvironment.is_active.is_(True))
+    rows = query.order_by(ProjectEnvironment.is_default.desc(), ProjectEnvironment.id.asc()).all()
+    result = [project_environment_response(db, row) for row in rows]
+    db.commit()  # 仅当旧项目缺少初始环境绑定时才写入。
+    return result
+
+
+def list_project_environment_options(
+    db: Session, project_id: int, *, include_inactive: bool = False
+) -> list[dict]:
+    """前端执行选择器响应：只返回项目已关联环境，不暴露默认请求头。"""
+    query = (
+        db.query(ProjectEnvironment, Environment)
+        .join(Environment, Environment.id == ProjectEnvironment.environment_id)
+        .filter(ProjectEnvironment.project_id == project_id)
+    )
+    if not include_inactive:
+        query = query.filter(ProjectEnvironment.is_active.is_(True))
+    rows = query.order_by(ProjectEnvironment.is_default.desc(), ProjectEnvironment.id.asc()).all()
+    result = [
+        {
+            "id": template.id,
+            "project_id": binding.project_id,
+            "name": template.name,
+            "display_name": binding.display_name or template.display_name or template.name,
+            "base_url": binding.base_url or "",
+            "gateway_prefix": binding.gateway_prefix or "",
+            "default_headers": {},
+            "description": binding.description or "",
+            "is_default": bool(binding.is_default),
+            "is_active": bool(binding.is_active),
+            "created_by": binding.created_by,
+            "updated_by": binding.updated_by,
+            "created_at": binding.created_at,
+            "updated_at": binding.updated_at,
+        }
+        for binding, template in rows
+    ]
+    return result
+
+
+def resolve_project_environment(db: Session, project_id: int, environment_id: int):
+    """解析项目实际使用的环境；执行时必须存在活动的项目绑定。"""
+    pair = (
+        db.query(ProjectEnvironment, Environment)
+        .join(Environment, Environment.id == ProjectEnvironment.environment_id)
+        .filter(
+            ProjectEnvironment.project_id == project_id,
+            ProjectEnvironment.environment_id == environment_id,
+            ProjectEnvironment.is_active.is_(True),
+        )
+        .first()
+    )
+    if pair is None:
+        raise not_found("该环境未关联当前项目或已停用")
+    binding, template = pair
+    return SimpleNamespace(
+        id=template.id,
+        name=template.name,
+        display_name=binding.display_name or template.display_name or template.name,
+        base_url=binding.base_url or "",
+        gateway_prefix=binding.gateway_prefix or "",
+        default_headers=dict(binding.default_headers or {}),
+        description=binding.description,
+        is_default=bool(binding.is_default),
+        is_active=True,
+        created_by=binding.created_by,
+        updated_by=binding.updated_by,
+        created_at=binding.created_at,
+        updated_at=binding.updated_at,
+    )
+
+
+def resolve_project_environment_by_name(db: Session, project_id: int, name: str):
+    """解析并确定项目环境按名称。"""
+    template = get_by_name(db, name)
+    if template is None:
+        raise not_found("环境未关联当前项目或已停用")
+    return resolve_project_environment(db, project_id, template.id)
+
+
+def create_project_environment(
+    db: Session, project_id: int, body: ProjectEnvironmentCreate, *, actor
+) -> ProjectEnvironment:
+    """新增项目环境配置，并在需要时创建可复用的环境类型模板。"""
+    _require_admin(actor)
+    from app.models.project import Project
+
+    if db.get(Project, project_id) is None:
+        raise not_found("项目不存在")
+    name = normalize_environment_name(body.name)
+    if not name:
+        raise bad_request("环境名只能包含字母、数字、下划线和短横线，且以字母或数字开头")
+    if body.is_default and not body.is_active:
+        raise bad_request("停用环境不能设为默认环境")
+    template = get_by_name(db, name)
+    if template is None:
+        template = Environment(
+            name=name,
+            display_name=body.display_name.strip() or name,
+            base_url="",
+            gateway_prefix="",
+            default_headers={},
+            description=(body.description or "").strip() or None,
+            is_default=False,
+            is_active=True,
+            created_by=actor.id,
+            updated_by=actor.id,
+        )
+        db.add(template)
+        db.flush()
+    if db.query(ProjectEnvironment.id).filter(
+        ProjectEnvironment.project_id == project_id,
+        ProjectEnvironment.environment_id == template.id,
+    ).first() is not None:
+        raise conflict("该环境已关联当前项目")
+    row = ProjectEnvironment(
+        project_id=project_id,
+        environment_id=template.id,
+        display_name=body.display_name.strip() or template.display_name or template.name,
+        base_url=_validate_base_url(body.base_url),
+        gateway_prefix=(body.gateway_prefix or "").strip(),
+        default_headers=normalize_headers(body.default_headers),
+        description=(body.description or "").strip() or None,
+        is_active=bool(body.is_active),
+        is_default=False,
+        created_by=actor.id,
+        updated_by=actor.id,
+    )
+    db.add(row)
+    db.flush()
+    _normalize_project_default(db, project_id, row if body.is_default else None)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def update_project_environment(
+    db: Session, project_id: int, environment_id: int,
+    body: ProjectEnvironmentUpdate, *, actor,
+) -> ProjectEnvironment:
+    """更新项目环境。"""
+    _require_admin(actor)
+    row = db.query(ProjectEnvironment).filter_by(
+        project_id=project_id, environment_id=environment_id
+    ).first()
+    if row is None:
+        raise not_found("项目环境配置不存在")
+    data = body.model_dump(exclude_unset=True)
+    if data.get("base_url") is not None:
+        data["base_url"] = _validate_base_url(data["base_url"])
+    if data.get("display_name") is not None:
+        data["display_name"] = data["display_name"].strip() or row.display_name
+    if data.get("gateway_prefix") is not None:
+        data["gateway_prefix"] = data["gateway_prefix"].strip()
+    if data.get("default_headers") is not None:
+        data["default_headers"] = normalize_headers(data["default_headers"])
+    if data.get("description") is not None:
+        data["description"] = data["description"].strip() or None
+    if data.get("is_default") is True and not data.get("is_active", row.is_active):
+        raise bad_request("停用环境不能设为默认环境")
+    for field, value in data.items():
+        setattr(row, field, value)
+    row.updated_by = actor.id
+    _normalize_project_default(db, project_id, row if row.is_default else None)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def set_project_default_environment(
+    db: Session, project_id: int, environment_id: int, *, actor
+) -> ProjectEnvironment:
+    """设置项目默认环境。"""
+    return update_project_environment(
+        db, project_id, environment_id,
+        ProjectEnvironmentUpdate(is_default=True), actor=actor,
+    )
+
+
+def deactivate_project_environment(
+    db: Session, project_id: int, environment_id: int, *, actor
+) -> ProjectEnvironment:
+    """停用项目环境。"""
+    return update_project_environment(
+        db, project_id, environment_id,
+        ProjectEnvironmentUpdate(is_active=False), actor=actor,
+    )
+
+
 def create_environment(db: Session, body: EnvironmentCreate, *, actor) -> Environment:
     """新增环境。"""
     _require_admin(actor)
@@ -227,9 +516,11 @@ def set_default_environment(db: Session, name: str, *, actor) -> Environment:
 
 
 def delete_environment(db: Session, name: str, *, actor) -> None:
-    """删除环境；默认环境不能删除。"""
+    """删除未被项目引用的环境类型；项目正在使用时只能停用具体项目绑定。"""
     _require_admin(actor)
     row = get_or_404(db, name)
+    if db.query(ProjectEnvironment.id).filter(ProjectEnvironment.environment_id == row.id).first() is not None:
+        raise conflict("该环境类型已被项目引用，请在项目环境配置中停用对应环境")
     if row.is_default:
         raise bad_request("默认环境不能删除，请先指定新的默认环境")
     db.delete(row)

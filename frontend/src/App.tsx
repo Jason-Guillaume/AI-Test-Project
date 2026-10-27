@@ -37,6 +37,7 @@ const AdminOrganizationsPage = lazyNamedPage(() => import('@/pages/admin/Organiz
 const AdminProjectsPage = lazyNamedPage(() => import('@/pages/admin/Projects'), 'AdminProjectsPage');
 const AdminModelConfigsPage = lazyNamedPage(() => import('@/pages/admin/ModelConfigs'), 'AdminModelConfigsPage');
 const AdminEnvironmentsPage = lazyNamedPage(() => import('@/pages/admin/Environments'), 'AdminEnvironmentsPage');
+const AdminAgentGovernancePage = lazyNamedPage(() => import('@/pages/admin/AgentGovernance'), 'AdminAgentGovernancePage');
 const ConsoleWorkbenchPage = lazyNamedPage(() => import('@/pages/console/Workbench'), 'ConsoleWorkbenchPage');
 const ConsoleProjectsPage = lazyNamedPage(() => import('@/pages/console/Projects'), 'ConsoleProjectsPage');
 const ConsoleProjectDetailPage = lazyNamedPage(() => import('@/pages/console/Projects/ProjectDetail'), 'ConsoleProjectDetailPage');
@@ -87,7 +88,7 @@ function AuthShell() {
 }
 
 /**
- * 根路径跳转：按当前登录态与角色决定落地页。
+ * 根路径跳转：登录用户统一进入用户工作台，未登录用户进入登录页。
  *
  * 不发请求（复用 useAuth 已恢复的登录态）；ready 为 false 时（/me 还在跑）显示全屏加载圈，
  * 而不是直接跳登录页，否则会闪现错误的跳转。
@@ -106,8 +107,8 @@ function HomeRedirect() {
     <Navigate
       replace
       to={
-        // 平台管理员进管理端首页；其余登录用户进控制台；未登录回登录页。
-        user ? (user.role === 'admin' ? '/admin/dashboard' : '/console') : '/login'
+        // 所有登录用户默认进入工作台；管理员可从工作台顶部切换到管理后台。
+        user ? '/console' : '/login'
       }
     />
   );
@@ -166,6 +167,10 @@ function AppRoutes() {
           <Route path="projects" element={<AdminProjectsPage />} />
           <Route path="model-configs" element={<AdminModelConfigsPage />} />
           <Route path="environments" element={<AdminEnvironmentsPage />} />
+          <Route path="agents" element={<AdminAgentGovernancePage />} />
+          <Route path="mcp" element={<AdminAgentGovernancePage />} />
+          <Route path="skills" element={<AdminAgentGovernancePage />} />
+          <Route path="tools" element={<AdminAgentGovernancePage />} />
         </Route>
 
         <Route

@@ -58,10 +58,12 @@ class CountingStub(StubServer):
     """在 stub 上记下实际打到的请求，用来区分基线与变异各发了几次。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         super().__init__()
         self.hits: list[tuple[str, str]] = []
 
     def resolve(self, method, full_path):
+        """解析并确定对应数据。"""
         self.hits.append((method, full_path.split("?", 1)[0]))
         return super().resolve(method, full_path)
 
@@ -70,14 +72,17 @@ class CountingStub(StubServer):
 
 
 def _admin_id(db) -> int:
+    """查询平台管理员用户标识。"""
     return db.query(User).filter(User.username == "platform_admin").one().id
 
 
 def _actor(db, username: str = "platform_admin") -> User:
+    """按用户名查询操作人记录。"""
     return db.query(User).filter(User.username == username).one()
 
 
 def _new_project(db, api, admin) -> int:
+    """通过 API 创建安全测试项目并返回项目标识。"""
     response = api.post(
         "/projects", username=admin,
         json={"name": unique("sec-proj"), "description": "security project"},
@@ -137,6 +142,7 @@ def _env(db, admin_id: int, *, name: str, base_url: str | None = None) -> Enviro
 
 def _whitelist(db, project_id: int, port: int, admin_id: int,
                *, is_production: bool = False) -> None:
+    """为项目添加测试目标的出站访问白名单。"""
     db.add(ProjectOutboundTarget(
         project_id=project_id, scheme="http", host="127.0.0.1", port=port,
         is_production=is_production, enabled=True, approved_by=admin_id,
@@ -146,6 +152,7 @@ def _whitelist(db, project_id: int, port: int, admin_id: int,
 
 def _make_iface(db, project_id: int, *, method: str = "POST", path: str = "/tasks",
                 auth_type: str = "bearer") -> ApiInterface:
+    """构造`iface`。"""
     iface = ApiInterface(
         project_id=project_id, name=unique("iface"), method=method, path=path,
         auth_type=auth_type, content_type="application/json",
@@ -306,15 +313,18 @@ def _run_security(db, sec_case: TestCase, env: Environment, actor: User):
 
 
 def _execution(db, execution_id: int) -> SecurityExecution:
+    """按执行标识查询安全执行记录。"""
     return db.get(SecurityExecution, execution_id)
 
 
 def _findings(db, project_id: int) -> list[SecurityFinding]:
+    """查询项目下的安全发现项。"""
     return db.query(SecurityFinding).filter(SecurityFinding.project_id == project_id).all()
 
 
 def _new_finding(db, project_id: int, created_by: int, fingerprint_prefix: str,
                  *, severity: str = "HIGH", status: str = "OPEN") -> SecurityFinding:
+    """创建安全发现项测试数据。"""
     return SecurityFinding(
         project_id=project_id, mutation_type="REMOVE_TOKEN", severity=severity,
         status=status, title="越权访问任务详情",
@@ -330,6 +340,7 @@ class TestEnvironmentGate:
     """拒绝发生在任何出站之前，基线请求同样不发。"""
 
     def test_production_environment_skips_without_request(self, db, api, admin, monkeypatch):
+        """验证生产环境环境`skips`不带请求场景及其预期结果。"""
         scene = _seed(
             db, api, admin, port=None, env_name="prod",
             env_base_url="http://127.0.0.1:9",
@@ -338,6 +349,7 @@ class TestEnvironmentGate:
         outbound_calls: list[dict] = []
 
         def _explode(self, db_, **kwargs):
+            """模拟执行器异常并记录传入参数。"""
             outbound_calls.append(kwargs)
             return SimpleNamespace(
                 status_code=200, response_body="{}", response_headers={},
@@ -362,6 +374,7 @@ class TestEnvironmentGate:
         assert execution.actual_status_codes == []
 
     def test_dev_name_with_production_outbound_target_is_blocked(self, db, api, admin):
+        """验证开发环境名称包含生产环境`outbound`目标是否被拦截场景及其预期结果。"""
         with CountingStub() as stub:
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"id": 1}})
             scene = _seed(
@@ -376,6 +389,7 @@ class TestEnvironmentGate:
         assert stub.hits == []
 
     def test_unknown_environment_name_defaults_to_staging_and_is_denied(self, db, api, admin):
+        """验证未知环境名称`defaults`到预发环境和是否被拒绝场景及其预期结果。"""
         with CountingStub() as stub:
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"id": 1}})
             scene = _seed(
@@ -390,6 +404,7 @@ class TestEnvironmentGate:
         assert stub.hits == []
 
     def test_allow_staging_unlocks_unknown_environment(self, db, api, admin):
+        """验证`allow`预发环境`unlocks`未知环境场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _seed(
                 db, api, admin, port=stub.port, env_name="weird-qa",
@@ -404,6 +419,7 @@ class TestEnvironmentGate:
         assert len(stub.hits) == 1
 
     def test_high_risk_unconfirmed_skips_without_request(self, db, api, admin):
+        """验证高风险风险`unconfirmed``skips`不带请求场景及其预期结果。"""
         with CountingStub() as stub:
             scene = _seed(
                 db, api, admin, port=stub.port, env_name="dev",
@@ -428,6 +444,7 @@ class TestBaselineAndMutation:
     """基线结论、变异判定与 Finding 生成。"""
 
     def test_baseline_5xx_is_inconclusive_and_sends_no_mutation(self, db, api, admin):
+        """验证基线`xx`是否`inconclusive`和`sends`无变异场景及其预期结果。"""
         with CountingStub() as stub:
             stub.add("POST", "/tasks", 500, {"code": 500, "message": "boom"})
             scene = _seed(
@@ -450,6 +467,7 @@ class TestBaselineAndMutation:
         assert _findings(db, scene.project_id) == []
 
     def test_remove_token_200_becomes_potential_issue_with_high_finding(self, db, api, admin):
+        """验证移除令牌`becomes``potential``issue`包含高风险发现项场景及其预期结果。"""
         hits: list[str] = []
         with CountingStub() as stub:
             _route_by_auth(stub, denied_status=200, denied_body={"code": 0, "data": {"id": 101}},
@@ -483,6 +501,7 @@ class TestBaselineAndMutation:
         assert _TOKEN not in str(finding.evidence)
 
     def test_remove_token_401_passes_without_finding(self, db, api, admin):
+        """验证移除令牌`passes`不带发现项场景及其预期结果。"""
         hits: list[str] = []
         with CountingStub() as stub:
             _route_by_auth(stub, denied_status=401, denied_body={"code": 401}, hit_sink=hits)
@@ -500,6 +519,7 @@ class TestBaselineAndMutation:
         assert _findings(db, scene.project_id) == []
 
     def test_remove_token_server_error_becomes_medium_finding(self, db, api, admin):
+        """验证移除令牌服务端错误`becomes`中风险发现项场景及其预期结果。"""
         with CountingStub() as stub:
             _route_by_auth(stub, denied_status=500, denied_body={"code": 500}, hit_sink=[])
             scene = _seed(
@@ -516,6 +536,7 @@ class TestBaselineAndMutation:
         assert findings[0].severity == "MEDIUM"
 
     def test_same_fingerprint_twice_keeps_one_open_with_repeat_count(self, db, api, admin):
+        """验证相同`fingerprint``twice``keeps``one`打开包含`repeat`统计场景及其预期结果。"""
         with CountingStub() as stub:
             _route_by_auth(stub, denied_status=200, denied_body={"code": 0, "data": {"id": 1}},
                            hit_sink=[])
@@ -537,6 +558,7 @@ class TestBaselineAndMutation:
         ]
 
     def test_false_positive_rerun_opens_a_new_finding_with_prior_status(self, db, api, admin):
+        """验证`false``positive``rerun``opens``a``new`发现项包含`prior`状态场景及其预期结果。"""
         with CountingStub() as stub:
             _route_by_auth(stub, denied_status=200, denied_body={"code": 0, "data": {"id": 1}},
                            hit_sink=[])
@@ -566,6 +588,7 @@ def _route_by_auth(stub, *, denied_status: int, denied_body: dict, hit_sink: lis
     """按是否带 Authorization 分流：带 = 基线（200），不带 = 变异请求。"""
 
     def respond(handler, body):
+        """生成响应对应数据。"""
         hit_sink.append("baseline" if handler.headers.get("Authorization") else "mutation")
         if handler.headers.get("Authorization"):
             return 200, {"code": 0, "data": {"id": 101, "name": "任务A"}}
@@ -581,6 +604,7 @@ class TestReplay:
     """DUPLICATE_SUBMIT：不改请求体，只重复提交。"""
 
     def _seed_duplicate_submit(self, db, api, admin, stub, responder):
+        """构造重复提交接口的模拟响应和安全测试场景。"""
         stub.exact[("POST", "/tasks")] = responder
         scene = _seed(
             db, api, admin, port=stub.port, env_name="dev",
@@ -594,9 +618,11 @@ class TestReplay:
         return scene
 
     def test_duplicate_submit_second_response_409_passes(self, db, api, admin):
+        """验证重复`submit``second`响应`passes`场景及其预期结果。"""
         counter = {"n": 0}
 
         def respond(handler, body):
+            """生成响应对应数据。"""
             counter["n"] += 1
             if counter["n"] == 1:
                 return 200, {"code": 0, "data": {"name": "任务A"}}
@@ -618,9 +644,11 @@ class TestReplay:
         assert _findings(db, scene.project_id) == []
 
     def test_duplicate_submit_two_2xx_with_different_ids_records_high(self, db, api, admin):
+        """验证重复`submit``two``xx`包含`different``ids`记录高风险场景及其预期结果。"""
         counter = {"n": 0}
 
         def respond(handler, body):
+            """生成响应对应数据。"""
             counter["n"] += 1
             if counter["n"] == 1:
                 return 200, {"code": 0, "data": {"name": "任务A"}}
@@ -647,6 +675,7 @@ class TestBusinessFlowSkip:
     """BUSINESS_STATE 依赖终态数据与步骤语义，第一阶段执行时必须记 SKIPPED。"""
 
     def test_business_flow_mutation_type_is_skipped_not_blind_http(self, db, api, admin):
+        """验证业务流程变异类型是否跳过不`blind`HTTP场景及其预期结果。"""
         with CountingStub() as stub:
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"id": 1}})
             scene = _seed(
@@ -675,6 +704,7 @@ class TestPlanning:
     """plan confirm 生成的用例形态与 §20.2 的用例约束。"""
 
     def test_confirm_creates_security_case_referencing_baseline(self, db, api, admin):
+        """验证确认`creates`安全用例`referencing`基线场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         admin_id = _admin_id(db)
         iface = _make_iface(db, project_id)
@@ -723,6 +753,7 @@ class TestPlanning:
         assert db.query(TestStep).filter(TestStep.test_case_id == created.id).all() == []
 
     def test_preview_requires_exactly_one_target(self, db, api, admin):
+        """验证预览需要`exactly``one`目标场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         strategy, _rule = _make_rule(db, project_id)
         db.commit()
@@ -736,6 +767,7 @@ class TestPlanning:
         assert excinfo.value.status_code == 400
 
     def test_preview_confirmed_twice_is_rejected(self, db, api, admin):
+        """验证预览`confirmed``twice`是否被拒绝场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         admin_id = _admin_id(db)
         iface = _make_iface(db, project_id)
@@ -763,7 +795,7 @@ class TestPlanning:
         assert excinfo.value.code == "SECURITY_PLAN_STATE_INVALID"
 
 
-# --------------------------------------------------------------------------- §16.2 API
+# --------------------------------------------------------------------------- §16.2 接口 API 接口
 
 
 class TestSecurityApi:
@@ -771,6 +803,7 @@ class TestSecurityApi:
 
     def _seed(self, db, project_id, *, mutation_type: str = "REMOVE_TOKEN",
               confirmation_required: bool = False):
+        """构造安全执行测试场景及其关联数据。"""
         admin_id = _admin_id(db)
         iface = _make_iface(db, project_id)
         baseline = _make_case(
@@ -790,6 +823,7 @@ class TestSecurityApi:
         return iface, baseline, sec_case, extension
 
     def test_list_and_patch_enabled_syncs_test_case(self, db, api, admin):
+        """验证列出和局部更新启用状态`syncs`测试用例场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         _iface, _baseline, _sec, extension = self._seed(db, project_id)
 
@@ -811,6 +845,7 @@ class TestSecurityApi:
         assert response.json()["baseline_case_name"]
 
     def test_confirm_risk_records_actor_and_blocks_repeat(self, db, api, admin):
+        """验证确认风险记录`actor`和`blocks``repeat`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         _iface, _baseline, _sec, extension = self._seed(
             db, project_id, confirmation_required=True,
@@ -826,6 +861,7 @@ class TestSecurityApi:
         ).status_code == 400
 
     def test_confirm_risk_refuses_case_that_needs_no_confirmation(self, db, api, admin):
+        """验证确认风险`refuses`用例`that``needs`无`confirmation`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         _iface, _baseline, _sec, extension = self._seed(db, project_id)
         assert api.post(
@@ -833,6 +869,7 @@ class TestSecurityApi:
         ).status_code == 400
 
     def test_security_runs_reuses_run_service(self, db, api, admin):
+        """验证安全`runs``reuses`运行服务场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         admin_id = _admin_id(db)
         _iface, _baseline, _sec, extension = self._seed(db, project_id)
@@ -874,6 +911,7 @@ class TestSecurityApi:
         assert body["baseline_status"] == "PASSED"
 
     def test_security_runs_refuses_unknown_or_disabled_cases(self, db, api, admin):
+        """验证安全`runs``refuses`未知或`disabled``cases`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         admin_id = _admin_id(db)
         with CountingStub() as stub:
@@ -886,6 +924,7 @@ class TestSecurityApi:
         assert response.status_code == 400
 
     def test_member_cannot_run_security_cases(self, db, api, admin):
+        """验证成员不能运行安全`cases`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         admin_id = _admin_id(db)
         viewer = _register_member(api, admin, project_id, role="viewer")
@@ -900,6 +939,7 @@ class TestSecurityApi:
         assert response.status_code == 403
 
     def test_finding_status_transition_matrix(self, db, api, admin):
+        """验证发现项状态`transition``matrix`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         finding = _new_finding(db, project_id, _admin_id(db), "f")
         db.add(finding)
@@ -907,6 +947,7 @@ class TestSecurityApi:
         db.refresh(finding)
 
         def patch(status: str) -> int:
+            """更新对应数据。"""
             return api.patch(
                 f"/security-findings/{finding.id}", username=admin, json={"status": status},
             ).status_code
@@ -928,6 +969,7 @@ class TestSecurityApi:
         ).status_code == 422
 
     def test_resolve_writes_resolved_by(self, db, api, admin):
+        """验证解析并确定`writes``resolved`按场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         finding = _new_finding(db, project_id, _admin_id(db), "r")
         db.add(finding)
@@ -942,6 +984,7 @@ class TestSecurityApi:
         assert response.json()["status"] == "RESOLVED"
 
     def test_same_status_is_idempotent_no_op(self, db, api, admin):
+        """验证相同状态是否幂等无`op`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         finding = _new_finding(db, project_id, _admin_id(db), "s")
         db.add(finding)
@@ -955,6 +998,7 @@ class TestSecurityApi:
         assert response.json()["status"] == "OPEN"
 
     def test_finding_permissions(self, db, api, admin):
+        """验证发现项权限场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         finding = _new_finding(db, project_id, _admin_id(db), "p")
         db.add(finding)
@@ -979,6 +1023,7 @@ class TestSecurityApi:
         ).status_code == 200
 
     def test_other_project_cannot_read_finding_or_execution(self, db, api, admin):
+        """验证其他项目不能读取发现项或执行记录场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         other = _new_project(db, api, admin)
         admin_id = _admin_id(db)
@@ -1010,6 +1055,7 @@ class TestSecurityApi:
         assert api.get(f"/security-executions/{execution.id}", username=outsider).status_code == 404
 
     def test_findings_list_filters(self, db, api, admin):
+        """验证`findings`列出`filters`场景及其预期结果。"""
         project_id = _new_project(db, api, admin)
         admin_id = _admin_id(db)
         db.add(_new_finding(db, project_id, admin_id, "w", severity="HIGH", status="OPEN"))

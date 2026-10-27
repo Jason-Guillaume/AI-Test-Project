@@ -55,6 +55,7 @@ def _last_status(codes: list[int] | None) -> int:
 
 
 def _is_2xx(ctx: SeverityContext) -> bool:
+    """判断`xx`是否成立。"""
     return 200 <= _last_status(ctx.status_codes) < 300
 
 

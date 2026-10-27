@@ -152,7 +152,7 @@ class DefectService:
             raise bad_request("处理人必须是该项目成员")
         return assignee
 
-    def create_bug(self, db: Session, body: BugCreate, *, actor: User) -> Bug:
+    def create_bug(self, db: Session, body: BugCreate, *, actor: User, commit: bool = True) -> Bug:
         """新增缺陷；创建者成为报告人。"""
         project = self._get_project_or_404(db, body.project_id, actor)
         self._check_writable(db, project, actor)
@@ -188,8 +188,9 @@ class DefectService:
             detail={"bug_id": bug.id, "project_id": project.id},
         )
 
-        db.commit()
-        db.refresh(bug)
+        if commit:
+            db.commit()
+            db.refresh(bug)
         return bug
 
     def update_bug(

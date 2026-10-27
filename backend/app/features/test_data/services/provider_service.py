@@ -182,6 +182,7 @@ class ProviderService:
         provider_type: str | None = None, enabled: bool | None = None,
         keyword: str | None = None, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> DataProviderListResponse:
+        """列出`providers`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(DataProvider).filter(DataProvider.project_id == project_id)
         if provider_type:
@@ -202,6 +203,7 @@ class ProviderService:
     def create_provider(
         self, db: Session, project_id: int, body: DataProviderCreate, *, actor: User,
     ) -> DataProviderResponse:
+        """创建提供器。"""
         project = require_writable_project(db, project_id, actor)
         if _requires_admin(body.provider_type):
             require_admin(db, actor)
@@ -244,11 +246,13 @@ class ProviderService:
         return _response(provider, db)
 
     def get_provider(self, db: Session, provider_id: int, user: User) -> DataProviderResponse:
+        """获取提供器。"""
         return _response(self._get_or_404(db, provider_id, user), db)
 
     def update_provider(
         self, db: Session, provider_id: int, body: DataProviderUpdate, *, actor: User,
     ) -> DataProviderResponse:
+        """更新提供器。"""
         provider = self._get_writable_or_404(db, provider_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -305,6 +309,7 @@ class ProviderService:
     def set_enabled(
         self, db: Session, provider_id: int, *, enabled: bool, actor: User,
     ) -> DataProviderResponse:
+        """设置启用状态。"""
         provider = self._get_writable_or_404(db, provider_id, actor)
         if _requires_admin(provider.provider_type) and enabled:
             require_admin(db, actor)
@@ -320,6 +325,7 @@ class ProviderService:
         return _response(provider, db)
 
     def delete_provider(self, db: Session, provider_id: int, *, actor: User) -> None:
+        """删除提供器。"""
         provider = self._get_writable_or_404(db, provider_id, actor)
         if _requires_admin(provider.provider_type):
             require_admin(db, actor)
@@ -330,6 +336,7 @@ class ProviderService:
         db.commit()
 
     def _get_or_404(self, db: Session, provider_id: int, user: User) -> DataProvider:
+        """获取或。"""
         row = db.get(DataProvider, provider_id)
         if row is None:
             raise not_found("数据 Provider 不存在")
@@ -337,6 +344,7 @@ class ProviderService:
         return row
 
     def _get_writable_or_404(self, db: Session, provider_id: int, actor: User) -> DataProvider:
+        """获取可写或。"""
         row = db.get(DataProvider, provider_id)
         if row is None:
             raise not_found("数据 Provider 不存在")

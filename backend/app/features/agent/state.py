@@ -31,7 +31,7 @@ class AgentState(TypedDict, total=False):
 
     # --- 意图与目标 ---
     intent: str | None
-    target_type: str | None  # API / BUSINESS_FLOW / BUSINESS_ACTION
+    target_type: str | None  # 调用类型：API / BUSINESS_FLOW / BUSINESS_ACTION
     target_ids: list[int]
 
     # --- ContextLoader 产出的最小上下文（已脱敏）---
@@ -90,7 +90,7 @@ class AgentState(TypedDict, total=False):
 
     # --- 控制 ---
     current_stage: str
-    error: dict[str, Any] | None  # {"code": ..., "message": ...}
+    error: dict[str, Any] | None  # 错误响应格式：{"code": ..., "message": ...}
     messages: list[dict[str, Any]]  # 供 prompt 的消息历史（脱敏，截断）
 
 

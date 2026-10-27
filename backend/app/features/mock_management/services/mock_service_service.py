@@ -44,6 +44,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 def _raise_not_found(message: str = "Mock 服务不存在") -> None:
+    """资源不存在或不可见时抛出 404 错误。"""
     raise not_found(message)
 
 
@@ -57,6 +58,7 @@ class MockServiceService:
         keyword: str | None = None, enabled: bool | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> MockServiceListResponse:
+        """列出`services`。"""
         get_project_or_404(db, project_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(MockService).filter(MockService.project_id == project_id)
@@ -83,6 +85,7 @@ class MockServiceService:
         )
 
     def get_service(self, db: Session, service_id: int, user: User):
+        """获取服务。"""
         row = self._get_or_404(db, service_id, user)
         return service_response(db, row)
 
@@ -91,6 +94,7 @@ class MockServiceService:
     def create_service(
         self, db: Session, project_id: int, body: MockServiceCreate, *, actor: User,
     ) -> MockServiceCreateResponse:
+        """创建服务。"""
         project = require_manage_project(db, project_id, actor)
         key = (body.service_key or "").strip()
         if not re.fullmatch(SERVICE_KEY_PATTERN, key):
@@ -128,6 +132,7 @@ class MockServiceService:
         return MockServiceCreateResponse(service=service_response(db, service), runtime_token=plaintext)
 
     def delete_service(self, db: Session, service_id: int, *, actor: User) -> None:
+        """删除服务。"""
         service = self._get_writable_or_404(db, service_id, actor)
         ref_count = int(
             db.query(TestCaseMock.id).filter(TestCaseMock.mock_service_id == service.id).count()
@@ -142,6 +147,7 @@ class MockServiceService:
     def update_service(
         self, db: Session, service_id: int, body: MockServiceUpdate, *, actor: User,
     ):
+        """更新服务。"""
         service = self._get_writable_or_404(db, service_id, actor)
         # 乐观锁：revision 不匹配 → 409。
         if body.revision != service.revision:
@@ -197,6 +203,7 @@ class MockServiceService:
         return scenario.id
 
     def _get_or_404(self, db: Session, service_id: int, user: User) -> MockService:
+        """获取或。"""
         row = db.get(MockService, service_id)
         if row is None:
             _raise_not_found()
@@ -204,6 +211,7 @@ class MockServiceService:
         return row
 
     def _get_writable_or_404(self, db: Session, service_id: int, actor: User) -> MockService:
+        """获取可写或。"""
         row = db.get(MockService, service_id)
         if row is None:
             _raise_not_found()

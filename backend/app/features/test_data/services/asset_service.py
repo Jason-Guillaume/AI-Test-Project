@@ -60,6 +60,7 @@ class AssetService:
         source: str | None = None, status: str | None = None,
         scope: str | None = None, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestDataAssetListResponse:
+        """列出`assets`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TestDataAsset).filter(TestDataAsset.project_id == project_id)
         if entity_type:
@@ -88,11 +89,13 @@ class AssetService:
         )
 
     def get_asset(self, db: Session, asset_id: int, user: User) -> TestDataAssetResponse:
+        """获取资产。"""
         return _response(self._get_or_404(db, asset_id, user), db)
 
     def create_asset(
         self, db: Session, project_id: int, body: TestDataAssetCreate, *, actor: User,
     ) -> TestDataAssetResponse:
+        """创建资产。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -130,6 +133,7 @@ class AssetService:
     def update_asset(
         self, db: Session, asset_id: int, body: TestDataAssetUpdate, *, actor: User,
     ) -> TestDataAssetResponse:
+        """更新资产。"""
         asset = self._get_writable_or_404(db, asset_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -174,6 +178,7 @@ class AssetService:
         return _response(asset, db)
 
     def delete_asset(self, db: Session, asset_id: int, *, actor: User) -> None:
+        """删除资产。"""
         asset = self._get_writable_or_404(db, asset_id, actor)
         ref_count = int(db.query(DataPool.id).filter(DataPool.asset_id == asset.id).count())
         if ref_count:
@@ -182,6 +187,7 @@ class AssetService:
         db.commit()
 
     def _get_or_404(self, db: Session, asset_id: int, user: User) -> TestDataAsset:
+        """获取或。"""
         row = db.get(TestDataAsset, asset_id)
         if row is None:
             raise not_found("测试数据不存在")
@@ -189,6 +195,7 @@ class AssetService:
         return row
 
     def _get_writable_or_404(self, db: Session, asset_id: int, actor: User) -> TestDataAsset:
+        """获取可写或。"""
         row = db.get(TestDataAsset, asset_id)
         if row is None:
             raise not_found("测试数据不存在")

@@ -49,6 +49,7 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _mask_value(value: object) -> object:
+    """脱敏值。"""
     return SensitiveDataMasker.mask_body(value)
 
 
@@ -76,6 +77,7 @@ def _pool_response(pool: DataPool, db: Session) -> DataPoolResponse:
 
 
 def _item_response(item: DataPoolItem) -> DataPoolItemResponse:
+    """构造条目响应数据。"""
     resp = DataPoolItemResponse.model_validate(item)
     resp.payload_json = _mask_value(item.payload_json)
     return resp
@@ -91,6 +93,7 @@ class PoolService:
         keyword: str | None = None, status: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> DataPoolListResponse:
+        """列出`pools`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(DataPool).filter(DataPool.project_id == project_id)
         if status:
@@ -107,11 +110,13 @@ class PoolService:
         )
 
     def get_pool(self, db: Session, pool_id: int, user: User) -> DataPoolResponse:
+        """获取连接池。"""
         return _pool_response(self._get_pool_or_404(db, pool_id, user), db)
 
     def create_pool(
         self, db: Session, project_id: int, body: DataPoolCreate, *, actor: User,
     ) -> DataPoolResponse:
+        """创建连接池。"""
         project = require_writable_project(db, project_id, actor)
         if body.pool_key.strip().upper() != body.pool_key.strip():
             raise bad_request("pool_key 必须为全大写")
@@ -145,6 +150,7 @@ class PoolService:
     def update_pool(
         self, db: Session, pool_id: int, body: DataPoolUpdate, *, actor: User,
     ) -> DataPoolResponse:
+        """更新连接池。"""
         pool = self._get_pool_writable_or_404(db, pool_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -169,6 +175,7 @@ class PoolService:
         return _pool_response(pool, db)
 
     def delete_pool(self, db: Session, pool_id: int, *, actor: User) -> None:
+        """删除连接池。"""
         pool = self._get_pool_writable_or_404(db, pool_id, actor)
         if self._active_lease_count(db, pool.id):
             raise conflict("数据池存在活跃租约，无法删除")
@@ -181,6 +188,7 @@ class PoolService:
         self, db: Session, pool_id: int, user: User, *,
         status: str | None = None, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> DataPoolItemListResponse:
+        """列出条目。"""
         pool = self._get_pool_or_404(db, pool_id, user)
         q = db.query(DataPoolItem).filter(DataPoolItem.pool_id == pool.id)
         if status:
@@ -196,6 +204,7 @@ class PoolService:
     def create_item(
         self, db: Session, pool_id: int, body: DataPoolItemCreate, *, actor: User,
     ) -> DataPoolItemResponse:
+        """创建条目。"""
         pool = self._get_pool_writable_or_404(db, pool_id, actor)
         if pool.status != "ACTIVE":
             raise conflict("数据池未启用，无法添加条目")
@@ -218,6 +227,7 @@ class PoolService:
     def update_item(
         self, db: Session, item_id: int, body: DataPoolItemUpdate, *, actor: User,
     ) -> DataPoolItemResponse:
+        """更新条目。"""
         item = self._get_item_writable_or_404(db, item_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -237,6 +247,7 @@ class PoolService:
         return _item_response(item)
 
     def delete_item(self, db: Session, item_id: int, *, actor: User) -> None:
+        """删除条目。"""
         item = self._get_item_writable_or_404(db, item_id, actor)
         if item.status == "OCCUPIED":
             raise conflict("条目处于 OCCUPIED 状态，无法删除")
@@ -265,6 +276,7 @@ class PoolService:
         self, db: Session, pool_id: int, user: User, *,
         status: str | None = None, page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> dict:
+        """列出`leases`。"""
         pool = self._get_pool_or_404(db, pool_id, user)
         q = db.query(DataPoolLease).filter(
             DataPoolLease.project_id == pool.project_id,
@@ -375,6 +387,7 @@ class PoolService:
 
     @staticmethod
     def _active_lease_count(db: Session, pool_id: int) -> int:
+        """统计启用状态租约数量。"""
         return int(
             db.query(DataPoolLease.id)
             .filter(DataPoolLease.status == "ACTIVE")
@@ -383,6 +396,7 @@ class PoolService:
         )
 
     def _get_pool_or_404(self, db: Session, pool_id: int, user: User) -> DataPool:
+        """获取连接池或。"""
         row = db.get(DataPool, pool_id)
         if row is None:
             raise not_found("数据池不存在")
@@ -390,6 +404,7 @@ class PoolService:
         return row
 
     def _get_pool_writable_or_404(self, db: Session, pool_id: int, actor: User) -> DataPool:
+        """获取连接池可写或。"""
         row = db.get(DataPool, pool_id)
         if row is None:
             raise not_found("数据池不存在")
@@ -397,6 +412,7 @@ class PoolService:
         return row
 
     def _get_item_or_404(self, db: Session, item_id: int, user: User) -> DataPoolItem:
+        """获取条目或。"""
         item = db.get(DataPoolItem, item_id)
         if item is None:
             raise not_found("池条目不存在")
@@ -407,6 +423,7 @@ class PoolService:
         return item
 
     def _get_item_writable_or_404(self, db: Session, item_id: int, actor: User) -> DataPoolItem:
+        """获取条目可写或。"""
         item = db.get(DataPoolItem, item_id)
         if item is None:
             raise not_found("池条目不存在")

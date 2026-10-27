@@ -34,6 +34,7 @@ def _query_findings(ctx: NodeContext, state: AgentState) -> dict:
 
 
 def query_node(ctx: NodeContext, state: AgentState) -> dict:
+    """根据用户查询补充所需的测试上下文。"""
     # QUERY_SECURITY_FINDING 不要求 target（可查项目全量 Finding）。
     if state.get("intent") == "QUERY_SECURITY_FINDING":
         try:

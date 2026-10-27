@@ -69,6 +69,7 @@ def _spec_from_schema(name: str, location: str, schema: dict[str, Any], required
         type_ = f"{type_}|null"
 
     def _int_or_none(value: Any) -> int | None:
+        """将输入转换为整数；无法转换时返回空值。"""
         if isinstance(value, bool):
             return None
         if isinstance(value, int):
@@ -78,6 +79,7 @@ def _spec_from_schema(name: str, location: str, schema: dict[str, Any], required
         return None
 
     def _float_or_none(value: Any) -> float | None:
+        """将输入转换为浮点数；无法转换时返回空值。"""
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return float(value)
         return None

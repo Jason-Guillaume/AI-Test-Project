@@ -54,11 +54,6 @@ from app.features.agent.nodes.test_case_generator import test_case_generator_nod
 from app.features.agent.nodes.test_point_generator import test_point_generator_node
 from app.features.agent.nodes.test_planner import test_planner_node
 from app.features.agent.nodes.validator import validator_node
-from app.features.agent.nodes.zap_scan import (
-    zap_scan_job_creator_node,
-    zap_scan_planner_node,
-    zap_scan_review_node,
-)
 from app.features.agent.nodes.web_agent import (
     route_after_web_act,
     route_after_web_decide,
@@ -80,6 +75,7 @@ def _error_guard(ok_next: str):
     """条件边工厂：state 有 error 时短路到 END，否则路由到 ok_next。"""
 
     def route(ctx: NodeContext, state: AgentState) -> str:
+        """根据智能体当前状态选择下一步执行节点。"""
         return "end" if state.get("error") else ok_next
 
     return route
@@ -93,6 +89,7 @@ def _clarify_guard(ok_next: str):
     """
 
     def route(ctx: NodeContext, state: AgentState) -> str:
+        """根据智能体当前状态选择下一步执行节点。"""
         if state.get("error"):
             return "end"
         return "end" if state.get("current_stage") == "CLARIFY" else ok_next
@@ -128,10 +125,6 @@ def build_graph(ctx: NodeContext):
     graph.add_node("security_case_materializer", partial(security_case_materializer_node, ctx))
     graph.add_node("security_case_loader", partial(security_case_loader_node, ctx))
     graph.add_node("security_risk_confirm", partial(security_risk_confirm_node, ctx))
-    # ZAP 安全扫描链（Phase 2，§二十三）：计划 →[暂停]计划 review → 人工确认才建任务。
-    graph.add_node("zap_scan_planner", partial(zap_scan_planner_node, ctx))
-    graph.add_node("zap_scan_review", partial(zap_scan_review_node, ctx))
-    graph.add_node("zap_scan_job_creator", partial(zap_scan_job_creator_node, ctx))
     # Web 智能体链（二轮）：observe→decide→act 循环 + web_step_review 人工确认暂停点。
     graph.add_node("web_observe", partial(web_observe_node, ctx))
     graph.add_node("web_decide", partial(web_decide_node, ctx))
@@ -151,7 +144,6 @@ def build_graph(ctx: NodeContext):
         "notification_sender": "notification_sender",
         "security_case_materializer": "security_case_materializer",
         "security_risk_confirm": "security_risk_confirm",
-        "zap_scan_job_creator": "zap_scan_job_creator",
         # Web 智能体：确认执行步骤 / 驳回后重新观测 / 提升为正式用例（终态）
         "web_act": "web_act",
         "web_decide": "web_decide",
@@ -166,7 +158,6 @@ def build_graph(ctx: NodeContext):
         "query": "query",
         "security_context_loader": "security_context_loader",
         "security_case_loader": "security_case_loader",
-        "zap_scan_planner": "zap_scan_planner",
         "web_observe": "web_observe",
         "clarify_end": END,
     })
@@ -223,15 +214,6 @@ def build_graph(ctx: NodeContext):
     )
     graph.add_edge("security_risk_confirm", END)
 
-    # ZAP 扫描链：planner 只出计划（多目标/多策略时澄清而不猜），停在 review 暂停点；
-    # 创建任务只能由人工 confirm_security_scan 触发（§二十三）。
-    graph.add_conditional_edges(
-        "zap_scan_planner", partial(_clarify_guard("zap_scan_review"), ctx),
-        {"zap_scan_review": "zap_scan_review", "end": END},
-    )
-    graph.add_edge("zap_scan_review", END)
-    graph.add_edge("zap_scan_job_creator", END)
-
     # Web 智能体链（二轮）：observe → decide →(PROPOSE)→[暂停]step review →(人工确认)→
     # act → observe 闭环；DONE 直接结束，OBSERVE 继续观察；步数预算或空转轮次耗尽时
     # 强制停在 review，交人工决定是否提升已接受步骤为正式用例。
@@ -269,11 +251,10 @@ def build_graph(ctx: NodeContext):
 
     return graph.compile(
         # security_plan_review：安全计划已生成但未确认，用例还没落库（Phase F，§13.2）。
-        # zap_scan_review：ZAP 扫描计划已生成但未确认，任务还没创建（Phase 2，§二十三）。
         # web_step_review：Web 智能体步骤提案已生成但未确认，确认前不执行下一步（二轮）。
         interrupt_before=[
             "test_point_review", "test_case_review", "report_review",
-            "security_plan_review", "zap_scan_review", "web_step_review",
+            "security_plan_review", "web_step_review",
         ],
     )
 
@@ -290,7 +271,6 @@ _ACTION_LABELS: dict[str, str] = {
     "skip_notification": "跳过飞书通知",
     "confirm_security_plan": "确认安全计划",
     "confirm_security_risk": "确认高风险用例",
-    "confirm_security_scan": "确认扫描计划并创建扫描任务",
     "confirm_web_step": "确认执行 Web 智能体步骤",
     "reject_web_step": "驳回 Web 智能体步骤提案",
 }
@@ -315,9 +295,6 @@ def run_agent(
     channel_id: int | None = None,
     security_item_indexes: list[int] | None = None,
     security_case_ids: list[int] | None = None,
-    zap_scan_target_id: int | None = None,
-    zap_scan_profile_id: int | None = None,
-    approval_note: str | None = None,
     web_session_id: int | None = None,
 ) -> tuple[AgentState, list[AgentMessage]]:
     """单次请求编排：重建 state → 注入输入 → invoke → 持久化 → 返回。
@@ -368,8 +345,6 @@ def run_agent(
             initial["web_goal"] = None
             initial["web_observe_count"] = 0
 
-    # action_payload 在无 action 时也可能带参数（如 REQUEST_SECURITY_SCAN 时指定
-    # 目标 / 策略），因此单独赋值；缺字段保持 None，节点侧按缺省处理。
     initial["action_payload"] = {
         "point_ids": point_ids,
         "case_ids": case_ids,
@@ -378,12 +353,6 @@ def run_agent(
         # Phase F：安全计划确认（预览项 index）与高风险确认（TestCase id）。
         "security_item_indexes": security_item_indexes,
         "security_case_ids": security_case_ids,
-        # Phase 2：ZAP 扫描目标 / 策略选择与人工批准说明（§二十三）。
-        # approval_note 只用于创建任务，绝不写入消息历史——否则下次 LLM 能从
-        # history 里看到批准理由，等于把人类批准泄漏给模型。
-        "zap_scan_target_id": zap_scan_target_id,
-        "zap_scan_profile_id": zap_scan_profile_id,
-        "approval_note": approval_note,
     }
 
     if action:

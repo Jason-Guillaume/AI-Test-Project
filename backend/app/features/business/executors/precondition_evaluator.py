@@ -17,12 +17,14 @@ class PreconditionResult:
 
     def __init__(self, passed: bool, condition_id: int | None = None,
                  target: str | None = None, reason: str | None = None):
+        """初始化对象状态。"""
         self.passed = passed
         self.condition_id = condition_id
         self.target = target
         self.reason = reason
 
     def to_dict(self) -> dict:
+        """将当前对象转换为字典。"""
         return {
             "passed": self.passed,
             "condition_id": self.condition_id,

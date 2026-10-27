@@ -43,6 +43,7 @@ _SECRET = "test-Feishu-Signing-Secret-42"
 
 
 def _register_and_login(api, username) -> int:
+    """注册测试用户并完成登录，返回用户标识。"""
     r = api.register(username)
     assert r.status_code == 201, r.text
     api.login(username, "Init-Password-123")
@@ -50,12 +51,14 @@ def _register_and_login(api, username) -> int:
 
 
 def _create_project(api, actor) -> int:
+    """创建项目。"""
     r = api.post("/projects", username=actor, json={"name": unique("report-proj")})
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
 def _add_member(api, actor, project_id, user_id, role="member"):
+    """添加成员。"""
     r = api.put(
         f"/projects/{project_id}/members/{user_id}", username=actor,
         json={"user_id": user_id, "role": role},
@@ -64,12 +67,14 @@ def _add_member(api, actor, project_id, user_id, role="member"):
 
 
 def _user_obj(db, username) -> User:
+    """按用户名查询用户对象。"""
     user = db.query(User).filter(User.username == username).first()
     assert user is not None, username
     return user
 
 
 def _make_case(db, project_id, *, priority="P1", case_type="FUNCTIONAL"):
+    """构造用例。"""
     case = TestCase(
         project_id=project_id, name=unique("case"), priority=priority,
         case_type=case_type, target_type="API", enabled=True, revision=1,
@@ -124,6 +129,7 @@ class _FailingProvider:
     """始终抛错的 LLM Provider：用于验证 AI 总结失败不影响报告状态。"""
 
     def generate_structured(self, *args, **kwargs):
+        """生成`structured`。"""
         raise RuntimeError("模拟 LLM 不可用")
 
 
@@ -131,9 +137,11 @@ class _EchoingProvider:
     """原样回显给定 dict 的 LLM Provider：用于验证入库前的值形态脱敏（§三十一）。"""
 
     def __init__(self, raw: dict) -> None:
+        """初始化对象状态。"""
         self.raw = raw
 
     def generate_structured(self, *args, **kwargs):
+        """生成`structured`。"""
         return self.raw
 
 
@@ -151,6 +159,7 @@ class TestReportStats:
     """统计字段全部由代码计算，AI 不参与。"""
 
     def test_stats_computed_by_code(self, db, owner):
+        """验证`stats``computed`按代码场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(
             db, pid,
@@ -179,6 +188,7 @@ class TestReportStats:
         assert report.report_no.startswith("RPT-") and report.report_no.count("-") == 2
 
     def test_pass_rate_zero_when_only_skipped(self, db, owner):
+        """验证通过`rate``zero`当仅跳过场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "SKIPPED"}, {"status": "SKIPPED"}])
         res = ReportService().build_report(db, run.id, actor=actor, generate_ai_summary=False)
@@ -188,6 +198,7 @@ class TestReportStats:
         assert report.risk_level == "LOW"
 
     def test_ai_failure_does_not_fail_report(self, db, owner):
+        """验证`ai`失败是否不失败报告场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "PASSED", "duration_ms": 10},
                                   {"status": "FAILED", "duration_ms": 20}])
@@ -203,6 +214,7 @@ class TestReportStats:
         assert report.risk_level == "MEDIUM"
 
     def test_risk_level_rules(self, db, owner):
+        """验证风险`level``rules`场景及其预期结果。"""
         pid, actor = owner
         # P0 + PERMISSION 失败 → CRITICAL
         csec = _make_case(db, pid, priority="P0", case_type="PERMISSION")
@@ -221,15 +233,16 @@ class TestReportStats:
         assert r2.risk_level == "HIGH"
 
     def test_failure_classification(self, db, owner):
+        """验证失败`classification`场景及其预期结果。"""
         pid, actor = owner
         cperm = _make_case(db, pid, priority="P0", case_type="PERMISSION")
         run = _make_run(db, pid, [
-            {"status": "FAILED", "duration_ms": 1, "case": cperm},                    # POTENTIAL_BUG
+            {"status": "FAILED", "duration_ms": 1, "case": cperm},                    # 问题类型：POTENTIAL_BUG
             {"status": "FAILED", "duration_ms": 1,
-             "assertion_results": [{"path": "$.code", "passed": False}]},              # ASSERTION_FAILURE
-            {"status": "ERROR", "duration_ms": 1, "error_message": "unexpected null"}, # EXECUTION_ERROR
-            {"status": "ERROR", "duration_ms": 1, "error_message": "connection refused"},  # ENVIRONMENT_ERROR
-            {"status": "FAILED", "duration_ms": 1, "error_message": "fixture data missing"},  # TEST_DATA_ISSUE
+             "assertion_results": [{"path": "$.code", "passed": False}]},              # 问题类型：ASSERTION_FAILURE
+            {"status": "ERROR", "duration_ms": 1, "error_message": "unexpected null"}, # 问题类型：EXECUTION_ERROR
+            {"status": "ERROR", "duration_ms": 1, "error_message": "connection refused"},  # 问题类型：ENVIRONMENT_ERROR
+            {"status": "FAILED", "duration_ms": 1, "error_message": "fixture data missing"},  # 问题类型：TEST_DATA_ISSUE
         ])
         detail = ReportService().get_report(db, ReportService().build_report(
             db, run.id, actor=actor, generate_ai_summary=False,
@@ -239,6 +252,7 @@ class TestReportStats:
                          "POTENTIAL_BUG", "TEST_DATA_ISSUE"]
 
     def test_idempotent_and_regenerate(self, db, owner):
+        """验证幂等和`regenerate`场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "PASSED", "duration_ms": 10}])
         svc = ReportService()
@@ -274,6 +288,7 @@ class TestReportStats:
 
 class TestReportAPI:
     def test_generate_list_detail_and_delete(self, db, api, admin, owner):
+        """验证生成列出详情和删除场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "PASSED", "duration_ms": 5},
                                   {"status": "FAILED", "duration_ms": 5}])
@@ -341,6 +356,7 @@ class TestReportAPI:
         assert all(item["id"] != rid for item in listed["items"])
 
     def test_list_filters(self, db, api, admin, owner):
+        """验证列出`filters`场景及其预期结果。"""
         pid, actor = owner
         svc = ReportService()
         for i in range(3):
@@ -365,6 +381,7 @@ class TestReportAPI:
 
 class TestNotificationChannel:
     def test_create_masked_and_never_leaks_secret(self, db, api, admin):
+        """验证创建`masked`和`never``leaks``secret`场景及其预期结果。"""
         pid = _create_project(api, admin)
         r = api.post(
             f"/projects/{pid}/notification-channels", username=admin,
@@ -389,6 +406,7 @@ class TestNotificationChannel:
         assert row.config_json["webhook_url_encrypted"] != _WEBHOOK
 
     def test_update_without_secret_keeps_old_value(self, db, api, admin):
+        """验证更新不带`secret``keeps``old`值场景及其预期结果。"""
         pid = _create_project(api, admin)
         cid = api.post(
             f"/projects/{pid}/notification-channels", username=admin,
@@ -444,6 +462,7 @@ class TestNotificationChannel:
         assert "user" not in body["webhook_masked"] and "pass@" not in body["webhook_masked"]
 
     def test_list_and_get_and_delete(self, api, admin):
+        """验证列出和获取和删除场景及其预期结果。"""
         pid = _create_project(api, admin)
         cid = api.post(
             f"/projects/{pid}/notification-channels", username=admin,
@@ -456,6 +475,7 @@ class TestNotificationChannel:
         assert api.get(f"/notification-channels/{cid}", username=admin).status_code == 404
 
     def test_delete_removes_records_but_not_report(self, db, api, admin, owner):
+        """验证删除`removes`记录`but`不报告场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "PASSED", "duration_ms": 1}])
         rid = api.post(f"/test-runs/{run.id}/report", username=admin,
@@ -471,6 +491,7 @@ class TestNotificationChannel:
         assert db.get(TestReport, rid) is not None
 
     def test_cross_project_channel_is_404(self, api, admin):
+        """验证跨项目项目渠道是否场景及其预期结果。"""
         pid = _create_project(api, admin)
         cid = api.post(
             f"/projects/{pid}/notification-channels", username=admin,
@@ -483,6 +504,7 @@ class TestNotificationChannel:
                         json={"name": "x", "webhook_url": _WEBHOOK}).status_code == 404
 
     def test_viewer_cannot_create_or_send(self, db, api, admin):
+        """验证`viewer`不能创建或发送场景及其预期结果。"""
         pid = _create_project(api, admin)
         name = unique("channel-viewer")
         viewer = _register_and_login(api, name)
@@ -549,6 +571,7 @@ class TestFeishuSend:
         assert "127.0.0.1" not in blob
 
     def test_record_list_by_report(self, db, api, admin, owner):
+        """验证记录列出按报告场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "PASSED", "duration_ms": 1}])
         rid = api.post(f"/test-runs/{run.id}/report", username=admin,
@@ -570,6 +593,7 @@ class TestFeishuSend:
         feishu = FeishuNotificationService()
 
         def _report(risk, failed=0, error=0, total=3):
+            """创建并保存测试报告记录。"""
             rep = TestReport(project_id=pid, report_no=unique("rpt"), title="t", status="COMPLETED",
                              total_cases=total, passed_cases=total - failed - error,
                              failed_cases=failed, error_cases=error, skipped_cases=0,
@@ -590,6 +614,7 @@ class TestFeishuSend:
         assert feishu._should_send("SOMETHING_ELSE", all_pass) is True
 
     def test_disabled_channel_is_skipped(self, db, api, admin, owner):
+        """验证`disabled`渠道是否跳过场景及其预期结果。"""
         pid, actor = owner
         run = _make_run(db, pid, [{"status": "PASSED", "duration_ms": 1}])
         rid = api.post(f"/test-runs/{run.id}/report", username=admin,

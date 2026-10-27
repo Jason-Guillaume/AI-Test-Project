@@ -165,6 +165,7 @@ class MockRuntimeService:
         return len(rows)
 
     def _get_context(self, db: Session, context_id: str) -> MockContext | None:
+        """获取上下文。"""
         if not context_id:
             return None
         return (
@@ -283,6 +284,7 @@ class MockRuntimeService:
     # ---------------------------------------------------------------- 内部：加载 / 匹配
 
     def _load_service(self, db: Session, project_id: int, service_key: str) -> MockService | None:
+        """加载服务。"""
         return (
             db.query(MockService)
             .filter(

@@ -19,6 +19,7 @@ from app.features.agent.tools import execution_tool
 
 
 def execution_node(ctx: NodeContext, state: AgentState) -> dict:
+    """执行已确认的测试步骤并记录结果。"""
     project_id = state["project_id"]
     session_id = state["session_id"]
     payload = state.get("action_payload") or {}

@@ -30,10 +30,12 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _mask(value: object) -> object:
+    """脱敏对应数据。"""
     return SensitiveDataMasker.mask_body(value)
 
 
 def _provider_response(row: ProviderExecution) -> ProviderExecutionResponse:
+    """构造数据提供器响应数据。"""
     resp = ProviderExecutionResponse.model_validate(row)
     resp.input_snapshot = _mask(resp.input_snapshot)
     resp.output_snapshot = _mask(resp.output_snapshot)
@@ -41,6 +43,7 @@ def _provider_response(row: ProviderExecution) -> ProviderExecutionResponse:
 
 
 def _fixture_response(db: Session, row: FixtureExecution) -> FixtureExecutionResponse:
+    """构造固定数据响应数据。"""
     resp = FixtureExecutionResponse.model_validate(row)
     resp.input_snapshot = _mask(resp.input_snapshot)
     resp.output_snapshot = _mask(resp.output_snapshot)
@@ -81,6 +84,7 @@ class ExecutionQueryService:
         status: str | None = None, test_run_id: int | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> DataExecutionListResponse:
+        """列出`executions`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(DataExecution).filter(DataExecution.project_id == project_id)
         if status:
@@ -101,6 +105,7 @@ class ExecutionQueryService:
         )
 
     def get_execution(self, db: Session, data_execution_id: int, user: User) -> DataExecutionDetailResponse:
+        """获取执行记录。"""
         row = db.get(DataExecution, data_execution_id)
         if row is None:
             raise not_found("造数执行记录不存在")

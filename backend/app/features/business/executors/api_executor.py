@@ -35,6 +35,7 @@ class ApiRequestResult:
     )
 
     def __init__(self):
+        """初始化对象状态。"""
         self.status_code: int = 0
         self.response_body: str = ""
         self.response_headers: dict[str, str] = {}
@@ -44,6 +45,7 @@ class ApiRequestResult:
 
     @property
     def success(self) -> bool:
+        """判断操作是否成功。"""
         return self.error_message is None and 200 <= self.status_code < 400
 
 

@@ -28,10 +28,12 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(s: TestStrategy) -> TestStrategyResponse:
+    """构造接口响应数据。"""
     return TestStrategyResponse.model_validate(s)
 
 
 def _ensure_unique_name(db: Session, project_id: int, name: str, *, exclude_id: int | None = None) -> None:
+    """确保`unique`名称。"""
     q = db.query(TestStrategy).filter(TestStrategy.project_id == project_id, TestStrategy.name == name)
     if exclude_id is not None:
         q = q.filter(TestStrategy.id != exclude_id)
@@ -47,6 +49,7 @@ class StrategyService:
         category: str | None = None, keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestStrategyListResponse:
+        """列出`strategies`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TestStrategy).filter(TestStrategy.project_id == project_id)
         if category:
@@ -63,6 +66,7 @@ class StrategyService:
     def create_strategy(
         self, db: Session, project_id: int, body: TestStrategyCreate, *, actor: User,
     ) -> TestStrategyResponse:
+        """创建策略。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -84,11 +88,13 @@ class StrategyService:
         return _response(strategy)
 
     def get_strategy(self, db: Session, strategy_id: int, user: User) -> TestStrategyResponse:
+        """获取策略。"""
         return _response(self._get_or_404(db, strategy_id, user))
 
     def update_strategy(
         self, db: Session, strategy_id: int, body: TestStrategyUpdate, *, actor: User,
     ) -> TestStrategyResponse:
+        """更新策略。"""
         strategy = self._get_writable_or_404(db, strategy_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -115,11 +121,13 @@ class StrategyService:
         return _response(strategy)
 
     def delete_strategy(self, db: Session, strategy_id: int, *, actor: User) -> None:
+        """删除策略。"""
         strategy = self._get_writable_or_404(db, strategy_id, actor)
         db.delete(strategy)
         db.commit()
 
     def _get_or_404(self, db: Session, strategy_id: int, user: User) -> TestStrategy:
+        """获取或。"""
         s = db.get(TestStrategy, strategy_id)
         if s is None:
             raise not_found("测试策略不存在")
@@ -127,6 +135,7 @@ class StrategyService:
         return s
 
     def _get_writable_or_404(self, db: Session, strategy_id: int, actor: User) -> TestStrategy:
+        """获取可写或。"""
         s = db.get(TestStrategy, strategy_id)
         if s is None:
             raise not_found("测试策略不存在")

@@ -143,10 +143,10 @@ class TestOutboundSecurity:
         """localhost/127.0.0.1/0.0.0.0/link-local 都被识别为私网。"""
         assert _is_private_ip("127.0.0.1")
         assert _is_private_ip("0.0.0.0")
-        assert _is_private_ip("169.254.169.254")  # metadata endpoint
-        assert _is_private_ip("192.168.1.1")  # private
-        assert _is_private_ip("10.0.0.1")  # private
-        assert _is_private_ip("172.16.0.1")  # private
+        assert _is_private_ip("169.254.169.254")  # 元数据接口
+        assert _is_private_ip("192.168.1.1")  # 私有接口
+        assert _is_private_ip("10.0.0.1")  # 私有接口
+        assert _is_private_ip("172.16.0.1")  # 私有接口
 
     def test_public_ip_allowed(self):
         """公网 IP 不被阻止。"""
@@ -215,6 +215,7 @@ class TestErrorCodes:
         env.is_active = True
 
         def fake_get(model, _pk):
+            """按模型类型返回对应的测试环境对象。"""
             return env if model is Environment else None
 
         db.get.side_effect = fake_get
@@ -306,7 +307,7 @@ class TestDefaultBinding:
         assert _EXECUTOR is not None
 
 
-# --------------------------------------------------------------------------- 8. VariableRef
+# --------------------------------------------------------------------------- 8. 变量引用 VariableRef
 
 
 class TestVariableRef:
@@ -362,13 +363,17 @@ class TestUtils:
     """工具函数。"""
 
     def test_try_parse_json_valid(self):
+        """验证`try`解析JSON有效场景及其预期结果。"""
         assert _try_parse_json('{"key": "value"}') == {"key": "value"}
 
     def test_try_parse_json_invalid(self):
+        """验证`try`解析JSON无效场景及其预期结果。"""
         assert _try_parse_json("not json") == "not json"
 
     def test_try_parse_json_empty(self):
+        """验证`try`解析JSON空值场景及其预期结果。"""
         assert _try_parse_json("") is None
 
     def test_try_parse_json_none(self):
+        """验证`try`解析JSON`none`场景及其预期结果。"""
         assert _try_parse_json(None) is None

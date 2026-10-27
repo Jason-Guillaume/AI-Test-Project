@@ -1,44 +1,58 @@
-// 用户工作台总览：项目概况、可用统计、最近通知。
-// 所有指标均带统计范围说明；未接入的测试执行/报告/缺陷显示「未接入」而非 0。
+// 用户工作台总览：核心指标、统计图表、项目与通知动态。
+// 指标与趋势均来自当前用户可见范围内的真实业务数据。
 // 本模块导出 ConsoleWorkbenchPage，由路由 /console 挂载，是控制台默认落地页。
-import { Alert, Card, Col, List, Row, Statistic, Tag } from 'antd';
+import { Button, Card, Col, List, Row, Statistic, Typography } from 'antd';
+import { ApiOutlined, ArrowRightOutlined, SafetyOutlined, ScheduleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '@/api/dashboard';
 import { notificationsApi } from '@/api/notifications';
-import { useAuth } from '@/hooks/useAuth';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
+import { PageHeader } from '@/components/PageHeader';
+import { DashboardCharts } from './DashboardCharts';
+import { useConsoleScope } from '@/hooks/useConsoleScope';
+
+const QUICK_LINKS = [
+  { to: '/console/api-catalog', icon: <ApiOutlined />, title: '管理测试资产', description: '接口、业务流与用例统一维护' },
+  { to: '/console/test-plans', icon: <ScheduleOutlined />, title: '安排测试计划', description: '组合套件并查看计划状态' },
+  { to: '/console/security-testing', icon: <SafetyOutlined />, title: '查看安全测试', description: '管理扫描目标、策略与发现项' },
+];
+
+// 工作台优先展示测试项目的四项核心指标。
+const WORKBENCH_STAT_KEYS = [
+  'projects',
+  'test_runs',
+  'reports',
+  'defects',
+] as const;
 
 /**
  * 用户控制台工作台总览页组件。
  *
- * 用途：给出统计范围说明、核心指标卡（含「未接入」占位）、最近项目与最近通知。
- * 数据来源：dashboardApi.overview（指标与范围）、dashboardApi.projects（最近 5 个项目）、
- *       notificationsApi.list（最近 5 条通知）；均为只读请求，页面内没有任何写操作。
- * 「未接入」语义：后端对尚未接入的模块（测试执行/报告/缺陷）返回 hint === '未接入'，
- *       前端据此把数值显示为 '-' 并附 Tag，而不是把 0 当成真实统计值误导用户。
+ * 用途：展示核心指标、执行/缺陷/生成趋势、最近项目与最近通知。
+ * 数据来源：工作台看板接口、dashboardApi.projects（最近 3 个项目）、
+ *       notificationsApi.list（最近 3 条通知）；均为只读请求，页面内没有任何写操作。
  * 403/404 行为：overview 失败（含无权限的错误信封）时整页换成可重试的 ErrorState；
  *       projects/notifications 两个卡片各自独立降级，不影响其他区块。
  * 空态：无可见项目 / 无通知时各自列表显示空态文案。
  */
 export function ConsoleWorkbenchPage() {
-  // 用于在范围说明里展示当前用户名
-  const { user } = useAuth();
-  // 概览接口：返回指标卡数组与统计范围描述，是整页的主数据源
+  const { currentOrgId, currentProjectId } = useConsoleScope();
+  // 概览接口：返回工作台核心指标，是整页的主数据源。
   const overviewQuery = useQuery({
     queryKey: ['dashboard', 'overview'],
     queryFn: () => dashboardApi.overview(),
   });
-  // 最近 5 个项目，固定取第一页、每页 5 条
+  // 最近 3 个项目，固定取第一页、每页 3 条，与首页卡片可视容量一致。
   const projectsQuery = useQuery({
-    queryKey: ['dashboard', 'projects', { page: 1, page_size: 5 }],
-    queryFn: () => dashboardApi.projects({ page: 1, page_size: 5 }),
+    queryKey: ['dashboard', 'projects', { page: 1, page_size: 3 }],
+    queryFn: () => dashboardApi.projects({ page: 1, page_size: 3 }),
   });
-  // 最近 5 条通知，固定取第一页、每页 5 条
+  // 最近 3 条通知，固定取第一页、每页 3 条。
   const notifQuery = useQuery({
-    queryKey: ['notifications', { page: 1, page_size: 5 }],
+    queryKey: ['notifications', { page: 1, page_size: 3 }],
     queryFn: () =>
-      notificationsApi.list({ page: 1, page_size: 5 }),
+      notificationsApi.list({ page: 1, page_size: 3 }),
   });
 
   // 概览是主数据源：未就绪就整页转圈，避免半渲染的布局跳动
@@ -55,45 +69,38 @@ export function ConsoleWorkbenchPage() {
     );
 
   const overview = overviewQuery.data;
+  const primaryStats = WORKBENCH_STAT_KEYS.map((key) =>
+    overview.stats.find((card) => card.key === key),
+  ).filter((card): card is (typeof overview.stats)[number] => card !== undefined);
 
   return (
     <PageContainer>
-      <Alert
-        style={{ marginBottom: 16 }}
-        type="info"
-        showIcon
-        message={`统计范围：${
-          overview.scope.is_platform_admin ? '平台管理员（可见全部）' : '当前用户可见资源'
-        }`}
-        description={`用户：${user?.username}（角色 ${overview.scope.role}）。指标按当前用户可见资源计算，切换组织/项目后会同步刷新。`}
+      <PageHeader
+        title="工作台"
+        subtitle="聚焦当前团队的测试资产、执行动态与待处理事项"
+        extra={
+          <Link to="/console/tasks">
+            <Button type="primary">任务中心</Button>
+          </Link>
+        }
       />
       <Row gutter={[16, 16]}>
-        {overview.stats.map((card) => {
-          // 关键判断：hint === '未接入' 说明该模块尚未对接数据源
-          const notMigrated = card.hint === '未接入';
-          return (
-            <Col xs={12} sm={8} md={6} key={card.key}>
-              <Card>
-                <Statistic
-                  title={card.label}
-                  /* 未接入的模块不展示数字，也不展示 0（0 会被误读成真实统计值） */ value={notMigrated ? '-' : card.value}
-                />
-                <small style={{ color: '#999' }}>
-                  {notMigrated ? (
-                    <Tag>未接入</Tag>
-                  ) : (
-                    card.hint
-                  )}
-                </small>
-              </Card>
-            </Col>
-          );
-        })}
+        {primaryStats.map((card) => (
+          <Col xs={24} sm={12} lg={6} key={card.key}>
+            <Card className="dashboard-stat-card">
+              <Statistic title={card.label} value={card.value} />
+              <small className="dashboard-stat-hint">{card.hint}</small>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
+      <DashboardCharts organizationId={currentOrgId} projectId={currentProjectId} />
+
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-        <Col xs={24} md={14}>
+        <Col xs={24} md={15}>
           <Card
+            className="dashboard-section-card"
             title="最近项目"
             extra={<Link to="/console/projects">查看全部</Link>}
           >
@@ -129,8 +136,9 @@ export function ConsoleWorkbenchPage() {
             )}
           </Card>
         </Col>
-        <Col xs={24} md={10}>
+        <Col xs={24} md={9}>
           <Card
+            className="dashboard-section-card"
             title="最近通知"
             extra={<Link to="/console/notifications">通知中心</Link>}
           >
@@ -145,7 +153,7 @@ export function ConsoleWorkbenchPage() {
                     <List.Item.Meta
                       title={item.title}
                       description={
-                        <small style={{ color: '#999' }}>{item.created_at}</small>
+                      <small className="dashboard-list-meta">{item.created_at}</small>
                       }
                     />
                   </List.Item>
@@ -155,6 +163,28 @@ export function ConsoleWorkbenchPage() {
           </Card>
         </Col>
       </Row>
+      <section className="dashboard-quick-start">
+        <div className="dashboard-section-heading">
+          <Typography.Title level={5}>快速开始</Typography.Title>
+          <Typography.Text type="secondary">继续当前项目的测试流程</Typography.Text>
+        </div>
+        <Row gutter={[16, 16]}>
+          {QUICK_LINKS.map((item) => (
+            <Col xs={24} sm={8} key={item.to}>
+              <Link className="quick-action-link" to={item.to}>
+                <Card hoverable className="quick-action-card">
+                  <span className="quick-action-icon">{item.icon}</span>
+                  <span className="quick-action-copy">
+                    <Typography.Text strong>{item.title}</Typography.Text>
+                    <Typography.Text type="secondary">{item.description}</Typography.Text>
+                  </span>
+                  <ArrowRightOutlined className="quick-action-arrow" />
+                </Card>
+              </Link>
+            </Col>
+          ))}
+        </Row>
+      </section>
     </PageContainer>
   );
 }

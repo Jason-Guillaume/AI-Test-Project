@@ -78,6 +78,7 @@ def require_admin_project(db: Session, project_id: int, user: User) -> Project:
 
 
 def resolve_fixture_project_id(db: Session, fixture_id: int) -> int:
+    """解析并确定固定数据项目标识。"""
     row = db.get(Fixture, fixture_id)
     if row is None:
         raise not_found("Fixture 不存在")
@@ -85,6 +86,7 @@ def resolve_fixture_project_id(db: Session, fixture_id: int) -> int:
 
 
 def resolve_provider_project_id(db: Session, provider_id: int) -> int:
+    """解析并确定提供器项目标识。"""
     row = db.get(DataProvider, provider_id)
     if row is None:
         raise not_found("数据 Provider 不存在")
@@ -92,6 +94,7 @@ def resolve_provider_project_id(db: Session, provider_id: int) -> int:
 
 
 def resolve_asset_project_id(db: Session, asset_id: int) -> int:
+    """解析并确定资产项目标识。"""
     row = db.get(TestDataAsset, asset_id)
     if row is None:
         raise not_found("测试数据不存在")
@@ -99,6 +102,7 @@ def resolve_asset_project_id(db: Session, asset_id: int) -> int:
 
 
 def resolve_pool_project_id(db: Session, pool_id: int) -> int:
+    """解析并确定连接池项目标识。"""
     row = db.get(DataPool, pool_id)
     if row is None:
         raise not_found("数据池不存在")
@@ -106,6 +110,7 @@ def resolve_pool_project_id(db: Session, pool_id: int) -> int:
 
 
 def resolve_pool_item_project_id(db: Session, item_id: int) -> int:
+    """解析并确定连接池条目项目标识。"""
     item = db.get(DataPoolItem, item_id)
     if item is None:
         raise not_found("池条目不存在")
@@ -116,6 +121,7 @@ def resolve_pool_item_project_id(db: Session, item_id: int) -> int:
 
 
 def resolve_connection_project_id(db: Session, connection_id: int) -> int:
+    """解析并确定连接项目标识。"""
     row = db.get(TargetDatabaseConnection, connection_id)
     if row is None:
         raise not_found("被测库连接不存在")
@@ -123,6 +129,7 @@ def resolve_connection_project_id(db: Session, connection_id: int) -> int:
 
 
 def resolve_execution_project_id(db: Session, data_execution_id: int) -> int:
+    """解析并确定执行记录项目标识。"""
     row = db.get(DataExecution, data_execution_id)
     if row is None:
         raise not_found("造数执行记录不存在")
@@ -130,6 +137,7 @@ def resolve_execution_project_id(db: Session, data_execution_id: int) -> int:
 
 
 def resolve_policy_project_id(db: Session, policy_id: int) -> int:
+    """解析并确定策略项目标识。"""
     row = db.get(DatabaseAccessPolicy, policy_id)
     if row is None:
         raise not_found("数据库访问策略不存在")

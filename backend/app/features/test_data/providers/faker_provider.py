@@ -24,6 +24,7 @@ class FakerProvider(BaseProvider):
     provider_type = "FAKER"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import FakerProviderConfig
 
         cfg = self.load_config(config_of(ctx), FakerProviderConfig)

@@ -1,0 +1,43 @@
+"""Public service contract for Agent Governance."""
+
+from app.features.agent_governance.services.governance_service import (
+    agent_versions,
+    create_agent,
+    create_mcp_server,
+    create_skill,
+    delete_agent,
+    delete_mcp_server,
+    delete_skill,
+    discover_mcp_tools,
+    invoke_approved_mcp_tool,
+    list_agents,
+    list_builtin_tools,
+    list_mcp_servers,
+    list_skills,
+    skill_versions,
+    update_agent,
+    update_mcp_approvals,
+    update_mcp_server,
+    update_skill,
+)
+
+__all__ = [
+    "agent_versions",
+    "create_agent",
+    "create_mcp_server",
+    "create_skill",
+    "delete_agent",
+    "delete_mcp_server",
+    "delete_skill",
+    "discover_mcp_tools",
+    "invoke_approved_mcp_tool",
+    "list_agents",
+    "list_builtin_tools",
+    "list_mcp_servers",
+    "list_skills",
+    "skill_versions",
+    "update_agent",
+    "update_mcp_approvals",
+    "update_mcp_server",
+    "update_skill",
+]

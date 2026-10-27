@@ -9,8 +9,6 @@ Agent 的 LLM 输出经 Tool 落库，**不**由 LLM 直接执行代码或 SQL�
 - `test_asset_tool`：策略 / 测试点 / 用例的读取、去重与保存（source_type=AI）。
 - `execution_tool`：临时计划 + 套件的执行编排与执行结果读取。
 - `security_tool`：安全策略 / 计划预览与确认 / Finding / 执行结果（Phase F，只读为主）。
-- `zap_scan_tool`：ZAP 扫描目标 / 策略 / 计划预览（Phase 2，只读）；创建任务必须
-  带 `human_approved=True`，该参数只有人工 `confirm_security_scan` 动作能置真（§二十三）。
 
 跨项目访问统一 404（§33）；写操作需 project member（不足 403）。
 """

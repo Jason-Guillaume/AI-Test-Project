@@ -45,6 +45,7 @@ log = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
+    """获取当前时间。"""
     return datetime.now()
 
 
@@ -74,6 +75,7 @@ class ScanWorker:
         heartbeat_timeout_seconds: int | None = None,
         orchestrator_factory: Callable[[object], ScanOrchestrator] | None = None,
     ) -> None:
+        """初始化对象状态。"""
         self._db_factory = db_factory
         self._owner = owner or _owner_name()
         self._poll_interval = max(
@@ -95,14 +97,17 @@ class ScanWorker:
 
     @property
     def owner(self) -> str:
+        """读取所属对象对应数据。"""
         return self._owner
 
     @property
     def processed_count(self) -> int:
+        """统计已处理数量。"""
         return self._processed
 
     @property
     def is_running(self) -> bool:
+        """判断`running`是否成立。"""
         return self._thread is not None and self._thread.is_alive()
 
     def start(self) -> None:

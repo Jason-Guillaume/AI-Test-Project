@@ -1,22 +1,20 @@
 // 安全测试页（用户控制台）。
 //
-// 五个 Tab：概览 / 策略与规则 / 安全用例 / 疑似问题 / 安全扫描。
+// 四个 Tab：概览 / 策略与规则 / 安全用例 / 疑似问题。
 //   - 概览：无后端 overview 端点，前端从 cases / findings / strategies / apis 聚合。
 //   - 策略与规则：系统模板只读；项目策略可建/改/删，规则可建/改/删（预留类强制停用）。
 //   - 安全用例：新建安全计划（预览 Modal）→ 确认生成 → 高风险确认 → 执行（测试环境）
 //     → 打开变异详情抽屉。confirm-risk / execute 都只能由人在本页触发。
-//   - 疑似问题：只改状态（标为误报等），不提供「转 Bug」；bug_id 恒为 null。
-//   - 安全扫描（ZAP）：扫描目标 / 扫描策略与认证 / 扫描任务 / 扫描结果；
-//     发起扫描必须走四步向导并先预览计划，主动扫描需人工勾选确认。
+//   - 疑似问题：可人工关联缺陷，状态变更仍需独立确认。
 //
 // 权限（服务端为准）：读 viewer+；策略规则与 Finding 状态 editor+；计划/用例/执行 member+。
 // 安全红线：本页不做注入 / 扫描器；不在生产环境发安全变异请求（allow_production 恒不生效，
 // 由后端 gate 强制）；疑似问题文案统一「疑似问题」，不写「已发现漏洞」。
 //
 // 依赖当前项目作用域：未选项目时整页空态。切换项目由 useConsoleScope 失效相关缓存。
-import { Card, Col, Empty, Row, Spin, Statistic, Tabs, Tag, Typography } from 'antd';
+import { Button, Card, Col, Empty, Row, Spin, Statistic, Tabs, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { securityApi } from '@/api/securityTesting';
 import { EmptyState, PageContainer } from '@/components/PageState';
@@ -30,21 +28,21 @@ import {
 import { StrategyTab } from './StrategyTab';
 import { CasesTab } from './CasesTab';
 import { FindingsTab } from './FindingsTab';
-import { ZapScanTab } from './ZapScanTab';
 
 /**
- * 安全测试页：项目作用域下的五个 Tab。
+ * 安全测试页：项目作用域下的四个 Tab。
  *
  * 不发请求做鉴权；数据由各 Tab 的 useQuery 触发。未选项目时整页空态。
  */
 export function ConsoleSecurityTestingPage() {
   const { currentProjectId } = useConsoleScope();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const activeTab = ['overview', 'strategies', 'cases', 'findings', 'zap'].includes(requestedTab ?? '')
+  const requestedProjectId = Number(searchParams.get('projectId'));
+  const activeTab = ['overview', 'strategies', 'cases', 'findings'].includes(requestedTab ?? '')
     ? requestedTab!
     : 'overview';
-  const initialJobId = Number(searchParams.get('jobId')) || undefined;
 
   if (currentProjectId == null) {
     return (
@@ -53,10 +51,12 @@ export function ConsoleSecurityTestingPage() {
       </PageContainer>
     );
   }
+  if (requestedProjectId > 0 && requestedProjectId !== currentProjectId) return <PageContainer><EmptyState description={`此链接指向项目 #${requestedProjectId}，请先在顶部切换项目`} /></PageContainer>;
 
   return (
     <PageContainer>
       <Tabs
+        tabBarExtraContent={<Button onClick={() => navigate(`/console/tasks?create=1&projectId=${currentProjectId}&type=SECURITY`)}>创建安全评估任务</Button>}
         activeKey={activeTab}
         onChange={(key) => {
           const next = new URLSearchParams(searchParams);
@@ -75,11 +75,6 @@ export function ConsoleSecurityTestingPage() {
             key: 'findings',
             label: '疑似问题',
             children: <FindingsTab projectId={currentProjectId} />,
-          },
-          {
-            key: 'zap',
-            label: '安全扫描',
-            children: <ZapScanTab projectId={currentProjectId} initialJobId={initialJobId} />,
           },
         ]}
       />

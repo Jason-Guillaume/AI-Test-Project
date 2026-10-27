@@ -29,6 +29,7 @@ from app.features.test_data.schemas import (
     TargetDbConnectionUpdate,
 )
 from app.features.test_data.security import db_guard
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.test_data.services._access import (
     get_project_or_404,
     require_admin,
@@ -54,12 +55,9 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 PING_TIMEOUT_SECONDS = 5
 
 
-def _get_environment_or_404(db: Session, environment_id: int) -> Environment:
-    """取环境实体；被测库连接与策略都必须挂在环境上。"""
-    env = db.get(Environment, environment_id)
-    if env is None:
-        raise not_found("环境不存在")
-    return env
+def _get_environment_or_404(db: Session, project_id: int, environment_id: int) -> Environment:
+    """取项目已关联且启用的环境；连接与策略不能跨项目复用环境。"""
+    return resolve_project_environment(db, project_id, environment_id)
 
 
 def _referenced_count(db: Session, project_id: int, connection_id: int) -> int:
@@ -88,10 +86,18 @@ def _connection_response(conn: TargetDatabaseConnection, db: Session) -> TargetD
 
 
 def _policy_response(policy: DatabaseAccessPolicy, db: Session) -> DatabasePolicyResponse:
+    """构造策略响应数据。"""
     resp = DatabasePolicyResponse.model_validate(policy)
     env = db.get(Environment, policy.environment_id)
     resp.environment_name = env.name if env is not None else None
-    resp.environment_display_name = env.display_name if env is not None else None
+    from app.features.environment_configuration.models import ProjectEnvironment
+    binding = db.query(ProjectEnvironment).filter_by(
+        project_id=policy.project_id, environment_id=policy.environment_id
+    ).first()
+    resp.environment_display_name = (
+        (binding.display_name or env.display_name or env.name)
+        if binding is not None and env is not None else (env.display_name if env is not None else None)
+    )
     resp.environment_class = db_guard.environment_class(env) if env is not None else "STAGING"
     return resp
 
@@ -112,6 +118,7 @@ class ConnectionService:
         keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TargetDbConnectionListResponse:
+        """列出`connections`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TargetDatabaseConnection).filter(
             TargetDatabaseConnection.project_id == project_id
@@ -134,13 +141,15 @@ class ConnectionService:
         )
 
     def get_connection(self, db: Session, connection_id: int, user: User) -> TargetDbConnectionResponse:
+        """获取连接。"""
         return _connection_response(self._get_or_404(db, connection_id, user), db)
 
     def create_connection(
         self, db: Session, project_id: int, body: TargetDbConnectionCreate, *, actor: User,
     ) -> TargetDbConnectionResponse:
+        """创建连接。"""
         project = require_admin_project(db, project_id, actor)
-        env = _get_environment_or_404(db, body.environment_id)
+        env = _get_environment_or_404(db, project.id, body.environment_id)
         if db_guard.environment_class(env) not in DB_ENV_CLASSES:
             raise bad_request("环境归类非法")
         name = body.name.strip()
@@ -175,6 +184,7 @@ class ConnectionService:
     def update_connection(
         self, db: Session, connection_id: int, body: TargetDbConnectionUpdate, *, actor: User,
     ) -> TargetDbConnectionResponse:
+        """更新连接。"""
         conn = self._get_writable_or_404(db, connection_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -215,6 +225,7 @@ class ConnectionService:
         return _connection_response(conn, db)
 
     def delete_connection(self, db: Session, connection_id: int, *, actor: User) -> None:
+        """删除连接。"""
         conn = self._get_writable_or_404(db, connection_id, actor)
         used = _referenced_count(db, conn.project_id, conn.id)
         if used:
@@ -264,6 +275,7 @@ class ConnectionService:
         return db.get(TargetDatabaseConnection, connection_id)
 
     def _get_or_404(self, db: Session, connection_id: int, user: User) -> TargetDatabaseConnection:
+        """获取或。"""
         row = db.get(TargetDatabaseConnection, connection_id)
         if row is None:
             raise not_found("被测库连接不存在")
@@ -271,6 +283,7 @@ class ConnectionService:
         return row
 
     def _get_writable_or_404(self, db: Session, connection_id: int, actor: User) -> TargetDatabaseConnection:
+        """获取可写或。"""
         row = db.get(TargetDatabaseConnection, connection_id)
         if row is None:
             raise not_found("被测库连接不存在")
@@ -287,6 +300,7 @@ class PolicyService:
         environment_id: int | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> DatabasePolicyListResponse:
+        """列出`policies`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(DatabaseAccessPolicy).filter(
             DatabaseAccessPolicy.project_id == project_id
@@ -302,6 +316,7 @@ class PolicyService:
         )
 
     def get_policy(self, db: Session, policy_id: int, user: User) -> DatabasePolicyResponse:
+        """获取策略。"""
         row = db.get(DatabaseAccessPolicy, policy_id)
         if row is None:
             raise not_found("数据库访问策略不存在")
@@ -332,7 +347,7 @@ class PolicyService:
     ) -> DatabasePolicyResponse:
         """设置某环境下的策略：环境必须存在；PRODUCTION 不允许 enabled=true。"""
         project = require_admin_project(db, project_id, actor)
-        env = _get_environment_or_404(db, environment_id)
+        env = _get_environment_or_404(db, project.id, environment_id)
         env_class = db_guard.environment_class(env)
         if body.enabled and env_class == "PRODUCTION":
             raise AppError(
@@ -371,6 +386,7 @@ class PolicyService:
         return _policy_response(row, db)
 
     def _get_writable_or_404(self, db: Session, policy_id: int, actor: User) -> DatabaseAccessPolicy:
+        """获取可写或。"""
         row = db.get(DatabaseAccessPolicy, policy_id)
         if row is None:
             raise not_found("数据库访问策略不存在")

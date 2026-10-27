@@ -36,6 +36,8 @@ export const webUIApi = {
   deletePage: (id: number) => api.delete<void>(`/web-pages/${id}`),
   /** 读取 Web 用例。 */
   cases: (id: number, page = 1) => api.get<Paginated<WebCase>>(`/projects/${id}/web-cases`, { params: { page, page_size: 20 } }),
+  /** 按用例编号读取项目授权后的结构化 Web 资产。 */
+  case: (id: number) => api.get<WebCase>(`/web-cases/${id}`),
   /** 保存结构化步骤，旧确认自动失效。 */
   saveCase: (id: number, body: WebCaseInput, caseId?: number) => caseId
     ? api.put<WebCase>(`/projects/${id}/web-cases/${caseId}`, body)
@@ -47,7 +49,7 @@ export const webUIApi = {
   /** 单例调试仍创建原有 TestRun，超时覆盖标准客户端 30 秒。 */
   debug: (id: number, environment_id: number) => api.post<TestRun>(`/web-cases/${id}/debug`, { environment_id }, { timeout: 660000 }),
   /** 查询脱敏认证配置列表。 */
-  auth: (id: number) => api.get<Paginated<WebAuthProfile>>(`/projects/${id}/web-auth-profiles`),
+  auth: (id: number, page = 1, pageSize = 50) => api.get<Paginated<WebAuthProfile>>(`/projects/${id}/web-auth-profiles`, { params: { page, page_size: pageSize } }),
   /** 凭据只写，整体替换。 */
   saveAuth: (id: number, body: unknown, authId?: number) => authId
     ? api.put<WebAuthProfile>(`/projects/${id}/web-auth-profiles/${authId}`, body)
@@ -71,7 +73,7 @@ export const webUIApi = {
 // 观测返回脱敏语义树与遮罩截图，不返回原始 DOM；提升只产出未确认草稿。
 export const webAgentApi = {
   /** 列出项目内的受控浏览器会话。 */
-  sessions: (id: number, page = 1) => api.get<Paginated<WebAgentSession>>(`/projects/${id}/web-agent/sessions`, { params: { page, page_size: 50 } }),
+  sessions: (id: number, page = 1, pageSize = 50) => api.get<Paginated<WebAgentSession>>(`/projects/${id}/web-agent/sessions`, { params: { page, page_size: pageSize } }),
   /** 启动受控会话：选环境、登录态与目标页后打开浏览器。 */
   start: (id: number, body: WebAgentStartBody) => api.post<WebAgentSession>(`/projects/${id}/web-agent/sessions`, body, { timeout: 120000 }),
   /** 读取会话元信息与当前步数。 */

@@ -25,6 +25,7 @@ def target_server():
     """独立被测系统，提供固定测试页面；退出时释放监听。"""
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
+            """返回浏览器代理测试使用的 HTML 页面。"""
             body = HTML
             reflected_key = self.headers.get("X-Api-Key")
             if reflected_key:
@@ -34,6 +35,7 @@ def target_server():
             self.end_headers()
             self.wfile.write(body)
         def log_message(self, *_args):
+            """禁用 HTTP 测试服务的默认访问日志。"""
             pass
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -55,16 +57,24 @@ def web_setup(api, admin, db, target_server):
                       base_url=f"http://127.0.0.1:{target_server}", is_active=True)
     db.add(env)
     db.commit()
+    from app.features.environment_configuration.models import ProjectEnvironment
+    db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id, base_url=env.base_url, is_active=True))
+    db.commit()
     allowed = api.post(f"/projects/{project_id}/targets", username=admin,
         json={"scheme": "http", "host": "127.0.0.1", "port": target_server, "enabled": True})
     assert allowed.status_code == 201, allowed.text
     return project_id, env.id
 
 
-def test_migration_head_is_0017(db):
-    """0014 Web Agent 表保留，0017 模型备用路由迁移后的 head 为 0017。"""
+def test_migration_head_preserves_web_agent_tables(db):
+    """Web Agent 表保留，测试数据库迁移到当前仓库 head。"""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    from tests.conftest import BACKEND_DIR
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     head = db.execute(text("select version_num from alembic_version")).scalar()
-    assert head == "0017"
+    assert head == ScriptDirectory.from_config(config).get_current_head()
     tables = {r[0] for r in db.execute(text("select table_name from information_schema.tables "
         "where table_schema='public' and table_name like 'web_agent%'")).all()}
     assert {"web_agent_session", "web_agent_step"} <= tables

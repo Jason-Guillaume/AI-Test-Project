@@ -79,6 +79,122 @@ class ProductionLLMProvider:
         messages = build_chat_messages(system, user_content, history=history)
         return self._call_candidates(messages, f"generate_structured.{kind or 'unknown'}", structured=True, validator=validator)
 
+    def generate_structured_with_tools(
+        self,
+        system: str,
+        user_content: str,
+        *,
+        tools: list[dict[str, Any]],
+        tool_executor: Callable[[str, dict[str, Any]], Any],
+        kind: str,
+        validator: Callable[[dict[str, Any]], Any] | None = None,
+    ) -> dict[str, Any]:
+        """运行有次数上限的 OpenAI 兼容工具调用循环，最终仍须返回合法结构化结果。"""
+        if not tools:
+            return self.generate_structured(system, user_content, kind=kind, validator=validator)
+        base_messages = build_chat_messages(system, user_content)
+        failures: list[dict[str, Any]] = []
+        last_error: LLMError | None = None
+        for index, model_id in enumerate(self._candidate_model_ids()):
+            cfg = None
+            messages: list[dict[str, Any]] = [dict(item) for item in base_messages]
+            try:
+                cfg = self._load_config(model_id)
+                api_key = decrypt_api_key(cfg.api_key_encrypted)
+                headers = {"Content-Type": "application/json"}
+                if api_key:
+                    headers["Authorization"] = f"Bearer {api_key}"
+                final_content = ""
+                usage: dict[str, Any] | None = None
+                total_tool_calls = 0
+                with llm_generation(
+                    name=f"agent.generate_structured.{kind}",
+                    model=cfg.model_name,
+                    input_messages=base_messages,
+                    model_parameters={"temperature": float(cfg.temperature or 0.2), "max_tokens": int(cfg.max_tokens or 4096)},
+                ) as gen:
+                    for _ in range(6):
+                        body = {
+                            "model": cfg.model_name,
+                            "messages": messages,
+                            "temperature": float(cfg.temperature or 0.2),
+                            "max_tokens": int(cfg.max_tokens or 4096),
+                            "tools": tools,
+                            "tool_choice": "auto",
+                        }
+                        try:
+                            response = httpx.post(
+                                f"{cfg.api_base.rstrip('/')}/chat/completions",
+                                json=body,
+                                headers=headers,
+                                timeout=float(cfg.timeout or 60),
+                            )
+                        except httpx.HTTPError as exc:
+                            raise LLMError("LLM_TRANSPORT_ERROR", f"模型服务请求失败：{type(exc).__name__}", retryable=True) from exc
+                        if response.status_code >= 400:
+                            retryable = response.status_code == 429 or response.status_code >= 500
+                            raise LLMError(
+                                "LLM_RATE_LIMITED" if response.status_code == 429 else "LLM_PROVIDER_ERROR",
+                                f"模型服务返回 HTTP {response.status_code}", retryable=retryable,
+                            )
+                        if len(response.content) > 2_000_000:
+                            raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应超过 2 MB 限制", retryable=True)
+                        try:
+                            data = response.json()
+                            message = data["choices"][0]["message"]
+                        except (ValueError, KeyError, IndexError, TypeError) as exc:
+                            raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应格式无法解析", retryable=True) from exc
+                        usage = data.get("usage")
+                        calls = message.get("tool_calls") or []
+                        if not calls:
+                            final_content = str(message.get("content") or "")
+                            break
+                        total_tool_calls += len(calls)
+                        if total_tool_calls > 8:
+                            raise LLMError("TOOL_CALL_LIMIT", "模型超过 8 次工具调用限制", retryable=True)
+                        # 仅把经过本地 schema 与授权表映射的工具名交给 executor。
+                        messages.append({
+                            "role": "assistant",
+                            "content": message.get("content"),
+                            "tool_calls": calls,
+                        })
+                        for call in calls:
+                            function = call.get("function") or {}
+                            function_name = function.get("name")
+                            try:
+                                arguments = json.loads(function.get("arguments") or "{}")
+                                if not isinstance(arguments, dict):
+                                    raise ValueError("参数必须是 JSON 对象")
+                                result = tool_executor(str(function_name or ""), arguments)
+                                tool_result = {"ok": True, "result": result}
+                            except Exception as exc:  # noqa: BLE001 — 工具错误不暴露内部地址或凭据。
+                                tool_result = {"ok": False, "error": f"工具调用失败：{type(exc).__name__}"}
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": str(call.get("id") or "")[:120],
+                                "content": json.dumps(tool_result, ensure_ascii=False, default=str)[:24_000],
+                            })
+                    else:
+                        raise LLMError("TOOL_CALL_LIMIT", "模型超过工具调用轮数限制", retryable=True)
+                    output = self._parse_json_content(final_content)
+                    if validator is not None:
+                        try:
+                            validator(output)
+                        except ValidationError as exc:
+                            raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型输出未通过任务结构校验", retryable=True) from exc
+                    update_generation(gen, output=final_content, usage=usage)
+                self._record_attempt(failures, model_id, cfg.model_name, index, "SUCCEEDED", None)
+                self.last_attempts = failures
+                self.last_model_config_id = cfg.id
+                return output
+            except LLMError as exc:
+                last_error = exc
+                self._record_attempt(failures, model_id, cfg.model_name if cfg else None, index, "FAILED", exc.code)
+        self.last_attempts = failures
+        if not self.explicit_route and last_error is not None:
+            raise last_error
+        raise LLMError("LLM_FALLBACK_EXHAUSTED", "主模型及已配置备用模型均不可用", retryable=True, attempts=failures)
+
     def chat(
         self, system: str, user_content: str,
         *, history: list[dict[str, str]] | None = None,
@@ -220,11 +336,13 @@ class FakeLLMProvider:
     """
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self._responses: dict[str, dict[str, Any]] = {}
         # 记录每次结构化调用的 (system, user_content, kind)，供测试断言敏感数据未泄入。
         self.calls: list[dict[str, Any]] = []
 
     def set_response(self, kind: str, payload: dict[str, Any]) -> None:
+        """设置响应。"""
         self._responses[kind] = payload
 
     def generate_structured(
@@ -246,11 +364,13 @@ class FakeLLMProvider:
         self, system: str, user_content: str,
         *, history: list[dict[str, str]] | None = None,
     ) -> str:
+        """调用已配置的 LLM 提供器生成聊天回复。"""
         self.calls.append({"system": system, "user": user_content, "kind": "chat", "history": history or []})
         return "（FakeLLM 回复）测试桩不产生真实内容。"
 
     @property
     def last_call(self) -> dict[str, Any] | None:
+        """返回最近一次模型调用记录。"""
         return self.calls[-1] if self.calls else None
 
 

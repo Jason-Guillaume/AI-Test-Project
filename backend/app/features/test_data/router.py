@@ -88,7 +88,7 @@ _EXECUTION = ExecutionQueryService()
 _RUNTIME = RuntimeService()
 
 
-# --------------------------------------------------------------------------- 6.1 Fixture
+# --------------------------------------------------------------------------- 6.1 固定数据 Fixture
 
 
 @router.get("/projects/{project_id}/fixtures", response_model=FixtureListResponse)
@@ -103,6 +103,7 @@ def list_fixtures(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FixtureListResponse:
+    """列出`fixtures`。"""
     return _FIXTURE.list_fixtures(
         db, project_id, user,
         keyword=keyword, entity_type=entity_type, status=status, scope=scope,
@@ -117,6 +118,7 @@ def create_fixture(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FixtureDetailResponse:
+    """创建固定数据。"""
     return _FIXTURE.create_fixture(db, project_id, body, actor=user)
 
 
@@ -126,6 +128,7 @@ def get_fixture(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FixtureDetailResponse:
+    """获取固定数据。"""
     return _FIXTURE.get_fixture(db, fixture_id, user)
 
 
@@ -136,6 +139,7 @@ def update_fixture(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FixtureDetailResponse:
+    """更新固定数据。"""
     return _FIXTURE.update_fixture(db, fixture_id, body, actor=user)
 
 
@@ -145,6 +149,7 @@ def delete_fixture(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除固定数据。"""
     _FIXTURE.delete_fixture(db, fixture_id, actor=user)
 
 
@@ -155,6 +160,7 @@ def replace_fixture_steps(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FixtureDetailResponse:
+    """替换固定数据的生成步骤。"""
     return _FIXTURE.replace_steps(db, fixture_id, body, actor=user)
 
 
@@ -165,6 +171,7 @@ def replace_fixture_outputs(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> FixtureDetailResponse:
+    """替换固定数据的输出契约。"""
     return _FIXTURE.replace_outputs(db, fixture_id, body, actor=user)
 
 
@@ -174,6 +181,7 @@ def fixture_dependency_tree(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[FixtureTreeNodeResponse]:
+    """构建固定数据及其依赖关系树。"""
     return _FIXTURE.dependency_tree(db, fixture_id, user)
 
 
@@ -218,6 +226,7 @@ def list_assets(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TestDataAssetListResponse:
+    """列出`assets`。"""
     return _ASSET.list_assets(
         db, project_id, user,
         keyword=keyword, entity_type=entity_type, source=source, status=status, scope=scope,
@@ -235,6 +244,7 @@ def create_asset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TestDataAssetResponse:
+    """创建资产。"""
     return _ASSET.create_asset(db, project_id, body, actor=user)
 
 
@@ -244,6 +254,7 @@ def get_asset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TestDataAssetResponse:
+    """获取资产。"""
     return _ASSET.get_asset(db, asset_id, user)
 
 
@@ -254,6 +265,7 @@ def update_asset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TestDataAssetResponse:
+    """更新资产。"""
     return _ASSET.update_asset(db, asset_id, body, actor=user)
 
 
@@ -263,10 +275,11 @@ def delete_asset(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除资产。"""
     _ASSET.delete_asset(db, asset_id, actor=user)
 
 
-# --------------------------------------------------------------------------- 6.3 Data Provider
+# --------------------------------------------------------------------------- 6.3 数据提供器 数据提供器 Data Provider
 
 
 @router.get(
@@ -282,6 +295,7 @@ def list_providers(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataProviderListResponse:
+    """列出`providers`。"""
     return _PROVIDER.list_providers(
         db, project_id, user,
         provider_type=provider_type, enabled=enabled, keyword=keyword,
@@ -299,6 +313,7 @@ def create_provider(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataProviderResponse:
+    """创建提供器。"""
     return _PROVIDER.create_provider(db, project_id, body, actor=user)
 
 
@@ -308,6 +323,7 @@ def get_provider(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataProviderResponse:
+    """获取提供器。"""
     return _PROVIDER.get_provider(db, provider_id, user)
 
 
@@ -318,6 +334,7 @@ def update_provider(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataProviderResponse:
+    """更新提供器。"""
     return _PROVIDER.update_provider(db, provider_id, body, actor=user)
 
 
@@ -327,6 +344,7 @@ def enable_provider(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataProviderResponse:
+    """启用数据提供器。"""
     return _PROVIDER.set_enabled(db, provider_id, enabled=True, actor=user)
 
 
@@ -336,6 +354,7 @@ def disable_provider(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataProviderResponse:
+    """停用数据提供器。"""
     return _PROVIDER.set_enabled(db, provider_id, enabled=False, actor=user)
 
 
@@ -345,6 +364,7 @@ def delete_provider(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除提供器。"""
     _PROVIDER.delete_provider(db, provider_id, actor=user)
 
 
@@ -373,6 +393,7 @@ def list_pools(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolListResponse:
+    """列出`pools`。"""
     return _POOL.list_pools(
         db, project_id, user, keyword=keyword, status=status, page=page, page_size=page_size,
     )
@@ -385,6 +406,7 @@ def create_pool(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolResponse:
+    """创建连接池。"""
     return _POOL.create_pool(db, project_id, body, actor=user)
 
 
@@ -394,6 +416,7 @@ def get_pool(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolResponse:
+    """获取连接池。"""
     return _POOL.get_pool(db, pool_id, user)
 
 
@@ -404,6 +427,7 @@ def update_pool(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolResponse:
+    """更新连接池。"""
     return _POOL.update_pool(db, pool_id, body, actor=user)
 
 
@@ -413,6 +437,7 @@ def delete_pool(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除连接池。"""
     _POOL.delete_pool(db, pool_id, actor=user)
 
 
@@ -425,6 +450,7 @@ def list_pool_items(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolItemListResponse:
+    """列出连接池条目。"""
     return _POOL.list_items(
         db, pool_id, user, status=status, page=page, page_size=page_size,
     )
@@ -439,6 +465,7 @@ def create_pool_item(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolItemResponse:
+    """创建连接池条目。"""
     return _POOL.create_item(db, pool_id, body, actor=user)
 
 
@@ -449,6 +476,7 @@ def update_pool_item(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolItemResponse:
+    """更新连接池条目。"""
     return _POOL.update_item(db, item_id, body, actor=user)
 
 
@@ -458,6 +486,7 @@ def release_pool_item(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolItemResponse:
+    """释放连接池条目。"""
     return _POOL.release_item(db, item_id, actor=user)
 
 
@@ -467,6 +496,7 @@ def delete_pool_item(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除连接池条目。"""
     _POOL.delete_item(db, item_id, actor=user)
 
 
@@ -479,6 +509,7 @@ def list_pool_leases(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataPoolLeaseListResponse:
+    """列出连接池`leases`。"""
     result = _POOL.list_leases(
         db, pool_id, user, status=status, page=page, page_size=page_size,
     )
@@ -500,6 +531,7 @@ def list_target_databases(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TargetDbConnectionListResponse:
+    """列出目标`databases`。"""
     return _CONNECTION.list_connections(
         db, project_id, user,
         environment_id=environment_id, keyword=keyword, page=page, page_size=page_size,
@@ -516,6 +548,7 @@ def create_target_database(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TargetDbConnectionResponse:
+    """创建目标数据库。"""
     return _CONNECTION.create_connection(db, project_id, body, actor=user)
 
 
@@ -527,6 +560,7 @@ def get_target_database(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TargetDbConnectionResponse:
+    """获取目标数据库。"""
     return _CONNECTION.get_connection(db, connection_id, user)
 
 
@@ -539,6 +573,7 @@ def update_target_database(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TargetDbConnectionResponse:
+    """更新目标数据库。"""
     return _CONNECTION.update_connection(db, connection_id, body, actor=user)
 
 
@@ -548,6 +583,7 @@ def delete_target_database(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """删除目标数据库。"""
     _CONNECTION.delete_connection(db, connection_id, actor=user)
 
 
@@ -557,6 +593,7 @@ def ping_target_database(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
+    """检查连通性`target`数据库。"""
     return _CONNECTION.ping(db, connection_id, user)
 
 
@@ -571,6 +608,7 @@ def list_database_policies(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DatabasePolicyListResponse:
+    """列出数据库`policies`。"""
     return _POLICY.list_policies(
         db, project_id, user,
         environment_id=environment_id, page=page, page_size=page_size,
@@ -588,6 +626,7 @@ def upsert_database_policy(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DatabasePolicyResponse:
+    """新增或更新数据库策略。"""
     return _POLICY.upsert_policy(
         db, project_id, environment_id, body, actor=user,
     )
@@ -608,6 +647,7 @@ def list_data_executions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataExecutionListResponse:
+    """列出数据`executions`。"""
     return _EXECUTION.list_executions(
         db, project_id, user, status=status, test_run_id=test_run_id,
         page=page, page_size=page_size,
@@ -622,4 +662,5 @@ def get_data_execution(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> DataExecutionDetailResponse:
+    """获取数据执行记录。"""
     return _EXECUTION.get_execution(db, data_execution_id, user)

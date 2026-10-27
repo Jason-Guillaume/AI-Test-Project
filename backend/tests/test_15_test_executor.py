@@ -41,12 +41,24 @@ API = "/api/v1"
 class _StubHandler(BaseHTTPRequestHandler):
     """按 (method, path) 精确路由 + 正则模板路由的 stub。"""
 
-    def do_GET(self): self._dispatch("GET")
-    def do_POST(self): self._dispatch("POST")
-    def do_DELETE(self): self._dispatch("DELETE")
-    def do_PUT(self): self._dispatch("PUT")
+    def do_GET(self):
+        """向模拟服务发送 GET 请求。"""
+        self._dispatch("GET")
+
+    def do_POST(self):
+        """向模拟服务发送 POST 请求。"""
+        self._dispatch("POST")
+
+    def do_DELETE(self):
+        """向模拟服务发送 DELETE 请求。"""
+        self._dispatch("DELETE")
+
+    def do_PUT(self):
+        """向模拟服务发送 PUT 请求。"""
+        self._dispatch("PUT")
 
     def _dispatch(self, method):
+        """按 HTTP 请求路径选择并执行模拟响应器。"""
         try:
             body = self._read_body()
             responder = self.server.resolve(method, self.path)
@@ -59,12 +71,14 @@ class _StubHandler(BaseHTTPRequestHandler):
             self._write(500, {"code": 500, "message": f"stub error: {exc}", "data": None})
 
     def _read_body(self):
+        """读取请求体。"""
         length = int(self.headers.get("Content-Length", 0) or 0)
         if length <= 0:
             return ""
         return self.rfile.read(length).decode("utf-8", "ignore")
 
     def _write(self, status, payload):
+        """写入对应数据。"""
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -72,7 +86,9 @@ class _StubHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def log_message(self, *args):  # 静默默认 stderr
+    def log_message(self, *args):
+        """禁用 HTTP 测试服务的默认访问日志。"""
+        # 静默默认 stderr
         pass
 
 
@@ -80,21 +96,26 @@ class StubServer:
     """线程化 stub：直接绑定 0 端口取可用端口，无竞态。"""
 
     def __init__(self):
-        self.exact = {}        # (method, path) -> responder
-        self.patterns = []     # [(method, compiled_regex, responder)]
+        """初始化对象状态。"""
+        self.exact = {}        # 将（method, path）映射到 responder。
+        self.patterns = []     # 匹配规则列表：（method, compiled_regex, responder）。
         self._server = None
         self.port = None
 
     def add(self, method, path, status, payload):
+        """添加对应数据。"""
         self.exact[(method.upper(), path)] = lambda h, body: (status, payload)
 
     def add_fn(self, method, path, fn):
+        """添加`fn`。"""
         self.exact[(method.upper(), path)] = fn
 
     def add_pattern(self, method, regex, fn):
+        """添加`pattern`。"""
         self.patterns.append((method.upper(), regex, fn))
 
     def resolve(self, method, full_path):
+        """解析并确定对应数据。"""
         path = full_path.split("?", 1)[0]
         fn = self.exact.get((method, path))
         if fn:
@@ -107,6 +128,7 @@ class StubServer:
         return None
 
     def __enter__(self):
+        """进入上下文并返回所需资源。"""
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _StubHandler)
         self._server.resolve = self.resolve
         self.port = self._server.server_address[1]
@@ -114,12 +136,14 @@ class StubServer:
         return self
 
     def __exit__(self, *a):
+        """退出上下文并释放资源。"""
         if self._server:
             self._server.shutdown()
             self._server.server_close()
 
     @property
     def base_url(self):
+        """返回模拟 HTTP 服务的基础 URL。"""
         return f"http://127.0.0.1:{self.port}"
 
 
@@ -127,11 +151,13 @@ class StubServer:
 
 
 def _admin_id(db):
+    """查询平台管理员用户标识。"""
     from app.models.identity import User
     return db.query(User).filter(User.username == "platform_admin").first().id
 
 
 def _make_env(db, base_url, admin_id, name=None):
+    """构造`env`。"""
     from app.models.configuration import Environment
     env = Environment(
         name=name or unique("env"), display_name="stub env",
@@ -146,6 +172,7 @@ def _make_env(db, base_url, admin_id, name=None):
 
 
 def _whitelist(db, project_id, port, admin_id):
+    """为项目添加允许访问的测试目标。"""
     from app.models.project import ProjectOutboundTarget
     db.add(ProjectOutboundTarget(
         project_id=project_id, scheme="http", host="127.0.0.1", port=port,
@@ -155,6 +182,7 @@ def _whitelist(db, project_id, port, admin_id):
 
 
 def _make_iface(db, project_id, method, path, name=None):
+    """构造`iface`。"""
     from app.features.api_catalog.models.api_interface import ApiInterface
     iface = ApiInterface(
         project_id=project_id, name=name or unique("iface"),
@@ -172,6 +200,7 @@ def _make_iface(db, project_id, method, path, name=None):
 
 
 def _create_project(api, admin):
+    """创建项目。"""
     name = unique("proj")
     r = api.post("/projects", username=admin, json={"name": name, "description": "executor project"})
     assert r.status_code == 201, r.text
@@ -180,6 +209,7 @@ def _create_project(api, admin):
 
 def _create_case(api, admin, project_id, *, name, target_type="API", api_id=None,
                  business_flow_id=None, business_action_id=None, data=None, assertions=None):
+    """创建用例。"""
     body = {"name": name, "target_type": target_type, "enabled": True}
     if api_id is not None: body["api_id"] = api_id
     if business_flow_id is not None: body["business_flow_id"] = business_flow_id
@@ -195,6 +225,7 @@ def _create_case(api, admin, project_id, *, name, target_type="API", api_id=None
 
 
 def _build_plan_with_cases(api, admin, project_id, case_ids, env_id):
+    """构建计划包含`cases`。"""
     suite_id = api.post(f"/projects/{project_id}/test-suites", username=admin,
                         json={"name": unique("suite")}).json()["id"]
     for i, cid in enumerate(case_ids):
@@ -208,12 +239,14 @@ def _build_plan_with_cases(api, admin, project_id, case_ids, env_id):
 
 
 def _run(api, admin, plan_id, env_id):
+    """运行对应数据。"""
     r = api.post(f"/test-plans/{plan_id}/runs", username=admin, json={"environment_id": env_id})
     assert r.status_code == 200, r.text
     return r.json()
 
 
 def _case_execs(api, admin, run_id):
+    """查询指定测试运行中的用例执行记录。"""
     r = api.get(f"/test-runs/{run_id}/cases", username=admin)
     assert r.status_code == 200, r.text
     return r.json()["items"]
@@ -233,76 +266,91 @@ class TestAssertionEngine:
         "response_time_ms": 120,
     }
 
-    # ---- evaluate_operator
+    # ---- 运算符评估 evaluate_operator
 
     def test_eq_ne(self):
+        """验证相等不相等场景及其预期结果。"""
         assert evaluate_operator(200, 200, "EQ") is True
         assert evaluate_operator(200, 201, "EQ") is False
         assert evaluate_operator(200, 201, "NE") is True
 
     def test_numeric_operators(self):
+        """验证`numeric``operators`场景及其预期结果。"""
         assert evaluate_operator(200, 100, "GT") is True
         assert evaluate_operator(200, 200, "GE") is True
         assert evaluate_operator(50, 100, "LT") is True
         assert evaluate_operator(100, 100, "LE") is True
 
     def test_numeric_string_fallback(self):
+        """验证`numeric``string``fallback`场景及其预期结果。"""
         # 无法转数值时退化为字符串比较。
         assert evaluate_operator("b", "a", "GT") is True
         assert evaluate_operator("a", "b", "LT") is True
 
     def test_in_operator(self):
+        """验证`in`运算符场景及其预期结果。"""
         assert evaluate_operator("admin", "admin,user,guest", "IN") is True
         assert evaluate_operator("x", "admin,user", "IN") is False
 
     def test_contains_operator(self):
+        """验证包含运算符场景及其预期结果。"""
         assert evaluate_operator("hello world", "world", "CONTAINS") is True
         assert evaluate_operator("hello", "world", "CONTAINS") is False
 
     def test_exists_not_exists(self):
+        """验证存在不存在场景及其预期结果。"""
         assert evaluate_operator("x", None, "EXISTS") is True
         assert evaluate_operator(None, None, "EXISTS") is False
         assert evaluate_operator(None, None, "NOT_EXISTS") is True
         assert evaluate_operator("x", None, "NOT_EXISTS") is False
 
-    # ---- _extract_actual
+    # ---- 提取实际值 _extract_actual
 
     def test_extract_status_code(self):
+        """验证提取状态代码场景及其预期结果。"""
         assert _extract_actual(self.RESP, {"assertion_type": "STATUS_CODE"}) == 200
 
     def test_extract_json_path(self):
+        """验证提取JSON路径场景及其预期结果。"""
         assert _extract_actual(self.RESP, {"assertion_type": "JSON_PATH", "path": "$.code"}) == 0
         assert _extract_actual(self.RESP, {"assertion_type": "JSON_PATH", "path": "$.data.id"}) == 42
 
     def test_extract_header_case_insensitive(self):
+        """验证提取请求头用例`insensitive`场景及其预期结果。"""
         assert _extract_actual(self.RESP, {"assertion_type": "HEADER", "source": "X-Trace"}) == "abc-123"
         assert _extract_actual(self.RESP, {"assertion_type": "HEADER", "source": "x-trace"}) == "abc-123"
 
     def test_extract_response_time(self):
+        """验证提取响应`time`场景及其预期结果。"""
         assert _extract_actual(self.RESP, {"assertion_type": "RESPONSE_TIME"}) == 120
 
     def test_extract_contains_raw_body(self):
+        """验证提取包含`raw`请求体场景及其预期结果。"""
         assert _extract_actual(self.RESP, {"assertion_type": "CONTAINS"}) == self.RESP["raw_body"]
 
     # ---- run_assertions（端到端）
 
     def test_run_status_code(self):
+        """验证运行状态代码场景及其预期结果。"""
         a = {"assertion_type": "STATUS_CODE", "operator": "EQ", "expected_value": "200", "required": True}
         results = run_assertions([a], self.RESP)
         assert results[0]["passed"] is True
         assert results[0]["actual"] == "200"
 
     def test_run_json_path_code(self):
+        """验证运行JSON路径代码场景及其预期结果。"""
         a = {"assertion_type": "JSON_PATH", "path": "$.code", "operator": "EQ", "expected_value": "0"}
         assert run_assertions([a], self.RESP)[0]["passed"] is True
         a2 = {"assertion_type": "JSON_PATH", "path": "$.code", "operator": "EQ", "expected_value": "1"}
         assert run_assertions([a2], self.RESP)[0]["passed"] is False
 
     def test_run_header_assertion(self):
+        """验证运行请求头断言场景及其预期结果。"""
         a = {"assertion_type": "HEADER", "source": "X-Trace", "operator": "EQ", "expected_value": "abc-123"}
         assert run_assertions([a], self.RESP)[0]["passed"] is True
 
     def test_run_contains_type(self):
+        """验证运行包含类型场景及其预期结果。"""
         a = {"assertion_type": "CONTAINS", "expected_value": "Alice"}
         assert run_assertions([a], self.RESP)[0]["passed"] is True
         a2 = {"assertion_type": "CONTAINS", "expected_value": "Bob"}
@@ -316,6 +364,7 @@ class TestAssertionEngine:
         assert run_assertions([a2], self.RESP)[0]["passed"] is False
 
     def test_required_all_passed(self):
+        """验证必填`all`通过场景及其预期结果。"""
         rs = [
             {"passed": True, "required": True},
             {"passed": False, "required": False},  # 软断言失败不阻断
@@ -329,6 +378,7 @@ class TestAssertionEngine:
 
 
 def _add_action(db, flow_id, name, key, sort):
+    """添加动作。"""
     from app.features.business.models.business_action import BusinessAction
     a = BusinessAction(flow_id=flow_id, name=name, action_key=key, sort=sort, action_type="NORMAL")
     db.add(a)
@@ -337,6 +387,7 @@ def _add_action(db, flow_id, name, key, sort):
 
 
 def _add_binding(db, action_id, api_id):
+    """添加绑定。"""
     from app.features.business.models.business_binding import BusinessBinding
     b = BusinessBinding(action_id=action_id, binding_type="API", api_id=api_id,
                         is_default=True, enabled=True)
@@ -346,6 +397,7 @@ def _add_binding(db, action_id, api_id):
 
 
 def _add_mapping(db, binding_id, direction, bvar, loc, field=None, expr=None):
+    """添加映射。"""
     from app.features.business.models.business_api_mapping import BusinessApiMapping
     db.add(BusinessApiMapping(
         binding_id=binding_id, direction=direction, business_variable=bvar,
@@ -355,6 +407,7 @@ def _add_mapping(db, binding_id, direction, bvar, loc, field=None, expr=None):
 
 
 def _add_output_var(db, action_id, name):
+    """添加输出`var`。"""
     from app.features.business.models.business_variable import BusinessVariable
     db.add(BusinessVariable(action_id=action_id, direction="OUTPUT", name=name,
                             data_type="INTEGER", required=False))
@@ -443,7 +496,7 @@ def _build_varref_flow(db, project_id, produce_iface, consume_iface):
     db.add(BusinessVariable(action_id=consume.id, direction="INPUT", name="consumed_id",
                             data_type="INTEGER", required=False))
 
-    # VariableRef：produce.produced_id → consume.consumed_id。
+    # 变量引用映射示例：produce.produced_id → consume.consumed_id。
     db.add(BusinessVariableRef(
         flow_id=flow.id, source_action_id=produce.id, source_variable="produced_id",
         target_action_id=consume.id, target_variable="consumed_id",
@@ -459,6 +512,7 @@ class TestAcceptanceSingleApi:
     """§32(1)：POST /login，断言 STATUS_CODE==200 + $.code==0。"""
 
     def test_login_passes_and_masks_sensitive(self, api, admin, db):
+        """验证登录`passes`和`masks``sensitive`场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/login", 200,
                      {"code": 0, "message": "ok", "data": {"token": "tok-secret-abc", "user_id": 1}})
@@ -505,6 +559,7 @@ class TestAcceptanceBusinessFlow:
     """§32(2)：login→create project→create task→query task。"""
 
     def test_flow_passes_end_to_end(self, api, admin, db):
+        """验证流程`passes``end`到`end`场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/login", 200, {"code": 0, "data": {"token": "tok-flow-xyz", "user_id": 1}})
             stub.add("POST", "/projects", 200, {"code": 0, "data": {"id": 101, "name": "demo"}})
@@ -557,6 +612,7 @@ class TestBusinessActionExecutor:
     """§16：BUSINESS_ACTION 复用动作默认绑定 + INPUT 映射 + ApiRequestExecutor。"""
 
     def test_single_action_passes(self, api, admin, db):
+        """验证`single`动作`passes`场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/tasks", 200, {"code": 0, "data": {"id": 2001, "title": "t1"}})
             admin_id = _admin_id(db)
@@ -596,6 +652,7 @@ class TestNegativeExecution:
     """断言失败、HTTP 5xx、超时分别映射到 FAILED/ERROR。"""
 
     def test_assertion_failure_marks_failed(self, api, admin, db):
+        """验证断言失败`marks`失败场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/login", 200, {"code": 0, "data": {"token": "t", "user_id": 1}})
             admin_id = _admin_id(db)
@@ -618,6 +675,7 @@ class TestNegativeExecution:
             assert ce["error_code"] == "ASSERTION_FAILED"
 
     def test_http_5xx_marks_failed(self, api, admin, db):
+        """验证HTTP`xx``marks`失败场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/fail", 500, {"code": 500, "message": "boom"})
             admin_id = _admin_id(db)
@@ -636,8 +694,10 @@ class TestNegativeExecution:
             assert ce["error_code"] == "HTTP_REQUEST_FAILED"
 
     def test_timeout_marks_error(self, api, admin, db):
+        """验证`timeout``marks`错误场景及其预期结果。"""
         with StubServer() as stub:
             def slow(h, body):
+                """模拟耗时操作以验证超时处理。"""
                 time.sleep(2)
                 return 200, {"code": 0}
             stub.add_fn("POST", "/slow", slow)
@@ -670,6 +730,7 @@ class TestCrossProjectRun:
     """跨项目触发执行 → 404（项目不可见即不存在）。"""
 
     def test_run_hidden_as_404(self, api, admin, db):
+        """验证运行`hidden``as`场景及其预期结果。"""
         observer = unique("observer")
         api.register(observer)
         api.login(observer, "Init-Password-123")
@@ -697,10 +758,12 @@ class TestVariableRefEndToEnd:
     """不同 source/target 名经 VariableRef 传递；source_variable_name 修复后生效。"""
 
     def test_ref_passes_value_between_actions(self, api, admin, db):
+        """验证`ref``passes`值`between``actions`场景及其预期结果。"""
         with StubServer() as stub:
             stub.add("POST", "/produce", 200, {"code": 0, "data": {"id": 999}})
             # /consume 仅在 body.value==999 时 200，否则 400 → 证明 ref 传递了值。
             def consume(h, body):
+                """读取生产者输出并写入消费者变量。"""
                 try:
                     payload = json.loads(body) if body else {}
                 except json.JSONDecodeError:

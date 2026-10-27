@@ -1,6 +1,6 @@
-"""任务与既有测试、报告服务之间的业务适配器。
+"""任务与既有测试、安全测试、报告服务之间的业务适配器。
 
-只封装已实现的 TestRun 与 TestReport 服务调用，不复制资产表或执行器；后续 UI / 安全适配器单独接入。
+只封装已实现的 TestRun、安全测试与 TestReport 服务调用，不复制资产表或执行器。
 """
 
 from __future__ import annotations
@@ -70,8 +70,29 @@ def execute_confirmed_web_cases(
     )
 
 
+def execute_security_cases(
+    db: Session,
+    project_id: int,
+    actor: User,
+    *,
+    security_case_ids: list[int],
+    environment_id: int,
+    task_run_id: int,
+) -> dict[str, Any]:
+    """调用项目安全用例服务，在授权环境中复用既有执行器并返回正式 TestRun。"""
+    from app.features.agent.tools.security_tool import execute_cases
+
+    return execute_cases(
+        db, project_id, actor,
+        security_case_ids=security_case_ids,
+        environment_id=environment_id,
+        plan_name=f"Task-{task_run_id}-Security-Assessment",
+    )
+
+
 def build_test_report(
     db: Session, test_run_id: int, actor: User, *, provider: LLMProvider,
+    ai_summary_instructions: str | None = None,
 ) -> dict[str, Any]:
     """经既有 ReportService 创建或复用正式报告，并返回原报告 ID。"""
     result = ReportService().build_report(
@@ -80,43 +101,6 @@ def build_test_report(
         actor=actor,
         generate_ai_summary=True,
         provider=provider,
+        ai_summary_instructions=ai_summary_instructions,
     )
     return result.model_dump(mode="json")
-
-
-def create_security_scan(
-    db: Session,
-    project_id: int,
-    approver: User,
-    *,
-    target_id: int,
-    scan_profile_id: int,
-    test_run_id: int,
-    approval_note: str | None,
-    idempotency_key: str,
-) -> dict[str, Any]:
-    """使用既有 ZAP job_service 登记扫描；扫描仍由原 ScanWorker 领取执行。"""
-    from app.features.security_testing.zap.schemas import ScanJobCreate
-    from app.features.security_testing.zap.services import job_service
-
-    row = job_service.create(
-        db,
-        project_id,
-        approver,
-        ScanJobCreate(
-            target_id=target_id,
-            scan_profile_id=scan_profile_id,
-            test_run_id=test_run_id,
-            confirmed=True,
-            approval_note=approval_note,
-            idempotency_key=idempotency_key,
-        ),
-    )
-    return job_service.to_read(db, row).model_dump(mode="json")
-
-
-def get_security_scan(db: Session, project_id: int, actor: User, job_id: int) -> dict[str, Any]:
-    """通过 ZAP 现有查询服务读取扫描状态，不直接连接 ZAP。"""
-    from app.features.security_testing.zap.services import job_service
-
-    return job_service.get_job(db, project_id, actor, job_id).model_dump(mode="json")

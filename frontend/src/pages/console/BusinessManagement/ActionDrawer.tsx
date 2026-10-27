@@ -16,10 +16,10 @@ import type { BusinessActionDetail, BusinessActionUpdate } from '@/types';
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
   NORMAL: '常规动作',
-  SYSTEM: '系统动作',
-  MANUAL: '人工动作',
-  WAIT: '等待动作',
-  DECISION: '决策动作',
+  SYSTEM: '系统动作（历史类型）',
+  MANUAL: '人工动作（历史类型）',
+  WAIT: '等待动作（历史类型）',
+  DECISION: '决策动作（历史类型）',
 };
 
 export function ActionDrawer({
@@ -66,7 +66,7 @@ export function ActionDrawer({
       key: 'binding',
       label: (
         <span>
-          API 绑定
+          执行绑定
           {binding && <Tag color={binding.valid ? 'green' : 'red'} style={{ marginLeft: 4 }}>
             {binding.valid ? '有效' : '失效'}
           </Tag>}
@@ -96,7 +96,7 @@ export function ActionDrawer({
               name: action.name,
               action_key: action.action_key,
               description: action.description ?? undefined,
-              action_type: action.action_type,
+              action_type: 'NORMAL',
               sort: action.sort,
             });
             setEditOpen(true);

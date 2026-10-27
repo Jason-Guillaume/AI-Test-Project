@@ -33,6 +33,7 @@ class ExecutionContext:
     """
 
     def __init__(self, variables: dict[str, object] | None = None):
+        """初始化对象状态。"""
         self._variables: dict[str, object] = dict(variables or {})
         self._action_outputs: dict[str, dict[str, object]] = {}
 

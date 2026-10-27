@@ -21,6 +21,7 @@ class StaticProvider(BaseProvider):
     provider_type = "STATIC"
 
     def run(self, ctx: ProviderContext) -> ProviderResult:
+        """运行对应数据。"""
         from app.features.test_data.schemas import StaticProviderConfig
 
         cfg = self.load_config(config_of(ctx), StaticProviderConfig)

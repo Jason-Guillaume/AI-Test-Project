@@ -1,5 +1,22 @@
 // 用户管理：列表、搜索、分页、状态管理、角色调整。
-import { App, Button, Form, Input, Modal, Select, Space, Switch } from 'antd';
+import {
+  App,
+  Avatar,
+  Button,
+  Card,
+  Col,
+  Form,
+  Input,
+  Modal,
+  Row,
+  Select,
+  Space,
+  Switch,
+  Tag,
+  Typography,
+} from 'antd';
+import { PlusOutlined, ReloadOutlined, TeamOutlined, UserSwitchOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { usersApi, type UserListQuery, type UserUpdate } from '@/api/users';
@@ -8,6 +25,7 @@ import { ResourceTable, type PaginationState } from '@/components/ResourceTable'
 import { PlatformRoleTag } from '@/components/RoleTag';
 import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
 import { getErrorMessage } from '@/api/client';
+import { PageHeader } from '@/components/PageHeader';
 
 // 平台角色下拉选项：admin > test > dev 三级
 const ROLE_OPTIONS: { label: string; value: PlatformRole }[] = [
@@ -15,6 +33,7 @@ const ROLE_OPTIONS: { label: string; value: PlatformRole }[] = [
   { label: '测试工程师', value: 'test' },
   { label: '开发工程师', value: 'dev' },
 ];
+type UserStatusFilter = 'all' | 'active' | 'inactive';
 
 /**
  * 用户管理页。
@@ -36,6 +55,8 @@ export function AdminUsersPage() {
   });
   // 关键词：空串归一为 undefined 后传给后端
   const [keyword, setKeyword] = useState('');
+  // 账号状态筛选直接传给后端，切换时回到第一页。
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>('all');
   // 编辑目标：null 表示不编辑
   const [editing, setEditing] = useState<User | null>(null);
   // 新建弹窗开关
@@ -47,8 +68,10 @@ export function AdminUsersPage() {
       page: pagination.page,
       page_size: pagination.page_size,
       keyword: keyword || undefined,
+      is_active:
+        statusFilter === 'all' ? undefined : statusFilter === 'active',
     }),
-    [pagination, keyword],
+    [pagination, keyword, statusFilter],
   );
 
   const listQuery = useQuery({
@@ -81,25 +104,51 @@ export function AdminUsersPage() {
   // 表格列：memo 依赖为空数组（columns 内不引用闭包外状态），仅首次构建
   const columns = useMemo(
     () => [
-      { title: 'ID', dataIndex: 'id', width: 70 },
-      { title: '用户名', dataIndex: 'username' },
+      {
+        title: '用户账号',
+        dataIndex: 'username',
+        render: (username: string, row: User) => (
+          <Space className="admin-user-identity" size="middle">
+            <Avatar className="admin-user-avatar">
+              {username.slice(0, 1).toUpperCase()}
+            </Avatar>
+            <span className="admin-user-copy">
+              <Typography.Text strong>{username}</Typography.Text>
+              <Typography.Text className="admin-user-id" type="secondary">
+                用户 ID · {row.id}
+              </Typography.Text>
+            </span>
+          </Space>
+        ),
+      },
       {
         title: '平台角色',
         dataIndex: 'role',
         render: (role: PlatformRole) => <PlatformRoleTag role={role} />,
       },
       {
-        title: '状态',
+        title: '账号状态',
         dataIndex: 'is_active',
-        render: (v: boolean) => (v ? '启用' : '停用'),
+        render: (active: boolean) => (
+          <Tag color={active ? 'success' : 'default'}>
+            {active ? '正常使用' : '已停用'}
+          </Tag>
+        ),
       },
-      { title: '创建时间', dataIndex: 'created_at' },
+      {
+        title: '创建时间',
+        dataIndex: 'created_at',
+        render: (value: string) => {
+          const createdAt = dayjs(value);
+          return createdAt.isValid() ? createdAt.format('YYYY-MM-DD HH:mm') : '—';
+        },
+      },
       {
         title: '操作',
         key: 'actions',
-        width: 120,
+        width: 100,
         render: (_: unknown, row: User) => (
-          <Button size="small" onClick={() => setEditing(row)}>
+          <Button type="link" size="small" onClick={() => setEditing(row)}>
             编辑
           </Button>
         ),
@@ -118,35 +167,120 @@ export function AdminUsersPage() {
     );
 
   const data: Paginated<User> = listQuery.data;
+  const activeOnPage = data.items.filter((user) => user.is_active).length;
+  const adminsOnPage = data.items.filter((user) => user.role === 'admin').length;
 
   return (
     <PageContainer>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Input.Search
-          placeholder="按用户名/角色搜索"
-          allowClear
-          enterButton
-          style={{ width: 320 }}
-          // 搜索触发：更新关键词并把页码重置回第一页
-          onSearch={(v) => {
-            setKeyword(v);
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
-        />
-        <Button type="primary" onClick={() => setCreating(true)}>
-          新建用户
-        </Button>
-      </Space>
-
-      <ResourceTable<User>
-        rowKey={(r) => r.id}
-        columns={columns}
-        dataSource={data.items}
-        loading={listQuery.isFetching}
-        total={data.total}
-        pagination={pagination}
-        onPaginationChange={setPagination}
+      <PageHeader
+        title="用户管理"
+        titleExtra={<Tag color="blue">账号治理</Tag>}
+        subtitle="统一管理平台账号、角色权限与访问状态"
+        extra={
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreating(true)}
+          >
+            新建用户
+          </Button>
+        }
       />
+
+      <Row gutter={[14, 14]} className="admin-users-summary">
+        <Col xs={24} sm={8}>
+          <Card className="admin-users-summary-card">
+            <span className="admin-users-summary-icon admin-users-summary-icon--blue">
+              <TeamOutlined />
+            </span>
+            <span className="admin-users-summary-copy">
+              <Typography.Text type="secondary">筛选结果</Typography.Text>
+              <Typography.Title level={3}>{data.total}</Typography.Title>
+              <Typography.Text type="secondary">符合当前条件的账号</Typography.Text>
+            </span>
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className="admin-users-summary-card">
+            <span className="admin-users-summary-icon admin-users-summary-icon--green">
+              <UserSwitchOutlined />
+            </span>
+            <span className="admin-users-summary-copy">
+              <Typography.Text type="secondary">当前页启用</Typography.Text>
+              <Typography.Title level={3}>{activeOnPage}</Typography.Title>
+              <Typography.Text type="secondary">本页账号可正常登录</Typography.Text>
+            </span>
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card className="admin-users-summary-card">
+            <span className="admin-users-summary-icon admin-users-summary-icon--violet">
+              <UserSwitchOutlined />
+            </span>
+            <span className="admin-users-summary-copy">
+              <Typography.Text type="secondary">当前页管理员</Typography.Text>
+              <Typography.Title level={3}>{adminsOnPage}</Typography.Title>
+              <Typography.Text type="secondary">本页拥有平台管理权限</Typography.Text>
+            </span>
+          </Card>
+        </Col>
+      </Row>
+
+      <Card
+        className="admin-users-directory"
+        title={
+          <span className="admin-users-directory-title">
+            <Typography.Text strong>账号目录</Typography.Text>
+            <Typography.Text type="secondary">搜索并维护平台用户</Typography.Text>
+          </span>
+        }
+        extra={<Tag bordered={false} color="processing">共 {data.total} 个账号</Tag>}
+      >
+        <div className="admin-users-toolbar">
+          <Input.Search
+            className="admin-users-search"
+            placeholder="搜索用户名、角色或用户 ID"
+            allowClear
+            onSearch={(value) => {
+              setKeyword(value);
+              setPagination((current) => ({ ...current, page: 1 }));
+            }}
+          />
+          <Space className="admin-users-filters" wrap>
+            <Select<UserStatusFilter>
+              aria-label="账号状态筛选"
+              value={statusFilter}
+              onChange={(value) => {
+                setStatusFilter(value);
+                setPagination((current) => ({ ...current, page: 1 }));
+              }}
+              options={[
+                { label: '全部状态', value: 'all' },
+                { label: '正常使用', value: 'active' },
+                { label: '已停用', value: 'inactive' },
+              ]}
+              style={{ width: 132 }}
+            />
+            <Button
+              icon={<ReloadOutlined />}
+              loading={listQuery.isFetching}
+              onClick={() => void listQuery.refetch()}
+            >
+              刷新
+            </Button>
+          </Space>
+        </div>
+
+        <ResourceTable<User>
+          rowKey={(row) => row.id}
+          columns={columns}
+          dataSource={data.items}
+          loading={listQuery.isFetching}
+          total={data.total}
+          pagination={pagination}
+          onPaginationChange={setPagination}
+        />
+      </Card>
 
       {editing && (
         <EditUserModal

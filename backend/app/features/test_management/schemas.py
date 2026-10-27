@@ -359,7 +359,7 @@ class TestCaseDataResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-# --------------------------------------------------------------------------- 测试用例：所需 Fixture
+# --------------------------------------------------------------------------- 测试用例：所需 固定数据 Fixture
 
 
 class TestCaseFixtureItem(BaseModel):

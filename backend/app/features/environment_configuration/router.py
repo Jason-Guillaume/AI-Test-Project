@@ -1,12 +1,11 @@
 """环境配置路由。
 
-路径前缀 /api/v1/environments。读写接口一律仅平台管理员可用：环境表里存的是
-被测目标的 base_url 与默认请求头（可能含凭据），属于平台配置，第一阶段只对
-平台管理侧开放。第二阶段若控制台需要环境选择器，应新增一个只返回名称与
-显示名的只读接口，而不是放开本组接口。
+路径前缀 /api/v1/environments。该路由保留平台级环境类型目录的兼容管理接口；传入
+project_id 时，管理员读取对应项目自己的目标地址与默认请求头。控制台选择器走
+/projects/{project_id}/environments，只返回安全的项目环境选项，不包含请求头。
 
-路径参数使用环境名（唯一标识）而非自增 ID，与执行链路通过名称选择环境的
-方式保持一致。响应约定：列表接口返回 {items, total, page, page_size}。
+路径参数使用环境名（唯一标识）而非自增 ID。项目环境执行引用仍使用环境类型
+ID，并由后端同时校验项目绑定。响应约定：列表接口返回 {items, total, page, page_size}。
 """
 
 from __future__ import annotations
@@ -25,6 +24,7 @@ from app.features.environment_configuration.services.environment_service import 
     delete_environment,
     get_or_404,
     list_environments,
+    list_project_environment_configs,
     response_for,
     set_default_environment,
     update_environment,
@@ -44,16 +44,19 @@ def list_environments_endpoint(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     include_inactive: bool = False,
+    project_id: int | None = Query(None, ge=1),
 ):
     """列出环境；默认只返回启用项，管理端可传 include_inactive=true 查看全部。
 
     默认环境置顶，其余按 ID 升序，与执行器的选择顺序一致。
     表为空时回退内置环境，避免前端出现空下拉框。
     """
-    items = [
-        EnvironmentResponse(**payload)
-        for payload in list_environments(db, include_inactive=include_inactive)
-    ]
+    payloads = (
+        list_project_environment_configs(db, project_id, include_inactive=include_inactive)
+        if project_id is not None
+        else list_environments(db, include_inactive=include_inactive)
+    )
+    items = [EnvironmentResponse(**payload) for payload in payloads]
     # 环境条目很少（个位数），先全量取出再切片分页，total 直接取列表长度。
     total = len(items)
     start = (page - 1) * page_size

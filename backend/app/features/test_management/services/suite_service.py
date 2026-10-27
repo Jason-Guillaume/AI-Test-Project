@@ -33,10 +33,12 @@ from app.shared.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(s: TestSuite) -> TestSuiteResponse:
+    """构造接口响应数据。"""
     return TestSuiteResponse.model_validate(s)
 
 
 def _ensure_unique_name(db: Session, project_id: int, name: str, *, exclude_id: int | None = None) -> None:
+    """确保`unique`名称。"""
     q = db.query(TestSuite).filter(TestSuite.project_id == project_id, TestSuite.name == name)
     if exclude_id is not None:
         q = q.filter(TestSuite.id != exclude_id)
@@ -52,6 +54,7 @@ class SuiteService:
         suite_type: str | None = None, keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestSuiteListResponse:
+        """列出`suites`。"""
         get_project_or_404(db, project_id, user)
         q = db.query(TestSuite).filter(TestSuite.project_id == project_id)
         if suite_type:
@@ -68,6 +71,7 @@ class SuiteService:
     def create_suite(
         self, db: Session, project_id: int, body: TestSuiteCreate, *, actor: User,
     ) -> TestSuiteResponse:
+        """创建套件。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -91,11 +95,13 @@ class SuiteService:
         return _response(suite)
 
     def get_suite(self, db: Session, suite_id: int, user: User) -> TestSuiteResponse:
+        """获取套件。"""
         return _response(self._get_or_404(db, suite_id, user))
 
     def update_suite(
         self, db: Session, suite_id: int, body: TestSuiteUpdate, *, actor: User,
     ) -> TestSuiteResponse:
+        """更新套件。"""
         suite = self._get_writable_or_404(db, suite_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -122,6 +128,7 @@ class SuiteService:
         return _response(suite)
 
     def delete_suite(self, db: Session, suite_id: int, *, actor: User) -> None:
+        """删除套件。"""
         suite = self._get_writable_or_404(db, suite_id, actor)
         db.delete(suite)
         db.commit()
@@ -129,6 +136,7 @@ class SuiteService:
     # -------------------------------------------------------------- 套件-用例关联
 
     def list_suite_cases(self, db: Session, suite_id: int, user: User) -> list[TestSuiteCaseResponse]:
+        """列出套件`cases`。"""
         self._get_or_404(db, suite_id, user)
         rows = (
             db.query(TestSuiteCase).filter(TestSuiteCase.suite_id == suite_id)
@@ -139,6 +147,7 @@ class SuiteService:
     def add_suite_case(
         self, db: Session, suite_id: int, body: TestSuiteCaseAdd, *, actor: User,
     ) -> TestSuiteCaseResponse:
+        """添加套件用例。"""
         suite = self._get_writable_or_404(db, suite_id, actor)
         case = db.get(TestCase, body.test_case_id)
         if case is None or case.project_id != suite.project_id:
@@ -161,6 +170,7 @@ class SuiteService:
         return TestSuiteCaseResponse.model_validate(row)
 
     def remove_suite_case(self, db: Session, suite_case_id: int, *, actor: User) -> None:
+        """移除套件用例。"""
         row = db.get(TestSuiteCase, suite_case_id)
         if row is None:
             raise not_found("套件用例关联不存在")
@@ -169,6 +179,7 @@ class SuiteService:
         db.commit()
 
     def _get_or_404(self, db: Session, suite_id: int, user: User) -> TestSuite:
+        """获取或。"""
         s = db.get(TestSuite, suite_id)
         if s is None:
             raise not_found("测试套件不存在")
@@ -176,6 +187,7 @@ class SuiteService:
         return s
 
     def _get_writable_or_404(self, db: Session, suite_id: int, actor: User) -> TestSuite:
+        """获取可写或。"""
         s = db.get(TestSuite, suite_id)
         if s is None:
             raise not_found("测试套件不存在")

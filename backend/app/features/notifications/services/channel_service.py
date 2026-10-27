@@ -47,6 +47,7 @@ class ChannelService:
     def create_channel(
         self, db: Session, project_id: int, body: ChannelCreateRequest, actor: User,
     ) -> ChannelResponse:
+        """创建渠道。"""
         require_writable_project(db, project_id, actor)
         channel = NotificationChannel(
             project_id=project_id,
@@ -64,6 +65,7 @@ class ChannelService:
     def update_channel(
         self, db: Session, channel_id: int, body: ChannelUpdateRequest, actor: User,
     ) -> ChannelResponse:
+        """更新渠道。"""
         channel = self.get_channel_orm(db, channel_id, actor)
         require_writable_project(db, channel.project_id, actor)
         if body.name is not None:
@@ -93,13 +95,15 @@ class ChannelService:
     # ---------------------------------------------------------------- 查询 / 删除
 
     def get_channel(self, db: Session, channel_id: int, user: User) -> ChannelResponse:
-        channel = self.get_channel_orm(db, channel_id, user)  # viewer+
+        """获取渠道。"""
+        channel = self.get_channel_orm(db, channel_id, user)  # viewer+ 及以上角色
         return self._to_response(channel)
 
     def list_channels(
         self, db: Session, project_id: int, user: User, *,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> ChannelListResponse:
+        """列出`channels`。"""
         get_project_or_404(db, project_id, user)
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(NotificationChannel).filter(NotificationChannel.project_id == project_id)
@@ -110,6 +114,7 @@ class ChannelService:
         )
 
     def delete_channel(self, db: Session, channel_id: int, user: User) -> None:
+        """删除渠道。"""
         channel = self.get_channel_orm(db, channel_id, user)
         require_writable_project(db, channel.project_id, user)
         db.delete(channel)
@@ -150,6 +155,7 @@ class ChannelService:
     def _list_records(
         self, db: Session, project_id: int, extra_filter, page: int, page_size: int,
     ) -> NotificationRecordListResponse:
+        """列出记录。"""
         page_size = max(1, min(page_size, MAX_PAGE_SIZE))
         q = db.query(NotificationRecord).filter(
             NotificationRecord.project_id == project_id, extra_filter,
@@ -180,7 +186,7 @@ class ChannelService:
         统一放在本服务，REST 路由与 Agent 工具走同一套解析逻辑，行为一致。
         """
         if channel_id:
-            channel = self.get_channel_orm(db, channel_id, user)  # viewer+ + 404
+            channel = self.get_channel_orm(db, channel_id, user)  # viewer+ 及以上角色无权访问时返回 404
             if channel.project_id != project_id:
                 raise not_found("通知渠道不存在")
             return channel

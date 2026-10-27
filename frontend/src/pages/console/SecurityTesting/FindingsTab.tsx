@@ -1,12 +1,14 @@
 // 安全测试 · 疑似问题（Finding）Tab。
 //
-// 只改状态（标为误报 / 已确认 / 已修复 / 已忽略），不提供「转 Bug」——bug_id 恒 null。
+// 状态变更与人工确认的缺陷关联相互独立，关联不会自动确认安全问题。
 // 疑似问题文案统一「疑似问题」，不写「已发现漏洞」。
 //
 // 安全红线：Finding 的 evidence（脱敏证据）不在本 Tab 展示；如需查看变异轨迹，请到
 // 「安全用例」Tab 打开对应执行的变异详情抽屉。本 Tab 只展示 description / recommendation
 // 等策展文本，避免在管理面二次扩散敏感字段。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
 import {
   App,
   Button,
@@ -24,6 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { securityApi } from '@/api/securityTesting';
 import { getErrorMessage } from '@/api/client';
 import { ErrorState, LoadingState } from '@/components/PageState';
+import { DefectSourceLinks } from '@/components/exec/DefectSourceLinks';
 import {
   FINDING_STATUS_OPTIONS,
   FINDING_STATUS_TRANSITIONS,
@@ -42,6 +45,12 @@ export function FindingsTab({ projectId }: { projectId: number }) {
   const [severity, setSeverity] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<string | undefined>(undefined);
   const [drawer, setDrawer] = useState<SecurityFinding | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedFindingId = Number(searchParams.get('findingId'));
+  const requestedFinding = useQuery({ queryKey: ['security-finding-link', requestedFindingId], queryFn: () => securityApi.getFinding(requestedFindingId), enabled: requestedFindingId > 0 });
+  useEffect(() => {
+    if (requestedFinding.data?.project_id === projectId) setDrawer(requestedFinding.data);
+  }, [projectId, requestedFinding.data]);
 
   const listQuery = useQuery({
     queryKey: ['security-findings', projectId, { severity, status }],
@@ -120,6 +129,7 @@ export function FindingsTab({ projectId }: { projectId: number }) {
 
   return (
     <div>
+      {requestedFindingId > 0 && (requestedFinding.isError || (requestedFinding.data && requestedFinding.data.project_id !== projectId)) && <Typography.Text type="danger">疑似问题不存在、无访问权限或不属于当前项目。</Typography.Text>}
       <Card size="small" style={{ marginBottom: 12 }}>
         <Space>
           <Select
@@ -155,7 +165,7 @@ export function FindingsTab({ projectId }: { projectId: number }) {
       <Drawer
         title={drawer ? `疑似问题 #${drawer.id}` : '疑似问题'}
         open={drawer != null}
-        onClose={() => setDrawer(null)}
+        onClose={() => { setDrawer(null); if (requestedFindingId > 0) { const next = new URLSearchParams(searchParams); next.delete('findingId'); setSearchParams(next, { replace: true }); } }}
         width={480}
         destroyOnClose
       >
@@ -186,6 +196,8 @@ export function FindingsTab({ projectId }: { projectId: number }) {
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
               疑似问题需人工确认，不等于已发现漏洞。证据（evidence）不在本页展示，如需查看变异轨迹请到「安全用例」Tab 打开对应执行。
             </Typography.Text>
+            <TaskSourceLinks resourceType="SECURITY_FINDING" resourceId={drawer.id} />
+            <DefectSourceLinks sourceType="SECURITY_FINDING" sourceId={drawer.id} />
           </Space>
         )}
       </Drawer>

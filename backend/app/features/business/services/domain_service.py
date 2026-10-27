@@ -36,6 +36,7 @@ def _domain_response(domain: BusinessDomain) -> BusinessDomainResponse:
 def _ensure_unique_domain_name(
     db: Session, project_id: int, name: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique`领域名称。"""
     query = db.query(BusinessDomain).filter(
         BusinessDomain.project_id == project_id, BusinessDomain.name == name
     )
@@ -85,6 +86,7 @@ class DomainService:
     def create_domain(
         self, db: Session, project_id: int, body: BusinessDomainCreate, *, actor: User
     ) -> BusinessDomainResponse:
+        """创建领域。"""
         project = require_writable_project(db, project_id, actor)
         name = body.name.strip()
         if not name:
@@ -114,12 +116,14 @@ class DomainService:
         return _domain_response(domain)
 
     def get_domain(self, db: Session, domain_id: int, user: User) -> BusinessDomainResponse:
+        """获取领域。"""
         domain = self._get_domain_or_404(db, domain_id, user)
         return _domain_response(domain)
 
     def update_domain(
         self, db: Session, domain_id: int, body: BusinessDomainUpdate, *, actor: User
     ) -> BusinessDomainResponse:
+        """更新领域。"""
         domain = self._get_writable_domain_or_404(db, domain_id, actor)
         data = body.model_dump(exclude_unset=True)
         if not data:
@@ -143,6 +147,7 @@ class DomainService:
         return _domain_response(domain)
 
     def delete_domain(self, db: Session, domain_id: int, *, actor: User) -> None:
+        """删除领域。"""
         domain = self._get_writable_domain_or_404(db, domain_id, actor)
         # 级联删除由外键 ondelete=CASCADE 承担：删除域会一并清理其下流程→动作→绑定→映射。
         db.delete(domain)
@@ -151,6 +156,7 @@ class DomainService:
     # ---------------------------------------------------------------- 取实体
 
     def _get_domain_or_404(self, db: Session, domain_id: int, user: User) -> BusinessDomain:
+        """获取领域或。"""
         domain = db.get(BusinessDomain, domain_id)
         if domain is None:
             raise not_found("业务域不存在")
@@ -160,6 +166,7 @@ class DomainService:
     def _get_writable_domain_or_404(
         self, db: Session, domain_id: int, actor: User
     ) -> BusinessDomain:
+        """获取可写领域或。"""
         domain = db.get(BusinessDomain, domain_id)
         if domain is None:
             raise not_found("业务域不存在")

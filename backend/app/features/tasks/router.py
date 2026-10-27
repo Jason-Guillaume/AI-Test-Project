@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.features.tasks.schemas import (
+    AvailableTaskAgentResponse,
     TaskCommandCreate,
     TaskCommandResponse,
     TaskCreate,
@@ -20,7 +21,10 @@ from app.features.tasks.schemas import (
     TaskResourceRefResponse,
     TaskResponse,
     TaskRunDetailResponse,
+    TaskWebAuthoringTurn,
 )
+from app.features.tasks.services.web_authoring_service import TaskWebAuthoringService
+from app.features.web_ui.schemas import PromoteInput
 from app.features.tasks.services.task_service import TaskService
 from app.models.identity import User
 from app.shared.auth import get_current_user
@@ -28,6 +32,7 @@ from app.shared.database import get_db
 
 router = APIRouter(tags=["统一任务"])
 service = TaskService()
+web_authoring_service = TaskWebAuthoringService()
 
 
 @router.post(
@@ -44,6 +49,70 @@ def create_task(
 ) -> dict:
     """登记任务和首个持久化运行，长执行由数据库调度器继续处理。"""
     return service.create_task(db, project_id, body, actor=user)
+
+
+@router.get("/task-runs/{run_id}/web-authoring", summary="读取任务内 Web 编写工作区")
+def get_task_web_authoring(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return web_authoring_service.workspace(db, run_id, user)
+
+
+@router.post("/task-runs/{run_id}/web-authoring/restart", summary="启动或重启任务受控浏览器")
+def restart_task_web_authoring(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return web_authoring_service.start_or_restart(db, run_id, user)
+
+
+@router.post("/task-runs/{run_id}/web-authoring/close", summary="关闭任务受控浏览器")
+def close_task_web_authoring(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return web_authoring_service.close_session(db, run_id, user)
+
+
+@router.post("/task-runs/{run_id}/web-authoring/messages", summary="推进任务内 Web Agent")
+def send_task_web_authoring_message(
+    run_id: int,
+    body: TaskWebAuthoringTurn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return web_authoring_service.turn(db, run_id, body, user)
+
+
+@router.post("/task-runs/{run_id}/web-authoring/draft", status_code=status.HTTP_201_CREATED, summary="从任务内浏览器生成未确认 Web 草稿")
+def promote_task_web_authoring_draft(
+    run_id: int,
+    body: PromoteInput,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return web_authoring_service.promote(db, run_id, body, user)
+
+
+@router.get(
+    "/projects/{project_id}/available-agents",
+    response_model=list[AvailableTaskAgentResponse],
+    summary="列出项目可用的任务 Agent",
+)
+def list_available_agents(
+    project_id: int,
+    target_type: str = Query("API", pattern="^(API|WEB|SECURITY)$"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """仅返回当前项目有模型授权且具备完整运行权限的已启用 Agent。"""
+    return service.list_available_agents(
+        db, project_id, actor=user, target_type=target_type,
+    )
 
 
 @router.get("/tasks", response_model=TaskListResponse, summary="当前用户可见任务")

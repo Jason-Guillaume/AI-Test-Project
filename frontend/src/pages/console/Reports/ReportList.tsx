@@ -11,7 +11,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
 import { reportsApi } from '@/api/reports';
-import { environmentsApi } from '@/api/environments';
+import { projectsApi } from '@/api/projects';
 import { FilterToolbar } from '@/components/FilterToolbar';
 import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { PageHeader } from '@/components/PageHeader';
@@ -38,8 +38,9 @@ export function ConsoleReportListPage() {
   const [pageSize, setPageSize] = useState(20);
 
   const envsQuery = useQuery({
-    queryKey: ['environments'],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
+    queryKey: ['project-environments', currentProjectId],
+    queryFn: () => projectsApi.listEnvironments(currentProjectId!),
+    enabled: currentProjectId != null,
     staleTime: 60_000,
   });
   const envs = envsQuery.data?.items ?? [];

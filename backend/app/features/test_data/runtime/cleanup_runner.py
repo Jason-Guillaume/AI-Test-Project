@@ -46,6 +46,7 @@ from app.features.test_data.runtime.variable_resolver import (
     resolve_template,
     resolve_token_str,
 )
+from app.features.environment_configuration.services.environment_service import resolve_project_environment
 from app.models.configuration import Environment
 from app.models.identity import User
 from app.shared.errors import (
@@ -63,6 +64,7 @@ class CleanupRunner:
     """按 data_execution 执行清理。无状态，进程级复用。"""
 
     def __init__(self, masker: SensitiveDataMasker | None = None) -> None:
+        """初始化对象状态。"""
         self._masker = masker or _MASKER
 
     # ---------------------------------------------------------------- 入口
@@ -83,8 +85,14 @@ class CleanupRunner:
                 code="DATA_EXECUTION_NOT_FOUND",
             )
 
-        environment = db.get(Environment, data_exec.environment_id) if data_exec.environment_id else None
         project_id = data_exec.project_id
+        try:
+            environment = (
+                resolve_project_environment(db, project_id, data_exec.environment_id)
+                if data_exec.environment_id else None
+            )
+        except AppError:
+            environment = None
         # 只有真正生成成功的 Fixture 才清理：生成失败时数据可能根本没落地。
         fx_execs = (
             db.query(FixtureExecution)
@@ -260,6 +268,7 @@ class CleanupRunner:
         project_id: int,
         outputs_by_key: dict[str, dict[str, Any]],
     ) -> ProviderResult:
+        """运行处理。"""
         scope_vars = _scope_variables(outputs_by_key)
         kind = str(handle.get("type") or "").upper()
         if kind == "API":
@@ -373,7 +382,7 @@ class CleanupRunner:
             return ProviderResult.fail(CODE_CLEANUP_FAILED, str(exc)[:300])
         return ProviderResult.ok({"released_lease_id": int(lease_id)})
 
-    # ---------------------------------------------------------------- CLEANUP 步骤
+    # ---------------------------------------------------------------- 清理 步骤
 
     def _run_cleanup_steps(
         self,
@@ -385,6 +394,7 @@ class CleanupRunner:
         project_id: int,
         outputs_by_key: dict[str, dict[str, Any]],
     ) -> list[str]:
+        """运行清理`steps`。"""
         fixture = db.get(Fixture, fx_exec.fixture_id) if fx_exec.fixture_id else None
         if fixture is None:
             return []
@@ -493,6 +503,7 @@ def _scope_variables(outputs_by_key: dict[str, dict[str, Any]]) -> dict[str, Any
 
 
 def _try_parse_json(text: str | None) -> Any:
+    """尝试将响应文本解析为 JSON；解析失败时返回空结果。"""
     if not text:
         return None
     try:
