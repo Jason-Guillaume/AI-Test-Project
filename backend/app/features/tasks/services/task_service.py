@@ -34,7 +34,7 @@ from app.features.tasks.schemas import (
 from app.features.test_management.models.test_case import TestCase
 from app.models.configuration import ModelConfiguration
 from app.features.environment_configuration.services.environment_service import resolve_project_environment
-from app.features.agent_governance.models import AgentDefinition, MCPServer, SkillDefinition
+from app.features.agent_governance.models import AgentDefinition, MCPServer, SkillDefinition, SkillUsageEvent
 from app.models.identity import OrganizationMember, User
 from app.models.project import Project
 from app.shared.errors import bad_request, conflict, forbidden, not_found
@@ -406,11 +406,14 @@ class TaskService:
         ):
             raise bad_request("所选 Agent 关联的 Skill 不存在或已停用")
         skills = [skills_by_key[key] for key in (definition.skill_keys or [])]
-        if sum(len(skill.content) for skill in skills) > 100_000:
+        if sum(sum(len(content) for content in (skill.files_json or {"SKILL.md": skill.content}).values()) for skill in skills) > 100_000:
             raise bad_request("所选 Agent 的 Skill 内容过大，请减少关联 Skill")
 
+        settings = dict(definition.settings_json or {})
+        binding = settings.get("model_binding")
+        requested_model_id = definition.model_config_id if binding in {None, "agent"} else None
         model = self._resolve_authorized_model(
-            db, project_id, actor, requested_model_id=definition.model_config_id,
+            db, project_id, actor, requested_model_id=requested_model_id,
         )
         child_rows_from_db = db.query(AgentDefinition).filter(
             AgentDefinition.id.in_(definition.child_agent_ids or []),
@@ -454,7 +457,11 @@ class TaskService:
                 ],
             })
         mcp_tools_snapshot = []
-        for tool_key in definition.tool_keys or []:
+        resolved_tool_keys = list(dict.fromkeys([
+            *(definition.tool_keys or []),
+            *(key for skill in skills for key in (skill.mcp_tool_keys_json or [])),
+        ]))
+        for tool_key in resolved_tool_keys:
             if not tool_key.startswith("mcp:"):
                 continue
             try:
@@ -490,10 +497,19 @@ class TaskService:
                 "version": definition.version,
                 "workflow_template": definition.workflow_template,
                 "instruction": definition.instruction,
-                "tool_keys": list(definition.tool_keys or []),
+                "tool_keys": resolved_tool_keys,
+                "settings_json": settings,
+                "triggers_json": list(definition.triggers_json or []),
                 "child_agent_ids": list(definition.child_agent_ids or []),
                 "skills": [
-                    {"key": skill.key, "name": skill.name, "version": skill.version, "content": skill.content}
+                    {
+                        "key": skill.key,
+                        "name": skill.name,
+                        "version": skill.version,
+                        "content": skill.content,
+                        "files_json": dict(skill.files_json or {"SKILL.md": skill.content}),
+                        "mcp_tool_keys_json": list(skill.mcp_tool_keys_json or []),
+                    }
                     for skill in skills
                 ],
                 "child_agents": child_snapshots,
@@ -878,6 +894,17 @@ class TaskService:
         )
         db.add(run)
         db.flush()
+        if agent_snapshot and agent_snapshot.get("skills"):
+            skill_keys = [item["key"] for item in agent_snapshot["skills"]]
+            skill_ids = db.query(SkillDefinition.id, SkillDefinition.key).filter(SkillDefinition.key.in_(skill_keys)).all()
+            db.add_all([
+                SkillUsageEvent(
+                    skill_definition_id=skill_id,
+                    agent_definition_id=agent_snapshot["id"],
+                    task_run_id=run.id,
+                )
+                for skill_id, _ in skill_ids
+            ])
 
         if target_type == "SECURITY":
             roles = [

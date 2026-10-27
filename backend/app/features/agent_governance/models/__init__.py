@@ -6,6 +6,8 @@ from app.features.agent_governance.models.governance import (
     MCPServer,
     SkillDefinition,
     SkillDefinitionRevision,
+    SkillUsageEvent,
+    ToolDefinitionOverride,
 )
 
 __all__ = [
@@ -13,5 +15,7 @@ __all__ = [
     "AgentDefinitionRevision",
     "SkillDefinition",
     "SkillDefinitionRevision",
+    "SkillUsageEvent",
     "MCPServer",
+    "ToolDefinitionOverride",
 ]

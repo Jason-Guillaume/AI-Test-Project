@@ -107,15 +107,38 @@ _REVIEWER_SYSTEM = """你是任务内审阅 Agent。只根据已批准范围、�
 def _agent_guidance(run: TaskRun) -> str:
     """读取本次运行冻结的 Agent 指令与 Skill 内容，作为现有节点的领域补充上下文。"""
     profile = (run.input_snapshot or {}).get("agent_definition") or {}
+    settings = profile.get("settings_json") or {}
+    values = {
+        "Now": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "DataDir": "任务运行时数据目录",
+    }
+    for variable in settings.get("runtime_variables") or []:
+        name = str(variable.get("name") or "").strip()
+        if not name:
+            continue
+        # 内置变量由运行时提供；自定义变量只接受静态文本，不执行表达式。
+        if name not in values:
+            values[name] = str(variable.get("value") or "")
+
+    def render(text: str) -> str:
+        for name, value in values.items():
+            text = text.replace("{{." + name + "}}", value)
+        return text
+
     sections: list[str] = []
-    instruction = str(profile.get("instruction") or "").strip()
+    instruction = render(str(profile.get("instruction") or "")).strip()
     if instruction:
         sections.append(f"平台配置的 Agent 补充指令：\n{instruction}")
     for skill in profile.get("skills") or []:
         name = str(skill.get("name") or skill.get("key") or "Skill")
-        content = str(skill.get("content") or "").strip()
+        files = skill.get("files_json") or {}
+        content = render(str(files.get("SKILL.md") or skill.get("content") or "")).strip()
         if content:
             sections.append(f"Skill「{name}」：\n{content}")
+        for path, file_content in files.items():
+            if path == "SKILL.md" or not str(file_content).strip():
+                continue
+            sections.append(f"Skill「{name}」文件 `{path}`：\n{render(str(file_content)).strip()}")
     return "\n\n".join(sections)
 
 
