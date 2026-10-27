@@ -41,6 +41,9 @@ export function ApiDetail({
     return <ErrorState error={detailQuery.error} onRetry={detailQuery.refetch} />;
 
   const api = detailQuery.data;
+  // 防止接口被删除、响应体为空等异常情况导致右侧面板静默空白。
+  if (!api) return <EmptyState description="没有获取到接口信息，请重新选择接口" />;
+
   return (
     <Tabs
       defaultActiveKey="overview"

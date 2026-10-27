@@ -2,8 +2,8 @@
 // 模块 CRUD：顶部「新建模块」+ 节点内重命名/删除按钮（未分类不可删/改名）。
 // 点击文件夹选中并展开模块；点击接口回调 onSelectApi。
 import { useMemo, useState } from 'react';
-import { App, Button, Form, Input, Modal, Select, Space, Tag, Tree, Typography } from 'antd';
-import { DeleteOutlined, EditOutlined, FolderOutlined, PlusOutlined } from '@ant-design/icons';
+import { App, Button, Form, Input, Modal, Select, Space, Tag } from 'antd';
+import { DeleteOutlined, DownOutlined, EditOutlined, FolderOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { getErrorMessage } from '@/api/client';
@@ -11,12 +11,9 @@ import { LoadingState, ErrorState } from '@/components/PageState';
 import { METHOD_COLOR } from './constants';
 import type { ApiInterface, ApiModule, ApiModuleCreate, ApiStatus } from '@/types';
 
-interface TreeDataNode {
-  key: string;
-  title: React.ReactNode;
-  children?: TreeDataNode[];
-  selectable?: boolean;
-}
+type TreeDataNode =
+  | { kind: 'module'; module: ApiModule; children?: TreeDataNode[] }
+  | { kind: 'api'; api: ApiInterface };
 
 /**
  * 模块树面板。
@@ -124,25 +121,7 @@ export function ModuleTree({
       modulesByParent.set(parentId, siblings);
     }
 
-    const makeApiNode = (api: ApiInterface): TreeDataNode => ({
-        key: `a:${api.id}`,
-        title: (
-          <span
-            className="api-module-api-title"
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelectModule(null);
-              onSelectApi(api.id);
-            }}
-          >
-            <Tag color={METHOD_COLOR[api.method] ?? 'default'}>{api.method}</Tag>
-            <Typography.Text className="api-module-name" title={`${api.name} · ${api.path}`}>
-              {api.name}
-            </Typography.Text>
-          </span>
-        ),
-        selectable: true,
-      });
+    const makeApiNode = (api: ApiInterface): TreeDataNode => ({ kind: 'api', api });
 
     const makeModuleNode = (m: ApiModule): TreeDataNode => {
       const children = [
@@ -150,62 +129,9 @@ export function ModuleTree({
         ...(byModule.get(m.id) ?? []).map(makeApiNode),
       ];
       return {
-        key: `m:${m.id}`,
-        title: (
-          <span
-            className="api-module-title"
-            onClick={(event) => {
-              event.stopPropagation();
-              const key = `m:${m.id}`;
-              onSelectApi(null);
-              onSelectModule(m.id);
-              setExpandedKeys((current) => current.includes(key)
-                ? current.filter((expandedKey) => expandedKey !== key)
-                : [...current, key]);
-            }}
-          >
-            <FolderOutlined className="api-module-folder-icon" />
-            <Typography.Text className="api-module-name" strong={m.is_default} title={m.name}>
-              {m.name}
-            </Typography.Text>
-            <span className="api-module-count">{m.interface_count}</span>
-            {!m.is_default && (
-              <span className="api-module-actions">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EditOutlined />}
-                  aria-label={`重命名模块 ${m.name}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setRenameTarget(m);
-                    renameForm.setFieldsValue({ name: m.name });
-                  }}
-                />
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  aria-label={`删除模块 ${m.name}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    modal.confirm({
-                      title: `删除模块「${m.name}」？`,
-                      content: '模块下的接口将归入「未分类」，不会被删除。',
-                      okText: '删除',
-                      okType: 'danger',
-                      cancelText: '取消',
-                      onOk: () => deleteMutation.mutateAsync(m.id),
-                    });
-                  }}
-                />
-              </span>
-            )}
-          </span>
-        ),
+        kind: 'module',
+        module: m,
         children: children.length ? children : undefined,
-        selectable: true,
       };
     };
 
@@ -222,6 +148,94 @@ export function ModuleTree({
     .filter((m) => !m.is_default && m.parent_id == null)
     .map((m) => ({ label: m.name, value: m.id }));
 
+  const toggleModule = (module: ApiModule) => {
+    const key = `m:${module.id}`;
+    onSelectApi(null);
+    onSelectModule(module.id);
+    setExpandedKeys((current) => current.includes(key)
+      ? current.filter((expandedKey) => expandedKey !== key)
+      : [...current, key]);
+  };
+
+  const renderNode = (node: TreeDataNode): React.ReactNode => {
+    if (node.kind === 'api') {
+      const { api } = node;
+      return (
+        <button
+          key={`a:${api.id}`}
+          type="button"
+          className={`api-module-api-row${selectedApiId === api.id ? ' is-selected' : ''}`}
+          title={`${api.method} ${api.path} · ${api.name}`}
+          onClick={() => {
+            onSelectModule(null);
+            onSelectApi(api.id);
+          }}
+        >
+          <Tag color={METHOD_COLOR[api.method] ?? 'default'}>{api.method}</Tag>
+          <span className="api-module-api-name">{api.name}</span>
+        </button>
+      );
+    }
+
+    const { module } = node;
+    const key = `m:${module.id}`;
+    const expanded = expandedKeys.includes(key);
+    return (
+      <div key={key} className="api-module-tree-node">
+        <div className={`api-module-row${selectedModuleId === module.id ? ' is-selected' : ''}`}>
+          <button
+            type="button"
+            className="api-module-trigger"
+            aria-expanded={expanded}
+            title={module.name}
+            onClick={() => toggleModule(module)}
+          >
+            {expanded ? <DownOutlined className="api-module-caret" /> : <RightOutlined className="api-module-caret" />}
+            <FolderOutlined className="api-module-folder-icon" />
+            <span className={`api-module-name${module.is_default ? ' is-default' : ''}`}>{module.name}</span>
+            <span className="api-module-count">{module.interface_count}</span>
+          </button>
+          {!module.is_default && (
+            <span className="api-module-actions">
+              <Button
+                type="text"
+                size="small"
+                icon={<EditOutlined />}
+                aria-label={`重命名模块 ${module.name}`}
+                onClick={() => {
+                  setRenameTarget(module);
+                  renameForm.setFieldsValue({ name: module.name });
+                }}
+              />
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label={`删除模块 ${module.name}`}
+                onClick={() => {
+                  modal.confirm({
+                    title: `删除模块「${module.name}」？`,
+                    content: '模块下的接口将归入「未分类」，不会被删除。',
+                    okText: '删除',
+                    okType: 'danger',
+                    cancelText: '取消',
+                    onOk: () => deleteMutation.mutateAsync(module.id),
+                  });
+                }}
+              />
+            </span>
+          )}
+        </div>
+        {expanded && node.children?.length ? (
+          <div className="api-module-children" role="group">
+            {node.children.map(renderNode)}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Space style={{ marginBottom: 8 }}>
@@ -230,28 +244,9 @@ export function ModuleTree({
         </Button>
       </Space>
       <div className="api-module-tree-scroll">
-        <Tree
-          className="api-module-tree"
-          treeData={treeData}
-          expandedKeys={expandedKeys}
-          onExpand={(keys) => setExpandedKeys(keys.map(String))}
-          selectedKeys={selectedApiId ? [`a:${selectedApiId}`] : selectedModuleId ? [`m:${selectedModuleId}`] : []}
-          onSelect={(_keys, info) => {
-            const k = String(info.node.key);
-            if (k && k.startsWith('a:')) {
-              onSelectModule(null);
-              onSelectApi(Number(k.slice(2)));
-            } else if (k && k.startsWith('m:')) {
-              const moduleId = Number(k.slice(2));
-              onSelectApi(null);
-              onSelectModule(moduleId);
-            } else {
-              onSelectModule(null);
-              onSelectApi(null);
-            }
-          }}
-          blockNode
-        />
+        <div className="api-module-tree" role="tree" aria-label="接口模块">
+          {treeData.map(renderNode)}
+        </div>
       </div>
 
       <Modal
