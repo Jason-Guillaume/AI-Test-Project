@@ -1,7 +1,7 @@
 // 左侧模块树：模块（最多两级）为文件夹节点，接口与子模块共同作为子节点。
 // 模块 CRUD：顶部「新建模块」+ 节点内重命名/删除按钮（未分类不可删/改名）。
 // 点击文件夹选中并展开模块；点击接口回调 onSelectApi。
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { App, Button, Form, Input, Modal, Select, Space, Tag, Tree, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, FolderOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -50,7 +50,6 @@ export function ModuleTree({
   const [createForm] = Form.useForm<ApiModuleCreate & { parent_id?: number | null }>();
   const [renameForm] = Form.useForm<{ name: string }>();
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
-  const expandedProjectId = useRef<number | null>(null);
 
   const modulesQuery = useQuery({
     queryKey: ['api-catalog', projectId, 'modules'],
@@ -72,13 +71,6 @@ export function ModuleTree({
         status,
       }),
   });
-
-  useEffect(() => {
-    if (modulesQuery.data && expandedProjectId.current !== projectId) {
-      expandedProjectId.current = projectId;
-      setExpandedKeys(modulesQuery.data.map((module) => `m:${module.id}`));
-    }
-  }, [projectId, modulesQuery.data]);
 
   const createMutation = useMutation({
     mutationFn: (body: ApiModuleCreate) => apiCatalogApi.createModule(projectId, body),
@@ -135,7 +127,14 @@ export function ModuleTree({
     const makeApiNode = (api: ApiInterface): TreeDataNode => ({
         key: `a:${api.id}`,
         title: (
-          <span className="api-module-api-title">
+          <span
+            className="api-module-api-title"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectModule(null);
+              onSelectApi(api.id);
+            }}
+          >
             <Tag color={METHOD_COLOR[api.method] ?? 'default'}>{api.method}</Tag>
             <Typography.Text className="api-module-name" title={`${api.name} · ${api.path}`}>
               {api.name}
@@ -153,7 +152,18 @@ export function ModuleTree({
       return {
         key: `m:${m.id}`,
         title: (
-          <span className="api-module-title">
+          <span
+            className="api-module-title"
+            onClick={(event) => {
+              event.stopPropagation();
+              const key = `m:${m.id}`;
+              onSelectApi(null);
+              onSelectModule(m.id);
+              setExpandedKeys((current) => current.includes(key)
+                ? current.filter((expandedKey) => expandedKey !== key)
+                : [...current, key]);
+            }}
+          >
             <FolderOutlined className="api-module-folder-icon" />
             <Typography.Text className="api-module-name" strong={m.is_default} title={m.name}>
               {m.name}
@@ -200,7 +210,7 @@ export function ModuleTree({
     };
 
     return (modulesByParent.get(null) ?? []).map(makeModuleNode);
-  }, [modulesQuery.data, apisQuery.data, renameForm, modal, deleteMutation]);
+  }, [modulesQuery.data, apisQuery.data, renameForm, modal, deleteMutation, onSelectApi, onSelectModule]);
 
   if (modulesQuery.isPending || apisQuery.isPending) return <LoadingState tip="加载接口树..." />;
   if (modulesQuery.isError)
@@ -235,9 +245,6 @@ export function ModuleTree({
               const moduleId = Number(k.slice(2));
               onSelectApi(null);
               onSelectModule(moduleId);
-              setExpandedKeys((current) => current.includes(k)
-                ? current.filter((expandedKey) => expandedKey !== k)
-                : [...current, k]);
             } else {
               onSelectModule(null);
               onSelectApi(null);

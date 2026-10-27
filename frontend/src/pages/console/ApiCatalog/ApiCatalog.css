@@ -21,10 +21,18 @@
   width: 100%;
   align-items: center;
   gap: 7px;
+  cursor: pointer;
 }
 .api-module-title { position: relative; padding-right: 4px; }
 .api-module-folder-icon { flex: 0 0 auto; color: #7586a3; }
-.api-module-name { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.api-module-name {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .api-module-count {
   flex: 0 0 auto;
   color: #8792a3;
