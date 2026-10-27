@@ -5,11 +5,15 @@ from __future__ import annotations
 import json
 import re
 import uuid
+import io
+import zipfile
+import stat
 from datetime import datetime
 from typing import Any
 
 import httpx
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.features.agent_governance.catalog import BUILTIN_TOOLS, TOOL_BY_KEY
@@ -21,6 +25,8 @@ from app.features.agent_governance.schemas import (
     MCPServerUpdate,
     SkillCreate,
     SkillUpdate,
+    AgentRuntimeSettings,
+    ToolDefinitionUpdate,
 )
 from app.features.agent_governance.models import (
     AgentDefinition,
@@ -28,6 +34,8 @@ from app.features.agent_governance.models import (
     MCPServer,
     SkillDefinition,
     SkillDefinitionRevision,
+    SkillUsageEvent,
+    ToolDefinitionOverride,
 )
 from app.models.configuration import ModelConfiguration
 from app.shared.crypto import decrypt_secret, encrypt_secret
@@ -56,6 +64,9 @@ def _validate_agent_links(
     unknown_tools = set()
     for key in set(tool_keys):
         if key in TOOL_BY_KEY:
+            override = db.get(ToolDefinitionOverride, key)
+            if override is not None and not override.is_enabled:
+                raise bad_request(f"工具「{TOOL_BY_KEY[key]['name']}」已停用")
             continue
         match = re.fullmatch(r"mcp:(\d+):(.+)", key)
         if match:
@@ -123,6 +134,8 @@ def _agent_snapshot(row: AgentDefinition) -> dict[str, Any]:
         "tool_keys": row.tool_keys or [],
         "child_agent_ids": row.child_agent_ids or [],
         "is_enabled": row.is_enabled,
+        "settings_json": row.settings_json or AgentRuntimeSettings().model_dump(mode="json"),
+        "triggers_json": row.triggers_json or [],
     }
 
 
@@ -133,6 +146,8 @@ def _skill_snapshot(row: SkillDefinition) -> dict[str, Any]:
         "description": row.description,
         "content": row.content,
         "is_enabled": row.is_enabled,
+        "files_json": row.files_json or {"SKILL.md": row.content},
+        "mcp_tool_keys_json": row.mcp_tool_keys_json or [],
     }
 
 
@@ -149,7 +164,7 @@ def create_agent(db: Session, body: AgentDefinitionCreate, actor_id: int) -> Age
     )
     row = AgentDefinition(
         key=str(uuid.uuid4()),
-        **body.model_dump(),
+        **body.model_dump(mode="json"),
         created_by=actor_id,
         updated_by=actor_id,
     )
@@ -171,11 +186,23 @@ def update_agent(db: Session, agent_id: int, body: AgentDefinitionUpdate, actor_
     row = db.get(AgentDefinition, agent_id)
     if row is None:
         raise not_found("Agent 配置不存在")
-    changes = body.model_dump(exclude_unset=True)
+    changes = body.model_dump(exclude_unset=True, mode="json")
     changes = {
         key: value for key, value in changes.items()
         if value is not None or key in {"model_config_id", "skill_keys", "tool_keys"}
     }
+    if "settings_json" not in changes and "model_config_id" in changes:
+        legacy_settings = dict(row.settings_json or AgentRuntimeSettings().model_dump(mode="json"))
+        legacy_settings["model_binding"] = "agent" if changes["model_config_id"] is not None else "task_or_global"
+        changes["settings_json"] = AgentRuntimeSettings.model_validate(legacy_settings).model_dump(mode="json")
+    if changes:
+        effective_settings = changes.get("settings_json", row.settings_json or {})
+        binding = effective_settings.get("model_binding", "task_or_global")
+        effective_model_id = changes.get("model_config_id", row.model_config_id)
+        if binding == "task_or_global":
+            changes["model_config_id"] = None
+        elif effective_model_id is None:
+            raise bad_request("选择 Agent 固定模型时必须指定模型配置")
     if changes.get("is_enabled") is False and any(
         row.id in (parent.child_agent_ids or []) and parent.is_enabled
         for parent in db.query(AgentDefinition).filter(AgentDefinition.id != row.id).all()
@@ -240,7 +267,13 @@ def list_skills(db: Session) -> list[SkillDefinition]:
 
 def create_skill(db: Session, body: SkillCreate, actor_id: int) -> SkillDefinition:
     """创建`skill`。"""
-    row = SkillDefinition(key=str(uuid.uuid4()), **body.model_dump(), created_by=actor_id, updated_by=actor_id)
+    values = body.model_dump()
+    files = values.pop("files_json") or {"SKILL.md": values["content"]}
+    if "SKILL.md" not in files:
+        files["SKILL.md"] = values["content"]
+    values["content"] = files["SKILL.md"]
+    _validate_skill_mcp_links(db, values["mcp_tool_keys_json"])
+    row = SkillDefinition(key=str(uuid.uuid4()), files_json=files, **values, created_by=actor_id, updated_by=actor_id)
     db.add(row)
     db.flush()
     db.add(SkillDefinitionRevision(
@@ -254,12 +287,77 @@ def create_skill(db: Session, body: SkillCreate, actor_id: int) -> SkillDefiniti
     return row
 
 
+def import_skill_zip(db: Session, archive_bytes: bytes, filename: str, actor_id: int, *, name: str | None = None) -> SkillDefinition:
+    """导入只读文本型 Agent Skill 压缩包，拒绝路径穿越与可执行文件。"""
+    if not archive_bytes or len(archive_bytes) > 2_000_000:
+        raise bad_request("Skill ZIP 必须小于 2 MB")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(archive_bytes))
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise bad_request("上传文件不是有效的 ZIP 压缩包") from exc
+    with archive:
+        members = [item for item in archive.infolist() if not item.is_dir()]
+        if len(members) > 200:
+            raise bad_request("Skill ZIP 最多包含 200 个文件")
+        files: dict[str, str] = {}
+        total = 0
+        for item in members:
+            path = item.filename.replace("\\", "/")
+            parts = path.split("/")
+            mode = (item.external_attr >> 16) & 0xFFFF
+            if path.startswith("/") or any(part in {"", ".", ".."} for part in parts) or stat.S_ISLNK(mode):
+                raise bad_request("Skill ZIP 包含不安全的文件路径")
+            if parts[0] == "__MACOSX" or parts[-1] == ".DS_Store":
+                continue
+            if path.rsplit(".", 1)[-1].lower() not in {"md", "txt", "json", "yaml", "yml", "toml", "xml", "csv"}:
+                raise bad_request(f"Skill 只能导入文本文件：{parts[-1]}")
+            if item.file_size > 100_000 or total + item.file_size > 1_000_000:
+                raise bad_request("Skill ZIP 解压后单文件不能超过 100 KB，总大小不能超过 1 MB")
+            try:
+                with archive.open(item) as compressed:
+                    raw_content = compressed.read(100_001)
+                    if len(raw_content) > 100_000 or compressed.read(1):
+                        raise bad_request("Skill ZIP 单文件解压内容超过 100 KB")
+                content = raw_content.decode("utf-8")
+            except (UnicodeDecodeError, RuntimeError, zipfile.BadZipFile) as exc:
+                raise bad_request(f"Skill 文件不是有效 UTF-8 文本：{parts[-1]}") from exc
+            total += len(content.encode("utf-8"))
+            files[path] = content
+    if "SKILL.md" not in files:
+        prefix = next(iter(files), "").split("/", 1)[0]
+        if prefix and all(path.startswith(prefix + "/") for path in files):
+            files = {path[len(prefix) + 1:]: content for path, content in files.items()}
+    if "SKILL.md" not in files:
+        raise bad_request("ZIP 根目录必须包含 SKILL.md")
+    resolved_name = (name or "").strip() or filename.rsplit(".", 1)[0][:120] or "导入的 Skill"
+    description = ""
+    for line in files["SKILL.md"].splitlines():
+        if line.strip() and not line.lstrip().startswith("#"):
+            description = line.strip()[:2000]
+            break
+    return create_skill(db, SkillCreate(
+        name=resolved_name,
+        description=description,
+        content=files["SKILL.md"],
+        files_json=files,
+        is_enabled=False,
+    ), actor_id)
+
+
 def update_skill(db: Session, skill_id: int, body: SkillUpdate, actor_id: int) -> SkillDefinition:
     """更新`skill`。"""
     row = db.get(SkillDefinition, skill_id)
     if row is None:
         raise not_found("Skill 不存在")
     changes = {key: value for key, value in body.model_dump(exclude_unset=True).items() if value is not None}
+    if "files_json" in changes:
+        files = changes["files_json"]
+        if "SKILL.md" not in files:
+            raise bad_request("Skill 文件树必须包含 SKILL.md")
+        changes["content"] = files["SKILL.md"]
+    elif "content" in changes:
+        changes["files_json"] = {**(row.files_json or {}), "SKILL.md": changes["content"]}
+    _validate_skill_mcp_links(db, changes.get("mcp_tool_keys_json", row.mcp_tool_keys_json or []))
     if changes.get("is_enabled") is False:
         if any(row.is_enabled and skill.key in (row.skill_keys or []) for row in db.query(AgentDefinition).all()):
             raise conflict("该 Skill 正被启用中的 Agent 使用，请先停用 Agent 或移除引用")
@@ -574,6 +672,180 @@ def invoke_approved_mcp_tool(
     return sanitize_context(safe_result)
 
 
-def list_builtin_tools() -> list[dict[str, str]]:
+def list_builtin_tools(db: Session) -> list[dict[str, Any]]:
     """列出内置`tools`。"""
-    return BUILTIN_TOOLS
+    overrides = {row.tool_key: row for row in db.query(ToolDefinitionOverride).all()}
+    agents_by_tool: dict[str, list[int]] = {key: [] for key in TOOL_BY_KEY}
+    for agent in db.query(AgentDefinition).all():
+        for key in agent.tool_keys or []:
+            if key in agents_by_tool:
+                agents_by_tool[key].append(agent.id)
+    return [
+        {
+            **tool,
+            "description": overrides[tool["key"]].description if tool["key"] in overrides else tool["description"],
+            "parameter_overrides_json": overrides[tool["key"]].parameter_overrides_json or {} if tool["key"] in overrides else {},
+            "is_enabled": overrides[tool["key"]].is_enabled if tool["key"] in overrides else True,
+            "agent_ids": agents_by_tool[tool["key"]],
+            "parameters": tool.get("parameters", []),
+        }
+        for tool in BUILTIN_TOOLS
+    ]
+
+
+def update_builtin_tool(
+    db: Session,
+    tool_key: str,
+    body: ToolDefinitionUpdate,
+    actor_id: int,
+) -> dict[str, Any]:
+    """更新内置工具说明和 Agent 授权，并为受影响的 Agent 创建版本。"""
+    catalog_tool = TOOL_BY_KEY.get(tool_key)
+    if catalog_tool is None:
+        raise not_found("平台工具不存在")
+
+    agents = db.query(AgentDefinition).all()
+    agents_by_id = {agent.id: agent for agent in agents}
+    selected_ids = set(body.agent_ids) if body.is_enabled else set()
+    if selected_ids - agents_by_id.keys():
+        raise bad_request("所选 Agent 不存在")
+
+    updates: list[tuple[AgentDefinition, list[str]]] = []
+    for agent in agents:
+        current_keys = list(agent.tool_keys or [])
+        has_tool = tool_key in current_keys
+        should_have_tool = agent.id in selected_ids
+        if has_tool == should_have_tool:
+            continue
+        next_keys = current_keys if should_have_tool else [key for key in current_keys if key != tool_key]
+        if should_have_tool:
+            next_keys.append(tool_key)
+            _validate_agent_links(
+                db,
+                agent.skill_keys or [],
+                next_keys,
+                agent.model_config_id,
+                agent_enabled=agent.is_enabled,
+                child_agent_ids=agent.child_agent_ids or [],
+                agent_id=agent.id,
+            )
+        updates.append((agent, next_keys))
+
+    override = db.get(ToolDefinitionOverride, tool_key)
+    if override is None:
+        override = ToolDefinitionOverride(
+            tool_key=tool_key,
+            description=body.description,
+            parameter_overrides_json=body.parameter_overrides_json,
+            is_enabled=body.is_enabled,
+            updated_by=actor_id,
+        )
+        db.add(override)
+    else:
+        override.description = body.description
+        override.parameter_overrides_json = body.parameter_overrides_json
+        override.is_enabled = body.is_enabled
+        override.updated_by = actor_id
+
+    for agent, tool_keys in updates:
+        agent.tool_keys = tool_keys
+        agent.version += 1
+        agent.updated_by = actor_id
+        db.add(AgentDefinitionRevision(
+            agent_definition_id=agent.id,
+            version=agent.version,
+            snapshot_json=_agent_snapshot(agent),
+            created_by=actor_id,
+        ))
+
+    db.commit()
+    return {
+        **catalog_tool,
+        "description": body.description,
+        "parameter_overrides_json": body.parameter_overrides_json,
+        "is_enabled": body.is_enabled,
+        "agent_ids": list(selected_ids),
+        "parameters": catalog_tool.get("parameters", []),
+    }
+
+
+def restore_builtin_tool_defaults(db: Session, tool_key: str, actor_id: int) -> dict[str, Any]:
+    """恢复内置工具的代码默认描述和开关，不改变现有 Agent 授权。"""
+    catalog_tool = TOOL_BY_KEY.get(tool_key)
+    if catalog_tool is None:
+        raise not_found("平台工具不存在")
+    override = db.get(ToolDefinitionOverride, tool_key)
+    if override is not None:
+        override.description = catalog_tool["description"]
+        override.parameter_overrides_json = {}
+        override.is_enabled = True
+        override.updated_by = actor_id
+        db.commit()
+    return next(item for item in list_builtin_tools(db) if item["key"] == tool_key)
+
+
+def restore_agent_version(db: Session, agent_id: int, version: int, actor_id: int) -> AgentDefinition:
+    """将历史快照恢复为当前配置，并作为新的版本保存。"""
+    revision = db.query(AgentDefinitionRevision).filter_by(agent_definition_id=agent_id, version=version).first()
+    if revision is None:
+        raise not_found("Agent 历史版本不存在")
+    allowed = {
+        "name", "description", "workflow_template", "instruction", "model_config_id",
+        "skill_keys", "tool_keys", "child_agent_ids", "is_enabled", "settings_json", "triggers_json",
+    }
+    body = AgentDefinitionUpdate.model_validate({key: value for key, value in revision.snapshot_json.items() if key in allowed})
+    return update_agent(db, agent_id, body, actor_id)
+
+
+def restore_skill_version(db: Session, skill_id: int, version: int, actor_id: int) -> SkillDefinition:
+    """将历史 Skill 快照恢复为当前配置，并新建版本。"""
+    revision = db.query(SkillDefinitionRevision).filter_by(skill_definition_id=skill_id, version=version).first()
+    if revision is None:
+        raise not_found("Skill 历史版本不存在")
+    allowed = {"name", "description", "content", "is_enabled", "files_json", "mcp_tool_keys_json"}
+    body = SkillUpdate.model_validate({key: value for key, value in revision.snapshot_json.items() if key in allowed})
+    return update_skill(db, skill_id, body, actor_id)
+
+
+def skill_usage(db: Session, skill_id: int) -> dict[str, Any]:
+    """汇总 Skill 被任务快照引用的情况。"""
+    from app.features.tasks.models.task import Task, TaskRun
+
+    skill = db.get(SkillDefinition, skill_id)
+    if skill is None:
+        raise not_found("Skill 不存在")
+    query = db.query(SkillUsageEvent).filter(SkillUsageEvent.skill_definition_id == skill_id)
+    total_loads = query.count()
+    last_used_at = query.with_entities(func.max(SkillUsageEvent.created_at)).scalar()
+    agent_rows = db.query(AgentDefinition.id, AgentDefinition.name, func.count(SkillUsageEvent.id)).join(
+        SkillUsageEvent, SkillUsageEvent.agent_definition_id == AgentDefinition.id,
+    ).filter(SkillUsageEvent.skill_definition_id == skill_id).group_by(AgentDefinition.id, AgentDefinition.name).all()
+    recent = db.query(SkillUsageEvent, TaskRun, Task).join(
+        TaskRun, TaskRun.id == SkillUsageEvent.task_run_id,
+    ).join(Task, Task.id == TaskRun.task_id).filter(
+        SkillUsageEvent.skill_definition_id == skill_id,
+    ).order_by(SkillUsageEvent.created_at.desc()).limit(10).all()
+    return {
+        "total_loads": total_loads,
+        "task_count": query.with_entities(func.count(func.distinct(SkillUsageEvent.task_run_id))).scalar() or 0,
+        "last_used_at": last_used_at,
+        "agents": [{"id": row[0], "name": row[1], "loads": row[2]} for row in agent_rows],
+        "recent_tasks": [{"task_id": task.id, "title": task.title, "run_number": run.run_number, "used_at": event.created_at} for event, run, task in recent],
+    }
+
+
+def _validate_skill_mcp_links(db: Session, keys: list[str]) -> None:
+    if len(set(keys)) != len(keys):
+        raise bad_request("Skill 关联的 MCP 工具不能重复")
+    for key in keys:
+        match = re.fullmatch(r"mcp:(\d+):(.+)", key)
+        if not match:
+            raise bad_request("Skill 只能关联 MCP 工具")
+        server = db.get(MCPServer, int(match.group(1)))
+        tool_name = match.group(2)
+        discovered = {item.get("name"): item for item in (server.discovered_tools_json or [])} if server else {}
+        tool = discovered.get(tool_name)
+        if server is None or tool_name not in (server.approved_tools_json or []) or tool is None:
+            raise bad_request("Skill 只能关联已发现并审批的 MCP 工具")
+        if (tool.get("annotations") or {}).get("readOnlyHint") is not True:
+            raise bad_request("Skill 关联的 MCP 工具必须明确标记为只读")

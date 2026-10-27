@@ -1,6 +1,6 @@
 """平台级 Agent、MCP、Skill 与内置工具治理接口（仅平台管理员）。"""
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.features.agent_governance import services
@@ -17,6 +17,7 @@ from app.features.agent_governance.schemas import (
     SkillCreate,
     SkillResponse,
     SkillUpdate,
+    ToolDefinitionUpdate,
 )
 from app.models.identity import User
 from app.shared.auth import require_platform_admin
@@ -32,9 +33,21 @@ def list_workflows(actor: User = Depends(require_platform_admin)):
 
 
 @router.get("/tools")
-def list_tools(actor: User = Depends(require_platform_admin)):
+def list_tools(db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """展示代码内注册的安全工具白名单。"""
-    return services.list_builtin_tools()
+    return services.list_builtin_tools(db)
+
+
+@router.put("/tools/{tool_key}")
+def update_tool(tool_key: str, body: ToolDefinitionUpdate, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """更新内置工具的说明和 Agent 授权。"""
+    return services.update_builtin_tool(db, tool_key, body, actor.id)
+
+
+@router.post("/tools/{tool_key}/restore-defaults")
+def restore_tool_defaults(tool_key: str, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """恢复内置工具默认描述和启用状态。"""
+    return services.restore_builtin_tool_defaults(db, tool_key, actor.id)
 
 
 @router.get("/agents", response_model=list[AgentDefinitionResponse])
@@ -61,6 +74,12 @@ def agent_versions(agent_id: int, db: Session = Depends(get_db), actor: User = D
     return services.agent_versions(db, agent_id)
 
 
+@router.post("/agents/{agent_id}/versions/{version}/restore", response_model=AgentDefinitionResponse)
+def restore_agent_version(agent_id: int, version: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """把指定历史配置恢复为一个新的 Agent 版本。"""
+    return services.restore_agent_version(db, agent_id, version, actor.id)
+
+
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(agent_id: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """删除智能体。"""
@@ -80,6 +99,22 @@ def create_skill(body: SkillCreate, db: Session = Depends(get_db), actor: User =
     return services.create_skill(db, body, actor.id)
 
 
+@router.post("/skills/import-zip", response_model=SkillResponse, status_code=status.HTTP_201_CREATED)
+async def import_skill_zip(
+    file: UploadFile = File(...),
+    name: str = Form(default=""),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_platform_admin),
+):
+    """导入包含 SKILL.md 的文本型 ZIP。"""
+    archive_bytes = await file.read(2_000_001)
+    if len(archive_bytes) > 2_000_000:
+        from app.shared.errors import bad_request
+
+        raise bad_request("Skill ZIP 必须小于 2 MB")
+    return services.import_skill_zip(db, archive_bytes, file.filename or "skill.zip", actor.id, name=name)
+
+
 @router.patch("/skills/{skill_id}", response_model=SkillResponse)
 def update_skill(skill_id: int, body: SkillUpdate, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """更新`skill`。"""
@@ -90,6 +125,18 @@ def update_skill(skill_id: int, body: SkillUpdate, db: Session = Depends(get_db)
 def skill_versions(skill_id: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """列出技能定义的历史版本。"""
     return services.skill_versions(db, skill_id)
+
+
+@router.post("/skills/{skill_id}/versions/{version}/restore", response_model=SkillResponse)
+def restore_skill_version(skill_id: int, version: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """把指定历史 Skill 内容恢复为一个新版本。"""
+    return services.restore_skill_version(db, skill_id, version, actor.id)
+
+
+@router.get("/skills/{skill_id}/usage")
+def skill_usage(skill_id: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """查看 Skill 被任务引用的统计。"""
+    return services.skill_usage(db, skill_id)
 
 
 @router.delete("/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)

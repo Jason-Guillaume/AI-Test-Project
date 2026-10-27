@@ -32,7 +32,9 @@ __all__ = [
     "AgentDefinitionRevision",
     "SkillDefinition",
     "SkillDefinitionRevision",
+    "SkillUsageEvent",
     "MCPServer",
+    "ToolDefinitionOverride",
     "ProjectEnvironment",
 ]
 
@@ -42,6 +44,8 @@ _FEATURE_MODEL_EXPORTS = {
     "MCPServer": ("app.features.agent_governance.models", "MCPServer"),
     "SkillDefinition": ("app.features.agent_governance.models", "SkillDefinition"),
     "SkillDefinitionRevision": ("app.features.agent_governance.models", "SkillDefinitionRevision"),
+    "SkillUsageEvent": ("app.features.agent_governance.models", "SkillUsageEvent"),
+    "ToolDefinitionOverride": ("app.features.agent_governance.models", "ToolDefinitionOverride"),
     "ProjectEnvironment": ("app.features.environment_configuration.models", "ProjectEnvironment"),
 }
 
