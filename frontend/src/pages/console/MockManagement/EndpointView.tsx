@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // Mock 接口详情页：场景列表 + 场景编辑（行为 / 响应 / 匹配规则 / 试跑）。
 //
 // 数据：
@@ -39,7 +40,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { getErrorMessage } from '@/api/client';
 import { mockManagementApi } from '@/api/mockManagement';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import type { MockScenario } from '@/types';
 import { ScenarioEditor } from './ScenarioEditor';
 import { behaviorColor, behaviorLabel, MOCK_KEY_PATTERN, statusCodeColor } from './constants';
@@ -67,7 +68,7 @@ export function ConsoleMockEndpointPage() {
 
   const scenariosQuery = useQuery({
     queryKey: ['mock-scenarios', id],
-    queryFn: () => mockManagementApi.listScenarios(id, { page: 1, page_size: 200 }),
+    queryFn: () => collectPages((page) => mockManagementApi.listScenarios(id, { page, page_size: 200 })),
     enabled: Number.isFinite(id),
   });
   const scenarios = scenariosQuery.data?.items ?? [];
@@ -264,6 +265,8 @@ export function ConsoleMockEndpointPage() {
 
       {scenariosQuery.isLoading ? (
         <LoadingState />
+      ) : scenariosQuery.isError ? (
+        <ErrorState error={scenariosQuery.error} onRetry={scenariosQuery.refetch} />
       ) : scenarios.length === 0 ? (
         <EmptyState description="该接口还没有场景，点「新建场景」配置第一条依赖行为" />
       ) : (

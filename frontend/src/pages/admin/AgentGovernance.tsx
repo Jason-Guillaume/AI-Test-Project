@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 import {
   App,
   Alert,
@@ -89,7 +90,7 @@ function AgentPane() {
   const skills = useQuery({ queryKey: ['agent-governance', 'skills'], queryFn: agentGovernanceApi.skills });
   const tools = useQuery({ queryKey: ['agent-governance', 'tools'], queryFn: agentGovernanceApi.tools });
   const mcpServers = useQuery({ queryKey: ['agent-governance', 'mcp-servers'], queryFn: agentGovernanceApi.mcpServers });
-  const models = useQuery({ queryKey: ['agent-governance', 'models'], queryFn: () => modelConfigsApi.list({ page: 1, page_size: 100, is_enabled: true }) });
+  const models = useQuery({ queryKey: ['agent-governance', 'models'], queryFn: () => collectPages((page) => modelConfigsApi.list({ page, page_size: 100, is_enabled: true })) });
   const createMutation = useMutation({
     mutationFn: agentGovernanceApi.createAgent,
     onSuccess: () => { message.success('Agent 配置已创建'); setCreating(false); invalidate(); },
@@ -258,7 +259,6 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
       </Space>}
     >
       <Form form={form} layout="vertical" initialValues={initialValues} onFinish={submit}>
-        {initial && <Alert type="info" showIcon message={`Agent 标识：${initial.key}`} description={`创建于 ${new Date(initial.created_at).toLocaleString()} · 最近更新 ${new Date(initial.updated_at).toLocaleString()}。保存后会生成新的配置版本。`} style={{ marginBottom: 16 }} />}
         <Tabs items={[
           { key: 'config', label: '配置与提示词', children: <>
             <Row gutter={16}>
@@ -604,7 +604,6 @@ function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHist
       <Space><Button onClick={onCancel}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>{initial ? '保存为新版本' : '创建 Skill'}</Button></Space>
     </Space>}
   >
-    {initial && <Alert type="info" showIcon message={`Skill 标识：${initial.key}`} description={`创建于 ${new Date(initial.created_at).toLocaleString()} · 最近更新 ${new Date(initial.updated_at).toLocaleString()}。保存后会生成新的不可变版本。`} style={{ marginBottom: 16 }} />}
     <Form form={form} layout="vertical" initialValues={initial ? { ...initial, mcp_tool_keys_json: initial.mcp_tool_keys_json ?? [] } : { is_enabled: false, mcp_tool_keys_json: [] }} onFinish={submit}>
       <Tabs items={[
         { key: 'overview', label: '概览与内容', children: <>
@@ -849,7 +848,6 @@ function ToolsPane() {
             <Typography.Paragraph type="secondary" ellipsis={{ rows: 2, tooltip: tool.description || '无描述' }} style={{ marginTop: 8, marginBottom: 6, minHeight: 40 }}>
               {tool.description || '无描述'}
             </Typography.Paragraph>
-            <Typography.Text type="secondary" ellipsis={{ tooltip: tool.key }} style={{ display: 'block', fontSize: 12 }}>{tool.key}</Typography.Text>
             <div style={{ marginTop: 'auto', paddingTop: 8 }}>
               <Tag color={tool.is_enabled ? 'green' : 'default'}>{tool.is_enabled ? '启用' : '停用'}</Tag>
               <Typography.Text type="secondary">Agent 绑定</Typography.Text>
@@ -907,7 +905,6 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
       <Space wrap size={[8, 8]} style={{ marginBottom: 16 }}>
         <Tag>{tool.category}</Tag>
         <Tag>系统工具</Tag>
-        <Typography.Text code>{tool.key}</Typography.Text>
       </Space>
       <Form
         key={tool.key}

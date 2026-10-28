@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 安全测试 · 疑似问题（Finding）Tab。
 //
 // 状态变更与人工确认的缺陷关联相互独立，关联不会自动确认安全问题。
@@ -55,12 +56,12 @@ export function FindingsTab({ projectId }: { projectId: number }) {
   const listQuery = useQuery({
     queryKey: ['security-findings', projectId, { severity, status }],
     queryFn: () =>
-      securityApi.listFindings(projectId, {
-        page: 1,
+      collectPages((page) => securityApi.listFindings(projectId, {
+        page,
         page_size: 100,
         severity,
         status,
-      }),
+      })),
   });
 
   const invalidate = () => {

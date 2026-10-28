@@ -27,7 +27,7 @@ export const webUIApi = {
   /** 项目可见的环境元信息，支持服务端搜索。 */
   environments: (id: number, keyword: string) => api.get<Paginated<WebEnvironment>>(`/projects/${id}/web-environments`, { params: { keyword } }),
   /** 项目内页面对象。 */
-  pages: (id: number) => api.get<Paginated<WebPage>>(`/projects/${id}/web-pages`),
+  pages: (id: number, page = 1) => api.get<Paginated<WebPage>>(`/projects/${id}/web-pages`, { params: { page, page_size: 200 } }),
   /** 原子保存页面元素。 */
   savePage: (id: number, body: WebPageInput, pageId?: number) => pageId
     ? api.put<WebPage>(`/projects/${id}/web-pages/${pageId}`, body)

@@ -67,14 +67,6 @@ export function ConsoleReportListPage() {
     setPage(1);
   };
 
-  if (currentProjectId == null) {
-    return (
-      <PageContainer>
-        <EmptyState description="请先在顶部选择一个项目" />
-      </PageContainer>
-    );
-  }
-
   const rows: TestReportListItem[] = reportsQuery.data?.items ?? [];
   const total = reportsQuery.data?.total ?? 0;
   const currentPage = reportsQuery.data?.page ?? page;
@@ -144,6 +136,14 @@ export function ConsoleReportListPage() {
     ],
     [navigate, token],
   );
+
+  if (currentProjectId == null) {
+    return (
+      <PageContainer>
+        <EmptyState description="请先在顶部选择一个项目" />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>

@@ -87,7 +87,6 @@ function ScreenshotItem({ artifact, onRetry }: ScreenshotItemProps) {
       if (created) URL.revokeObjectURL(created);
     };
     // 依赖仅 artifact.id：父组件通过 key 让本组件重建来触发重试
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artifact.id]);
 
   async function handleDownload() {

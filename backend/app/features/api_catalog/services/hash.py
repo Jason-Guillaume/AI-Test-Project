@@ -21,7 +21,14 @@ _HASH_EXCLUDE: frozenset[str] = frozenset(
 
 def canonical_payload(schema: InternalApiSchema) -> dict:
     """返回用于哈希的规范化 dict（排除非结构字段，mode=json 递归可序列化）。"""
-    return schema.model_dump(mode="json", exclude=_HASH_EXCLUDE)
+    payload = schema.model_dump(mode="json", exclude=_HASH_EXCLUDE)
+    # Explicit sort values remain part of the structure, but transport list order
+    # alone must not turn otherwise identical parameters or responses into changes.
+    for key in ("parameters", "responses"):
+        payload[key] = sorted(
+            payload[key], key=lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        )
+    return payload
 
 
 def compute_source_hash(schema: InternalApiSchema) -> str:

@@ -1,4 +1,4 @@
-// 自助注册页。注册即创建个人组织，成功后后端直接返回令牌并自动登录。
+// 自助注册页。注册即创建个人组织，成功后后端设置 HttpOnly Cookie 并自动登录。
 import { App, Button, Form, Input, Typography } from 'antd';
 import { LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
@@ -17,7 +17,7 @@ interface RegisterForm {
 /**
  * 自助注册页组件。
  *
- * 会发请求：提交时调用 useAuth().register（自动写 token 与 user 缓存）。
+ * 会发请求：提交时调用 useAuth().register（建立 Cookie 会话并缓存用户资料）。
  * 失败呈现：用户名、密码或限流错误统一显示后端错误文案。
  * 成功跳转：/console（test/dev 角色）或 /admin/dashboard（admin 角色）。
  */
@@ -35,7 +35,7 @@ export function RegisterPage() {
     }
     setLoading(true);
     try {
-      // 注册成功：后端已经把 token 写入 tokenStore，直接用 user 决定跳转。
+      // 注册成功后后端已写入认证 Cookie，直接用用户角色决定跳转。
       const user = await register(values.username, values.password);
       message.success('注册成功');
       // admin 直跳管理端首页；其余用户进控制台。

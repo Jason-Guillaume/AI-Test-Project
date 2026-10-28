@@ -89,8 +89,7 @@ def execute(
     ``extra_headers`` 由调用方注入、平台级请求头（如 Mock 执行作用域的
     X-Mock-Context，见 MockLifecycle.context_headers）。先并入、再让用例自己的
     header 配置覆盖，所以被测系统侧显式配置优先；不传时行为与原来完全一致。
-    仅 API / BUSINESS_ACTION 路径生效——BUSINESS_FLOW 由 business_flow_executor
-    自行构造每个动作的请求，暂未接这条通道。
+    BUSINESS_FLOW 将请求头传给流程内的 API 和 Web 动作。
 
     ``run_id`` / ``case_execution_id`` 只供安全分支写 ``security_execution`` 时使用
     （Phase E 的最小签名扩展），对非安全用例没有任何影响。

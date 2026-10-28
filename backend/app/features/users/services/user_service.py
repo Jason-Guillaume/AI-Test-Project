@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.features.organizations.services.organization_service import ensure_personal_organization
 from app.features.users.schemas import (
     AdminUserCreate,
+    UserCreate,
     UserLogin,
     UserUpdate,
 )
@@ -125,6 +126,29 @@ class UserAdminService:
         return items, total
 
     # ---------------------------------------------------------------- 写入
+
+    def register(self, db: Session, body: UserCreate) -> User:
+        """注册普通账号，并在一个事务内创建对应的个人组织。
+
+        Args:
+            db: 当前请求的数据库会话。
+            body: 用户名与密码。
+        Returns:
+            已持久化的新用户。
+        副作用：提交用户及个人组织；任一步骤失败时事务不得部分落库。
+        """
+        username = body.username.strip()
+        self.validate_password(body.password)
+        if not self._username_available(db, username):
+            raise conflict("用户名已存在")
+
+        user = User(username=username, hashed_password=hash_password(body.password))
+        db.add(user)
+        db.flush()  # 取得用户 ID，个人组织成员关系依赖该值。
+        ensure_personal_organization(db, user)
+        db.commit()  # 注册与个人组织必须作为同一事务提交。
+        db.refresh(user)
+        return user
 
     def create_by_admin(self, db: Session, body: AdminUserCreate, *, actor: User) -> User:
         """管理员创建账号，并在同一事务内创建个人组织。

@@ -612,10 +612,10 @@ class ApiService:
                 diff_json={"request": diff},
                 summary="替换请求参数/请求体", actor=actor,
             )
-            self._recompute_hash_and_log(
-                db, iface, change_type="UPDATED",
-                summary="请求结构变更导致 source_hash 更新", actor=actor,
-            )
+        self._recompute_hash_and_log(
+            db, iface, change_type="UPDATED",
+            summary="请求结构变更导致 source_hash 更新", actor=actor,
+        )
         db.commit()
         return self.get_request(db, api_id, actor)  # 复用读路径构造响应
 
@@ -643,10 +643,10 @@ class ApiService:
                 diff_json={"responses": diff},
                 summary="替换响应结构", actor=actor,
             )
-            self._recompute_hash_and_log(
-                db, iface, change_type="RESPONSE_CHANGED",
-                summary="响应结构变更导致 source_hash 更新", actor=actor,
-            )
+        self._recompute_hash_and_log(
+            db, iface, change_type="RESPONSE_CHANGED",
+            summary="响应结构变更导致 source_hash 更新", actor=actor,
+        )
         db.commit()
         return self.get_responses(db, api_id, actor)
 

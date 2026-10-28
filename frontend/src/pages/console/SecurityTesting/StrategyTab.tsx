@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 安全测试 · 策略与规则 Tab。
 //
 // 系统模板（builtin=true）只读，不可改不可删；项目自定义策略可建/改/删。
@@ -80,7 +81,7 @@ export function StrategyTab({ projectId }: { projectId: number }) {
   const listQuery = useQuery({
     queryKey: ['security-strategies', projectId, { keyword, enabled: enabledFilter }],
     queryFn: () =>
-      securityApi.listStrategies(projectId, { page: 1, page_size: 100, enabled: enabledFilter }),
+      collectPages((page) => securityApi.listStrategies(projectId, { page, page_size: 100, enabled: enabledFilter })),
   });
 
   const invalidate = () => {

@@ -64,7 +64,7 @@ export function HistoryTab({ api }: { api: ApiInterfaceDetail }) {
           width: 150,
           render: (v: string | null) =>
             v ? (
-              <Typography.Text code copyable>
+              <Typography.Text code copyable={{ text: v }}>
                 {v.slice(0, 12)}
               </Typography.Text>
             ) : (
@@ -77,7 +77,7 @@ export function HistoryTab({ api }: { api: ApiInterfaceDetail }) {
           width: 150,
           render: (v: string | null) =>
             v ? (
-              <Typography.Text code copyable>
+              <Typography.Text code copyable={{ text: v }}>
                 {v.slice(0, 12)}
               </Typography.Text>
             ) : (

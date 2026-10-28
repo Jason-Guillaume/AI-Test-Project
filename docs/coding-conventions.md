@@ -406,7 +406,7 @@ main.tsx (mount)
 页面 useQuery / useMutation
   └─ src/api/xxx.ts（xxxApi.list(...)）
      └─ api/client.ts 的 axios 实例（baseURL='/api/v1'）
-        ├─ 请求拦截器：附加 Authorization: Bearer <token>
+        ├─ 浏览器会话：自动附带 HttpOnly Cookie；兼容旧 Bearer 客户端
         └─ 响应拦截器：
            ├─ 401 → clear token + onAuthExpired()（跳 /login）
            ├─ 403 + "该账户已被禁用" → clear token + onAuthExpired()
@@ -425,16 +425,17 @@ main.tsx (mount)
 **作用域切换的缓存失效**（[useConsoleScope.tsx](../frontend/src/hooks/useConsoleScope.tsx)）：
 - 切换组织 → 失效 `['projects']` / `['dashboard']` / `['bugs']`
 - 切换项目 → 失效 `['project']` / `['notifications']` / `['bugs']`
-- 登出 → `clear()` 清空 localStorage + 上述所有 key
+- 登出 → 服务端清除 HttpOnly Cookie，`clear()` 清空用户缓存 + 上述所有 key
 
 ### 3.3 API 客户端约定
 
 **axios 实例（[src/api/client.ts](../frontend/src/api/client.ts)）**：
 - `API_BASE = '/api/v1'` — 唯一前缀，不允许在业务代码里改
 - `axios.create({ baseURL: API_BASE, timeout: 30000 })` — 30s 超时
-- 请求拦截器：`Authorization: Bearer <token>`，token 从 `tokenStore.get()` 取
+- 浏览器认证使用 HttpOnly Cookie；写请求校验 CORS 白名单 Origin
+- 内存 `tokenStore` 仅兼容尚未迁移的 Bearer 调用方，不持久化令牌
 - 响应拦截器：401 清 token 并回调 `onAuthExpired`（跳 `/login`）；403 + 禁用文案同样处理；其他错误原样 reject
-- token 存储：`JSON.stringify({token})`，兼容旧版裸字符串
+- 浏览器令牌由服务端写入 HttpOnly Cookie；前端不读取或持久化令牌
 
 **新增 API 的模板**（以缺陷管理为参考）：
 
@@ -494,7 +495,7 @@ export const bugsApi = {
 
 | Hook | 提供什么 | 副作用 | 使用位置 |
 |---|---|---|---|
-| `useAuth` | `user`, `ready`, `login`, `register`, `logout` | 挂载时 `/me` 恢复；写 tokenStore/userStore | `App.tsx` 顶层 `AuthProvider` |
+| `useAuth` | `user`, `ready`, `login`, `register`, `logout` | 挂载时通过 Cookie 请求 `/me` 恢复；写 userStore | `App.tsx` 顶层 `AuthProvider` |
 | `useCapabilities` | `isAdmin`, `canAccessConsole` | 派生自 `user.role` | 布局 / 路由守卫 |
 | `useConsoleScope` | `currentOrgId`, `currentProjectId`, `setOrgId`, `setProjectId`, `clear` | 切换时 invalidate 相关 query | `/console` 子树 |
 
@@ -607,9 +608,13 @@ export function XxxPage() {
 | @types/react | `^18.3.12` | |
 | @types/react-dom | `^18.3.1` | |
 | @types/node | `^22.20.5` | |
+| eslint | `^10.8.0` | 前端静态检查 |
+| @eslint/js | `^9.39.5` | ESLint JavaScript 基础规则 |
+| typescript-eslint | `^8.64.0` | TypeScript ESLint 规则 |
+| eslint-plugin-react-hooks | `^7.1.1` | Hook 调用与依赖检查 |
 
 **Vite 配置关键项**（[vite.config.ts](../frontend/vite.config.ts)）：
-- `server.port = 5173`, `server.host = true`
+- `server.port = 5173`, `server.host = '127.0.0.1'`（开发服务器仅本机监听）
 - `proxy['/api'] → process.env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8001'`（**不改写路径**）
 - `resolve.alias['@'] → ./src`
 - `build.outDir = 'dist'`, `build.sourcemap = false`
@@ -927,7 +932,7 @@ return {"items": [{"name": "示例"}], "total": 1}  # 错！查询失败要报�
    .venv/bin/python -m pytest -q tests/
 
    # 前端
-   cd frontend && npm install && npm run typecheck && npm run build
+   cd frontend && npm install && npm test && npm run lint && npm run typecheck && npm run build
    ```
 5. **PR 描述**：
    - 说了什么改了什么（业务视角）

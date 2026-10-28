@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 左侧业务域 / 流程树。
 // 两栏结构：域列表 → 选中域后展示其下流程。点击域切换流程列表，点击流程选中进入详情。
 // 域与流程均支持删除（弹窗确认）；新建在 index.tsx 的主弹窗中完成。
@@ -36,7 +37,7 @@ export function DomainTree(props: DomainTreeProps) {
   const domainsQuery = useQuery({
     queryKey: ['business', projectId, 'domains', keyword],
     queryFn: () =>
-      businessApi.listDomains(projectId, { page: 1, page_size: 100, keyword: keyword || undefined }),
+      collectPages((page) => businessApi.listDomains(projectId, { page, page_size: 100, keyword: keyword || undefined })),
     enabled: projectId != null,
   });
   const domains: BusinessDomain[] = domainsQuery.data?.items ?? [];
@@ -44,11 +45,11 @@ export function DomainTree(props: DomainTreeProps) {
   const flowsQuery = useQuery({
     queryKey: ['business', projectId, 'flows', selectedDomainId],
     queryFn: () =>
-      businessApi.listFlows(projectId, {
-        page: 1,
+      collectPages((page) => businessApi.listFlows(projectId, {
+        page,
         page_size: 100,
         domain_id: selectedDomainId ?? undefined,
-      }),
+      })),
     enabled: selectedDomainId != null,
   });
   const flows = flowsQuery.data?.items ?? [];
@@ -77,8 +78,11 @@ export function DomainTree(props: DomainTreeProps) {
     return <Skeleton active paragraph={{ rows: 4 }} />;
   }
 
+  if (domainsQuery.isError) return <div role="alert">业务域加载失败 <Button onClick={() => void domainsQuery.refetch()}>重试</Button></div>;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {flowsQuery.isError && <div role="alert">流程加载失败 <Button onClick={() => void flowsQuery.refetch()}>重试</Button></div>}
       <Input
         size="small"
         allowClear

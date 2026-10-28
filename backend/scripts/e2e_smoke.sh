@@ -7,9 +7,8 @@
 #
 # 用法（凭据一律显式提供；脚本不内置任何默认账号密码）：
 #   INIT_ADMIN_USERNAME=e2e-admin \
-#   INIT_ADMIN_PASSWORD='E2E-Password-456' \
-#   bash scripts/e2e_smoke.sh \
-#     --database-url 'postgresql+psycopg://root:pwd@127.0.0.1:5432/testplatform_e2e'
+#   export INIT_ADMIN_PASSWORD="$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')"
+#   bash scripts/e2e_smoke.sh --database-url "${DATABASE_URL:?请先设置 DATABASE_URL}"
 #
 # 可选：--port 8001   --keep-db   --frontend-url http://localhost:5173
 #

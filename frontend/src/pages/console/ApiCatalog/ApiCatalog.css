@@ -133,3 +133,10 @@
 .app-layout-dark .api-module-api-row.is-selected { background: rgb(79 112 231 / 18%); }
 .app-layout-dark .api-module-children { border-color: #343b48; }
 .app-layout-dark .api-module-interfaces-icon { background: rgb(79 112 231 / 18%); color: #91a8ff; }
+
+@media (max-width: 760px) {
+  .api-catalog-layout { flex-wrap: wrap !important; }
+  .api-catalog-sidebar, .api-catalog-detail { flex: 0 0 100% !important; max-width: 100%; }
+  .api-catalog-sidebar > div { height: 280px !important; min-height: 0 !important; margin-bottom: 16px; }
+  .api-catalog-detail > div { height: auto !important; min-height: 360px !important; }
+}

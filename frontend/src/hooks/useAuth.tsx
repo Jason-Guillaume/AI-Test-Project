@@ -1,9 +1,9 @@
-// 认证上下文：管理当前用户与令牌，提供登录/退出/注册。
+// 认证上下文：管理当前用户与 HttpOnly Cookie 会话，提供登录/退出/注册。
 //
-// 令牌存储在 localStorage，刷新页面后通过 /me 恢复当前用户；
-// 401/账户禁用时由 client 清除登录态并触发 onAuthExpired 跳转登录。
+// 刷新页面后通过 Cookie 调用 /me 恢复当前用户；
+// 401/账户禁用时由 client 清除用户缓存并触发 onAuthExpired 跳转登录。
 //
-// 状态来源：tokenStore（localStorage 令牌）→ authApi.me() → userStore（内存用户缓存）→ 组件 user 状态。
+// 状态来源：HttpOnly Cookie → authApi.me() → userStore（用户资料缓存）→ 组件 user 状态。
 // 失效条件：令牌缺失/401、/me 请求失败、登出、账户被平台禁用。
 // 对子树的副作用：ready 由 false 变 true 时才允许渲染受保护路由，避免权限判断用到空用户。
 import {
@@ -31,10 +31,10 @@ interface AuthState {
   user: User | null; // 当前登录用户；未登录或已失效时为 null
   ready: boolean; // /me 恢复流程是否结束；false 表示登录态还在恢复中
   isPlatformAdmin: boolean; // 是否为平台管理员，等价于 user.role === 'admin'
-  login: (username: string, password: string) => Promise<User>; // 登录并写入令牌与用户缓存
-  register: (username: string, password: string) => Promise<User>; // 注册并自动登录，一次性拿到 access_token
+  login: (username: string, password: string) => Promise<User>; // 登录并建立 HttpOnly Cookie 会话
+  register: (username: string, password: string) => Promise<User>; // 注册并建立 HttpOnly Cookie 会话
   logout: () => Promise<void>; // 登出并清除本地登录态
-  refresh: () => Promise<void>; // 用本地令牌重新拉取 /me 刷新用户信息
+  refresh: () => Promise<void>; // 用浏览器 Cookie 重新拉取 /me 刷新用户信息
 }
 
 // null 表示上下文尚未挂载；useAuth 会在未包裹时直接抛错而不是返回默认值。
@@ -43,8 +43,8 @@ const AuthContext = createContext<AuthState | null>(null);
 /**
  * 认证 Provider：持有登录态，并负责刷新页面后的登录态恢复。
  *
- * 会发请求：挂载时若无令牌则直接置 ready；有令牌则调用 /me 恢复用户。
- * 失败呈现：/me 失败即清除令牌并置 user 为 null，由路由守卫跳转登录页，
+ * 会发请求：挂载时调用 /me，由浏览器自动附带 HttpOnly Cookie 恢复用户。
+ * 失败呈现：/me 失败即清除用户缓存并置 user 为 null，由路由守卫跳转登录页，
  * 而不是在此处抛错或展示错误页。
  *
  * @param props.children 被保护的路由子树
@@ -61,24 +61,18 @@ export function AuthProvider({
   const [ready, setReady] = useState(false); // 登录态是否已恢复到可判定状态
 
   /**
-   * 用本地令牌重新调用 /me，恢复或清空当前用户。
+   * 通过浏览器 Cookie 调用 /me，恢复或清空当前用户。
    *
-   * 副作用：无令牌时不会发请求，直接置 user 为 null；成功后把用户写入 userStore 缓存。
+   * 副作用：无有效 Cookie 时请求返回 401；成功后把用户写入 userStore 缓存。
    * 无论成功失败都在 finally 置 ready 为 true，保证守卫不会永久卡在加载态。
    */
   const refresh = useCallback(async () => {
-    if (!tokenStore.get()) {
-      // 本地没有令牌：无登录态，不再请求 /me。
-      setUser(null);
-      setReady(true);
-      return;
-    }
     try {
       const me = await authApi.me();
       setUser(me);
       userStore.set(me);
     } catch {
-      // 401 或网络失败：令牌无效，清除本地态让守卫走登录流程。
+      // 401 或网络失败：清除用户缓存，让守卫走登录流程。
       tokenStore.clear();
       setUser(null);
     } finally {
@@ -99,30 +93,27 @@ export function AuthProvider({
     registerAuthExpiredHandler(onAuthExpired);
   }, [onAuthExpired]);
 
-  // 登录成功：令牌写入 localStorage，用户写入内存缓存并进入 React 状态。
+  // 登录成功后令牌只在服务端 Set-Cookie 中交付，前端仅缓存当前用户资料。
   const login = useCallback(
     async (username: string, password: string) => {
-      const res = await authApi.login({ username, password });
-      tokenStore.set(res.access_token);
-      userStore.set(res.user);
-      setUser(res.user);
-      return res.user;
+      const currentUser = await authApi.login({ username, password });
+      userStore.set(currentUser);
+      setUser(currentUser);
+      return currentUser;
     },
     [],
   );
 
-  // 注册即自动登录：后端返回 TokenResponse（含 access_token + user），
-  // 这里一次性把 token 与 user 都写入缓存，调用方无需再走一次 login。
+  // 注册即自动登录：后端设置 HttpOnly Cookie 并返回用户资料，无需二次登录。
   const register = useCallback(
     async (username: string, password: string) => {
-      const res = await authApi.register({
+      const currentUser = await authApi.register({
         username,
         password,
       });
-      tokenStore.set(res.access_token);
-      userStore.set(res.user);
-      setUser(res.user);
-      return res.user;
+      userStore.set(currentUser);
+      setUser(currentUser);
+      return currentUser;
     },
     [],
   );

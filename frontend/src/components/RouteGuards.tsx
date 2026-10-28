@@ -2,6 +2,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { Spin } from 'antd';
 import { useAuth } from '@/hooks/useAuth';
+import { safeInternalPath } from '@/utils/safeRedirect';
 
 /**
  * 登录守卫：需要登录才能进入的路由统一包一层。
@@ -23,11 +24,8 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
   // 未登录分支：拼 redirect 参数，失败一律回落到 /console。
   if (!user) {
-    // 安全的登录后跳转：仅保留以单个 / 开头的路径，避免开放重定向。
-    const redirect = location.pathname.startsWith('/') &&
-      !location.pathname.startsWith('//')
-      ? `${location.pathname}${location.search}`
-      : '/console';
+    // 使用同一站内路径校验器，避免反斜杠与编码路径绕过开放重定向检查。
+    const redirect = safeInternalPath(`${location.pathname}${location.search}`);
     return <Navigate to={`/login?redirect=${encodeURIComponent(redirect)}`} replace />;
   }
   return <>{children}</>;

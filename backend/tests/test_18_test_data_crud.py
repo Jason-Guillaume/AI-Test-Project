@@ -623,6 +623,9 @@ class TestTargetDbAndPolicy:
         """验证生产环境策略`refused`场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "production", _admin_id(db))
+        from app.models.project_environment import ProjectEnvironment
+        db.add(ProjectEnvironment(project_id=pid, environment_id=env_id, display_name="production", is_active=True))
+        db.commit()
         r = api.put(
             f"/projects/{pid}/database-policies/{env_id}", username=admin,
             json={"enabled": True, "allowed_tables": ["t"], "allowed_operations": ["INSERT"]},

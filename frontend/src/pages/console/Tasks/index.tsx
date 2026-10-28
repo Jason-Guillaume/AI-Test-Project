@@ -78,6 +78,8 @@ const STOP_POLLING = new Set([...TERMINAL, 'RECONCILIATION_REQUIRED', 'PAUSED'])
 export function ConsoleTasksPage() {
   const { currentProjectId } = useConsoleScope();
   const [createOpen, setCreateOpen] = useState(false);
+  const [taskPage, setTaskPage] = useState(1);
+  const [taskPageSize, setTaskPageSize] = useState(20);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialProjectId = Number(searchParams.get('projectId')) || undefined;
@@ -87,9 +89,10 @@ export function ConsoleTasksPage() {
   useEffect(() => {
     if (searchParams.get('create') === '1') setCreateOpen(true);
   }, [searchParams]);
+  useEffect(() => { setTaskPage(1); }, [currentProjectId]);
   const tasksQuery = useQuery({
-    queryKey: ['tasks', 'list', currentProjectId],
-    queryFn: () => tasksApi.list({ page: 1, page_size: 100, project_id: currentProjectId ?? undefined }),
+    queryKey: ['tasks', 'list', currentProjectId, taskPage, taskPageSize],
+    queryFn: () => tasksApi.list({ page: taskPage, page_size: taskPageSize, project_id: currentProjectId ?? undefined }),
     refetchInterval: 5000,
   });
   const tasks = tasksQuery.data?.items ?? [];
@@ -121,7 +124,7 @@ export function ConsoleTasksPage() {
           style={{ marginTop: 20 }}
           columns={columns}
           dataSource={tasks}
-          pagination={{ pageSize: 20, showSizeChanger: true }}
+          pagination={{ current: taskPage, pageSize: taskPageSize, total: tasksQuery.data?.total, showSizeChanger: true, onChange: (page, size) => { setTaskPage(page); setTaskPageSize(size); } }}
           onRow={(task) => ({ onClick: () => navigate(`/console/tasks/${task.id}`), style: { cursor: 'pointer' } })}
         />
       )}
@@ -199,7 +202,7 @@ export function ConsoleTaskDetailPage() {
   }, [pollRunDetails, queryClient, runId]);
   const detail = runQuery.data;
   const agents = detail?.agents ?? [];
-  const workItems = detail?.work_items ?? [];
+  const workItems = useMemo(() => detail?.work_items ?? [], [detail?.work_items]);
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? agents.find((agent) => agent.role === 'MAIN') ?? null;
   const selectedId = selectedAgentId === null && selectedAgent ? selectedAgent.id : selectedAgentId;
   const selectedMessages = (messagesQuery.data ?? []).filter((item) => item.agent_instance_id === selectedAgent?.id);

@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 数据工厂 Tab：Data Provider 列表 + 新增/编辑/试跑/启用停用。
 //
 // §7.4：表列 名称、类型、状态、风险等级、使用次数、最近执行状态。
@@ -42,7 +43,7 @@ export function ProviderTab({
 
   const query = useQuery({
     queryKey: ['test-data', 'providers', projectId],
-    queryFn: () => testDataApi.listProviders(projectId, { page_size: 200 }),
+    queryFn: () => collectPages((page) => testDataApi.listProviders(projectId, { page, page_size: 200 })),
     enabled: projectId != null,
   });
 

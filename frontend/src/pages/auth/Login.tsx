@@ -5,6 +5,7 @@ import { LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-desi
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { safeInternalPath } from '@/utils/safeRedirect';
 import { AuthFrame } from './AuthFrame';
 
 /**
@@ -47,14 +48,8 @@ export function LoginPage() {
       await login(values.username, values.password);
       // 记录被登录页拦截前的原始路径，登录成功后回到那里
       const redirect = params.get('redirect');
-      // 安全校验：只接受同源相对路径；必须以单个 / 开头，且不能以 // 开头
-      // （//evil.com 会被浏览器解析成协议相对 URL，等价于跳转外部域名）
-      const safe =
-        redirect && redirect.startsWith('/') && !redirect.startsWith('//');
-      // 优先跳回 redirect；redirect 缺失或不合法时统一进入用户工作台。
-      const target = safe
-        ? redirect
-        : '/console';
+      // 反斜杠也可能被路由库解析为外部跳转分隔符，统一交给站内路径校验器。
+      const target = safeInternalPath(redirect);
       message.success('登录成功');
       // replace: true 把登录页从历史栈中抹掉，避免返回键再次回到登录页
       navigate(target, { replace: true });

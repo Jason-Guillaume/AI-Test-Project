@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 模型配置：配置维护、启停、默认项、供应商目录。
 // API Key 只写入不回读；编辑时留空表示保留原密钥。
 import {
@@ -260,7 +261,7 @@ function ModelFormModal({
   });
   const { data: modelOptions } = useQuery({
     queryKey: ['model-configs', 'fallback-options'],
-    queryFn: () => modelConfigsApi.list({ page: 1, page_size: 200 }),
+    queryFn: () => collectPages((page) => modelConfigsApi.list({ page, page_size: 200 })),
   });
 
   return (

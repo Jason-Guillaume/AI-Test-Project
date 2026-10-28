@@ -38,7 +38,7 @@ export function ConsoleTestDataPage() {
     queryFn: () => projectsApi.listEnvironments(currentProjectId!),
     enabled: currentProjectId != null,
   });
-  const environments: Environment[] = envsQuery.data?.items ?? [];
+  const environments: Environment[] = useMemo(() => envsQuery.data?.items ?? [], [envsQuery.data?.items]);
   const currentEnv = useMemo(
     () => environments.find((e) => e.id === environmentId) ?? null,
     [environments, environmentId],

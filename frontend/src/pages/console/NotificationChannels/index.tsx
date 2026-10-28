@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 飞书通知渠道管理页：渠道 CRUD + 连通性测试 + 发送记录审计。
 //
 // 数据：
@@ -40,7 +41,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { notificationChannelsApi } from '@/api/notificationChannels';
 import { getErrorMessage } from '@/api/client';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { fmtTime } from '@/shared/format';
 import { NOTIFY_CONDITION_OPTIONS, NOTIFY_STATUS_COLOR, NOTIFY_STATUS_OPTIONS } from '@/shared/notify';
@@ -232,7 +233,7 @@ export function ConsoleNotificationChannelsPage() {
   const channelsQuery = useQuery({
     queryKey: ['notification-channels', currentProjectId],
     queryFn: () =>
-      notificationChannelsApi.list(currentProjectId!, { page: 1, page_size: 100 }),
+      collectPages((page) => notificationChannelsApi.list(currentProjectId!, { page, page_size: 100 })),
     enabled: currentProjectId != null,
   });
   const channels = channelsQuery.data?.items ?? [];
@@ -428,6 +429,8 @@ export function ConsoleNotificationChannelsPage() {
 
       {channelsQuery.isLoading ? (
         <LoadingState />
+      ) : channelsQuery.isError ? (
+        <ErrorState error={channelsQuery.error} onRetry={channelsQuery.refetch} />
       ) : channels.length === 0 ? (
         <EmptyState description="尚未配置飞书通知渠道，点击右上角「新建渠道」开始" />
       ) : (

@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 测试报告详情页：概览统计 + 执行摘要 + 结果工作台 + 证据抽屉。
 //
 // 信息架构对应重构计划 §3：
@@ -309,14 +310,14 @@ export function ConsoleReportDetailPage() {
   // 通知渠道按项目作用域取，避免跨项目串用（与渠道管理页同键）
   const channelsQuery = useQuery({
     queryKey: ['notification-channels', reportProjectId],
-    queryFn: () => notificationChannelsApi.list(reportProjectId!, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => notificationChannelsApi.list(reportProjectId!, { page, page_size: 100 })),
     enabled: reportProjectId != null,
     staleTime: 60_000,
   });
   // 显式传分页：后端默认 page_size=20，不传会在 Tab 标题显示 total 而表格只出 20 条
   const recordsQuery = useQuery({
     queryKey: ['report-notifications', id],
-    queryFn: () => notificationChannelsApi.listReportNotifications(id!, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => notificationChannelsApi.listReportNotifications(id!, { page, page_size: 100 })),
     enabled: id != null,
   });
 
@@ -390,7 +391,7 @@ export function ConsoleReportDetailPage() {
   // 重新进入 loading，此时若 hook 数量比上一次渲染少，React 18 直接抛
   // "Rendered fewer hooks than expected."，整页白屏。
   const detail = detailQuery.data;
-  const caseExecutions = detail?.case_executions ?? [];
+  const caseExecutions = useMemo(() => detail?.case_executions ?? [], [detail?.case_executions]);
 
   const failedRows = useMemo(
     () => caseExecutions.filter((c) => c.status === 'FAILED' || c.status === 'ERROR'),

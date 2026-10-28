@@ -638,6 +638,10 @@ def test_debug_outbound_whitelist_deny_and_hit(api, admin, db):
         is_active=True,
     )
     db.add(env)
+    db.flush()
+    from app.models.project_environment import ProjectEnvironment
+    db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id,
+        display_name=env.display_name, base_url=env.base_url, gateway_prefix="", default_headers={}, is_active=True))
     db.commit()
 
     # 1. 未配出站目标 → 403。
@@ -736,3 +740,46 @@ def test_api_viewer_cannot_write_and_invisible_project_404(api, admin):
     # 越权访问具体接口 → 404（隐藏存在性）。
     r = api.get(f"/apis/{api_id}", username=observer_name)
     assert r.status_code == 404
+
+
+def test_structural_hash_tracks_schema_only_edits(api, admin):
+    """Schema changes under existing parameters and status codes must update the hash."""
+    project_id, _ = _create_project(api, admin)
+    created = api.post(f"/projects/{project_id}/apis", username=admin, json={
+        "name": "schema tracking", "method": "POST", "path": "/schema-tracking",
+        "parameters": [{"name": "id", "location": "QUERY", "type": "string"}],
+        "body": {"body_type": "json", "content_type": "application/json", "schema_json": {"type": "object"}},
+        "responses": [{"status_code": 200, "schema_json": {"type": "object"}}],
+    })
+    assert created.status_code == 201, created.text
+    api_id = created.json()["id"]
+    initial_hash = created.json()["source_hash"]
+    changed_request = api.put(f"/apis/{api_id}/request", username=admin, json={
+        "parameters": [{"name": "id", "location": "HEADER", "type": "string"}],
+        "body": {"body_type": "json", "content_type": "application/json", "schema_json": {"type": "array"}},
+    })
+    assert changed_request.status_code == 200, changed_request.text
+    request_hash = api.get(f"/apis/{api_id}", username=admin).json()["source_hash"]
+    assert request_hash != initial_hash
+    changed_response = api.put(f"/apis/{api_id}/responses", username=admin, json={
+        "responses": [{"status_code": 200, "schema_json": {"type": "array"}}],
+    })
+    assert changed_response.status_code == 200, changed_response.text
+    response_hash = api.get(f"/apis/{api_id}", username=admin).json()["source_hash"]
+    assert response_hash != request_hash
+
+
+def test_import_preview_uses_current_structure_when_stored_hash_is_stale(api, admin, db):
+    from app.features.api_catalog.models.api_request_body import ApiRequestBody
+
+    project_id, _ = _create_project(api, admin)
+    body = {"source_type": "CURL", "content": CURL_SIMPLE}
+    created = api.post(f"/projects/{project_id}/apis/import/confirm", username=admin, json=body)
+    assert created.status_code == 201, created.text
+    iface = _find_api(api, admin, project_id, "POST", "/v1/tasks")
+    request_body = db.query(ApiRequestBody).filter_by(interface_id=iface["id"]).one()
+    request_body.raw_text = '{"changed":true}'
+    db.commit()
+    preview = api.post(f"/projects/{project_id}/apis/import/preview", username=admin, json=body)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["changed_count"] == 1

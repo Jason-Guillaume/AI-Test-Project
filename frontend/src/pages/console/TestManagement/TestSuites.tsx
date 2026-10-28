@@ -1,3 +1,4 @@
+import { collectArrayPages } from '@/api/pagination';
 // 测试套件页（用户视角）。
 // 单页表格：套件 CRUD + 每行「管理用例」抽屉（套件↔用例关联的增删）。
 //
@@ -25,7 +26,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/api/testManagement';
 import { getErrorMessage } from '@/api/client';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { TEST_SUITE_TYPE_OPTIONS } from './constants';
 import type {
@@ -65,7 +66,7 @@ export function ConsoleTestSuitesPage() {
 
   const suitesQuery = useQuery({
     queryKey: ['test-suites', currentProjectId],
-    queryFn: () => testManagementApi.listSuites(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listSuites(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: currentProjectId != null,
   });
 
@@ -208,6 +209,8 @@ export function ConsoleTestSuitesPage() {
 
       {suitesQuery.isLoading ? (
         <LoadingState />
+      ) : suitesQuery.isError ? (
+        <ErrorState error={suitesQuery.error} onRetry={suitesQuery.refetch} />
       ) : suites.length === 0 ? (
         <EmptyState description="暂无测试套件" />
       ) : (
@@ -286,7 +289,7 @@ function SuiteCasesDrawer({
   });
   const allCasesQuery = useQuery({
     queryKey: ['test-cases', currentProjectId, 'for-suite'],
-    queryFn: () => testManagementApi.listCases(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listCases(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: suiteId != null && currentProjectId != null,
   });
 

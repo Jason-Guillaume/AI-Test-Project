@@ -18,7 +18,7 @@ type TreeDataNode =
 /**
  * 模块树面板。
  *
- * 查询：模块列表 + 接口列表（page_size=200，按工具条过滤）。
+ * 查询：模块列表 + 全部分页接口（按工具条过滤）。
  * 构建树：模块按 parent_id 嵌套，接口按 module_id 归入对应模块。
  */
 export function ModuleTree({
@@ -56,17 +56,19 @@ export function ModuleTree({
     queryKey: [
       'api-catalog',
       projectId,
-      'apis',
-      { page: 1, page_size: 200, keyword, method, status },
+      'tree-apis',
+      { keyword, method, status },
     ],
-    queryFn: () =>
-      apiCatalogApi.listApis(projectId, {
-        page: 1,
-        page_size: 200,
-        keyword: keyword || undefined,
-        method,
-        status,
-      }),
+    queryFn: async () => {
+      const params = { page_size: 200, keyword: keyword || undefined, method, status };
+      const first = await apiCatalogApi.listApis(projectId, { ...params, page: 1 });
+      const pages = Math.ceil(first.total / params.page_size);
+      const rest = await Promise.all(
+        Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
+          apiCatalogApi.listApis(projectId, { ...params, page: index + 2 })),
+      );
+      return [...first.items, ...rest.flatMap((page) => page.items)];
+    },
   });
 
   const createMutation = useMutation({
@@ -101,7 +103,7 @@ export function ModuleTree({
 
   const treeData = useMemo<TreeDataNode[]>(() => {
     const modules = modulesQuery.data ?? [];
-    const apis = apisQuery.data?.items ?? [];
+    const apis = apisQuery.data ?? [];
     // 按 module_id 分组；null 归入默认模块（未分类）。
     const defaultModule = modules.find((m) => m.is_default);
     const byModule = new Map<number | null, ApiInterface[]>();
@@ -135,8 +137,10 @@ export function ModuleTree({
       };
     };
 
-    return (modulesByParent.get(null) ?? []).map(makeModuleNode);
-  }, [modulesQuery.data, apisQuery.data, renameForm, modal, deleteMutation, onSelectApi, onSelectModule]);
+    return (modulesByParent.get(null) ?? [])
+      .filter((module) => !module.is_default || module.interface_count > 0 || (byModule.get(module.id)?.length ?? 0) > 0 || (modulesByParent.get(module.id)?.length ?? 0) > 0)
+      .map(makeModuleNode);
+  }, [modulesQuery.data, apisQuery.data]);
 
   if (modulesQuery.isPending || apisQuery.isPending) return <LoadingState tip="加载接口树..." />;
   if (modulesQuery.isError)

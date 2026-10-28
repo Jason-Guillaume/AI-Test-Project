@@ -211,7 +211,7 @@ export function ConsoleLayout() {
     },
   });
 
-  const projects = projectsData?.items ?? []; // 项目候选项，未加载完或为空组织时为 []
+  const projects = useMemo(() => projectsData?.items ?? [], [projectsData?.items]); // 项目候选项，未加载完或为空组织时为 []
 
   const projectOptions = useMemo(() => {
     const groups = new Map<

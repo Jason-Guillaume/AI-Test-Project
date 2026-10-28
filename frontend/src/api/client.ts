@@ -11,37 +11,40 @@
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig } from 'axios';
 import type { ApiErrorBody } from '@/types';
 
-const TOKEN_KEY = 'access_token'; // localStorage 中存令牌的键
+const TOKEN_KEY = 'access_token'; // 清理旧版本持久化令牌的键
 const USER_KEY = 'user'; // localStorage 中缓存当前用户对象的键
+let inMemoryToken: string | null = null;
+
+// 浏览器认证已迁移到 HttpOnly Cookie；移除旧版本令牌，避免继续留在可读存储中。
+try {
+  localStorage.removeItem(TOKEN_KEY);
+} catch {
+  // 存储不可用时仍可使用服务端 Cookie 完成认证。
+}
 
 /** 所有请求的前缀，与后端 /api/v1 版本前缀保持一致。 */
 export const API_BASE = '/api/v1';
 
 /**
- * 令牌的本地存取封装。
- * set 会把令牌包成 { token } 对象再序列化，get 对应解析；
- * 解析失败（历史数据是裸字符串）时按原文返回，保证老登录态不丢。
+ * 兼容旧 Bearer 调用方的内存令牌存取封装；浏览器登录改由 HttpOnly Cookie 认证。
  */
 export const tokenStore = {
-  /** 取当前 access_token；无令牌或空串时返回 null。 */
+  /** 取当前页面内存中的兼容令牌；刷新页面后返回 null。 */
   get(): string | null {
-    const raw = localStorage.getItem(TOKEN_KEY);
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as { token?: string };
-      return parsed.token ?? null;
-    } catch {
-      // 非 JSON 内容（旧版本直接存了字符串）：原样返回
-      return raw;
-    }
+    return inMemoryToken;
   },
-  /** 写入令牌，存成 JSON 对象形式。 */
+  /** 仅在页面内存中保留兼容 Bearer 令牌，不写入浏览器持久存储。 */
   set(token: string) {
-    localStorage.setItem(TOKEN_KEY, JSON.stringify({ token }));
+    inMemoryToken = token;
   },
-  /** 清除令牌并同时清掉缓存的用户对象（登录态整体失效）。 */
+  /** 清除内存令牌与用户缓存；HttpOnly Cookie 由服务端登出接口清除。 */
   clear() {
-    localStorage.removeItem(TOKEN_KEY);
+    inMemoryToken = null;
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // 存储不可用时内存态仍会被清除。
+    }
     localStorage.removeItem(USER_KEY);
   },
 };
@@ -69,10 +72,11 @@ export const userStore = {
 export const client: AxiosInstance = axios.create({
   baseURL: API_BASE, // 相对路径都会拼这个前缀
   timeout: 30000, // 30 秒无响应即视为超时
+  withCredentials: true,
 });
 
 client.interceptors.request.use((config) => {
-  // 有令牌就统一带上 Bearer 头；未登录时不发该头，交给后端返回 401
+  // 浏览器会话由 HttpOnly Cookie 携带；仅兼容尚未迁移的内存 Bearer 调用方。
   const token = tokenStore.get();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

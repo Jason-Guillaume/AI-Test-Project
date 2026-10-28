@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import jwt
+import pytest
+from pydantic import ValidationError
 
 from app.shared.auth import ALGORITHM
-from app.shared.config import ACCESS_TOKEN_EXPIRE_MINUTES, settings
+from app.shared.config import ACCESS_TOKEN_EXPIRE_MINUTES, Settings, settings
 
 from tests.conftest import API, DEFAULT_PASSWORD, unique
 
@@ -156,6 +158,55 @@ def test_login_rejects_wrong_password_and_missing_user(api):
     assert missing.status_code == 400
     # 用户名不存在与密码错误返回同一文案，避免账号枚举。
     assert missing.json()["message"] == "用户名或密码错误"
+
+
+def test_browser_session_uses_httponly_cookie_and_checks_origin(api, monkeypatch):
+    """验证浏览器会话不回传 JWT、Cookie 为 HttpOnly 且写请求校验 Origin。"""
+    monkeypatch.setattr(settings, "AUTH_COOKIE_SECURE", False)
+    api.client.cookies.clear()
+    username = unique("cookie-user")
+    origin = "http://localhost:5173"
+    try:
+        login = api.client.post(
+            f"{API}/session/register",
+            json={"username": username, "password": DEFAULT_PASSWORD},
+            headers={"Origin": origin},
+        )
+        assert login.status_code == 201, login.text
+        assert "access_token" not in login.json()
+        assert "httponly" in login.headers["set-cookie"].lower()
+
+        # Cookie 自动随请求发送，前端无需读取或拼装 Authorization 头。
+        me = api.client.get(f"{API}/me")
+        assert me.status_code == 200
+        assert me.json()["username"] == username
+
+        # 浏览器会话 Cookie 优先于兼容 Bearer 头，防止旧内存令牌覆盖当前会话。
+        me_with_legacy_bearer = api.client.get(
+            f"{API}/me", headers={"Authorization": "Bearer stale-legacy-token"}
+        )
+        assert me_with_legacy_bearer.status_code == 200
+        assert me_with_legacy_bearer.json()["username"] == username
+
+        csrf = api.client.post(
+            f"{API}/session/logout", headers={"Origin": "https://untrusted.example"}
+        )
+        assert csrf.status_code == 403
+        assert csrf.json()["message"] == "请求来源无效"
+
+        logout = api.client.post(f"{API}/session/logout", headers={"Origin": origin})
+        assert logout.status_code == 204
+        assert api.client.get(f"{API}/me").status_code == 401
+    finally:
+        api.client.cookies.clear()
+
+
+def test_settings_reject_short_and_example_secret_keys():
+    """配置初始化必须拒绝过短密钥与示例占位符，避免使用可预测签名密钥。"""
+    with pytest.raises(ValidationError):
+        Settings(SECRET_KEY="short-test-key")
+    with pytest.raises(ValidationError):
+        Settings(SECRET_KEY="change-me-to-a-long-random-string")
 
 
 def test_registration_validation(api):

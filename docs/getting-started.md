@@ -21,6 +21,9 @@
 
 ```bash
 # 方式 A：用仓库自带的 compose（数据落在 compose 卷里）
+export POSTGRES_USER=platform_dev
+export POSTGRES_PASSWORD="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')"
+export POSTGRES_DB=testplatform_dev
 docker compose up -d postgres
 
 # 方式 B：用本机已有 PostgreSQL，跳过此步
@@ -28,7 +31,7 @@ docker compose up -d postgres
 
 ### 1.2 数据库
 
-首次运行无需手工建开发库：seed_admin.py 会按 DATABASE_URL 创建目标库并执行迁移，连接账号需要有创建数据库的权限。pytest 会话另外创建 testplatform_test-p<PID> 隔离库，并在结束时删除；测试账号同样需要创建和删除数据库的权限。
+Compose 只在 `127.0.0.1` 发布数据库端口，且用户、密码和库名必须由环境变量显式提供。首次运行无需手工建开发库：seed_admin.py 会按 DATABASE_URL 创建目标库并执行迁移，连接账号需要有创建数据库的权限。pytest 会话另外创建隔离测试库并在结束时删除；测试需显式设置 `TEST_POSTGRES_PASSWORD`。
 
 ### 1.3 后端依赖与配置
 
@@ -43,11 +46,13 @@ python3 -m venv .venv
 编辑 `.env` 至少确认两项：
 
 ```bash
-DATABASE_URL=postgresql+psycopg://root:fangzhou123@127.0.0.1:5432/testplatform_dev
-SECRET_KEY=<足够长的随机串>   # 生成：python3 -c 'import secrets;print(secrets.token_urlsafe(48))'
+DATABASE_URL=postgresql+psycopg://<用户名>:<数据库密码>@127.0.0.1:5432/<数据库名>
+SECRET_KEY=<至少 32 个字符的随机串>   # 生成：python3 -c 'import secrets;print(secrets.token_urlsafe(48))'
+AUTH_COOKIE_SECURE=false   # 仅本地 HTTP 开发；HTTPS 部署保持 true
 ```
 
-`SECRET_KEY` 缺失时后端启动即报错（`RuntimeError: SECRET_KEY 环境变量未设置`）；请配置随机长密钥，避免使用样例值。
+`SECRET_KEY` 缺失、短于 32 个字符或使用占位值时后端无法启动。浏览器认证使用 HttpOnly Cookie，写请求必须带配置白名单中的 Origin。
+浏览器前端和 API 应位于同站来源（本地开发通过 Vite `/api` 代理）；跨站 Cookie 部署尚未配置 `SameSite=None`，不可直接沿用此配置。
 
 ### 1.4 建表 + 首个管理员
 
@@ -117,17 +122,18 @@ curl http://localhost:8001/healthz        # → {"status":"ok"}（根路径，�
 (cd backend && .venv/bin/python -m pytest -q tests/)
 
 # 前端类型检查 + 生产构建
-(cd frontend && npm run typecheck && npm run build)
+(cd frontend && npm test && npm run lint && npm run typecheck && npm run build)
 ```
 
-测试默认使用 TEST_POSTGRES_HOST/PORT/USER/PASSWORD 指定的 PostgreSQL；未指定时连接本机 5432，默认用户 root、密码 fangzhou123。测试会创建并删除带进程号的独立数据库，请勿指向生产库或含重要数据的实例。
+测试使用 TEST_POSTGRES_HOST/PORT/USER/PASSWORD 指定的 PostgreSQL；密码必须显式提供。测试会创建并删除带进程号的隔离数据库，请勿指向生产库或含重要数据的实例。执行前设置 `TEST_POSTGRES_PASSWORD`，并将 `TEST_POSTGRES_USER` 设为有创建/删除测试库权限的账号。
 
 ## 5. 环境变量速查（backend/.env）
 
 | Key | 必需 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | ✅ | 平台主库连接串 |
-| `SECRET_KEY` | ✅ | JWT 签名密钥；缺失启动即失败 |
+| `SECRET_KEY` | ✅ | JWT 签名密钥；至少 32 个字符，不可使用占位值 |
+| `AUTH_COOKIE_SECURE` | | 默认 `true`；仅本地 HTTP 开发显式设为 `false` |
 | `CORS_ORIGINS` | | 逗号分隔（**不是** JSON），默认含 5173 |
 | `AUTO_CREATE_SCHEMA` | | 保持 `false`；表结构一律走 Alembic |
 | `INIT_ADMIN_USERNAME` / `INIT_ADMIN_PASSWORD` | | 仅 `seed_admin.py` 读取，运行期无作用 |
@@ -151,7 +157,7 @@ LANGFUSE_ENVIRONMENT=test        # development / test / production 之一
 
 | 症状 | 解法 |
 |---|---|
-| `RuntimeError: 请设置 SECRET_KEY 环境变量` | `.env` 里补上足够长的随机 `SECRET_KEY` 后重启 |
+| `SECRET_KEY` 配置校验失败 | `.env` 里补上至少 32 个字符的随机密钥后重启 |
 | 500「关系 xxx 不存在」 | 库结构落后：`.venv/bin/python -m alembic upgrade head` |
 | 空库跑迁移报 head 冲突 | 先 `alembic stamp base` 再 `upgrade head`（或直接用 1.4 的 seed 脚本） |
 | 前端调接口 404 / 代理连不上 | 后端没起在 8001；或 `VITE_API_PROXY_TARGET` 指错端口 |

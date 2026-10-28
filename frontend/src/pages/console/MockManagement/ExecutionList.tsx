@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 调用记录 + 作用域（Context）页。
 //
 // 数据：
@@ -326,7 +327,7 @@ export function ConsoleMockExecutionListPage() {
   const projectId = currentProjectId;
   const servicesQuery = useQuery({
     queryKey: ['mock-services-for-filter', projectId],
-    queryFn: () => mockManagementApi.listServices(projectId!, { page: 1, page_size: 200 }),
+    queryFn: () => collectPages((page) => mockManagementApi.listServices(projectId!, { page, page_size: 200 })),
     enabled: projectId != null,
   });
   const services = servicesQuery.data?.items ?? [];
