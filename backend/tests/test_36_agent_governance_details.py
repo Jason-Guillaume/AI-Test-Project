@@ -98,6 +98,12 @@ def test_tool_detail_binding_disable_and_restore(api, admin):
     assert created.status_code == 201, created.text
     agent = created.json()
     tool_key = "api_catalog.search_api"
+    catalog = api.get("/agent-governance/tools", username=admin)
+    assert catalog.status_code == 200, catalog.text
+    tool_detail = next(item for item in catalog.json() if item["key"] == tool_key)
+    assert tool_detail["runtime_details"]["status"] == "active"
+    assert tool_detail["runtime_details"]["runtime_name"] == "api-catalog.search"
+    assert {item["name"] for item in tool_detail["runtime_details"]["input_context"]} == {"project_id", "api_ids"}
 
     bound = api.put(
         f"/agent-governance/tools/{tool_key}",
@@ -105,12 +111,27 @@ def test_tool_detail_binding_disable_and_restore(api, admin):
         json={
             "description": "在项目授权范围内检索接口目录。",
             "agent_ids": [agent["id"]],
-            "parameter_overrides_json": {},
+            "parameter_overrides_json": {"api_ids": {"description": "只列出此任务已确认关联的接口。"}},
             "is_enabled": True,
         },
     )
     assert bound.status_code == 200, bound.text
     assert bound.json()["agent_ids"] == [agent["id"]]
+    assert bound.json()["runtime_details"]["output"].startswith("项目内接口名称")
+    api_ids = next(item for item in bound.json()["runtime_details"]["input_context"] if item["name"] == "api_ids")
+    assert api_ids["description"] == "只列出此任务已确认关联的接口。"
+
+    invalid_override = api.put(
+        f"/agent-governance/tools/{tool_key}",
+        username=admin,
+        json={
+            "description": "不能写入不存在的参数。",
+            "agent_ids": [agent["id"]],
+            "parameter_overrides_json": {"made_up_argument": {"description": "不存在"}},
+            "is_enabled": True,
+        },
+    )
+    assert invalid_override.status_code == 400, invalid_override.text
 
     rows = api.get("/agent-governance/tools", username=admin).json()
     assert next(item for item in rows if item["key"] == tool_key)["description"] == "在项目授权范围内检索接口目录。"
