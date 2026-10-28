@@ -29,11 +29,14 @@ from app.features.agent.router import router as agent_router
 from app.features.agent_governance.router import router as agent_governance_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.business.router import router as business_router
+from app.features.business_assembly.router import router as business_assembly_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
 from app.features.environment_configuration.router import router as environments_router
 from app.features.mock_management.router import router as mock_management_router
 from app.features.mock_management.runtime_router import router as mock_runtime_router
+from app.features.knowledge.router import router as knowledge_router
+from app.features.knowledge.runtime.worker import KnowledgeParseWorker
 from app.features.model_configuration.router import router as model_configs_router
 from app.features.notifications.router import router as notifications_router
 from app.features.notifications.channel_router import router as notification_channel_router
@@ -60,6 +63,7 @@ from app.shared.request_context import (
 # 本模块的日志统一走这里，输出格式与 request_id 注入由 app.shared.request_context 配置。
 logger = logging.getLogger(__name__)
 task_worker = TaskWorker()
+knowledge_parse_worker = KnowledgeParseWorker()
 
 # 业务路由统一挂在 /api/v1 下；新增路由时必须走 include_router(prefix=API_PREFIX)，不要另起前缀。
 API_PREFIX = "/api/v1"
@@ -96,11 +100,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         finally:
             session.close()
     # 任务工作项、租约与命令已持久化，应用重启后由同一调度器安全续跑。
+    knowledge_parse_worker.start()
     task_worker.start()
     yield
     # 把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
     # 最后回收连接池，避免 gunicorn worker 反复退出时留下半开连接
     task_worker.stop()
+    knowledge_parse_worker.stop()
     # 本进程拥有的浏览器句柄必须随服务退出释放，重启后不能假称恢复。
     from app.features.web_ui.runtime.session_manager import registry
     registry.close_all()
@@ -189,6 +195,8 @@ def create_app() -> FastAPI:
     application.include_router(defects_router, prefix=API_PREFIX)
     application.include_router(api_catalog_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)
+    application.include_router(knowledge_router, prefix=API_PREFIX)
+    application.include_router(business_assembly_router, prefix=API_PREFIX)
     application.include_router(test_management_router, prefix=API_PREFIX)
     application.include_router(tasks_router, prefix=API_PREFIX)
     # 报告依赖 test_management（TestRun / CaseExecution），紧随其后装配。

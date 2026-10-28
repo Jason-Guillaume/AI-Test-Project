@@ -62,6 +62,10 @@ from app.shared.roles import PROJECT_ROLE_MEMBER, has_project_role, project_role
 
 log = logging.getLogger(__name__)
 
+
+class _AssemblyInterrupted(Exception):
+    """业务组装在安全检查点收到暂停或取消命令。"""
+
 _ACTIVE_STATUSES = ("RUNNING", "PAUSE_REQUESTED", "CANCEL_REQUESTED")
 _RECOVERY_SECONDS = 300
 
@@ -346,6 +350,8 @@ class TaskWorker:
             TaskService.assert_agent_runtime_access(db, task, run, actor)
             if work.kind == "PLAN":
                 self._handle_plan(db, task, run, work, attempt, agent, actor)
+            elif work.kind == "ASSEMBLE_BUSINESS":
+                self._handle_business_assembly(db, task, run, work, attempt, agent, actor)
             elif work.kind == "EXECUTE_WEB_AUTHORING":
                 self._handle_web_authoring_start(db, task, run, work, attempt, agent, actor)
             elif work.kind == "EXECUTE_SECURITY":
@@ -695,6 +701,55 @@ class TaskWorker:
         invocation.finished_at = datetime.now()
         db.commit()
         return preview
+
+    def _handle_business_assembly(
+        self, db: Session, task: Task, run: TaskRun, work: TaskWorkItem,
+        attempt: TaskAttempt, agent: TaskAgentInstance | None, actor: User,
+    ) -> None:
+        """使用已授权模型从固定文档版本生成草稿，不创建正式业务资产。"""
+        if agent is None or agent.role != "ASSEMBLER":
+            raise RuntimeError("业务组装 Agent 实例不存在")
+        if run.input_snapshot.get("task_mode") != "BUSINESS_ASSEMBLY":
+            raise RuntimeError("业务组装工作项与任务类型不匹配")
+        provider = self._provider_for_agent(db, task, run, work, attempt, agent, actor)
+
+        def report_progress(completed: int, total: int) -> None:
+            """记录章节覆盖游标，并在每批模型调用后检查暂停/取消请求。"""
+            db.refresh(run, with_for_update=True)
+            if run.status in {"PAUSE_REQUESTED", "CANCEL_REQUESTED"}:
+                raise _AssemblyInterrupted()
+            run.stage = "ASSEMBLING_DOCUMENTS"
+            TaskService._append_event(
+                db,
+                run,
+                "business_assembly.progress",
+                {"completed_batches": completed, "total_batches": total},
+                agent_instance_id=agent.id,
+            )
+            db.commit()
+
+        from app.features.business_assembly.services.assembly_service import BusinessAssemblyService
+
+        try:
+            draft = BusinessAssemblyService().generate_draft(
+                db, task, run, actor, provider, progress=report_progress,
+            )
+        except _AssemblyInterrupted:
+            self._defer_at_control_boundary(db, run, work, attempt, agent)
+            db.commit()
+            return
+        work.output_json = {"draft_id": draft.id, "revision": draft.current_revision}
+        TaskService._add_resource_ref(
+            db,
+            run,
+            "OUTPUT",
+            "BUSINESS_ASSEMBLY_DRAFT",
+            str(draft.id),
+            agent_instance_id=agent.id,
+            version=str(draft.current_revision),
+        )
+        # _complete_work owns the final status transition so it can serialize against
+        # a pause/cancel command that arrives after the last model call.
 
     def _handle_plan(
         self, db: Session, task: Task, run: TaskRun, work: TaskWorkItem,
@@ -1802,7 +1857,24 @@ class TaskWorker:
             work.finished_at = now
             attempt.status = "SUCCEEDED"
             attempt.finished_at = now
-        if run.status == "CANCEL_REQUESTED":
+        if work.kind == "ASSEMBLE_BUSINESS" and work.output_json and run.status in {"PAUSE_REQUESTED", "CANCEL_REQUESTED"}:
+            # Generation crossed its final control check; finish rather than leave an
+            # interrupted run with an already-persisted draft and no pending work.
+            run.status = "SUCCEEDED"
+            run.finished_at = now
+            run.stage = "COMPLETED"
+            run.error_code = None
+            run.error_message = None
+            if agent is not None:
+                agent.status = "SUCCEEDED"
+            TaskService._append_event(
+                db,
+                run,
+                "run.completed",
+                dict(work.output_json),
+                agent_instance_id=agent.id if agent else None,
+            )
+        elif run.status == "CANCEL_REQUESTED":
             run.status = "CANCELLED"
             run.finished_at = now
             db.query(TaskWorkItem).filter(TaskWorkItem.task_run_id == run.id, TaskWorkItem.status == "PENDING").update(
@@ -1822,6 +1894,19 @@ class TaskWorker:
                 run.status = prior_status if prior_status not in {None, "QUEUED", "RUNNING"} else "QUEUED"
             elif work.kind in {"EXECUTE_API", "EXECUTE_WEB", "EXECUTE_SECURITY", "SECURITY_SCAN", "REPORT", "REVIEW"}:
                 run.status = "QUEUED"
+            elif work.kind == "ASSEMBLE_BUSINESS":
+                run.status = "SUCCEEDED"
+                run.finished_at = now
+                run.stage = "COMPLETED"
+                if agent is not None:
+                    agent.status = "SUCCEEDED"
+                TaskService._append_event(
+                    db,
+                    run,
+                    "run.completed",
+                    dict(work.output_json or {}),
+                    agent_instance_id=agent.id if agent else None,
+                )
         model_attempts = (attempt.checkpoint_json or {}).get("model_attempts", [])
         if model_attempts:
             event_type = "llm.fallback_succeeded" if any(item.get("candidate_index", 0) > 0 for item in model_attempts) else "llm.primary_succeeded"

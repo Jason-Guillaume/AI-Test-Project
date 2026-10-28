@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     # 默认关闭：表结构只通过 Alembic 变更，应用启动不自动改正式表结构。
     AUTO_CREATE_SCHEMA: bool = False
 
+    # 项目知识文档的受控文件存储位置；未设置时使用 backend/.data/knowledge。
+    KNOWLEDGE_STORAGE_DIR: str | None = None
+
     # OWASP ZAP 安全扫描（Security Testing Phase 2）。
     # 部署形态：ZAP 官方 daemon 镜像与平台同网段运行，只在本机/内网监听；
     # ZAP 管理 API 不对外暴露（§三、§三十四 第 11 条）。

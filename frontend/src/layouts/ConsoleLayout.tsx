@@ -29,6 +29,7 @@ import {
   PlayCircleOutlined,
   ProjectOutlined,
   RobotOutlined,
+  ReadOutlined,
   SafetyOutlined,
   ScheduleOutlined,
   SendOutlined,
@@ -78,6 +79,7 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' },
       { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' },
+      { key: '/console/knowledge-base', icon: <ReadOutlined />, label: '项目知识库' },
       { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
       { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
       { key: '/console/web-ui', icon: <ChromeOutlined />, label: 'Web UI 工作区' },
@@ -135,6 +137,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/defects': '缺陷管理', // 缺陷管理
   '/console/api-catalog': '接口管理', // 接口管理
   '/console/business-management': '业务管理', // 业务管理
+  '/console/knowledge-base': '项目知识库', // 项目知识库
   '/console/test-asset': '测试资产', // 测试资产
   '/console/test-suites': '测试套件', // 测试套件
   '/console/test-plans': '测试计划', // 测试计划

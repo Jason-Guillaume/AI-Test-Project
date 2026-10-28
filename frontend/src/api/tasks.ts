@@ -28,7 +28,7 @@ export interface Task {
   environment_id: number | null;
   input_case_ids: number[];
   status: string;
-  task_mode: 'TEST_EXECUTION' | 'WEB_AUTHORING';
+  task_mode: 'TEST_EXECUTION' | 'WEB_AUTHORING' | 'BUSINESS_ASSEMBLY';
   archived: boolean;
   created_at: string;
   updated_at: string;

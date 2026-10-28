@@ -3070,3 +3070,151 @@ export type WebDecideDecision = 'PROPOSE' | 'OBSERVE' | 'DONE'; // 单轮决策�
 
 // Web 调试环境候选只展示元信息，不暴露管理端请求头与凭据。
 export type WebEnvironment = Pick<Environment, 'id' | 'name' | 'display_name' | 'is_active'>;
+
+// 项目知识库与业务组装统一契约；字段使用后端 API 的 snake_case。
+export type KnowledgeCategory = 'REQUIREMENTS' | 'BUSINESS_PROCESS' | 'API_SPEC' | 'FIELD_DICTIONARY' | 'BUSINESS_RULE';
+export interface KnowledgeBase {
+  id: number; // 项目知识库 ID
+  project_id: number; // 所属项目
+  name: string; // 项目显示名称
+  description: string | null; // 知识库说明
+  enabled: boolean; // 是否允许新上传和组装
+  created_at: string; // 创建时间
+  updated_at: string; // 修改时间
+}
+export interface KnowledgeDocument {
+  id: number; // 文档身份 ID
+  knowledge_base_id: number; // 所属项目知识库
+  title: string; // 文档标题
+  category: KnowledgeCategory; // 文档分类
+  status: 'ACTIVE' | 'DISABLED' | 'DELETED'; // 文档状态
+  active_version_id: number | null; // 最近成功解析并启用的版本
+  active_version_number: number | null; // 启用版本序号
+  latest_version_id: number | null; // 最近上传的版本
+  latest_version_number: number | null; // 最近上传的版本序号
+  latest_parse_status: string | null; // 最近上传版本的解析状态
+  latest_parse_error: string | null; // 最近上传版本的解析失败原因
+  parse_status: string | null; // 当前启用版本解析状态
+  parse_error: string | null; // 当前启用版本解析失败原因
+  file_name: string | null; // 用户上传的原文件名
+  file_size: number | null; // 文件字节数
+  created_at: string; // 创建时间
+  updated_at: string; // 修改时间
+}
+export interface KnowledgeDocumentVersion {
+  id: number; // 文档版本 ID
+  document_id: number; // 文档身份 ID
+  version_number: number; // 版本序号
+  file_name: string; // 原文件名
+  media_type: string; // 规范化 MIME 类型
+  file_size: number; // 文件字节数
+  sha256: string; // 文件摘要
+  parse_status: string; // 解析状态
+  parse_error: string | null; // 解析失败原因
+  is_active: boolean; // 当前是否用于新任务
+  created_at: string; // 上传时间
+  parsed_at: string | null; // 解析完成时间
+}
+export interface KnowledgeChunk {
+  id: number; // 正文块 ID
+  document_version_id: number; // 所属版本
+  ordinal: number; // 文档内顺序
+  heading_path: string | null; // 标题路径
+  locator: string; // 页码或段落定位
+  content: string; // 正文
+}
+export interface AssemblyEvidence {
+  document_version_id: number; // 被引用的固定版本
+  chunk_id: number; // 正文块 ID
+  locator: string; // 原文定位
+  quote: string; // 原文摘录
+  claim_type: 'EXPLICIT' | 'INFERRED'; // 明确陈述或推断
+}
+export interface AssemblyPrecondition {
+  type: 'VARIABLE' | 'STATE' | 'BUSINESS' | 'TEXT';
+  target: string;
+  operator: 'EQ' | 'NE' | 'IN' | 'CONTAINS' | 'EXISTS' | 'NOT_EXISTS';
+  expected_value?: string | null;
+  description?: string | null;
+  evidence: AssemblyEvidence[];
+}
+export interface AssemblyVariable {
+  direction: 'INPUT' | 'OUTPUT';
+  name: string;
+  data_type: 'STRING' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'OBJECT' | 'ARRAY';
+  required: boolean;
+  description?: string | null;
+  evidence: AssemblyEvidence[];
+}
+export interface AssemblyState {
+  entity: string;
+  pre_state?: string | null;
+  post_state?: string | null;
+  evidence: AssemblyEvidence[];
+}
+export interface AssemblyApiCandidate {
+  api_id: number;
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW';
+  reason: string;
+  evidence: AssemblyEvidence[];
+}
+export interface AssemblyAction {
+  action_key: string;
+  name: string;
+  description?: string | null;
+  action_type: 'NORMAL';
+  preconditions: AssemblyPrecondition[];
+  input_variables: AssemblyVariable[];
+  output_variables: AssemblyVariable[];
+  states: AssemblyState[];
+  api_candidate?: AssemblyApiCandidate | null;
+  evidence: AssemblyEvidence[];
+}
+export interface AssemblyVariableRef {
+  source_action_key: string;
+  source_variable: string;
+  target_action_key: string;
+  target_variable: string;
+}
+export interface AssemblyRule {
+  name: string;
+  description?: string | null;
+  rule_type: 'GENERAL' | 'CONSTRAINT' | 'PRECONDITION';
+  expression?: string | null;
+  evidence: AssemblyEvidence[];
+}
+export interface AssemblyFlow {
+  name: string;
+  description?: string | null;
+  actions: AssemblyAction[];
+  variable_refs: AssemblyVariableRef[];
+  rules: AssemblyRule[];
+}
+export interface BusinessAssemblyDraftContent {
+  domain_name: string;
+  domain_description?: string | null;
+  flows: AssemblyFlow[];
+  coverage: Record<string, unknown>;
+  issues: string[];
+  unsupported_elements: string[];
+}
+export interface BusinessAssemblyValidation {
+  revision: number;
+  can_save: boolean;
+  can_execute: boolean;
+  errors: string[];
+  warnings: string[];
+}
+export interface BusinessAssemblyDraft {
+  id: number;
+  project_id: number;
+  task_id: number | null;
+  task_run_id: number | null;
+  source_version_ids: number[];
+  current_revision: number;
+  status: string;
+  content: BusinessAssemblyDraftContent;
+  validation: BusinessAssemblyValidation;
+  created_at: string;
+  updated_at: string;
+}

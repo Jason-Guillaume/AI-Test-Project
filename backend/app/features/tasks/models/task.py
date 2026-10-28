@@ -45,6 +45,7 @@ class Task(Base):
     status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
     task_mode = Column(String(32), nullable=False, default="TEST_EXECUTION", server_default=text("'TEST_EXECUTION'"))
     web_authoring_json = Column(JSON, nullable=True, comment="交互式 Web 编写的环境、认证引用与目标范围")
+    business_assembly_json = Column(JSON, nullable=True, comment="业务组装任务固定的知识文档版本范围")
     archived = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

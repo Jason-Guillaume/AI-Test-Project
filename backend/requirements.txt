@@ -15,6 +15,8 @@ bcrypt>=4.2,<5
 cryptography>=43,<51
 # 接口管理：OpenAPI/Swagger YAML 解析（safe_load，不执行任意对象）
 PyYAML>=6,<7
+# 文本型 PDF 解析；扫描件仍明确标记为不支持，不触发 OCR。
+pypdf>=5,<7
 # 接口管理：调试执行器发真实出站请求（runtime 用；测试也复用）
 httpx>=0.27,<1
 # 接口测试 Agent：用 langgraph StateGraph 编排节点/边与 human-in-the-loop 暂停

@@ -31,6 +31,7 @@ from app.features.tasks.schemas import (
     TaskMessageCreate,
     TaskWorkItemResponse,
 )
+from app.features.business_assembly.schemas import AssemblyTaskCreate
 from app.features.test_management.models.test_case import TestCase
 from app.models.configuration import ModelConfiguration
 from app.features.environment_configuration.services.environment_service import resolve_project_environment
@@ -53,7 +54,7 @@ RUN_TERMINAL_STATUSES = frozenset({"SUCCEEDED", "SUCCEEDED_WITH_ISSUES", "FAILED
 RUN_PAUSE_STATUSES = frozenset({"PAUSED", "PAUSE_REQUESTED"})
 RETRYABLE_RUN_STATUSES = frozenset({"FAILED", "RECONCILIATION_REQUIRED", "SUCCEEDED_WITH_ISSUES"})
 RETRYABLE_WORK_ITEM_KINDS = frozenset({
-    "PLAN", "CHAT", "REPORT", "FINALIZE", "EXECUTE_API", "EXECUTE_WEB", "EXECUTE_WEB_AUTHORING", "EXECUTE_SECURITY",
+    "PLAN", "CHAT", "REPORT", "FINALIZE", "EXECUTE_API", "EXECUTE_WEB", "EXECUTE_WEB_AUTHORING", "EXECUTE_SECURITY", "ASSEMBLE_BUSINESS",
 })
 UNCERTAIN_INVOCATION_STATUSES = frozenset({"STARTED", "NEEDS_RECONCILIATION"})
 
@@ -271,6 +272,93 @@ class TaskService:
                     and (existing.web_authoring_json or None) == web_authoring
                 ):
                     return self._task_detail(db, existing)
+            raise
+        db.refresh(task)
+        return self._task_detail(db, task)
+
+    def create_business_assembly_task(
+        self, db: Session, project_id: int, body: AssemblyTaskCreate, *, actor: User,
+    ) -> dict[str, Any]:
+        """创建无需测试环境的业务组装任务，并冻结可用知识版本范围。"""
+        project = self._get_project_for_write(db, project_id, actor)
+        version_ids = list(dict.fromkeys(body.document_version_ids))
+        if len(version_ids) != len(body.document_version_ids):
+            raise bad_request("知识文档版本不能重复选择")
+        from app.features.knowledge.models import KnowledgeDocument, KnowledgeDocumentVersion
+
+        versions = db.query(KnowledgeDocumentVersion, KnowledgeDocument).join(
+            KnowledgeDocument, KnowledgeDocumentVersion.document_id == KnowledgeDocument.id,
+        ).filter(KnowledgeDocumentVersion.id.in_(version_ids)).all()
+        valid = {
+            version.id for version, document in versions
+            if document.knowledge_base_id
+            and document.status == "ACTIVE"
+            and document.deleted_at is None
+            and document.active_version_id == version.id
+            and version.parse_status == "READY"
+        }
+        if valid != set(version_ids):
+            raise not_found("部分知识文档版本未启用、未解析完成或不属于当前项目")
+        from app.features.knowledge.models import KnowledgeBase
+
+        base_project_ids = {
+            base.project_id for base in db.query(KnowledgeBase).filter(
+                KnowledgeBase.id.in_({document.knowledge_base_id for _, document in versions}),
+                KnowledgeBase.enabled.is_(True),
+            ).all()
+        }
+        if base_project_ids != {project.id}:
+            raise not_found("部分知识文档版本未启用、未解析完成或不属于当前项目")
+
+        goal = sanitize_text(body.goal).strip()
+        title = sanitize_text(body.title or "").strip() or goal[:80]
+        selection = {"document_version_ids": version_ids}
+        existing = db.query(Task).filter(
+            Task.created_by == actor.id,
+            Task.request_key == body.request_key,
+        ).first()
+        if existing is not None:
+            if (
+                existing.project_id != project.id
+                or existing.task_mode != "BUSINESS_ASSEMBLY"
+                or existing.goal != goal
+                or existing.title != title[:200]
+                or (existing.business_assembly_json or {}) != selection
+            ):
+                raise conflict("相同 request_key 已用于不同任务内容")
+            return self._task_detail(db, existing)
+
+        # 组装只调用当前项目成员已获授权的模型，不绑定测试环境或测试执行 Agent。
+        task = Task(
+            project_id=project.id,
+            created_by=actor.id,
+            title=title[:200],
+            goal=goal,
+            environment_id=None,
+            input_case_ids=[],
+            task_mode="BUSINESS_ASSEMBLY",
+            business_assembly_json=selection,
+            request_key=body.request_key,
+        )
+        db.add(task)
+        db.flush()
+        run = self._create_run(db, task, actor, run_number=1, target_type="BUSINESS_ASSEMBLY")
+        task.status = run.status
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            existing = db.query(Task).filter(
+                Task.created_by == actor.id, Task.request_key == body.request_key,
+            ).first()
+            if existing is not None and (
+                existing.project_id == project.id
+                and existing.task_mode == "BUSINESS_ASSEMBLY"
+                and existing.goal == goal
+                and existing.title == title[:200]
+                and (existing.business_assembly_json or {}) == selection
+            ):
+                return self._task_detail(db, existing)
             raise
         db.refresh(task)
         return self._task_detail(db, task)
@@ -649,7 +737,8 @@ class TaskService:
             next_number = int(db.query(func.max(TaskRun.run_number)).filter(TaskRun.task_id == task.id).scalar() or 0) + 1
             case = db.query(TestCase).filter(TestCase.id.in_(task.input_case_ids or [])).first()
             target_type = (
-                "WEB_AUTHORING" if task.task_mode == "WEB_AUTHORING"
+                "BUSINESS_ASSEMBLY" if task.task_mode == "BUSINESS_ASSEMBLY"
+                else "WEB_AUTHORING" if task.task_mode == "WEB_AUTHORING"
                 else "SECURITY" if task.security_assessment_json
                 else (case.target_type if case is not None else "API")
             )
@@ -877,7 +966,7 @@ class TaskService:
             run_number=run_number,
             created_by=actor.id,
             status="QUEUED",
-            stage="PLANNING",
+            stage="ASSEMBLY_QUEUED" if target_type == "BUSINESS_ASSEMBLY" else "PLANNING",
             goal_snapshot=task.goal,
             input_snapshot={
                 "project_id": task.project_id,
@@ -886,6 +975,7 @@ class TaskService:
                 "target_type": target_type,
                 "task_mode": task.task_mode,
                 "web_authoring": dict(task.web_authoring_json) if task.web_authoring_json else None,
+                "business_assembly": dict(task.business_assembly_json) if task.business_assembly_json else None,
                 "security_assessment": dict(task.security_assessment_json) if task.security_assessment_json else None,
                 # 仅供已经排队的历史运行恢复；新 API 不再接受 ZAP 扫描配置。
                 "security_scan": dict(task.security_scan_json) if task.security_scan_json else None,
@@ -906,7 +996,12 @@ class TaskService:
                 for skill_id, _ in skill_ids
             ])
 
-        if target_type == "SECURITY":
+        if target_type == "BUSINESS_ASSEMBLY":
+            roles = [
+                ("MAIN", "任务主 Agent", "READY", ["task.chat", "task.goal.update"]),
+                ("ASSEMBLER", "业务组装 Agent", "QUEUED", []),
+            ]
+        elif target_type == "SECURITY":
             roles = [
                 ("MAIN", "任务主 Agent", "READY", ["task.chat", "task.goal.update"]),
                 ("PLANNER", "Security Planner", "QUEUED", ["security-plan.preview"]),
@@ -926,7 +1021,7 @@ class TaskService:
                  if target_type == "API" else
                  ("UI_WORKER", "UI Worker", "WAITING_APPROVAL", ["web-test-run.create"])),
             ]
-        if target_type != "WEB_AUTHORING":
+        if target_type not in {"WEB_AUTHORING", "BUSINESS_ASSEMBLY"}:
             roles.extend([
                 ("REVIEWER", "审阅 Agent", "WAITING_DEPENDENCY", ["report.review"]),
                 ("REPORT_AGENT", "报告 Agent", "WAITING_DEPENDENCY", ["report.generate"]),
@@ -968,16 +1063,26 @@ class TaskService:
             ))
         db.flush()
 
-        plan_work = self._enqueue_work(
-            db, run, agents["PLANNER"], work_key="plan:v1", kind="PLAN",
-            input_json={
-                "case_ids": list(task.input_case_ids or []),
-                "environment_id": task.environment_id,
-                "target_type": target_type,
-                "security_assessment": dict(task.security_assessment_json) if task.security_assessment_json else None,
-                "web_authoring": dict(task.web_authoring_json) if task.web_authoring_json else None,
-            }, sequence=10,
-        )
+        if target_type == "BUSINESS_ASSEMBLY":
+            initial_work = self._enqueue_work(
+                db, run, agents["ASSEMBLER"], work_key="business-assembly:v1", kind="ASSEMBLE_BUSINESS",
+                input_json={"document_version_ids": list((task.business_assembly_json or {}).get("document_version_ids") or [])},
+                sequence=10,
+            )
+        else:
+            initial_work = self._enqueue_work(
+                db, run, agents["PLANNER"], work_key="plan:v1", kind="PLAN",
+                input_json={
+                    "case_ids": list(task.input_case_ids or []),
+                    "environment_id": task.environment_id,
+                    "target_type": target_type,
+                    "security_assessment": dict(task.security_assessment_json) if task.security_assessment_json else None,
+                    "web_authoring": dict(task.web_authoring_json) if task.web_authoring_json else None,
+                }, sequence=10,
+            )
+        if target_type == "BUSINESS_ASSEMBLY":
+            for version_id in (task.business_assembly_json or {}).get("document_version_ids", []):
+                self._add_resource_ref(db, run, "INPUT", "KNOWLEDGE_DOCUMENT_VERSION", str(version_id), metadata={})
         for case_id in task.input_case_ids or []:
             self._add_resource_ref(db, run, "INPUT", "TEST_CASE", str(case_id), metadata={"confirmed": True})
         if task.environment_id is not None:
@@ -1001,7 +1106,7 @@ class TaskService:
                 )
         self._append_event(
             db, run, "run.created",
-            {"run_number": run.run_number, "plan_work_item_id": plan_work.id, "roles": [role[0] for role in roles] + ["SUB_AGENT"] * len((agent_snapshot or {}).get("child_agents", []))},
+            {"run_number": run.run_number, "plan_work_item_id": initial_work.id, "roles": [role[0] for role in roles] + ["SUB_AGENT"] * len((agent_snapshot or {}).get("child_agents", []))},
             actor_user_id=actor.id,
         )
         return run
