@@ -472,7 +472,7 @@ Fixture、数据资产、Provider、数据池、目标库连接都挂在 `/api/v
 
 ### 9.5 测试配置
 
-- 数据库：`testplatform_test`（`OWNER root`，root / `fangzhou123`）
+- 数据库：`testplatform_test-p<pid>`（测试用户默认为 `root`，可用 `TEST_POSTGRES_USER` 覆盖；`TEST_POSTGRES_PASSWORD` 必填）
 - `SECRET_KEY` 必须显式 export
 - `conftest.py` 里已 override rate limit，测试不撞限流
 

@@ -7,6 +7,7 @@ import { DeleteOutlined, DownOutlined, EditOutlined, FolderOutlined, PlusOutline
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { getErrorMessage } from '@/api/client';
+import { collectPages } from '@/api/pagination';
 import { LoadingState, ErrorState } from '@/components/PageState';
 import { METHOD_COLOR } from './constants';
 import type { ApiInterface, ApiModule, ApiModuleCreate, ApiStatus } from '@/types';
@@ -59,16 +60,13 @@ export function ModuleTree({
       'tree-apis',
       { keyword, method, status },
     ],
-    queryFn: async () => {
-      const params = { page_size: 200, keyword: keyword || undefined, method, status };
-      const first = await apiCatalogApi.listApis(projectId, { ...params, page: 1 });
-      const pages = Math.ceil(first.total / params.page_size);
-      const rest = await Promise.all(
-        Array.from({ length: Math.max(0, pages - 1) }, (_, index) =>
-          apiCatalogApi.listApis(projectId, { ...params, page: index + 2 })),
-      );
-      return [...first.items, ...rest.flatMap((page) => page.items)];
-    },
+    queryFn: async () => (await collectPages((page) => apiCatalogApi.listApis(projectId, {
+      page,
+      page_size: 200,
+      keyword: keyword || undefined,
+      method,
+      status,
+    }))).items,
   });
 
   const createMutation = useMutation({

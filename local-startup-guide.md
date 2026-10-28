@@ -147,7 +147,7 @@ docker compose stop postgres
 |---|---|
 | 后端提示 `SECRET_KEY` 未配置 | 检查 `backend/.env` 是否存在且已设置随机长密钥，然后重启后端。 |
 | `zsh: no such file or directory: .venv/bin/uvicorn` | 当前目录不是 `backend/`；若在 `frontend/`，先运行 `cd ../backend`，再启动后端。 |
-| 数据库认证失败 | 核对 Compose 的 `root/fangzhou123` 与 `.env` 的 `DATABASE_URL`；自建数据库则使用自己的账号密码。 |
+| 数据库认证失败 | 核对 Compose 中显式设置的 `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` 与 `.env` 的 `DATABASE_URL` 是否一致；不要复用文档或测试中的示例口令。 |
 | 迁移后仍提示表或字段不存在 | 在 `backend/` 执行 `.venv/bin/python -m alembic upgrade head`。 |
 | 前端 API 请求失败或代理报错 | 确认后端监听 `8001`；其他端口需设置 `VITE_API_PROXY_TARGET`。 |
 | 访问 `/api/v1/healthz` 返回 404 | 这是预期行为；健康检查地址是根路径 `/healthz`。 |
