@@ -1,5 +1,7 @@
 # 测试开发平台 · 阶段一（统一身份与权限 + 平台基础台）
 
+> 本文主体记录阶段一的历史基线，测试数量及未接入清单不代表当前全部能力。当前项目审查与验证边界见 [项目审查报告](docs/2026-10-28-project-audit-report.md)，启动和联调以 [启动指南](local-startup-guide.md) 为准。
+
 旧项目（`~/Desktop/test-projects`）的重构落地。**旧项目只作分析参考，从未被修改**；
 本仓库是新项目，所有代码、迁移与文档都在这里。
 
@@ -89,7 +91,7 @@ react-router-dom 6.26 / dayjs。
   .venv/bin/python -m alembic upgrade head          # 只升级
   .venv/bin/python scripts/seed_admin.py            # 建库 + 升级 + 种子
   .venv/bin/python scripts/seed_admin.py --drop     # 先删库再重建（仅本地）
-  .venv/bin/python scripts/seed_admin.py --database-url 'postgresql+psycopg://...'   # 指定库
+  .venv/bin/python scripts/seed_admin.py --database-url "${DATABASE_URL:?请先设置 DATABASE_URL}"   # 指定库
   ```
 
 - 管理员初始化**幂等**：账号已存在则跳过（**绝不覆盖历史密码**）；内置环境按名称去重。
@@ -119,14 +121,14 @@ cd backend && .venv/bin/python -m pytest -q tests/
 #   52 passed, 6 warnings in 39.63s
 
 # 前端类型检查 + 生产构建
-cd frontend && npm run typecheck && npm run build
-#   exit 0（1 条 antd 体积提示，非错误）
+cd frontend && npm test && npm run lint && npm run typecheck && npm run build
+#   exit 0（2026-10-28 修复后无超过 500 kB 的 chunk 提示）
 
 # 端到端冒烟（隔离库 testplatform_e2e，退出即删除）
 cd backend
-INIT_ADMIN_USERNAME=e2e-admin INIT_ADMIN_PASSWORD='E2E-Password-456' \
+INIT_ADMIN_USERNAME=e2e-admin INIT_ADMIN_PASSWORD="$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')" \
   bash scripts/e2e_smoke.sh \
-    --database-url 'postgresql+psycopg://root:fangzhou123@127.0.0.1:5432/testplatform_e2e' \
+    --database-url "${DATABASE_URL:?请先设置 DATABASE_URL}" \
     --port 8001 --frontend-url http://localhost:5173
 #   == 结果：118 通过，0 失败 ==
 ```
@@ -258,8 +260,7 @@ AI 智能体编排 · 用例自动生成 · API 用例执行 · UI 自动化执�
    同类教训已固化到脚本里：`e2e_smoke.sh` 的连接串改走环境变量而不是 argv，
    清理失败必须打印出来，不再静默。
 
-3. **`compose.yaml` 里的 `root` / `fangzhou123` 是单机开发默认值**（监听 127.0.0.1、
-   数据在 compose 卷里）。只要 5432 会暴露给局域网或共享机器，先改它并同步 `backend/.env`。
+3. **Compose 数据库安全：** 端口仅发布到 `127.0.0.1`；数据库用户、密码和库名必须通过环境变量显式设置，生产凭据由部署密钥管理提供。
 
 4. **`/healthz` 不带版本前缀**，是部署探活用的；`/readyz`、`/status`、`/ping` 都不存在。
    API 文档在 `/docs`、`/redoc`、`/openapi.json`。

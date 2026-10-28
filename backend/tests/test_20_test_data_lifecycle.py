@@ -34,6 +34,7 @@ from tests.test_15_test_executor import (
 )
 from tests.test_19_data_factory import (
     _create_project,
+    _bind_env,
     _db_connection,
     _db_policy,
     _dev_env,
@@ -255,6 +256,7 @@ class TestScenarioTwoDatabaseSpecialState:
             pid = _create_project(api, admin)
             # 造数连接和这次运行必须是同一个环境，否则会先报环境不一致。
             env_id = _make_env(db, stub.base_url, _admin_id(db), name=unique("dev-db"))
+            _bind_env(db, pid, env_id)
             _whitelist(db, pid, stub.port, _admin_id(db))
             conn_id = _db_connection(api, admin, pid, env_id)
             _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])

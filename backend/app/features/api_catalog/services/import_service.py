@@ -64,6 +64,13 @@ from app.shared.roles import (
 _resolver = ModuleResolver()
 
 
+def _current_structure_hash(db: Session, iface: ApiInterface) -> str:
+    """Compare against stored structure, including rows with a stale historical hash."""
+    return compute_source_hash(interface_to_internal_schema(
+        iface, _load_params(db, iface.id), _load_body(db, iface.id), _load_responses(db, iface.id),
+    ))
+
+
 class ImportService:
     """接口导入：预览 + 确认。无状态。"""
 
@@ -84,7 +91,7 @@ class ImportService:
                 classification = "NEW"
                 existing_id = None
                 diff = None
-            elif existing.source_hash == schema.source_hash:
+            elif _current_structure_hash(db, existing) == schema.source_hash:
                 classification = "UNCHANGED"
                 existing_id = existing.id
                 diff = None
@@ -139,7 +146,7 @@ class ImportService:
             if existing is None:
                 self._create_from_schema(db, project_id, schema, actor, body.user_module_id, body.tag_to_module_map)
                 created += 1
-            elif existing.source_hash == schema.source_hash:
+            elif _current_structure_hash(db, existing) == schema.source_hash:
                 skipped += 1
             else:
                 if not body.overwrite_changed:

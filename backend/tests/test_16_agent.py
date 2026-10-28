@@ -90,12 +90,17 @@ def _create_strategy(api, actor, project_id):
     return r.json()["id"]
 
 
-def _create_env(db):
-    """创建`env`。"""
+def _create_env(db, project_id):
+    """创建并绑定项目执行环境。"""
     env = Environment(name=unique("agent-env"), base_url="http://127.0.0.1:1", is_active=True)
     db.add(env)
     db.commit()
     db.refresh(env)
+    from app.models.project_environment import ProjectEnvironment
+    db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id,
+        base_url=env.base_url, display_name=env.display_name or env.name,
+        gateway_prefix="", default_headers={}, is_active=True))
+    db.commit()
     return env
 
 
@@ -352,7 +357,7 @@ class TestAgentFlow:
         """确认用例 → 执行（临时 plan+suite）→ 结果分析。"""
         pid = _create_project(api, admin)
         api_id = _create_api(api, admin, pid)
-        env = _create_env(db)
+        env = _create_env(db, pid)
         sid = _create_session_http(api, admin, pid)
         session_obj = _get_session_obj(db, sid)
         user = _get_user(db, admin)
@@ -399,7 +404,7 @@ class TestAgentFlow:
         """
         pid = _create_project(api, admin)
         api_id = _create_api(api, admin, pid)
-        env = _create_env(db)
+        env = _create_env(db, pid)
         sid = _create_session_http(api, admin, pid)
         session_obj = _get_session_obj(db, sid)
         user = _get_user(db, admin)

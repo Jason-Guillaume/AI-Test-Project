@@ -6,7 +6,7 @@
 //   - 读 = 项目可见（viewer+）；写 = 项目成员（member+）；调试 = 平台管理员。
 //   - 跨项目越权按 404 返回，前端不展示。
 //
-// 未接入（明确标记，不虚报）：批量导出、接口版本对比、Mock 服务、AI 用例生成。
+// Mock 服务由独立的 Mock 管理工作区提供。
 import { useEffect, useState } from 'react';
 import { App, Button, Col, Form, Input, Modal, Row, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,6 +46,11 @@ interface CreateFormValues {
  * 依赖当前项目作用域：未选项目时整页空态。切换项目由 useConsoleScope 失效 ['api-catalog']。
  */
 export function ConsoleApiCatalogPage() {
+  const { currentProjectId } = useConsoleScope();
+  return <ApiCatalogWorkspace key={currentProjectId ?? 'none'} />;
+}
+
+function ApiCatalogWorkspace() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
@@ -126,8 +131,8 @@ export function ConsoleApiCatalogPage() {
         onShowRecords={() => setRecordsOpen(true)}
       />
 
-      <Row gutter={16}>
-        <Col flex="320px">
+      <Row gutter={16} wrap={false} className="api-catalog-layout">
+        <Col flex="320px" className="api-catalog-sidebar">
           <div
             style={{
               border: '1px solid #f0f0f0',
@@ -150,7 +155,7 @@ export function ConsoleApiCatalogPage() {
             />
           </div>
         </Col>
-        <Col flex="auto">
+        <Col flex="1 1 0" style={{ minWidth: 0 }} className="api-catalog-detail">
           <div
             style={{
               border: '1px solid #f0f0f0',

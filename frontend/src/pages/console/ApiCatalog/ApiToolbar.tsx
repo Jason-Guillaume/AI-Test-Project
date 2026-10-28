@@ -38,7 +38,8 @@ export function ApiToolbar({
         allowClear
         enterButton
         style={{ maxWidth: 240 }}
-        value={keyword || undefined}
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
         onSearch={(v) => setKeyword(v)}
       />
       <Select

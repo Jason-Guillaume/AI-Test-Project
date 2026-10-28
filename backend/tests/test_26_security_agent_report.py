@@ -92,6 +92,8 @@ def _scene(db, api, admin, *, port=None, env_base_url: str | None = None,
         severity=severity, confirmation_required=confirmation_required,
     )
     env = _env(db, admin_id, name="dev", base_url=env_base_url)
+    from tests.test_19_data_factory import _bind_env
+    _bind_env(db, project_id, env.id)
 
     db.commit()
     return SimpleNamespace(

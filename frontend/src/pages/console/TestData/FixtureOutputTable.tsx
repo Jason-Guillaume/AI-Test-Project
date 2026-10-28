@@ -40,7 +40,6 @@ export function FixtureOutputTable({ fixture }: { fixture: FixtureDetail }) {
       })),
     );
     // 仅在 outputs 引用变化时重置，避免编辑中被覆盖。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixture.outputs]);
 
   const mutation = useMutation({

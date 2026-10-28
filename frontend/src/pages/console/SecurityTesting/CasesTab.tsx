@@ -1,3 +1,4 @@
+import { collectPages, collectArrayPages } from '@/api/pagination';
 // 安全测试 · 安全用例 Tab。
 //
 // 新建安全计划（预览 Modal）→ 确认生成 → 高风险确认 → 执行（测试环境）→ 变异详情抽屉。
@@ -70,12 +71,17 @@ export function CasesTab({ projectId }: { projectId: number }) {
   const listQuery = useQuery({
     queryKey: ['security-cases', projectId, { api_id: apiFilter, enabled: enabledFilter }],
     queryFn: () =>
-      securityApi.listCases(projectId, {
-        page: 1,
+      collectPages((page) => securityApi.listCases(projectId, {
+        page,
         page_size: 100,
         api_id: apiFilter,
         enabled: enabledFilter,
-      }),
+      })),
+  });
+
+  const allCasesQuery = useQuery({
+    queryKey: ['security-cases', projectId, 'filter-options'],
+    queryFn: () => collectPages((page) => securityApi.listCases(projectId, { page, page_size: 100 })),
   });
 
   const invalidate = () => {
@@ -212,7 +218,7 @@ export function CasesTab({ projectId }: { projectId: number }) {
             onChange={setApiFilter}
             options={Array.from(
               new Map(
-                items
+                (allCasesQuery.data?.items ?? [])
                   .filter((c) => c.api_id != null)
                   .map((c) => [c.api_id as number, c.api_name ?? '未知接口']),
               ).entries(),
@@ -306,15 +312,15 @@ function PlanPreviewModal({
   // 接口 / 基线用例 / 策略 候选项。
   const apisQuery = useQuery({
     queryKey: ['security-preview', projectId, 'apis'],
-    queryFn: () => apiCatalogApi.listApis(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => apiCatalogApi.listApis(projectId, { page, page_size: 100 })),
   });
   const casesQuery = useQuery({
     queryKey: ['security-preview', projectId, 'baseline-cases'],
-    queryFn: () => testManagementApi.listCases(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listCases(projectId, { page, page_size: 100 }), 100),
   });
   const strategiesQuery = useQuery({
     queryKey: ['security-preview', projectId, 'enabled-strategies'],
-    queryFn: () => securityApi.listStrategies(projectId, { page: 1, page_size: 100, enabled: true }),
+    queryFn: () => collectPages((page) => securityApi.listStrategies(projectId, { page, page_size: 100, enabled: true })),
   });
   const envsQuery = useQuery({
     queryKey: ['security-preview', projectId, 'envs'],
@@ -446,6 +452,9 @@ function PlanPreviewModal({
         )
       }
     >
+      {[apisQuery, casesQuery, strategiesQuery, envsQuery].some((query) => query.isError) && (
+        <Alert type="error" showIcon message="候选数据加载失败" description="请关闭并重新打开窗口重试。" />
+      )}
       <Form
         form={form}
         layout="vertical"

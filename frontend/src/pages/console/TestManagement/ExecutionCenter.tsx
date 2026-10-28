@@ -1,3 +1,4 @@
+import { collectArrayPages } from '@/api/pagination';
 // 执行中心页（用户视角）。
 // 列出项目内测试计划，逐行「执行」触发同步执行（POST /test-plans/{id}/runs），
 // 返回完成的 TestRun，弹窗展示结果汇总并支持跳转执行历史。
@@ -50,7 +51,7 @@ export function ConsoleExecutionCenterPage() {
 
   const plansQuery = useQuery({
     queryKey: ['test-plans', currentProjectId, 'exec-center'],
-    queryFn: () => testManagementApi.listPlans(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listPlans(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: currentProjectId != null,
   });
   const envsQuery = useQuery({

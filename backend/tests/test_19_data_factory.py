@@ -76,11 +76,28 @@ def _dev_env(db, name="dev", admin_id=None):
     return env.id
 
 
+def _bind_env(db, project_id, environment_id):
+    from app.models.configuration import Environment
+    from app.models.project_environment import ProjectEnvironment
+    env = db.get(Environment, environment_id)
+    binding = db.query(ProjectEnvironment).filter_by(project_id=project_id, environment_id=environment_id).first()
+    if binding is None:
+        binding = ProjectEnvironment(project_id=project_id, environment_id=environment_id)
+        db.add(binding)
+    binding.display_name = env.display_name or env.name
+    binding.base_url = env.base_url or ""
+    binding.gateway_prefix = env.gateway_prefix or ""
+    binding.default_headers = env.default_headers or {}
+    binding.is_active = True
+    db.commit()
+
+
 def _stub_env(api, admin, db, stub):
     """建项目 + 环境 + 出站白名单 + 接口，返回 (project_id, env_id, admin_id, new_iface)。"""
     admin_id = _admin_id(db)
     pid = _create_project(api, admin)
     env_id = _make_env(db, stub.base_url, admin_id, name=unique("env"))
+    _bind_env(db, pid, env_id)
     _whitelist(db, pid, stub.port, admin_id)
 
     def iface(method, path, name=None):
@@ -470,6 +487,7 @@ class TestDatabasePatch:
         """验证局部更新`updates`仅`whitelisted``sandbox``row`场景及其预期结果。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
+        _bind_env(db, pid, env_id)
         conn_id = _db_connection(api, admin, pid, env_id)
         _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["INSERT", "UPDATE"])
 
@@ -513,6 +531,7 @@ class TestDatabasePatch:
         """验证`non``whitelisted``table`被拒绝和`recorded`场景及其预期结果。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
+        _bind_env(db, pid, env_id)
         conn_id = _db_connection(api, admin, pid, env_id)
         _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])
 
@@ -549,6 +568,8 @@ class TestDatabasePatch:
         dev_env_id = _dev_env(db, "dev")
         staging_env_id = _dev_env(db, "staging")
         pid = _create_project(api, admin)
+        _bind_env(db, pid, dev_env_id)
+        _bind_env(db, pid, staging_env_id)
         conn_id = _db_connection(api, admin, pid, dev_env_id)
         _db_policy(api, admin, pid, dev_env_id, ["td_sandbox_task"], ["UPDATE"])
         _db_policy(api, admin, pid, staging_env_id, ["td_sandbox_task"], ["UPDATE"])
@@ -574,6 +595,7 @@ class TestDatabaseInsert:
         """验证`insert``returns`标识和`appends``one``row`场景及其预期结果。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
+        _bind_env(db, pid, env_id)
         conn_id = _db_connection(api, admin, pid, env_id)
         _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["INSERT"])
 
@@ -612,6 +634,7 @@ class TestDatabaseInsert:
         """DELETE 三重确认：策略没放 DELETE 就拒绝，行数不变。"""
         env_id = _dev_env(db, "dev")
         pid = _create_project(api, admin)
+        _bind_env(db, pid, env_id)
         conn_id = _db_connection(api, admin, pid, env_id)
         _db_policy(api, admin, pid, env_id, ["td_sandbox_task"], ["UPDATE"])
         row_id = _task_seed_row(db)
@@ -640,6 +663,7 @@ class TestProductionBlocked:
         """验证生产环境`refuses`和`leaves``table``untouched`场景及其预期结果。"""
         prod_env_id = _dev_env(db, "production")
         pid = _create_project(api, admin)
+        _bind_env(db, pid, prod_env_id)
         conn_id = _db_connection(api, admin, pid, prod_env_id)
 
         # 生产环境的策略行创建不出来（路由层就拒绝），所以库里根本没有策略。

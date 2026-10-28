@@ -23,11 +23,11 @@ if str(BACKEND_DIR) not in sys.path:
 def split_database_url(url: str) -> tuple[str, str]:
     """把连接串拆成「可连接的管理员连接串」与目标库名。
 
-    SQLAlchemy 连接串形如 ``postgresql+psycopg://user:pwd@host:port/db``，
+    SQLAlchemy 连接串形如 ``postgresql+psycopg://user:<数据库密码>@host:port/db``，
     psycopg 不识别 ``+psycopg`` 方言标记，因此拆出主机与库名重新拼接，
     并去掉库名以使用管理员可访问的 ``postgres`` 维护库。
     """
-    # 形如 postgresql+psycopg://user:pwd@host:port/dbname
+    # 形如 postgresql+psycopg://user:<数据库密码>@host:port/dbname
     if "@" not in url:
         raise ValueError("DATABASE_URL 必须包含凭据部分")
     credentials, target = url.split("@", 1)
@@ -84,9 +84,7 @@ def run_migrations(dsn_url: str) -> None:
 
     os.environ["DATABASE_URL"] = dsn_url
     config = _alembic_config(dsn_url)
-    # 幂等保护：无论 alembic_version 当前指向哪里，先盖回 base 再向上升级。
-    # 这样重复执行本脚本不会报「版本已存在」，也不会把半迁移状态误判为已完成。
-    command.stamp(config, "base")
+    # 保留已记录的迁移版本；对已有库盖回 base 会重复执行建表迁移。
     command.upgrade(config, "head")
 
     head = ScriptDirectory.from_config(config).get_current_head()

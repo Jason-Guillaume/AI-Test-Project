@@ -14,6 +14,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from dotenv import load_dotenv
+from pydantic import field_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
@@ -91,7 +92,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "测试开发平台"
     VERSION: str = "1.0.0"
 
-    # PostgreSQL 连接串，格式：postgresql+psycopg://用户:密码@主机:端口/库名
+    # PostgreSQL 连接串，格式：postgresql+psycopg://用户:<数据库密码>@主机:端口/库名
     DATABASE_URL: str | None = None
 
     # 主库连接池参数。
@@ -110,6 +111,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str | None = None
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
+    # 浏览器认证 Cookie 生产环境默认启用 Secure；本地 HTTP 开发须在 .env 显式关闭。
+    AUTH_COOKIE_SECURE: bool = True
 
     # 模型 API Key 加密密钥；留空时由 SECRET_KEY 派生（旧项目同款规则）。
     MODEL_CONFIG_ENCRYPTION_KEY: str | None = None
@@ -171,6 +174,30 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, value: str | None) -> str | None:
+        """配置实例化时校验签名密钥，拒绝短密钥与可预测占位符。
+
+        Args:
+            value: 从环境变量、.env 或构造参数读取的原始密钥。
+        Returns:
+            原样返回通过校验的密钥；None 留给模块启动检查报告缺失配置。
+        Raises:
+            ValueError: 密钥短于 32 字符、字符种类不足或命中示例占位标记时。
+        """
+        if value is None:
+            return None
+        normalized = value.strip()
+        placeholders = ("change-me", "changeme", "placeholder", "replace-me", "your-secret")
+        if (
+            len(normalized) < 32
+            or len(set(normalized)) < 12
+            or any(marker in normalized.lower() for marker in placeholders)
+        ):
+            raise ValueError("SECRET_KEY 至少需要 32 个字符、12 种不同字符且不能使用示例占位值")
+        return normalized
 
     @classmethod
     def settings_customise_sources(

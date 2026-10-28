@@ -1,3 +1,4 @@
+import { collectArrayPages } from '@/api/pagination';
 // 测试计划页（用户视角）。
 // 单页表格：计划 CRUD + 每行「管理套件」抽屉（计划↔套件关联的增删）。
 //
@@ -25,7 +26,7 @@ import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/api/testManagement';
 import { projectsApi } from '@/api/projects';
 import { getErrorMessage } from '@/api/client';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { TEST_EXECUTION_MODE_OPTIONS, TEST_PLAN_STATUS_OPTIONS } from './constants';
 import type {
@@ -67,7 +68,7 @@ export function ConsoleTestPlansPage() {
 
   const plansQuery = useQuery({
     queryKey: ['test-plans', currentProjectId],
-    queryFn: () => testManagementApi.listPlans(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listPlans(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: currentProjectId != null,
   });
   const envsQuery = useQuery({
@@ -209,6 +210,8 @@ export function ConsoleTestPlansPage() {
 
       {plansQuery.isLoading ? (
         <LoadingState />
+      ) : plansQuery.isError ? (
+        <ErrorState error={plansQuery.error} onRetry={plansQuery.refetch} />
       ) : plans.length === 0 ? (
         <EmptyState description="暂无测试计划" />
       ) : (
@@ -290,7 +293,7 @@ function PlanSuitesDrawer({
   });
   const allSuitesQuery = useQuery({
     queryKey: ['test-suites', currentProjectId, 'for-plan'],
-    queryFn: () => testManagementApi.listSuites(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listSuites(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: planId != null && currentProjectId != null,
   });
 

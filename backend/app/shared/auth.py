@@ -13,7 +13,7 @@
 from __future__ import annotations
 
 import jwt
-from fastapi import Depends, status
+from fastapi import Cookie, Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,8 @@ from app.shared.database import get_db
 from app.shared.errors import AUTH_REQUIRED_MESSAGE, forbidden, unauthorized
 
 # tokenUrl 供 Swagger 文档展示，需与 auth 路由的实际挂载点一致：POST /api/v1/login。
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/login", auto_error=False)
+AUTH_COOKIE_NAME = "access_token"
 
 # 账户被禁用的专用文案，走 403；与令牌失效的 401 文案刻意区分，前端据此提示不同分支。
 ACCOUNT_DISABLED_MESSAGE = "该账户已被禁用"
@@ -79,21 +80,36 @@ def require_admin(user: User, detail: str = "仅管理员可执行该操作") ->
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
+    cookie_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
     db: Session = Depends(get_db),
 ) -> User:
-    """解析 Bearer JWT，返回当前登录用户；失效、不存在或停用时抛出 HTTP 错误。
+    """解析 HttpOnly Cookie 或兼容的 Bearer JWT，返回当前登录用户。
 
     Args:
-        token: OAuth2PasswordBearer 解出的 Bearer 令牌（不含 "Bearer " 前缀）。
+        request: 用于区分 Cookie 鉴权并校验写请求来源。
+        token: OAuth2PasswordBearer 解出的 Bearer 令牌；兼容旧 API 客户端。
+        cookie_token: 浏览器认证 Cookie 中的令牌。
         db: 请求级数据库会话，用于按 sub 反查用户。
 
     Returns:
         User: 当前登录用户，调用方可安全使用其 id / role / is_active 等字段。
     """
+    # 浏览器登录优先使用 HttpOnly Cookie；Bearer 仅为已有 API 客户端保留兼容。
+    uses_cookie = bool(cookie_token)
+    selected_token = cookie_token if uses_cookie else token
+    if uses_cookie and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        origin = request.headers.get("origin", "").rstrip("/")
+        allowed_origins = {item.strip().rstrip("/") for item in settings.CORS_ORIGINS}
+        # Cookie 会被浏览器自动附带，写请求必须来自显式信任的前端 Origin，防止跨站伪造。
+        if not origin or origin not in allowed_origins:
+            raise forbidden("请求来源无效")
+    if not selected_token:
+        raise unauthorized(TOKEN_EXPIRED_MESSAGE)
     try:
         # JWT 校验必须显式传入 algorithms，避免算法混淆与把算法名误当成 audience。
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(selected_token, settings.SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload.get("sub"))
         claimed_version = payload.get("ver", 0)
     except (jwt.PyJWTError, TypeError, ValueError):

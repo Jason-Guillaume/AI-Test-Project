@@ -69,7 +69,7 @@ export function FixtureTab({
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
   });
 
-  const briefs: FixtureBrief[] = listQuery.data?.items ?? [];
+  const briefs: FixtureBrief[] = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items]);
   const selected: FixtureBrief | undefined = useMemo(
     () => briefs.find((b) => b.id === selectedId),
     [briefs, selectedId],

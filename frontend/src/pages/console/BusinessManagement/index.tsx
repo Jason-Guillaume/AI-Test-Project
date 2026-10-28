@@ -42,6 +42,11 @@ interface FlowFormValues {
  * 左侧树选中域与流程后，右侧渲染 FlowDetail（聚合详情一次性拉取，4 Tab 共享同一份数据）。
  */
 export function ConsoleBusinessManagementPage() {
+  const { currentProjectId } = useConsoleScope();
+  return <BusinessWorkspace key={currentProjectId ?? 'none'} />;
+}
+
+function BusinessWorkspace() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();

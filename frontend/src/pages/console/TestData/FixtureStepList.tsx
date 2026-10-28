@@ -104,7 +104,6 @@ export function FixtureStepList({
   // 仅在当前 phase 的步骤集合变化时重置本地行，避免编辑中被覆盖。
   useEffect(() => {
     setRows((fixture.steps ?? []).filter((s) => s.phase === phase).map(stepToRow));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fixture.steps, phase]);
 
   const swap = (i: number, j: number) => {
@@ -168,7 +167,7 @@ export function FixtureStepList({
 
   const handleAdd = async () => {
     const values = await form.validateFields();
-    let configText = (values.config_text ?? '').trim();
+    const configText = (values.config_text ?? '').trim();
     if (configText) {
       try {
         JSON.parse(configText);

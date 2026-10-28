@@ -168,7 +168,7 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
       form.setFieldValue('project_id', initialProjectId ?? currentProjectId ?? projectsQuery.data?.items[0]?.id);
       initialized.current = true;
     }
-  }, [currentProjectId, form, initialProjectId, open, projectsQuery.data?.items]);
+  }, [currentProjectId, form, initialProjectId, open, projectsQuery.data]);
 
   useEffect(() => {
     if (open) form.setFieldValue('target_type', initialTargetType);

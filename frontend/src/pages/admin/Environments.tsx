@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 环境与目标服务配置：保留项目作用域与目标授权规则（写操作仅平台管理员）。
 import {
   App,
@@ -53,7 +54,7 @@ export function AdminEnvironmentsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<number>();
   const projectsQuery = useQuery({
     queryKey: ['projects', 'environment-admin'],
-    queryFn: () => projectsApi.list({ page: 1, page_size: 200 }),
+    queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 200 })),
   });
   const projectId = selectedProjectId ?? projectsQuery.data?.items[0]?.id;
 

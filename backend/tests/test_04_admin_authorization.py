@@ -183,8 +183,8 @@ def test_model_api_key_is_never_returned_in_clear(api, admin):
     assert len(body["masked_api_key"]) < len(secret)
     assert not body["masked_api_key"].endswith(secret[-8:])
 
-    listed = api.get("/model-configs", username=admin).json()
-    target = next(item for item in listed["items"] if item["domain_id"] == domain)
+    listed = api.get("/model-configs", username=admin, params={"page_size": 200}).json()
+    target = next(item for item in listed["items"] if item["id"] == body["id"])
     assert secret not in str(listed)
     assert target["has_api_key"] is True
 

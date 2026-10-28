@@ -440,7 +440,7 @@ Fixture、数据资产、Provider、数据池、目标库连接都挂在 `/api/v
 
 | Key | 示例 / 默认 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+psycopg://root:fangzhou123@127.0.0.1:5432/testplatform?options=-csearch_path%3Dtestplatform` | **必需**，注意 URL 编码 |
+| `DATABASE_URL` | `postgresql+psycopg://root:<数据库密码>@127.0.0.1:5432/testplatform?options=-csearch_path%3Dtestplatform` | **必需**，注意 URL 编码 |
 | `SECRET_KEY` | `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'` | **必需**；import 时就 `RuntimeError`，别留占位符 |
 | `JWT_ACCESS_TOKEN_EXPIRE_DAYS` | `7` | |
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 逗号分隔，**不是** JSON |

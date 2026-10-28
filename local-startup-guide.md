@@ -10,7 +10,7 @@
 - Python 3.11 或更新版本
 - Node.js 20 或更新版本，以及 npm
 
-本地默认端口：PostgreSQL `5432`、后端 `8001`、前端 `5173`。不要将本地默认数据库凭据用于共享或生产环境。
+本地默认端口：PostgreSQL `5432`、后端 `8001`、前端 `5173`。Compose 仅绑定 `127.0.0.1`，数据库凭据必须由本地环境显式提供。
 
 ## 首次初始化
 
@@ -19,11 +19,14 @@
 在仓库根目录运行：
 
 ```bash
+export POSTGRES_USER=platform_dev
+export POSTGRES_PASSWORD="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')"
+export POSTGRES_DB=testplatform_dev
 docker compose up -d postgres
 docker compose ps
 ```
 
-等待 PostgreSQL 状态变为 `healthy`。仓库 Compose 的本地开发配置使用用户 `root`、密码 `fangzhou123` 和数据库 `testplatform_dev`；数据保存在 `postgres-data` 卷中。若使用已有 PostgreSQL，请准备一个可创建数据库和迁移表的账号，并在后续配置中替换连接串。
+等待 PostgreSQL 状态变为 `healthy`。Compose 不含默认用户或密码；上述变量仅保存在当前终端环境。若使用已有 PostgreSQL，请准备一个可创建数据库和迁移表的账号，并在后续配置中替换连接串。
 
 ### 2. 安装并配置后端
 
@@ -37,8 +40,9 @@ python3 -m venv .venv
 编辑 `backend/.env`，至少设置：
 
 ```dotenv
-DATABASE_URL=postgresql+psycopg://root:fangzhou123@127.0.0.1:5432/testplatform_dev
-SECRET_KEY=<粘贴一条随机生成的长密钥>
+DATABASE_URL=postgresql+psycopg://<用户名>:<数据库密码>@127.0.0.1:5432/<数据库名>
+SECRET_KEY=<至少 32 个字符的随机密钥>
+AUTH_COOKIE_SECURE=false
 AUTO_CREATE_SCHEMA=false
 ```
 
@@ -122,10 +126,10 @@ curl http://127.0.0.1:8001/healthz
 (cd backend && .venv/bin/python -m pytest -q tests/)
 
 # 前端检查和生产构建
-(cd frontend && npm run typecheck && npm run build)
+(cd frontend && npm test && npm run lint && npm run typecheck && npm run build)
 ```
 
-后端测试默认连接 `127.0.0.1:5432`，并使用 `TEST_POSTGRES_USER=root`、`TEST_POSTGRES_PASSWORD=fangzhou123`。测试数据库按进程隔离，不会复用开发库；不要将测试连接指向生产或含有重要数据的数据库。
+后端测试需显式设置 `TEST_POSTGRES_PASSWORD`，并确保测试账号有创建、删除隔离测试库的权限；不要指向生产或含重要数据的数据库。
 
 ## 停止服务
 

@@ -95,15 +95,6 @@ export function OverviewTab({
         <Descriptions.Item label="鉴权类型">{api.auth_type}</Descriptions.Item>
         <Descriptions.Item label="Content-Type">{api.content_type}</Descriptions.Item>
         <Descriptions.Item label="描述">{api.description ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="结构指纹">
-          {api.source_hash ? (
-            <Typography.Text code copyable>
-              {api.source_hash.slice(0, 16)}
-            </Typography.Text>
-          ) : (
-            '-'
-          )}
-        </Descriptions.Item>
         <Descriptions.Item label="参数 / 响应">
           {api.parameters.length} 个参数 · {api.responses.length} 个响应
         </Descriptions.Item>

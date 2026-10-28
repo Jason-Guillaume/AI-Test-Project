@@ -1,3 +1,4 @@
+import { collectArrayPages } from '@/api/pagination';
 // 测试资产页（用户视角）。
 // 左右布局：左侧 策略→测试点→用例 三级树；右侧选中用例的聚合详情编辑器
 // （基本信息 + 前置条件 / 测试数据 / 步骤 / 断言 四 Tab，子实体就地 CRUD）。
@@ -121,17 +122,17 @@ function TestAssetWorkspace() {
 
   const strategiesQuery = useQuery({
     queryKey: ['test-strategies', currentProjectId],
-    queryFn: () => testManagementApi.listStrategies(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listStrategies(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: currentProjectId != null,
   });
   const pointsQuery = useQuery({
     queryKey: ['test-points', currentProjectId],
-    queryFn: () => testManagementApi.listPoints(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listPoints(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: currentProjectId != null,
   });
   const casesQuery = useQuery({
     queryKey: ['test-cases', currentProjectId],
-    queryFn: () => testManagementApi.listCases(currentProjectId!),
+    queryFn: () => collectArrayPages((page) => testManagementApi.listCases(currentProjectId!, { page, page_size: 100 }), 100),
     enabled: currentProjectId != null,
   });
   const detailQuery = useQuery({
@@ -140,9 +141,9 @@ function TestAssetWorkspace() {
     enabled: selectedCaseId != null,
   });
 
-  const strategies = strategiesQuery.data ?? [];
-  const points = pointsQuery.data ?? [];
-  const cases = casesQuery.data ?? [];
+  const strategies = useMemo(() => strategiesQuery.data ?? [], [strategiesQuery.data]);
+  const points = useMemo(() => pointsQuery.data ?? [], [pointsQuery.data]);
+  const cases = useMemo(() => casesQuery.data ?? [], [casesQuery.data]);
   const detail = detailQuery.data;
 
   useEffect(() => {
@@ -347,6 +348,8 @@ function TestAssetWorkspace() {
             <div style={{ flex: 1, overflow: 'auto' }}>
               {strategiesQuery.isLoading || pointsQuery.isLoading || casesQuery.isLoading ? (
                 <LoadingState />
+              ) : strategiesQuery.isError || pointsQuery.isError || casesQuery.isError ? (
+                <div role="alert">测试资产加载失败 <Button onClick={() => { void strategiesQuery.refetch(); void pointsQuery.refetch(); void casesQuery.refetch(); }}>重试</Button></div>
               ) : treeData.length === 0 ? (
                 <EmptyState description="暂无策略，请新建" />
               ) : (

@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 import {
   App,
   Alert,
@@ -89,7 +90,7 @@ function AgentPane() {
   const skills = useQuery({ queryKey: ['agent-governance', 'skills'], queryFn: agentGovernanceApi.skills });
   const tools = useQuery({ queryKey: ['agent-governance', 'tools'], queryFn: agentGovernanceApi.tools });
   const mcpServers = useQuery({ queryKey: ['agent-governance', 'mcp-servers'], queryFn: agentGovernanceApi.mcpServers });
-  const models = useQuery({ queryKey: ['agent-governance', 'models'], queryFn: () => modelConfigsApi.list({ page: 1, page_size: 100, is_enabled: true }) });
+  const models = useQuery({ queryKey: ['agent-governance', 'models'], queryFn: () => collectPages((page) => modelConfigsApi.list({ page, page_size: 100, is_enabled: true })) });
   const createMutation = useMutation({
     mutationFn: agentGovernanceApi.createAgent,
     onSuccess: () => { message.success('Agent 配置已创建'); setCreating(false); invalidate(); },

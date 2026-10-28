@@ -496,15 +496,17 @@ function Workspace({ projectId }: { projectId: number }) {
   const session = taskBound
     ? taskWorkspace.data?.web_session ?? null
     : webSessionId != null ? sessions.data?.items.find((s) => s.id === webSessionId) ?? null : null;
+  const taskAgentSessionId = taskWorkspace.data?.agent_session.id;
+  const taskWebSessionId = taskWorkspace.data?.web_session.id;
 
   const detail = useQuery({ queryKey: ['agent', 'session', agentSessionId], queryFn: () => agentApi.getSessionDetail(agentSessionId!), enabled: !taskBound && agentSessionId != null });
   const workspace = useQuery({ queryKey: ['agent', 'workspace', agentSessionId], queryFn: () => agentApi.getWorkspace(agentSessionId!), enabled: !taskBound && agentSessionId != null });
 
   useEffect(() => {
-    if (!taskBound || !taskWorkspace.data) return;
-    setAgentSessionId(taskWorkspace.data.agent_session.id);
-    setWebSessionId(taskWorkspace.data.web_session.id);
-  }, [taskBound, taskWorkspace.data?.agent_session.id, taskWorkspace.data?.web_session.id]);
+    if (!taskBound || taskAgentSessionId == null || taskWebSessionId == null) return;
+    setAgentSessionId(taskAgentSessionId);
+    setWebSessionId(taskWebSessionId);
+  }, [taskBound, taskAgentSessionId, taskWebSessionId]);
 
   useEffect(() => {
     if (taskBound || agentSessionId == null) return;
@@ -617,7 +619,7 @@ function Workspace({ projectId }: { projectId: number }) {
     } finally {
       turnBusy.current = false;
     }
-  }, [taskBound, taskRunId, webSessionId, session?.status, agentSessionId, projectId, turn, createAgentSession, invalidate, queryClient, message]);
+  }, [taskBound, webSessionId, session?.status, agentSessionId, projectId, turn, createAgentSession, invalidate, queryClient, message]);
 
   const doCreateAgentSession = useCallback(() => {
     if (turnBusy.current) return;

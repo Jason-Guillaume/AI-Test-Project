@@ -89,6 +89,15 @@ class ActionRunResult:
     unverified_preconditions: list[dict] = field(default_factory=list)
 
 
+def _merge_action_headers(ctx: ExecutionContext, environment_headers: dict, action_headers: dict) -> dict:
+    """Inject runtime headers while preserving environment and action overrides."""
+    runtime_headers = ctx.get("__web_headers")
+    headers = dict(runtime_headers) if isinstance(runtime_headers, dict) else {}
+    headers.update(environment_headers)
+    headers.update(action_headers)
+    return headers
+
+
 def run_action(
     db: Session,
     action_id: int,
@@ -391,8 +400,9 @@ def _run_action_core(
             return result
 
         # 7. 构造并执行 HTTP 请求。
-        base_headers = _EXECUTOR.get_environment_headers(environment)
-        base_headers.update(request_parts["headers"])
+        base_headers = _merge_action_headers(
+            ctx, _EXECUTOR.get_environment_headers(environment), request_parts["headers"]
+        )
 
         url = _EXECUTOR.build_url(environment, iface.path, request_parts["path_params"])
         method = iface.method.upper()

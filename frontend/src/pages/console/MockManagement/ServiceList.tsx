@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 接口 Mock 与依赖异常模拟 · 服务管理页。
 //
 // 数据：
@@ -44,7 +45,7 @@ import type { TableColumnsType } from 'antd';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { getErrorMessage } from '@/api/client';
 import { mockManagementApi } from '@/api/mockManagement';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { fmtTime } from '@/shared/format';
 import type {
@@ -227,7 +228,7 @@ function FromApiModal({
   const [form] = Form.useForm<{ api_id: number; service_key: string; service_name?: string; templates: string[] }>();
   const apisQuery = useQuery({
     queryKey: ['apis-for-mock', projectId],
-    queryFn: () => apiCatalogApi.listApis(projectId, { page: 1, page_size: 200 }),
+    queryFn: () => collectPages((page) => apiCatalogApi.listApis(projectId, { page, page_size: 200 })),
     enabled: open,
   });
   const apis: ApiInterface[] = apisQuery.data?.items ?? [];
@@ -318,7 +319,7 @@ export function ConsoleMockManagementPage() {
 
   const servicesQuery = useQuery({
     queryKey: ['mock-services', currentProjectId],
-    queryFn: () => mockManagementApi.listServices(currentProjectId!, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => mockManagementApi.listServices(currentProjectId!, { page, page_size: 100 })),
     enabled: currentProjectId != null,
   });
   const services = servicesQuery.data?.items ?? [];
@@ -562,6 +563,8 @@ export function ConsoleMockManagementPage() {
 
       {servicesQuery.isLoading ? (
         <LoadingState />
+      ) : servicesQuery.isError ? (
+        <ErrorState error={servicesQuery.error} onRetry={servicesQuery.refetch} />
       ) : services.length === 0 ? (
         <EmptyState description="尚未配置 Mock 服务，可点「新建 Mock 服务」或「从接口一键创建」开始" />
       ) : (

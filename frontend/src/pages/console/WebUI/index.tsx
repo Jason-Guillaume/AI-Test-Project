@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // Web UI 自动化控制台：页面对象、结构化用例、加密登录态、调试历史和报告。
 import { useState } from 'react';
 import { Alert, App, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
@@ -44,11 +45,11 @@ function Workspace({ projectId }: { projectId: number }) {
   const [agentForm] = Form.useForm();
   const cases = useQuery({ queryKey: ['project', projectId, 'web', 'cases', casePage], queryFn: () => webUIApi.cases(projectId, casePage) });
   const requestedCase = useQuery({ queryKey: ['web-case-link', requestedCaseId], queryFn: () => webUIApi.case(requestedCaseId!), enabled: requestedCaseId != null });
-  const pages = useQuery({ queryKey: ['project', projectId, 'web', 'pages'], queryFn: () => webUIApi.pages(projectId) });
-  const auth = useQuery({ queryKey: ['project', projectId, 'web', 'auth'], queryFn: () => webUIApi.auth(projectId) });
+  const pages = useQuery({ queryKey: ['project', projectId, 'web', 'pages'], queryFn: () => collectPages((page) => webUIApi.pages(projectId, page)) });
+  const auth = useQuery({ queryKey: ['project', projectId, 'web', 'auth'], queryFn: () => collectPages((page) => webUIApi.auth(projectId, page, 200)) });
   const environments = useQuery({ queryKey: ['project', projectId, 'web', 'environments', environmentKeyword], queryFn: () => webUIApi.environments(projectId, environmentKeyword) });
   const history = useQuery({ queryKey: ['project', projectId, 'web', 'history', historyPage], queryFn: () => webUIApi.history(projectId, historyPage), enabled: tab === 'history' });
-  const flows = useQuery({ queryKey: ['project', projectId, 'web', 'flows'], queryFn: () => businessApi.listFlows(projectId, { page_size: 200 }), enabled: agentOpen || !!bindCase });
+  const flows = useQuery({ queryKey: ['project', projectId, 'web', 'flows'], queryFn: () => collectPages((page) => businessApi.listFlows(projectId, { page, page_size: 200 })), enabled: agentOpen || !!bindCase });
   const actions = useQuery({ queryKey: ['project', projectId, 'web', 'actions', flowId], queryFn: () => businessApi.listActions(flowId!), enabled: !!flowId && !!bindCase });
   const write = useMutation({
     mutationFn: (job: () => Promise<unknown>) => job(),

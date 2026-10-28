@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 缺陷管理（用户视角）。
 // 本模块导出 ConsoleDefectsPage，由路由 /console/defects 挂载。
 //
@@ -39,7 +40,7 @@ import { ErrorState, LoadingState, PageContainer } from '@/components/PageState'
 import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
 import { getErrorMessage } from '@/api/client';
 import { DefectOrigins } from '@/components/exec/DefectOrigins';
-import type { Bug, BugSeverity, BugStatus, Paginated, Project } from '@/types';
+import type { Bug, BugSeverity, BugStatus, Paginated } from '@/types';
 
 // 后端约定的状态与严重度常量；与 BugStatus/BugSeverity 类型保持同步。
 const BUG_STATUSES: BugStatus[] = ['待确认', '处理中', '已修复', '已关闭', '已拒绝'];
@@ -131,13 +132,10 @@ export function ConsoleDefectsPage() {
   });
 
   // 项目下拉数据源：拉当前用户全部可见项目（page_size=100 兜底）
-  const projectsQuery = useQuery<Paginated<Project>>({
+  const projectsQuery = useQuery({
     queryKey: ['projects', { page: 1, page_size: 100 }],
     queryFn: () =>
-      projectsApi.list({
-        page: 1,
-        page_size: 100,
-      }),
+      collectPages((page) => projectsApi.list({ page, page_size: 100 })),
   });
 
   // 弹窗内需要展示「某项目的成员列表」作为「处理人」下拉；
@@ -146,10 +144,10 @@ export function ConsoleDefectsPage() {
     modalState?.mode === 'edit'
       ? modalState.bug.project_id
       : projectId;
-  const membersQuery = useQuery<Paginated<unknown>>({
+  const membersQuery = useQuery({
     queryKey: ['project', modalProjectId, 'members'],
     queryFn: () =>
-      projectsApi.listMembers(modalProjectId!, { page: 1, page_size: 200 }),
+      collectPages((page) => projectsApi.listMembers(modalProjectId!, { page, page_size: 200 })),
     enabled: modalState != null && modalProjectId != null,
   });
 

@@ -225,7 +225,19 @@ def _create_case(api, admin, project_id, *, name, target_type="API", api_id=None
 
 
 def _build_plan_with_cases(api, admin, project_id, case_ids, env_id):
-    """构建计划包含`cases`。"""
+    """构建计划包含`cases`，确保测试环境已绑定到目标项目。"""
+    from app.models.configuration import Environment
+    from app.models.project_environment import ProjectEnvironment
+    from app.shared.database import SessionLocal
+    with SessionLocal() as session:
+        binding = session.query(ProjectEnvironment).filter_by(project_id=project_id, environment_id=env_id).first()
+        if binding is None:
+            env = session.get(Environment, env_id)
+            session.add(ProjectEnvironment(project_id=project_id, environment_id=env_id,
+                display_name=env.display_name, base_url=env.base_url or "",
+                gateway_prefix=env.gateway_prefix or "", default_headers=env.default_headers or {},
+                is_active=True))
+            session.commit()
     suite_id = api.post(f"/projects/{project_id}/test-suites", username=admin,
                         json={"name": unique("suite")}).json()["id"]
     for i, cid in enumerate(case_ids):
@@ -792,3 +804,42 @@ class TestVariableRefEndToEnd:
             ce = _case_execs(api, admin, run["id"])[0]
             assert ce["status"] == "PASSED"
             assert all(a["status"] == "SUCCESS" for a in ce["response_snapshot"]["actions"])
+
+
+def test_business_flow_api_action_receives_runtime_mock_context(api, admin, db):
+    """The runtime context reaches a real HTTP request made by a flow API action."""
+    from app.features.business.models.business_domain import BusinessDomain
+    from app.features.business.models.business_flow import BusinessFlow
+    from app.models.project_environment import ProjectEnvironment
+
+    with StubServer() as stub:
+        seen = []
+        def record(handler, body):
+            seen.append(handler.headers.get("X-Mock-Context"))
+            return 200, {"code": 0}
+        stub.add_fn("GET", "/flow-context", record)
+        project_id = _create_project(api, admin)
+        admin_id = _admin_id(db)
+        env_id = _make_env(db, stub.base_url, admin_id)
+        db.add(ProjectEnvironment(project_id=project_id, environment_id=env_id,
+            base_url=stub.base_url, display_name="stub", gateway_prefix="", default_headers={}, is_active=True))
+        _whitelist(db, project_id, stub.port, admin_id)
+        iface_id = _make_iface(db, project_id, "GET", "/flow-context")
+        domain = BusinessDomain(project_id=project_id, name=unique("domain"), status="ACTIVE")
+        db.add(domain)
+        db.flush()
+        flow = BusinessFlow(project_id=project_id, domain_id=domain.id, name=unique("flow"), status="ACTIVE")
+        db.add(flow)
+        db.flush()
+        action = _add_action(db, flow.id, "请求", "REQUEST", 0)
+        _add_binding(db, action.id, iface_id)
+        db.commit()
+        case_id = _create_case(api, admin, project_id, name="流程上下文", target_type="BUSINESS_FLOW", business_flow_id=flow.id)
+        from app.features.test_management.executors.test_case_executor import execute
+        from app.features.test_management.models.test_case import TestCase
+        from app.models.configuration import Environment
+        from app.models.identity import User
+        result = execute(db, db.get(TestCase, case_id), environment=db.get(Environment, env_id),
+                         actor=db.get(User, admin_id), extra_headers={"X-Mock-Context": "run-context"})
+        assert result.status == "PASSED", result.error_message
+        assert seen == ["run-context"]

@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 接口测试 Agent 页面：三栏布局（会话列表 · 对话流 · 工作区）。
 //
 // 功能：
@@ -411,7 +412,7 @@ export function AgentPage() {
   // 飞书通知渠道候选项：确认报告时选择推送渠道（只显示启用且已配置 webhook 的渠道）。
   const channelsQuery = useQuery({
     queryKey: ['agent', 'notification-channels', currentProjectId],
-    queryFn: () => notificationChannelsApi.list(currentProjectId!, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => notificationChannelsApi.list(currentProjectId!, { page, page_size: 100 })),
     enabled: currentProjectId != null,
     staleTime: 60_000,
   });

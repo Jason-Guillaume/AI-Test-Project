@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // DATABASE_INSERT / DATABASE_PATCH Provider 配置：connection + table + operation + where + values。
 //
 // §9.6 / §10：被测库直写。connection 从本项目已建连接里选（本模块内）；
@@ -47,7 +48,7 @@ function useJsonField(
 export function ProviderConfigDatabase({ value, onChange, projectId }: ConfigProps) {
   const connectionsQuery = useQuery({
     queryKey: ['test-data', 'connections', projectId, { page_size: 200 }],
-    queryFn: () => testDataApi.listConnections(projectId, { page_size: 200 }),
+    queryFn: () => collectPages((page) => testDataApi.listConnections(projectId, { page, page_size: 200 })),
     enabled: projectId != null,
   });
   const where = useJsonField(value, onChange, 'where', {});

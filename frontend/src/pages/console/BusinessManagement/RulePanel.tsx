@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 业务规则面板：展示与管理流程级的业务规则。
 // 规则可关联到流程或具体步骤；表达式仅人工维护，第一阶段不自动执行（标记「未接入」）。
 import { useState } from 'react';
@@ -30,9 +31,9 @@ export function RulePanel({
   const [editRule, setEditRule] = useState<{ id: number; values: Partial<BusinessRuleCreate> } | null>(null);
   const [form] = Form.useForm<BusinessRuleCreate>();
 
-  const { data, isPending } = useQuery({
+  const { data, isPending, isError, refetch } = useQuery({
     queryKey: ['business', flowId, 'rules'],
-    queryFn: () => businessApi.listRules(projectId, { page: 1, page_size: 100, flow_id: flowId }),
+    queryFn: () => collectPages((page) => businessApi.listRules(projectId, { page, page_size: 100, flow_id: flowId })),
     enabled: flowId > 0,
   });
   const rules = data?.items ?? [];
@@ -155,6 +156,8 @@ export function RulePanel({
       </Space>
       {isPending ? (
         <Empty description="加载中" />
+      ) : isError ? (
+        <div role="alert">规则加载失败 <Button onClick={() => void refetch()}>重试</Button></div>
       ) : rules.length > 0 ? (
         <Table rowKey="id" columns={columns} dataSource={rules} pagination={false} size="small" />
       ) : (

@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 安全测试页（用户控制台）。
 //
 // 四个 Tab：概览 / 策略与规则 / 安全用例 / 疑似问题。
@@ -17,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { securityApi } from '@/api/securityTesting';
-import { EmptyState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import {
   COVERAGE_OPTIONS,
@@ -84,18 +85,18 @@ export function ConsoleSecurityTestingPage() {
 
 /** 概览 Tab：前端聚合，无后端 overview 端点。 */
 function OverviewTab({ projectId }: { projectId: number }) {
-  // 各列表拉首页 100 条做客户端聚合；列表 Tab 有各自分页查询，互不干扰。
+  // 汇总完整分页结果，查询失败时不显示误导性零值。
   const casesQuery = useQuery({
     queryKey: ['security-overview', projectId, 'cases'],
-    queryFn: () => securityApi.listCases(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => securityApi.listCases(projectId, { page, page_size: 100 })),
   });
   const findingsQuery = useQuery({
     queryKey: ['security-overview', projectId, 'findings'],
-    queryFn: () => securityApi.listFindings(projectId, { page: 1, page_size: 100, status: 'OPEN' }),
+    queryFn: () => collectPages((page) => securityApi.listFindings(projectId, { page, page_size: 100, status: 'OPEN' })),
   });
   const strategiesQuery = useQuery({
     queryKey: ['security-overview', projectId, 'strategies'],
-    queryFn: () => securityApi.listStrategies(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => securityApi.listStrategies(projectId, { page, page_size: 100 })),
   });
   const apisQuery = useQuery({
     queryKey: ['security-overview', projectId, 'apis'],
@@ -114,6 +115,9 @@ function OverviewTab({ projectId }: { projectId: number }) {
       </div>
     );
   }
+
+  const failed = [casesQuery, findingsQuery, strategiesQuery, apisQuery].find((query) => query.isError);
+  if (failed) return <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
 
   const cases = casesQuery.data?.items ?? [];
   const findings = findingsQuery.data?.items ?? [];

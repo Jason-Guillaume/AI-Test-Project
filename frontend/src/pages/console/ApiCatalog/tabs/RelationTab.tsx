@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // 接口关联 Tab：维护当前接口参与的关联（前置条件 / 输出→输入 / 后续步骤）。
 // 列表同时返回「当前接口是 source（发出）」与「当前接口是 target（被依赖）」两个方向，
 // 故用「方向」列区分，「对端接口」按方向取另一侧名称；新增固定以当前接口为 source。
@@ -70,7 +71,7 @@ export function RelationTab({
   const apisQuery = useQuery({
     queryKey: ['api-catalog', projectId, 'apis', { page: 1, page_size: 200 }],
     queryFn: () =>
-      apiCatalogApi.listApis(projectId, { page: 1, page_size: 200 }),
+      collectPages((page) => apiCatalogApi.listApis(projectId, { page, page_size: 200 })),
   });
 
   const createMutation = useMutation({
@@ -233,7 +234,7 @@ export function RelationTab({
               options={apiOptions}
               loading={apisQuery.isPending}
               notFoundContent={
-                apisQuery.isPending ? '加载中...' : '项目内暂无其他接口'
+                apisQuery.isPending ? '加载中...' : apisQuery.isError ? '加载失败，请关闭后重试' : '项目内暂无其他接口'
               }
             />
           </Form.Item>

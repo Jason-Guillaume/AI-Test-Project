@@ -877,6 +877,8 @@ class TestSecurityApi:
         with CountingStub() as stub:
             _route_by_auth(stub, denied_status=401, denied_body={"code": 401}, hit_sink=[])
             env = _env(db, admin_id, name="dev", base_url=stub.base_url)
+            from tests.test_19_data_factory import _bind_env
+            _bind_env(db, project_id, env.id)
             _whitelist(db, project_id, stub.port, admin_id)
             db.commit()
 
@@ -893,7 +895,9 @@ class TestSecurityApi:
 
         assert payload["total"] == 1
         assert payload["status"] == "SUCCESS"
-        assert payload["passed"] == 1
+        case_rows = db.query(CaseExecution).filter(CaseExecution.test_run_id == payload["id"]).all()
+        rows = db.query(SecurityExecution).filter(SecurityExecution.test_run_id == payload["id"]).all()
+        assert payload["passed"] == 1, ([(r.status, r.error_code, r.error_message) for r in case_rows], [r.evidence for r in rows])
         assert stub.hits == [("POST", "/tasks"), ("POST", "/tasks")]
 
         execution = db.query(SecurityExecution).filter(

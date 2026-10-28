@@ -1,3 +1,4 @@
+import { collectPages } from '@/api/pagination';
 // Mock 服务详情：服务信息 + Runtime 调用地址 + 接口（Endpoint）管理。
 //
 // 数据：
@@ -38,7 +39,7 @@ import type { TableColumnsType } from 'antd';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { getErrorMessage } from '@/api/client';
 import { buildRuntimeUrl, mockManagementApi } from '@/api/mockManagement';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { fmtTime } from '@/shared/format';
 import type { ApiInterface, MockEndpoint } from '@/types';
@@ -73,7 +74,7 @@ function EndpointFormModal({
   const [form] = Form.useForm<EndpointFormValues>();
   const apisQuery = useQuery({
     queryKey: ['apis-for-mock-endpoint', projectId],
-    queryFn: () => apiCatalogApi.listApis(projectId, { page: 1, page_size: 200 }),
+    queryFn: () => collectPages((page) => apiCatalogApi.listApis(projectId, { page, page_size: 200 })),
     enabled: open,
   });
   const apis: ApiInterface[] = apisQuery.data?.items ?? [];
@@ -163,7 +164,7 @@ export function ConsoleMockServiceDetailPage() {
 
   const endpointsQuery = useQuery({
     queryKey: ['mock-endpoints', id],
-    queryFn: () => mockManagementApi.listEndpoints(id, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => mockManagementApi.listEndpoints(id, { page, page_size: 100 })),
     enabled: Number.isFinite(id),
   });
   const endpoints = endpointsQuery.data?.items ?? [];
@@ -423,6 +424,8 @@ export function ConsoleMockServiceDetailPage() {
 
       {endpointsQuery.isLoading ? (
         <LoadingState />
+      ) : endpointsQuery.isError ? (
+        <ErrorState error={endpointsQuery.error} onRetry={endpointsQuery.refetch} />
       ) : endpoints.length === 0 ? (
         <EmptyState description="该服务下还没有 Mock 接口，点击「新建 Mock 接口」开始" />
       ) : (

@@ -27,7 +27,9 @@ if str(BACKEND_DIR) not in sys.path:
 TEST_DB_HOST = os.environ.get("TEST_POSTGRES_HOST", "127.0.0.1")
 TEST_DB_PORT = os.environ.get("TEST_POSTGRES_PORT", "5432")
 TEST_DB_USER = os.environ.get("TEST_POSTGRES_USER", "root")
-TEST_DB_PASSWORD = os.environ.get("TEST_POSTGRES_PASSWORD", "fangzhou123")
+TEST_DB_PASSWORD = os.environ.get("TEST_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", ""))
+if not TEST_DB_PASSWORD:
+    raise RuntimeError("运行后端测试前请显式设置 TEST_POSTGRES_PASSWORD")
 # 测试库名在物理上仍与开发库、生产库分离，但按进程加唯一后缀：两个 pytest 进程
 # 并发跑（本地一份 + CI 一份，或两个人各起一份）时各用各的库，后启动的会话不再
 # DROP 掉前者仍在用的库、也不再 terminate 掉其连接——否则两边会批量报
