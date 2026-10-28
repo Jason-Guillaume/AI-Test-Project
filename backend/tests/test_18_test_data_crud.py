@@ -573,7 +573,7 @@ class TestTargetDbAndPolicy:
             json={
                 "environment_id": env_id, "name": unique("conn"),
                 "host": "127.0.0.1", "port": 5432, "database_name": "testplatform_dev",
-                "username": "root", "password": "fangzhou123", "enabled": True,
+                "username": "target_test_user", "password": "test-only-not-a-real-secret", "enabled": True,
             },
         )
         assert r.status_code == 201, r.text

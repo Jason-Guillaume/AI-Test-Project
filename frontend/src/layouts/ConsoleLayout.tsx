@@ -2,6 +2,7 @@
 // 不在此处做鉴权（由 RequireAuth 守卫完成）；也不在此处请求项目/组织之外的数据。
 // 不做菜单级权限过滤：权限与路由逻辑保持现状，由路由守卫与页面自身控制。
 import {
+  Alert,
   Avatar,
   Button,
   Breadcrumb,
@@ -39,6 +40,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
 import { projectsApi } from '@/api/projects';
+import { collectPages } from '@/api/pagination';
 import { TaskSchedulerDrawer } from '@/components/tasks/TaskSchedulerDrawer';
 
 // antd Layout 子部件解构：侧边栏、头部、内容区。
@@ -191,25 +193,12 @@ export function ConsoleLayout() {
   const { currentOrgId, setOrgId, currentProjectId, setProjectId } =
     useConsoleScope(); // 当前项目与其组织作用域
 
-  // 直接拉取当前用户有权访问的项目，再按响应中的组织信息分组。
-  const { data: projectsData } = useQuery({
+  // 分页读取当前用户可见项目并限制收集规模；超限或请求失败时显示重试入口。
+  const projectsQuery = useQuery({
     queryKey: ['projects', 'console-scope-options'],
-    queryFn: async () => {
-      const pageSize = 200;
-      const firstPage = await projectsApi.list({ page: 1, page_size: pageSize });
-      const pageCount = Math.ceil(firstPage.total / pageSize);
-      if (pageCount <= 1) return firstPage;
-      const remainingPages = await Promise.all(
-        Array.from({ length: pageCount - 1 }, (_, index) =>
-          projectsApi.list({ page: index + 2, page_size: pageSize }),
-        ),
-      );
-      return {
-        ...firstPage,
-        items: [firstPage, ...remainingPages].flatMap((page) => page.items),
-      };
-    },
+    queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 200 })),
   });
+  const projectsData = projectsQuery.data;
 
   const projects = useMemo(() => projectsData?.items ?? [], [projectsData?.items]); // 项目候选项，未加载完或为空组织时为 []
 
@@ -359,6 +348,7 @@ export function ConsoleLayout() {
               className="app-scope-select"
               style={{ width: 'min(300px, 52vw)' }}
               placeholder="选择项目"
+              loading={projectsQuery.isLoading}
               value={currentProjectId ?? undefined}
               onChange={(value) => {
                 const project = projects.find((item) => item.id === value);
@@ -370,6 +360,14 @@ export function ConsoleLayout() {
               optionFilterProp="label"
               allowClear
             />
+            {projectsQuery.isError && (
+              <Alert
+                type="error"
+                showIcon
+                message="项目列表加载失败"
+                action={<Button type="link" size="small" onClick={() => void projectsQuery.refetch()}>重试</Button>}
+              />
+            )}
           </Flex>
           <Flex className="app-topbar-actions" gap="small" align="center">
             <TaskSchedulerDrawer />

@@ -19,6 +19,7 @@ from tests.conftest import (
     EXPECTED_TABLES,
     TEST_DATABASE_NAME,
     TEST_DSN,
+    TEST_DB_PASSWORD,
     migration_head,
     psycopg,
 )
@@ -128,15 +129,18 @@ def test_seed_admin_requires_env_and_is_idempotent(db):
 def test_seed_admin_does_not_print_credentials(db):
     """不变量：初始化输出不得回显数据库密码或管理员密码（密钥掩码约定）。
 
-    顺带覆盖两类敏感串：开发库口令（backend/.env 里的那个）与历史遗留的
-    占位默认管理员密码，它们都不该出现在 stdout/stderr 中。
+    顺带覆盖隔离测试库密码与历史遗留的占位默认管理员密码；测试库密码从
+    环境配置读取，避免将真实凭据字面量留在仓库里。
     """
     result = _run_seed(
         {"INIT_ADMIN_USERNAME": SEED_USER, "INIT_ADMIN_PASSWORD": SEED_PASSWORD}
     )
     combined = result.stdout + result.stderr
     assert SEED_PASSWORD not in combined
-    for sensitive in ("fangzhou123", "Admin-Change-Me-123"):
+    sensitive_values = ["Admin-Change-Me-123"]
+    if TEST_DB_PASSWORD:
+        sensitive_values.append(TEST_DB_PASSWORD)
+    for sensitive in sensitive_values:
         assert sensitive not in combined
 
 

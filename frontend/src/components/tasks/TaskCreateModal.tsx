@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { App, Alert, Button, Form, Input, InputNumber, Modal, Select, Spin } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { collectArrayPages, collectPages } from '@/api/pagination';
 import { projectsApi } from '@/api/projects';
 import { apiCatalogApi } from '@/api/apiCatalog';
 import { testManagementApi } from '@/api/testManagement';
@@ -10,7 +11,6 @@ import { securityApi } from '@/api/securityTesting';
 import { getErrorMessage } from '@/api/client';
 import { tasksApi, type AvailableTaskAgent, type Task } from '@/api/tasks';
 import { useConsoleScope } from '@/hooks/useConsoleScope';
-import type { Paginated } from '@/types';
 
 interface FormValues {
   project_id: number;
@@ -50,20 +50,6 @@ const WORKFLOW_NAMES: Record<string, string> = {
   reporting: '测试报告',
 };
 
-/** 完整读取分页候选项，避免后续页资源被误认为不存在。 */
-async function loadAllPages<T>(
-  loadPage: (page: number, pageSize: number) => Promise<Paginated<T>>,
-): Promise<Paginated<T>> {
-  const pageSize = 200;
-  const first = await loadPage(1, pageSize);
-  const pageCount = Math.ceil(first.total / pageSize);
-  if (pageCount <= 1) return first;
-  const remaining = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) => loadPage(index + 2, pageSize)),
-  );
-  return { ...first, items: [first, ...remaining].flatMap((page) => page.items) };
-}
-
 /** 创建 API/Web 任务或绑定既有安全策略的自研安全评估；资产仍通过原业务 API 读取。 */
 export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, initialCaseIds = [], initialTargetType = 'API' }: Props) {
   const [form] = Form.useForm<FormValues>();
@@ -77,7 +63,7 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
   const targetType = Form.useWatch('target_type', form) ?? 'API';
   const projectsQuery = useQuery({
     queryKey: ['projects', { taskCreate: true }],
-    queryFn: () => loadAllPages((page, pageSize) => projectsApi.list({ page, page_size: pageSize })),
+    queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 200 })),
     enabled: open,
   });
   const environmentsQuery = useQuery({
@@ -90,20 +76,16 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
     queryFn: async () => {
       if (targetType === 'API') {
         const pageSize = 200;
-        const all = [];
-        for (let page = 1; ; page += 1) {
-          const batch = await testManagementApi.listCases(projectId!, {
+        const all = await collectArrayPages(
+          (page) => testManagementApi.listCases(projectId!, {
             target_type: 'API', status: 'ACTIVE', page, page_size: pageSize,
-          });
-          all.push(...batch);
-          if (batch.length < pageSize) break;
-        }
+          }),
+          pageSize,
+        );
         return all.map((item): CaseOption => ({ id: item.id, name: item.name, ready: item.enabled && item.status === 'ACTIVE' && item.api_id != null }));
       }
-      const first = await webUIApi.cases(projectId!, 1);
-      const pages = Math.ceil(first.total / first.page_size);
-      const rest = await Promise.all(Array.from({ length: Math.max(0, pages - 1) }, (_, i) => webUIApi.cases(projectId!, i + 2)));
-      return [first, ...rest].flatMap((page) => page.items)
+      const all = await collectPages((page) => webUIApi.cases(projectId!, page, 200));
+      return all.items
         .map((item): CaseOption => ({ id: item.id, name: item.name, ready: item.confirmed }));
     },
     enabled: open && projectId != null && targetType !== 'SECURITY' && targetType !== 'WEB_AUTHORING',
@@ -117,22 +99,22 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
   });
   const authoringAuthQuery = useQuery({
     queryKey: ['task-create-web-auth', projectId],
-    queryFn: () => loadAllPages((page, pageSize) => webUIApi.auth(projectId!, page, pageSize)),
+    queryFn: () => collectPages((page) => webUIApi.auth(projectId!, page, 200)),
     enabled: open && projectId != null,
   });
   const securityApisQuery = useQuery({
     queryKey: ['task-create-security-apis', projectId],
-    queryFn: () => loadAllPages((page, pageSize) => apiCatalogApi.listApis(projectId!, { status: 'ACTIVE', page, page_size: pageSize })),
+    queryFn: () => collectPages((page) => apiCatalogApi.listApis(projectId!, { status: 'ACTIVE', page, page_size: 200 })),
     enabled: open && projectId != null,
   });
   const securityStrategiesQuery = useQuery({
     queryKey: ['task-create-security-strategies', projectId],
-    queryFn: () => loadAllPages((page, pageSize) => securityApi.listStrategies(projectId!, { enabled: true, page, page_size: pageSize })),
+    queryFn: () => collectPages((page) => securityApi.listStrategies(projectId!, { enabled: true, page, page_size: 200 })),
     enabled: open && projectId != null,
   });
   const securityWebSessionsQuery = useQuery({
     queryKey: ['task-create-security-web-sessions', projectId],
-    queryFn: () => loadAllPages((page, pageSize) => webAgentApi.sessions(projectId!, page, pageSize)),
+    queryFn: () => collectPages((page) => webAgentApi.sessions(projectId!, page, 200)),
     enabled: open && projectId != null,
   });
   const createMutation = useMutation({
@@ -199,7 +181,14 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
       destroyOnClose
       width={640}
     >
-      {initialLoading ? <Spin /> : projects.length === 0 ? (
+      {projectsQuery.isError ? (
+        <Alert
+          type="error"
+          showIcon
+          message="读取项目列表失败"
+          action={<Button size="small" onClick={() => void projectsQuery.refetch()}>重试</Button>}
+        />
+      ) : initialLoading ? <Spin /> : projects.length === 0 ? (
         <Alert type="warning" showIcon message="当前账号没有可创建任务的项目" />
       ) : (
         <Form<FormValues>
@@ -287,8 +276,8 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
             </>
           ) : targetType === 'SECURITY' ? (
             <>
-              {securityApisQuery.isError || securityStrategiesQuery.isError ? (
-                <Alert type="error" showIcon message="读取接口或安全策略失败，无法创建安全评估任务" style={{ marginBottom: 16 }} />
+              {securityApisQuery.isError || securityStrategiesQuery.isError || securityWebSessionsQuery.isError ? (
+                <Alert type="error" showIcon message="读取接口、安全策略或 Web 会话失败，无法创建安全评估任务" style={{ marginBottom: 16 }} />
               ) : (
                 <>
                   <Form.Item name="security_api_ids" label="评估接口（最多 10 个）" rules={[{ required: true, type: 'array', min: 1, max: 10, message: '请选择 1 到 10 个已登记的 API 接口' }]}>
