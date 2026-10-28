@@ -108,9 +108,21 @@ export interface GovernanceTool {
   risk: string;
   description: string;
   parameters: GovernanceToolParameter[];
+  runtime_details: GovernanceToolRuntimeDetails;
   parameter_overrides_json: Record<string, { description?: string; default?: string }>;
   is_enabled: boolean;
   agent_ids: number[];
+}
+
+export interface GovernanceToolRuntimeDetails {
+  status: 'active' | 'catalog_only';
+  status_label: string;
+  runtime_name: string | null;
+  runtime_role: string;
+  input_context: { name: string; source: string; description: string; type?: string; required?: boolean }[];
+  output: string;
+  constraints: string[];
+  audit: string;
 }
 
 export interface GovernanceToolParameter {

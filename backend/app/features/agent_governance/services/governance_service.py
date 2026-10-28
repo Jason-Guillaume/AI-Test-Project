@@ -680,17 +680,39 @@ def list_builtin_tools(db: Session) -> list[dict[str, Any]]:
         for key in agent.tool_keys or []:
             if key in agents_by_tool:
                 agents_by_tool[key].append(agent.id)
-    return [
-        {
-            **tool,
-            "description": overrides[tool["key"]].description if tool["key"] in overrides else tool["description"],
-            "parameter_overrides_json": overrides[tool["key"]].parameter_overrides_json or {} if tool["key"] in overrides else {},
-            "is_enabled": overrides[tool["key"]].is_enabled if tool["key"] in overrides else True,
-            "agent_ids": agents_by_tool[tool["key"]],
-            "parameters": tool.get("parameters", []),
+    result = []
+    for tool in BUILTIN_TOOLS:
+        override = overrides.get(tool["key"])
+        parameter_overrides = (override.parameter_overrides_json or {}) if override else {}
+        runtime_details = tool.get("runtime_details", {})
+        parameters = [
+            {
+                **parameter,
+                "description": parameter_overrides.get(parameter["name"], {}).get("description", parameter["description"]),
+                **({"default": parameter_overrides[parameter["name"]]["default"]} if "default" in parameter_overrides.get(parameter["name"], {}) else {}),
+            }
+            for parameter in tool.get("parameters", [])
+        ]
+        runtime_details = {
+            **runtime_details,
+            "input_context": [
+                {
+                    **field,
+                    "description": parameter_overrides.get(field["name"], {}).get("description", field["description"]),
+                }
+                for field in runtime_details.get("input_context", [])
+            ],
         }
-        for tool in BUILTIN_TOOLS
-    ]
+        result.append({
+            **tool,
+            "description": override.description if override else tool["description"],
+            "parameter_overrides_json": parameter_overrides,
+            "is_enabled": override.is_enabled if override else True,
+            "agent_ids": agents_by_tool[tool["key"]],
+            "parameters": parameters,
+            "runtime_details": runtime_details,
+        })
+    return result
 
 
 def update_builtin_tool(
@@ -703,6 +725,14 @@ def update_builtin_tool(
     catalog_tool = TOOL_BY_KEY.get(tool_key)
     if catalog_tool is None:
         raise not_found("平台工具不存在")
+
+    parameter_names = {item["name"] for item in catalog_tool.get("parameters", [])}
+    context_names = {item["name"] for item in catalog_tool.get("runtime_details", {}).get("input_context", [])}
+    unknown_parameter_names = set(body.parameter_overrides_json) - parameter_names - context_names
+    if unknown_parameter_names:
+        raise bad_request("只能覆写已登记参数或运行上下文字段说明")
+    if any("default" in override for name, override in body.parameter_overrides_json.items() if name in context_names):
+        raise bad_request("运行时上下文字段由平台注入，不能配置默认值")
 
     agents = db.query(AgentDefinition).all()
     agents_by_id = {agent.id: agent for agent in agents}
@@ -759,14 +789,7 @@ def update_builtin_tool(
         ))
 
     db.commit()
-    return {
-        **catalog_tool,
-        "description": body.description,
-        "parameter_overrides_json": body.parameter_overrides_json,
-        "is_enabled": body.is_enabled,
-        "agent_ids": list(selected_ids),
-        "parameters": catalog_tool.get("parameters", []),
-    }
+    return next(item for item in list_builtin_tools(db) if item["key"] == tool_key)
 
 
 def restore_builtin_tool_defaults(db: Session, tool_key: str, actor_id: int) -> dict[str, Any]:

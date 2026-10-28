@@ -163,7 +163,11 @@ function AgentPane() {
         workflows={workflows.data ?? []}
         skillOptions={(skills.data ?? []).map((item) => ({ label: `${item.name}${item.is_enabled ? '' : ' · 已停用'}`, value: item.key, disabled: !item.is_enabled }))}
         toolOptions={[
-          ...(tools.data ?? []).map((item) => ({ label: `${item.name} · ${item.risk}`, value: item.key })),
+          ...(tools.data ?? []).map((item) => ({
+            label: `${item.name} · ${item.risk}${item.runtime_details.status === 'catalog_only' ? ' · 未接入' : ''}${item.is_enabled ? '' : ' · 已停用'}`,
+            value: item.key,
+            disabled: !item.is_enabled || item.runtime_details.status !== 'active',
+          })),
           ...(mcpServers.data ?? []).flatMap((server) => server.discovered_tools_json
             .filter((tool) => server.approved_tools_json.includes(tool.name))
             .map((tool) => ({
@@ -198,7 +202,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
   initial?: AgentDefinition;
   workflows: { key: string; label: string; description: string }[];
   skillOptions: { label: string; value: string; disabled?: boolean }[];
-  toolOptions: { label: string; value: string }[];
+  toolOptions: { label: string; value: string; disabled?: boolean }[];
   childAgentOptions: { label: string; value: number; disabled?: boolean }[];
   allowChildNodes: boolean;
   modelOptions: { label: string; value: number }[];
@@ -837,6 +841,7 @@ function ToolsPane() {
                 <Space size={4} style={{ marginTop: 4 }}>
                   <Tag>{tool.category}</Tag>
                   <Tag color={riskColor(tool.risk)}>{tool.risk}</Tag>
+                  <Tag color={tool.runtime_details.status === 'active' ? 'green' : 'orange'}>{tool.runtime_details.status_label}</Tag>
                 </Space>
               </div>
               <Tag>系统</Tag>
@@ -878,6 +883,7 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
   onSubmit: (body: GovernanceToolUpdate) => void;
 }) {
   const [form] = Form.useForm<GovernanceToolUpdate>();
+  const runtime = tool?.runtime_details;
   useEffect(() => {
     if (!tool) return;
     form.setFieldsValue({
@@ -893,11 +899,11 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
     onClose={onClose}
     width={720}
     destroyOnClose
-    extra={tool ? <Tag color={tool.risk === '高风险' ? 'red' : tool.risk === '执行' ? 'orange' : tool.risk === '写入' ? 'blue' : 'default'}>{tool.risk}</Tag> : null}
+    extra={tool ? <Space><Tag color={tool.risk === '高风险' ? 'red' : tool.risk === '执行' ? 'orange' : tool.risk === '写入' ? 'blue' : 'default'}>{tool.risk}</Tag><Tag color={runtime?.status === 'active' ? 'green' : 'orange'}>{runtime?.status_label}</Tag></Space> : null}
     footer={<Space style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}><Button onClick={onRestore} loading={restoring}>恢复默认</Button><Space><Button onClick={onClose}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>保存配置</Button></Space></Space>}
   >
     {tool && <>
-      <Alert type="info" showIcon message="平台内置工具" description="工具实现、分类和风险级别由平台代码维护；此处可编辑治理目录说明及 Agent 授权。固定任务工作流仍只执行平台已有实现，修改说明不会创建新的执行器。保存授权后，相关 Agent 会生成新版本。" style={{ marginBottom: 16 }} />
+      <Alert type={runtime?.status === 'active' ? 'info' : 'warning'} showIcon message={runtime?.status === 'active' ? '平台内置工具' : '工具尚未接入任务执行器'} description={runtime?.status === 'active' ? '可编辑工具说明、运行字段说明和 Agent 授权。字段来源、结构和执行实现由服务端维护；说明覆写只影响治理目录，不会创建新的执行器。保存授权后，相关 Agent 会生成新版本。' : '此项目前仅登记在治理目录，当前任务执行器没有对应调用实现。可以维护目录说明，但绑定 Agent 不会触发工具运行。'} style={{ marginBottom: 16 }} />
       <Space wrap size={[8, 8]} style={{ marginBottom: 16 }}>
         <Tag>{tool.category}</Tag>
         <Tag>系统工具</Tag>
@@ -921,17 +927,39 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
             <Form.Item name="description" label="治理目录说明" rules={[{ required: true, message: '请填写工具用途说明' }]}>
               <Input.TextArea rows={6} maxLength={2000} showCount />
             </Form.Item>
-            <Typography.Title level={5}>参数定义</Typography.Title>
-            {tool.parameters?.length ? tool.parameters.map((parameter) => <Card size="small" key={parameter.name} title={<Space><Typography.Text strong>{parameter.name}</Typography.Text><Tag>{parameter.type}</Tag>{parameter.required && <Tag color="red">必填</Tag>}</Space>} style={{ marginBottom: 10 }}>
-              <Typography.Text type="secondary">由服务端注册表定义；参数名、类型与必填状态保持只读。</Typography.Text>
-              <Form.Item name={['parameter_overrides_json', parameter.name, 'description']} label="参数说明" style={{ marginTop: 12 }}>
-                <Input.TextArea rows={2} maxLength={4000} placeholder={parameter.description} />
-              </Form.Item>
-              <Form.Item name={['parameter_overrides_json', parameter.name, 'default']} label="默认值">
-                <Input maxLength={4000} placeholder={parameter.default ?? '未设置'} />
-              </Form.Item>
-            </Card>) : <Alert type="info" showIcon message="固定任务上下文工具" description="此工具由任务执行服务按固定输入结构调用，不接受自定义参数 Schema。平台会校验任务上下文和项目权限。" />}
+            {tool.parameters?.length ? <>
+              <Typography.Title level={5}>参数定义</Typography.Title>
+              <Typography.Paragraph type="secondary">参数名、类型和必填状态来自服务端注册表；可维护管理说明与默认值。</Typography.Paragraph>
+              {tool.parameters.map((parameter) => <Card size="small" key={parameter.name} title={<Space><Typography.Text strong>{parameter.name}</Typography.Text><Tag>{parameter.type}</Tag>{parameter.required && <Tag color="red">必填</Tag>}</Space>} style={{ marginBottom: 10 }}>
+                <Form.Item name={['parameter_overrides_json', parameter.name, 'description']} label="参数说明" style={{ marginTop: 12 }}>
+                  <Input.TextArea rows={2} maxLength={4000} placeholder={parameter.description} />
+                </Form.Item>
+                <Form.Item name={['parameter_overrides_json', parameter.name, 'default']} label="默认值">
+                  <Input maxLength={4000} placeholder={parameter.default ?? '未设置'} />
+                </Form.Item>
+              </Card>)}
+            </> : <Alert type="info" showIcon message="此工具没有可由模型传入的参数 Schema" description="运行时输入由任务和项目上下文自动注入。可在“运行详情”查看每个字段的来源与用途；平台不会接受自定义参数来改变受控执行边界。" />}
           </> },
+          { key: 'runtime', label: '运行详情', children: runtime ? <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Row gutter={12}>
+              <Col span={12}><Card size="small" title="运行角色"><Typography.Text strong>{runtime.runtime_role}</Typography.Text></Card></Col>
+              <Col span={12}><Card size="small" title="执行器映射"><Typography.Text code>{runtime.runtime_name ?? '当前未接入'}</Typography.Text></Card></Col>
+            </Row>
+            <Card size="small" title="运行时输入 / 上下文" extra={<Tag>字段结构只读 · 说明可编辑</Tag>}>
+              {runtime.input_context.length ? <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                {runtime.input_context.map((field) => <Card key={field.name} type="inner" size="small" title={<Space><Typography.Text code>{field.name}</Typography.Text><Tag>{field.type ?? 'context'}</Tag>{field.required !== false && <Tag color="red">必需</Tag>}<Tag color="blue">{field.source}</Tag></Space>}>
+                  <Form.Item name={['parameter_overrides_json', field.name, 'description']} label="字段说明" style={{ marginBottom: 0 }}>
+                    <Input.TextArea rows={2} maxLength={4000} placeholder={field.description} />
+                  </Form.Item>
+                </Card>)}
+              </Space> : <Typography.Text type="secondary">当前没有独立输入字段。</Typography.Text>}
+            </Card>
+            <Card size="small" title="输出内容"><Typography.Paragraph style={{ marginBottom: 0 }}>{runtime.output}</Typography.Paragraph></Card>
+            <Card size="small" title="权限边界与审计">
+              <ul style={{ paddingLeft: 20, marginBottom: 12 }}>{runtime.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}</ul>
+              <Typography.Text type="secondary">审计：{runtime.audit}</Typography.Text>
+            </Card>
+          </Space> : <EmptyState description="没有运行详情" /> },
           { key: 'agents', label: '绑定 Agent', children: <>
         <Form.Item name="agent_ids" label="绑定 Agent">
           <Checkbox.Group style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%' }}>
