@@ -2,7 +2,7 @@
 from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class DefectSourceLink(Base):

@@ -2,15 +2,16 @@
 // 各 Tab 自行发请求与 mutation；本组件只负责装配与加载态。
 import { Tabs } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { ErrorState, EmptyState, LoadingState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
 import { OverviewTab } from './tabs/OverviewTab';
 import { RequestTab } from './tabs/RequestTab';
 import { ResponseTab } from './tabs/ResponseTab';
 import { RelationTab } from './tabs/RelationTab';
 import { DebugTab } from './tabs/DebugTab';
 import { HistoryTab } from './tabs/HistoryTab';
-import type { ApiModule } from '@/types';
+import type { ApiModule } from '@/features/api-catalog/contracts';
+
 
 /**
  * 接口详情面板。

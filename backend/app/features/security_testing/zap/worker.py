@@ -38,8 +38,8 @@ from app.features.security_testing.zap.contracts import (
 from app.features.security_testing.zap import event_log
 from app.features.security_testing.zap.models.job import SecurityScanJob
 from app.features.security_testing.zap.orchestrator import ScanOrchestrator
-from app.shared.config import settings
-from app.shared.database import SessionLocal
+from app.core.config import settings
+from app.core.database.session import SessionLocal
 
 log = logging.getLogger(__name__)
 

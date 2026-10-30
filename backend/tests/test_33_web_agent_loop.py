@@ -21,14 +21,14 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from app.features.agent.graph import run_agent
-from app.features.agent.models.agent_message import AgentMessage
-from app.features.agent.models.agent_session import AgentSession
-from app.features.agent.providers.llm_provider import FakeLLMProvider
-from app.features.agent.services import session_service
-from app.features.web_ui.router import service as web_ui_service
-from app.features.web_ui.runtime.session_manager import registry
-from app.features.web_ui.schemas import SessionStartInput
+from app.agents.workflows.legacy.graph import run_agent
+from app.agents.models.message import AgentMessage
+from app.agents.models.session import AgentSession
+from app.llm.providers import FakeLLMProvider
+from app.agents.services import session_service
+from app.features.web_testing.router import service as web_ui_service
+from app.execution.browser.session_manager import registry
+from app.features.web_testing.schemas import SessionStartInput
 from tests.conftest import unique
 from tests.test_16_agent import _create_session_http
 from tests.test_25_security_execution import _actor
@@ -375,8 +375,8 @@ class TestIntentPromptContract:
 
     def test_every_intent_is_advertised_in_intent_prompt(self):
         """验证`every`意图是否`advertised``in`意图提示词场景及其预期结果。"""
-        from app.features.agent.prompts import load_prompt
-        from app.features.agent.schemas import AGENT_INTENTS
+        from app.agents.prompts import load_prompt
+        from app.agents.session_schemas import AGENT_INTENTS
 
         prompt = load_prompt("intent")
         missing = [intent for intent in AGENT_INTENTS if f"`{intent}`" not in prompt]
@@ -384,7 +384,7 @@ class TestIntentPromptContract:
 
     def test_web_authoring_intent_is_a_first_class_choice(self):
         """Web 编写意图必须有可选描述，而不只是被顺带列名。"""
-        from app.features.agent.prompts import load_prompt
+        from app.agents.prompts import load_prompt
 
         prompt = load_prompt("intent")
         marker = prompt.find("`INTERACTIVE_WEB_AUTHORING`")
@@ -396,12 +396,12 @@ class TestIntentPromptContract:
 
     def test_prompt_version_bumped_after_intent_change(self):
         """意图枚举变更后版本号同步提升，便于追溯生成资产。"""
-        from app.features.agent.prompts import TEST_INTENT_PROMPT_V2, load_prompt
+        from app.agents.prompts import TEST_INTENT_PROMPT_V3, load_prompt
 
         # intent.md 头部声明的版本常量必须真实存在，否则追溯链断在文档里。
-        assert TEST_INTENT_PROMPT_V2 == "intent-v2"
+        assert TEST_INTENT_PROMPT_V3 == "intent-v3"
         prompt = load_prompt("intent")
-        assert "TEST_INTENT_PROMPT_V2" in prompt, "prompt 头部必须声明其版本号"
+        assert "TEST_INTENT_PROMPT_V3" in prompt, "prompt 头部必须声明其版本号"
 
 
 class TestPromptSanitization:
@@ -450,7 +450,7 @@ class TestHttpEntry:
 
     def test_http_injects_web_session_and_persists_pause(self, api, admin, db, web_setup, monkeypatch):
         """验证HTTP`injects`Web会话和`persists``pause`场景及其预期结果。"""
-        from app.features.agent import router as agent_router
+        from app.agents import router as agent_router
 
         project_id, env_id = web_setup
         wsid, _ = _open_browser_session(db, project_id, env_id, budget=1)
@@ -477,7 +477,7 @@ class TestHttpEntry:
 
     def test_http_requires_web_session_for_authoring_intent(self, api, admin, db, web_setup, monkeypatch):
         """不带 web_session_id 却选到 Web 意图：节点报 WEB_SESSION_CLOSED，不静默猜会话。"""
-        from app.features.agent import router as agent_router
+        from app.agents import router as agent_router
 
         project_id, _ = web_setup
         sid = _agent_session(api, admin, project_id)

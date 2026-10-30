@@ -22,13 +22,10 @@ from app.features.business.schemas import (
     BusinessVariableResponse,
     BusinessVariableUpdate,
 )
-from app.features.business.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_action_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import conflict, not_found
+from app.features.business.services.access_service import resolve_action_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import conflict, not_found
 
 
 def _precondition_response(p: BusinessPrecondition) -> BusinessPreconditionResponse:

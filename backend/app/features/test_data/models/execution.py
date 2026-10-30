@@ -13,7 +13,7 @@ provider_execution.output_snapshot 的保留键 `_cleanup` 存结构化 cleanup_
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class DataExecution(Base):

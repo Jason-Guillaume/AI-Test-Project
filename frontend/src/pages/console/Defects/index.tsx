@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 缺陷管理（用户视角）。
 // 本模块导出 ConsoleDefectsPage，由路由 /console/defects 挂载。
 //
@@ -30,17 +30,16 @@ import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  bugsApi,
-  type BugCreate,
-  type BugUpdate,
-} from '@/api/defects';
-import { projectsApi } from '@/api/projects';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { getErrorMessage } from '@/api/client';
-import { DefectOrigins } from '@/components/exec/DefectOrigins';
-import type { Bug, BugSeverity, BugStatus, Paginated } from '@/types';
+import { bugsApi } from '@/features/defects/api/defects';
+import type { BugCreate, BugUpdate } from '@/features/defects/contracts';
+import { projectsApi } from '@/features/projects/api/projects';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { getErrorMessage } from '@/shared/api/client';
+import { DefectOrigins } from '@/widgets/execution-detail/DefectOrigins';
+import type { Bug, BugSeverity, BugStatus } from '@/features/defects/contracts';
+import type { Paginated } from '@/shared/api/contracts';
+
 
 // 后端约定的状态与严重度常量；与 BugStatus/BugSeverity 类型保持同步。
 const BUG_STATUSES: BugStatus[] = ['待确认', '处理中', '已修复', '已关闭', '已拒绝'];
@@ -424,7 +423,7 @@ export function ConsoleDefectsPage() {
           <Form.Item name="description" label="描述">
             <Input.TextArea placeholder="详细描述问题现象" rows={3} maxLength={1000} />
           </Form.Item>
-          <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+          <div className="form-field-row">
             <Form.Item
               name="severity"
               label="严重度"
@@ -444,7 +443,7 @@ export function ConsoleDefectsPage() {
                 style={{ width: '100%' }}
               />
             </Form.Item>
-          </Space>
+          </div>
           <Form.Item name="environment" label="环境">
             <Input placeholder="如 dev / test / prod" maxLength={200} />
           </Form.Item>

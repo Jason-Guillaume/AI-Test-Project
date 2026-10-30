@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { App, Button, Descriptions, Drawer, Form, Input, Select, Space, Tag, Typography } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
 import { API_STATUS_COLOR, API_STATUS_OPTIONS, METHOD_COLOR, METHOD_OPTIONS } from '../constants';
-import type { ApiInterfaceDetail, ApiInterfaceUpdate, ApiModule, ApiStatus } from '@/types';
+import type { ApiInterfaceDetail, ApiInterfaceUpdate, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
+
 
 interface FormValues {
   name: string;
@@ -147,7 +148,7 @@ export function OverviewTab({
               optionFilterProp="label"
             />
           </Form.Item>
-          <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+          <div className="form-field-row">
             <Form.Item
               name="method"
               label="方法"
@@ -163,7 +164,7 @@ export function OverviewTab({
             >
               <Select options={API_STATUS_OPTIONS} style={{ width: '100%' }} />
             </Form.Item>
-          </Space>
+          </div>
           <Form.Item
             name="path"
             label="路径"

@@ -18,19 +18,21 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authApi } from '@/api/auth';
-import { organizationsApi } from '@/api/organizations';
-import { notificationsApi } from '@/api/notifications';
-import { getErrorMessage } from '@/api/client';
-import type { NotificationSummary, Organization } from '@/types';
-import { useAuth } from '@/hooks/useAuth';
-import { OrgRoleTag, PlatformRoleTag } from '@/components/RoleTag';
+import { authApi } from '@/features/identity/api/auth';
+import { organizationsApi } from '@/features/organizations/api/organizations';
+import { notificationsApi } from '@/features/notifications/api/notifications';
+import { getErrorMessage } from '@/shared/api/client';
+import type { NotificationSummary } from '@/features/notifications/contracts';
+import type { Organization } from '@/features/organizations/contracts';
+
+import { useAuth } from '@/app/providers/AuthProvider';
+import { OrgRoleTag, PlatformRoleTag } from '@/features/identity/components/RoleTag';
 import {
   EmptyState,
   ErrorState,
   LoadingState,
   PageContainer,
-} from '@/components/PageState';
+} from '@/shared/ui/PageState';
 
 /**
  * 修改密码弹窗的表单数据结构。

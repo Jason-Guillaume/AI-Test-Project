@@ -5,8 +5,8 @@
 // 各子表保存后失效 ['test-data','fixture',id]，本组件自动重拉。
 import { Alert, Descriptions, Tabs } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import {
   FIXTURE_CLEANUP_POLICY_OPTIONS,
   FIXTURE_SCOPE_OPTIONS,

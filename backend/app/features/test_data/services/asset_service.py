@@ -12,7 +12,7 @@ from __future__ import annotations
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.models.asset import TestDataAsset
 from app.features.test_data.models.pool import DataPool
 from app.features.test_data.schemas import (
@@ -23,14 +23,11 @@ from app.features.test_data.schemas import (
     TestDataAssetResponse,
     TestDataAssetUpdate,
 )
-from app.features.test_data.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_asset_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.features.test_data.services.access_service import resolve_asset_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, conflict, not_found
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 # 目录的作用域：与 Fixture 的 scope 口径一致（复用常量，不另起一套）。
 ASSET_SCOPES = ("CASE", "RUN", "PROJECT", "GLOBAL")

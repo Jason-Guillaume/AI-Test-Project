@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 安全测试 · 策略与规则 Tab。
 //
 // 系统模板（builtin=true）只读，不可改不可删；项目自定义策略可建/改/删。
@@ -7,15 +7,12 @@ import { collectPages } from '@/api/pagination';
 //
 // 环境开关：项目级 allow_dev/test/staging/production；allow_production 在前端恒禁用，
 // 仅展示「恒不生效」提示——生产环境永远拒绝安全变异请求，由后端 gate 强制。
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   App,
   Button,
   Card,
-  Form,
   Input,
-  InputNumber,
-  Modal,
   Popconfirm,
   Select,
   Space,
@@ -26,40 +23,18 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { securityApi } from '@/api/securityTesting';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { securityApi } from '@/features/security-testing/api/securityTesting';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { StrategyModal, RuleModal } from './StrategyFormModals';
+import { SettingModal } from './SecuritySettingModal';
 import {
-  EXPECTATION_OPTIONS,
-  SEVERITY_OPTIONS,
   expectationLabel,
   severityColor,
   severityLabel,
 } from './constants';
-import type {
-  MutationRule,
-  MutationRuleCreate,
-  SecurityStrategy,
-  SecurityStrategyCreate,
-  SecurityStrategyUpdate,
-} from '@/types';
+import type { MutationRule, SecurityStrategy, SecurityStrategyCreate, SecurityStrategyUpdate } from '@/features/security-testing/contracts';
 
-const MUTATION_TYPES = [
-  'REMOVE_TOKEN', 'EMPTY_TOKEN', 'INVALID_TOKEN', 'MALFORMED_TOKEN', 'WRONG_AUTH_SCHEME', 'EXPIRED_TOKEN',
-  'CROSS_USER', 'CROSS_PROJECT', 'ROLE_DOWNGRADE', 'RESOURCE_OWNER_CHANGE', 'IDOR',
-  'REMOVE_FIELD', 'NULL_VALUE', 'EMPTY_STRING', 'TYPE_MUTATION', 'ZERO', 'NEGATIVE', 'OVER_MAX', 'UNDER_MIN', 'INVALID_ENUM', 'INVALID_FORMAT',
-  'REMOVE_HEADER', 'EMPTY_HEADER', 'INVALID_HEADER_VALUE', 'CONTENT_TYPE_MUTATION', 'AUTHORIZATION_MUTATION',
-  'METHOD_MUTATION', 'REPLAY_SAME_REQUEST', 'BUSINESS_STATE', 'SEQUENCE_BYPASS', 'DUPLICATE_SUBMIT',
-] as const;
-
-const TARGET_LOCATIONS = ['HEADER', 'QUERY', 'PATH', 'BODY', 'METHOD', 'REQUEST'] as const;
-
-const STRATEGY_CATEGORIES = [
-  'AUTHENTICATION', 'AUTHORIZATION', 'IDOR', 'PARAMETER', 'HEADER', 'METHOD',
-  'REPLAY', 'DUPLICATE_SUBMIT', 'BUSINESS_STATE', 'SEQUENCE_BYPASS',
-  'INJECTION', 'RATE_LIMIT', 'UPLOAD', 'SSRF',
-] as const;
-const RESERVED_CATEGORIES = new Set(['INJECTION', 'RATE_LIMIT', 'UPLOAD', 'SSRF']);
 
 /** 策略与规则 Tab。projectId 由父页传入（已确保非空）。 */
 export function StrategyTab({ projectId }: { projectId: number }) {
@@ -210,7 +185,7 @@ export function StrategyTab({ projectId }: { projectId: number }) {
   return (
     <div>
       <Card size="small" style={{ marginBottom: 12 }}>
-        <Space>
+        <Space wrap className="ui-list-toolbar">
           <Input.Search
             placeholder="策略名 / key"
             allowClear
@@ -235,7 +210,7 @@ export function StrategyTab({ projectId }: { projectId: number }) {
         </Space>
       </Card>
 
-      <Table<SecurityStrategy>
+      <Table<SecurityStrategy> scroll={{ x: 'max-content' }}
         rowKey="id"
         size="small"
         columns={columns}
@@ -360,360 +335,12 @@ function RulesTable({
   ];
 
   return (
-    <Table<MutationRule>
+    <Table<MutationRule> scroll={{ x: 'max-content' }}
       rowKey="id"
       size="small"
       columns={columns}
       dataSource={strategy.rules}
       pagination={false}
     />
-  );
-}
-
-/** 新建 / 编辑策略弹窗。 */
-function StrategyModal({
-  mode,
-  data,
-  submitting,
-  onCancel,
-  onSubmit,
-}: {
-  mode: 'create' | 'edit';
-  data?: SecurityStrategy;
-  submitting: boolean;
-  onCancel: () => void;
-  onSubmit: (body: SecurityStrategyCreate) => void;
-}) {
-  const [form] = Form.useForm<SecurityStrategyCreate>();
-  // mode/data 变化时重建表单初值。
-  const formKey = `${mode}-${data?.id ?? 'new'}`;
-
-  return (
-    <Modal
-      title={mode === 'create' ? '新建策略' : '编辑策略'}
-      open
-      onCancel={onCancel}
-      confirmLoading={submitting}
-      okText="保存"
-      cancelText="取消"
-      destroyOnClose
-      onOk={() => form.validateFields().then((v) => onSubmit(v))}
-    >
-      <Form
-        key={formKey}
-        form={form}
-        layout="vertical"
-        initialValues={
-          mode === 'edit' && data
-            ? {
-                name: data.name,
-                description: data.description ?? undefined,
-                risk_level: data.risk_level,
-                enabled: data.enabled,
-                revision: data.revision,
-              }
-            : {
-                name: '',
-                strategy_key: '',
-                category: 'AUTHENTICATION',
-                risk_level: 'MEDIUM',
-                enabled: true,
-              }
-        }
-      >
-        <Form.Item name="name" label="策略名" rules={[{ required: true, message: '请输入策略名' }]}>
-          <Input maxLength={200} disabled={mode === 'edit'} />
-        </Form.Item>
-        {mode === 'create' && (
-          <>
-            <Form.Item
-              name="strategy_key"
-              label="策略 Key"
-              rules={[
-                { required: true, message: '请输入策略 Key' },
-                {
-                  pattern: /^[A-Z][A-Z0-9_]{0,99}$/,
-                  message: '大写字母开头，仅含大写字母/数字/下划线',
-                },
-              ]}
-            >
-              <Input maxLength={100} placeholder="如 MY_AUTH_CHECK" />
-            </Form.Item>
-            <Form.Item name="category" label="类别" rules={[{ required: true, message: '请选择类别' }]}>
-              <Select
-                options={STRATEGY_CATEGORIES.map((c) => ({
-                  value: c,
-                  label: RESERVED_CATEGORIES.has(c) ? `${c}（预留，强制停用）` : c,
-                }))}
-              />
-            </Form.Item>
-          </>
-        )}
-        <Form.Item name="description" label="描述">
-          <Input.TextArea maxLength={1000} rows={2} />
-        </Form.Item>
-        <Form.Item name="risk_level" label="风险级别">
-          <Select options={SEVERITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} />
-        </Form.Item>
-        <Form.Item name="enabled" label="启用" valuePropName="checked">
-          <Switch />
-        </Form.Item>
-        {mode === 'edit' && (
-          <Form.Item name="revision" hidden>
-            <InputNumber />
-          </Form.Item>
-        )}
-      </Form>
-    </Modal>
-  );
-}
-
-/** 新建 / 编辑规则弹窗。mutation_config 以 JSON 文本输入，提交前解析校验。 */
-function RuleModal({
-  strategyId,
-  data,
-  onCancel,
-  onDone,
-}: {
-  strategyId: number;
-  data?: MutationRule;
-  onCancel: () => void;
-  onDone: () => void;
-}) {
-  const { message } = App.useApp();
-  const formKey = `${data?.id ?? 'new'}-${strategyId}`;
-  const [form] = Form.useForm<MutationRuleCreate & { config_text: string; codes_text: string }>();
-
-  const createMutation = useMutation({
-    mutationFn: (body: MutationRuleCreate) => securityApi.createRule(strategyId, body),
-    onSuccess: () => {
-      message.success('规则已创建');
-      onDone();
-    },
-    onError: (e) => message.error(getErrorMessage(e, '创建失败')),
-  });
-  const updateMutation = useMutation({
-    mutationFn: (body: MutationRuleCreate) =>
-      data ? securityApi.updateRule(data.id, body) : Promise.reject(),
-    onSuccess: () => {
-      message.success('规则已更新');
-      onDone();
-    },
-    onError: (e) => message.error(getErrorMessage(e, '更新失败')),
-  });
-
-  const handleOk = async () => {
-    const v = await form.validateFields();
-    let config: Record<string, unknown>;
-    try {
-      config = v.config_text ? (JSON.parse(v.config_text) as Record<string, unknown>) : {};
-    } catch {
-      message.error('mutation_config 不是合法 JSON');
-      return;
-    }
-    // 期望状态码：逗号分隔文本 → number[]，越界留给后端拦（100-599）。
-    const codes: number[] = (v.codes_text ?? '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((s) => Number(s))
-      .filter((n) => Number.isFinite(n));
-    const body: MutationRuleCreate = {
-      name: v.name,
-      mutation_type: v.mutation_type,
-      target_location: v.target_location,
-      target_field: v.target_field || null,
-      operator: v.operator || null,
-      mutation_config: config,
-      expected_security_behavior: v.expected_security_behavior || undefined,
-      expected_status_codes: codes.length ? codes : null,
-      severity: v.severity || undefined,
-      enabled: v.enabled ?? true,
-      confirmation_required: v.confirmation_required ?? false,
-      sort: v.sort ?? 0,
-    };
-    if (data) updateMutation.mutate(body);
-    else createMutation.mutate(body);
-  };
-
-  return (
-    <Modal
-      title={data ? '编辑规则' : '新增规则'}
-      open
-      onCancel={onCancel}
-      confirmLoading={createMutation.isPending || updateMutation.isPending}
-      okText="保存"
-      cancelText="取消"
-      destroyOnClose
-      width={620}
-      onOk={handleOk}
-    >
-      <Form
-        key={formKey}
-        form={form}
-        layout="vertical"
-        initialValues={
-          data
-            ? {
-                name: data.name,
-                mutation_type: data.mutation_type,
-                target_location: data.target_location,
-                target_field: data.target_field ?? '',
-                operator: data.operator ?? '',
-                expected_security_behavior: data.expected_security_behavior,
-                severity: data.severity,
-                enabled: data.enabled,
-                confirmation_required: data.confirmation_required,
-                sort: data.sort,
-                config_text: JSON.stringify(data.mutation_config ?? {}, null, 2),
-                codes_text: (data.expected_status_codes ?? []).join(','),
-              }
-            : {
-                name: '',
-                mutation_type: 'REMOVE_TOKEN',
-                target_location: 'HEADER',
-                target_field: '',
-                operator: '',
-                expected_security_behavior: 'EXPECTED_DENY',
-                severity: 'MEDIUM',
-                enabled: true,
-                confirmation_required: false,
-                sort: 0,
-                config_text: '{}',
-                codes_text: '',
-              }
-        }
-      >
-        <Form.Item name="name" label="规则名" rules={[{ required: true, message: '请输入规则名' }]}>
-          <Input maxLength={200} />
-        </Form.Item>
-        <Space style={{ display: 'flex' }} size="small" wrap>
-          <Form.Item name="mutation_type" label="变异类型" rules={[{ required: true }]} style={{ width: 220 }}>
-            <Select options={MUTATION_TYPES.map((t) => ({ value: t, label: t }))} />
-          </Form.Item>
-          <Form.Item name="target_location" label="目标位置" rules={[{ required: true }]} style={{ width: 160 }}>
-            <Select options={TARGET_LOCATIONS.map((t) => ({ value: t, label: t }))} />
-          </Form.Item>
-          <Form.Item name="target_field" label="目标字段" style={{ width: 180 }}>
-            <Input maxLength={200} placeholder="如 Authorization" />
-          </Form.Item>
-        </Space>
-        <Space style={{ display: 'flex' }} size="small" wrap>
-          <Form.Item name="expected_security_behavior" label="期望" style={{ width: 200 }}>
-            <Select options={EXPECTATION_OPTIONS} />
-          </Form.Item>
-          <Form.Item name="severity" label="严重级别" style={{ width: 140 }}>
-            <Select options={SEVERITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} />
-          </Form.Item>
-          <Form.Item name="sort" label="排序" style={{ width: 120 }}>
-            <InputNumber min={0} max={10000} style={{ width: '100%' }} />
-          </Form.Item>
-        </Space>
-        <Form.Item name="codes_text" label="期望状态码（逗号分隔，100-599）">
-          <Input placeholder="如 401,403" />
-        </Form.Item>
-        <Form.Item
-          name="config_text"
-          label="mutation_config（结构化 JSON，禁止脚本键）"
-          tooltip="安全变异必须是结构化配置；出现 script/python/sql/shell/payload_file/command 等键会被后端拒绝。"
-        >
-          <Input.TextArea
-            rows={4}
-            style={{ fontFamily: 'monospace', fontSize: 12 }}
-            placeholder='{"location":"HEADER","field":"Authorization"}'
-          />
-        </Form.Item>
-        <Space>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="confirmation_required" label="高风险（需人工确认）" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-        </Space>
-      </Form>
-    </Modal>
-  );
-}
-
-/** 环境开关弹窗：allow_production 恒禁用。用本地 state 承载开关，不污染缓存对象。 */
-function SettingModal({ projectId, onCancel }: { projectId: number; onCancel: () => void }) {
-  const { message } = App.useApp();
-  const queryClient = useQueryClient();
-  const settingQuery = useQuery({
-    queryKey: ['security-setting', projectId],
-    queryFn: () => securityApi.getSetting(projectId),
-  });
-  const [dev, setDev] = useState(false);
-  const [test, setTest] = useState(false);
-  const [staging, setStaging] = useState(false);
-  const [revision, setRevision] = useState<number>(1);
-
-  // 拿到后端初值后写一次本地 state（避免直接 mutate 缓存对象）。
-  useEffect(() => {
-    const s = settingQuery.data;
-    if (!s) return;
-    setDev(s.allow_dev);
-    setTest(s.allow_test);
-    setStaging(s.allow_staging);
-    setRevision(s.revision);
-  }, [settingQuery.data]);
-
-  const updateMutation = useMutation({
-    mutationFn: (body: Parameters<typeof securityApi.updateSetting>[1]) =>
-      securityApi.updateSetting(projectId, body),
-    onSuccess: () => {
-      message.success('环境开关已更新');
-      queryClient.invalidateQueries({ queryKey: ['security-setting', projectId] });
-      onCancel();
-    },
-    onError: (e) => message.error(getErrorMessage(e, '更新失败')),
-  });
-
-  return (
-    <Modal
-      title="安全测试环境开关"
-      open
-      onCancel={onCancel}
-      confirmLoading={updateMutation.isPending}
-      okText="保存"
-      cancelText="取消"
-      onOk={() =>
-        updateMutation.mutate({
-          allow_dev: dev,
-          allow_test: test,
-          allow_staging: staging,
-          // allow_production 故意不提交：前端恒禁用，生产永远拒绝（后端 gate 强制）。
-          revision,
-        })
-      }
-    >
-      {settingQuery.isLoading ? (
-        <LoadingState />
-      ) : (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Typography.Text>
-            仅勾选的环境允许发起安全变异请求。生产环境恒为关闭，不可开启。
-          </Typography.Text>
-          <Form layout="vertical">
-            <Form.Item label="开发环境（DEV）">
-              <Switch checked={dev} onChange={setDev} />
-            </Form.Item>
-            <Form.Item label="测试环境（TEST）">
-              <Switch checked={test} onChange={setTest} />
-            </Form.Item>
-            <Form.Item label="预发环境（STAGING）">
-              <Switch checked={staging} onChange={setStaging} />
-            </Form.Item>
-            <Form.Item label="生产环境（PRODUCTION）">
-              <Switch checked={false} disabled />
-              <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-                恒不生效（安全红线）
-              </Typography.Text>
-            </Form.Item>
-          </Form>
-        </Space>
-      )}
-    </Modal>
   );
 }

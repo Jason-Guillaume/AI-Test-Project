@@ -11,7 +11,7 @@ config_json 存放附加配置（如 fixture 标识、引用路径等）。
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestCasePrecondition(Base):

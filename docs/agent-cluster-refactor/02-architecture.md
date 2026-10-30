@@ -6,16 +6,25 @@
 
 [返回文档索引](README.md) · [实施交接指令](07-agent-handoff.md)
 
+> 2026-10-28 更新：下方“已核对的现状”是 2026-10-26 历史快照；当前代码已有任务运行、Agent/Skill 治理和 MCP，旧迁移编号和“未发现”结论不能用于判断今天的实现。`app.models`、`app.shared`、旧 `features/agent` 与纯转发页面入口已清理，实际模块以规范路径为准。当前能力目录与迁移方案见 [08](08-directory-refactor.md)，执行需求见 [09](09-optimization-requirements.md)。原运行一致性、权限、人工确认与协作约束继续适用。
+
+> 2026-10-29 更新：跨业务域 HTTP、表达式、LLM 与模板能力已按 E0–E4 提取，当前实际路径和回归结果见[业务能力提取交付记录](business-capability-extraction-delivery.md)；下方仍属任务产品架构设计的内容继续按历史设计看待。
+
+> 2026-10-29 目录归属更新：当前平台管理模块位于 `backend/app/platform/{users,organizations,projects,environment_configuration,model_configuration,notifications,agent_governance}/`，任务编排位于 `backend/app/orchestration/tasks/`；`backend/app/features/` 保留 api_catalog、business、mock_management、security_testing、test_data、test_management、web_ui、defects、reports、dashboard 十个业务模块。任务编排通过 WebUIService 调用 Web UI；任务运行和 UI Worker 绑定由编排层注入 `TaskBindingValidator` 校验，Web UI 仍在入口处检查项目写权限和执行环境。具体迁移映射、基线和验证限制见[features 目录迁移交付记录](features-directory-layout-delivery.md)及[迁移前基线](features-layout-baseline.md)。
+
+
+> 2026-10-30 后端能力边界整改：项目访问契约统一归 `platform/projects/services/access_service.py`；组织管理和通知收件箱业务分别由平台服务持有；报告投递由 `orchestration/report_delivery/` 协调；任务模型提示词和候选生成归 `agents/services/task_decision_service.py`，任务状态、工具回执及事务仍由 `orchestration/tasks/` 持有。正式 Web 业务现位于 `features/web_testing/`，完整 Mock 能力位于 `features/mocking/`；浏览器探索生命周期归 `agents/browser_authoring/`，唯一 Playwright 执行器、观察器和会话资源注册表归 `execution/browser/`。`WebAgentSession` 与 `WebAgentStep` 仅有一套 ORM 定义，表结构未改。具体迁移、C01–C12 取舍及本次验证见[后端能力边界整改交付记录](backend-capability-refactor-delivery.md)。
+
 ## 已核对的现状及改造结论
 
 | 当前实现 | 代码依据 | 改造结论 |
 |---|---|---|
-| Agent 由 HTTP 消息同步推进固定 LangGraph，按自建会话表重建状态 | `backend/app/features/agent/router.py`、`graph.py`、`services/session_service.py` | 原工作流可作为兼容适配器；需要新增请求之外的任务运行与调度层 |
-| Agent 会话按 project + user 隔离，保存阶段和消息 | `backend/app/features/agent/models/agent_session.py` | 不直接将旧会话改名为任务；新增任务、运行、参与者及会话关联 |
-| 工具已封装接口查询、资产保存、测试执行、报告与安全扫描 | `backend/app/features/agent/tools/` | 优先提炼契约与适配器，复用现有服务；避免各 Worker 重写执行器 |
-| Agent 执行会创建临时测试计划和套件，再调用 RunService | `backend/app/features/agent/tools/execution_tool.py` | 增加可追踪的调用幂等键；重试不能重复创建计划或执行记录 |
-| 默认模型从启用且默认的模型配置加载 | `backend/app/features/agent/providers/llm_provider.py` | 增加显式模型绑定，旧调用保留默认行为；不同职责可使用不同模型 |
-| 已有模型配置与加密密钥管理 | `backend/app/features/model_configuration/` | 复用模型资源，不另建密钥仓库；项目用户只选择被授权的模型配置 |
+| Agent 由 HTTP 消息同步推进固定 LangGraph，按自建会话表重建状态 | `backend/app/agents/router.py`、`workflows/legacy/graph.py`、`services/session_service.py` | 原工作流可作为兼容适配器；需要新增请求之外的任务运行与调度层 |
+| Agent 会话按 project + user 隔离，保存阶段和消息 | `backend/app/agents/models/session.py` | 不直接将旧会话改名为任务；新增任务、运行、参与者及会话关联 |
+| 工具已封装接口查询、资产保存、测试执行、报告与安全扫描 | `backend/app/tools/builtin/` | 优先提炼契约与适配器，复用现有服务；避免各 Worker 重写执行器 |
+| Agent 执行会创建临时测试计划和套件，再调用 RunService | `backend/app/tools/builtin/test_management/execution_tool.py` | 增加可追踪的调用幂等键；重试不能重复创建计划或执行记录 |
+| 默认模型从启用且默认的模型配置加载 | `backend/app/llm/providers/openai_compatible.py`、`backend/app/platform/model_configuration/services/model_config_service.py` | Agent、报告、Web 与任务通过共享 Provider 使用模型；模型配置和资源授权仍归 platform/model_configuration 与上层调用方 |
+| 已有模型配置与加密密钥管理 | `backend/app/platform/model_configuration/` | 复用模型资源，不另建密钥仓库；项目用户只选择被授权的模型配置 |
 | ZAP 已采用数据库队列、领取、心跳和取消标记 | `backend/app/features/security_testing/zap/worker.py` | 借鉴该模式设计通用运行时；不把扫描专用 Worker 直接当作通用调度器 |
 | Web 交互会话句柄位于进程内，并有专属线程和资源上限 | `backend/app/features/web_ui/runtime/session_manager.py` | 新调度器必须识别资源归属；不可承诺跨进程恢复活浏览器句柄 |
 | Web 探索步骤、正式用例执行、安全扫描都有既有确认约束 | `backend/tests/test_33_web_agent_loop.py`、`test_32_zap_agent_approval.py` | 新角色、调度器和工具必须继续通过这些约束；AI 审阅不能代替人工确认 |
@@ -27,16 +36,28 @@
 
 ## 后端模块与最小数据模型
 
-### 拟新增模块
+### 目标模块（2026-10-28 修订）
 
-- `features/tasks/`：任务、运行、方案、子任务、参与者会话、命令、事件、资源引用与调度服务。
-- `features/agent_registry/`：Agent 模板、配置版本、角色策略和模型/Skill/Tool 绑定。
-- `features/skills/`：Skill 定义、版本与发布；首批以文本说明和结构化元数据为主。
-- `features/tool_registry/`：工具定义、版本、调用网关及已有服务的适配器。
-- `features/task_files/`：受控文件存储、解析任务、内容分块与引用权限。
-- 现有 `features/agent/` 保留：旧会话兼容、已有模型调用和领域工作流适配。逐步提炼可复用能力，不继续把通用调度全部堆入 `graph.py`。
+- `app/orchestration/tasks/`：保留已有任务、运行、方案、参与者、命令、事件、租约和回执，不重新建设。
+- `app/agents/`：Agent 定义、会话、能力组装、运行快照及分领域工作流；模型调用依赖独立 `app/llm/`。
+- `app/llm/`：通用 Provider、调用契约与追踪；不承载 Agent 图、任务或报告资源。
+- `app/execution/`：跨业务域 HTTP 执行、请求构建与模板解析；目标授权仍由 projects 等业务域提供。
+- `app/tools/`：工具元数据、真实处理器注册、受控调用及按业务领域分类的薄适配。
+- `app/skills/`：Skill 定义、版本、导入、文件树与渲染；Agent/任务使用统计由上层 Agent 服务聚合。
+- `app/mcp/`：服务登记、连接、发现、审批和协议调用。
+- `app/knowledge/`：项目知识库、文档版本、解析、分块、检索与来源读取；当前为待实现设计，执行时复核。
+- `app/features/business_assembly/`：后续业务草稿、修订、来源关联、校验和保存协调；正式业务仍在 `features/business/`。
+- `app/platform/agent_governance/`：保留治理 HTTP 路由；Agent、Skill、MCP 与 Tool 的业务实现位于各自规范包，旧 `features/agent/` 转发模块已删除。
 
-新模块沿用 `schemas.py`、`router.py`、`services/`、`models/` 的仓库结构；不预建没有实现的空目录。跨模块通过明确服务契约与 DTO 协作，事务边界由服务层持有。
+以上替代原 `features/agent_registry/`、`features/skills/`、`features/tool_registry/` 目录建议。任务附件与项目知识具有不同可见性和生命周期，按真实需求以资源引用对接，不预建 `features/task_files/` 或复制知识处理链路。模块内部按需使用 `schemas.py`、`router.py`、`services/`、`models/`，跨模块通过公开服务与 DTO 协作，事务边界由服务层持有；详细映射及兼容见 08。
+
+### 当前任务与领域职责（综合拆分 B0–B9）
+
+统一任务公开入口保持 `TaskService`。运行与快照构造在 `services/run_service.py`，批准范围和工作依赖在 `plan_service.py`，幂等控制在 `command_service.py`，事件/状态归并在 `state_service.py`，Agent/模型授权装配在 `assembly_service.py`；既有 access/query/message/resource/serializers 继续复用。子服务使用同一 Session 协作，原提交点与行锁不拆散。
+
+`runtime/worker.py` 保留唯一生命周期、分派和 Provider 装配；领取/续租/恢复在 `lease_service.py`，完成/失败/控制边界在 `completion_service.py`。planning、api_execution、security_execution、web_authoring、reporting、reviewing、chat、finalizing 各有真实生产处理器。模型调用后的暂停/取消边界、`report:<test_run_id>` 等回执与依赖保持；迟到完成/异常还会核验所有者与代次，避免旧线程覆盖新尝试。
+
+执行契约与用例准备归 test_management，绑定/映射归 business，浏览器资源归 web_ui，Fixture 准备/清理归 test_data。API 目录按资源拆服务，安全测试的 IO 与纯算法分开，ZAP 的协议调用与扫描阶段分开。五个多资源领域的 `schemas/`、`router/` 包通过显式 canonical exports 与单一领域聚合挂载保持原 Python/HTTP 入口；原先的 T4–T6、D1–D4 待办已纳入本轮实施。全部职责和验收事实统一见 [综合交付记录](backend-comprehensive-delivery.md)，历史 T/E/F 报告保留原时点结果。
 
 ### 数据实体分阶段落地
 

@@ -44,9 +44,9 @@ from app.features.security_testing.services.plan_service import PlanService
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_step import TestStep
-from app.models.configuration import Environment
-from app.models.identity import User
-from app.models.project import ProjectOutboundTarget
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
+from app.core.models.project import ProjectOutboundTarget
 from tests.conftest import DEFAULT_PASSWORD, unique
 from tests.test_15_test_executor import StubServer
 
@@ -108,7 +108,7 @@ def _register_member(api, admin, project_id, *, role: str = "member") -> str:
 
 def db_user_id(api, username: str) -> int:
     """从 API 会话反查用户 ID（注册响应里没有稳定的 id 字段）。"""
-    from app.shared.database import SessionLocal
+    from app.core.database.session import SessionLocal
 
     with SessionLocal() as session:
         return session.query(User).filter(User.username == username).one().id
@@ -357,7 +357,7 @@ class TestEnvironmentGate:
             )
 
         monkeypatch.setattr(
-            "app.features.business.executors.api_executor.ApiRequestExecutor.execute",
+            "app.execution.http.executor.ApiRequestExecutor.execute",
             _explode,
         )
 

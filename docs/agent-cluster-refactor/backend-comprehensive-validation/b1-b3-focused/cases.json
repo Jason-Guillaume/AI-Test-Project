@@ -1,0 +1,804 @@
+[
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_set_and_get",
+    "outcome": "passed",
+    "duration": 0.053783564013428986
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_get_default",
+    "outcome": "passed",
+    "duration": 0.00042187399230897427
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_has",
+    "outcome": "passed",
+    "duration": 0.0003855680115520954
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_keys",
+    "outcome": "passed",
+    "duration": 0.00038227508775889874
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_to_dict_roundtrip",
+    "outcome": "passed",
+    "duration": 0.0003851918736472726
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_apply_ref",
+    "outcome": "passed",
+    "duration": 0.0003762809792533517
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionContext::test_apply_ref_missing_source",
+    "outcome": "passed",
+    "duration": 0.00037177896592766047
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestSensitiveDataMasker::test_mask_request_headers",
+    "outcome": "passed",
+    "duration": 0.00041763088665902615
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestSensitiveDataMasker::test_mask_response",
+    "outcome": "passed",
+    "duration": 0.0003853320376947522
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestSensitiveDataMasker::test_mask_nested_dict",
+    "outcome": "passed",
+    "duration": 0.0003780530532822013
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestSensitiveDataMasker::test_mask_list",
+    "outcome": "passed",
+    "duration": 0.0003712890902534127
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestSensitiveDataMasker::test_mask_empty",
+    "outcome": "passed",
+    "duration": 0.0003730800235643983
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_eq_pass",
+    "outcome": "passed",
+    "duration": 0.000388176878914237
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_eq_fail",
+    "outcome": "passed",
+    "duration": 0.00037934305146336555
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_ne",
+    "outcome": "passed",
+    "duration": 0.00037993898149579763
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_in",
+    "outcome": "passed",
+    "duration": 0.00037150317803025246
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_contains",
+    "outcome": "passed",
+    "duration": 0.0003758608363568783
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_exists",
+    "outcome": "passed",
+    "duration": 0.00036753795575350523
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_variable_not_exists",
+    "outcome": "passed",
+    "duration": 0.00036662910133600235
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_business_type_manual",
+    "outcome": "passed",
+    "duration": 0.0005644179182127118
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestPreconditionEvaluator::test_text_type_manual",
+    "outcome": "passed",
+    "duration": 0.0005118760745972395
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_input_body_mapping",
+    "outcome": "passed",
+    "duration": 0.00042244594078511
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_input_missing_required",
+    "outcome": "passed",
+    "duration": 0.0003990740515291691
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_input_header_mapping",
+    "outcome": "passed",
+    "duration": 0.00038267893251031637
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_input_path_mapping",
+    "outcome": "passed",
+    "duration": 0.00037546991370618343
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_output_jsonpath_extraction",
+    "outcome": "passed",
+    "duration": 0.0007864979561418295
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_output_dot_path_extraction",
+    "outcome": "passed",
+    "duration": 0.00040657701902091503
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_output_missing_required",
+    "outcome": "passed",
+    "duration": 0.00039211881812661886
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestMappingResolver::test_output_non_json_response",
+    "outcome": "passed",
+    "duration": 0.00040508690290153027
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_build_url_basic",
+    "outcome": "passed",
+    "duration": 0.06316124985460192
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_build_url_with_path_params",
+    "outcome": "passed",
+    "duration": 0.0004858309403061867
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_build_url_no_gateway",
+    "outcome": "passed",
+    "duration": 0.00039912399370223284
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_get_environment_headers",
+    "outcome": "passed",
+    "duration": 0.0004501071525737643
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_get_environment_headers_empty",
+    "outcome": "passed",
+    "duration": 0.00041153188794851303
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_api_request_result_success",
+    "outcome": "passed",
+    "duration": 0.0004791551036760211
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestApiRequestExecutorBuildUrl::test_api_request_result_error",
+    "outcome": "passed",
+    "duration": 0.0005922438576817513
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionModels::test_flow_execution_defaults",
+    "outcome": "passed",
+    "duration": 0.00046359910629689693
+  },
+  {
+    "nodeid": "tests/test_11_business_executor.py::TestExecutionModels::test_action_execution_defaults",
+    "outcome": "passed",
+    "duration": 0.0004366770153865218
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestContextSerialization::test_new_format_roundtrip",
+    "outcome": "passed",
+    "duration": 0.0004242219729349017
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestContextSerialization::test_legacy_flat_format_compat",
+    "outcome": "passed",
+    "duration": 0.0004703659797087312
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestContextSerialization::test_empty_context",
+    "outcome": "passed",
+    "duration": 0.00041665893513709307
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestContextSerialization::test_no_variable_collision",
+    "outcome": "passed",
+    "duration": 0.00040954293217509985
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestSensitiveDataMasking::test_mask_context_storage",
+    "outcome": "passed",
+    "duration": 0.0003990059485659003
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestSensitiveDataMasking::test_mask_action_outputs",
+    "outcome": "passed",
+    "duration": 0.00040927913505584
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestSensitiveDataMasking::test_mask_12_sensitive_keys",
+    "outcome": "passed",
+    "duration": 0.0003913621185347438
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestOutboundSecurity::test_private_ip_detection",
+    "outcome": "passed",
+    "duration": 0.00045544200111180544
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestOutboundSecurity::test_public_ip_allowed",
+    "outcome": "passed",
+    "duration": 0.00041017099283635616
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestOutboundSecurity::test_hostname_not_blocked",
+    "outcome": "passed",
+    "duration": 0.0007553230971097946
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestOutboundSecurity::test_outbound_block_without_whitelist",
+    "outcome": "passed",
+    "duration": 0.001525436993688345
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestOutboundSecurity::test_outbound_block_metadata_endpoint",
+    "outcome": "passed",
+    "duration": 0.0015522739849984646
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestErrorCodes::test_flow_not_found",
+    "outcome": "passed",
+    "duration": 0.0017020561499521136
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestErrorCodes::test_api_not_found_code",
+    "outcome": "passed",
+    "duration": 0.0004151799948886037
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestErrorCodes::test_precondition_failed_code",
+    "outcome": "passed",
+    "duration": 0.0003958679735660553
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestErrorCodes::test_missing_variable_code",
+    "outcome": "passed",
+    "duration": 0.0003849240019917488
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestPreconditionHandling::test_business_type_marked_manual",
+    "outcome": "passed",
+    "duration": 0.00038134295027703047
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestPreconditionHandling::test_text_type_marked_manual",
+    "outcome": "passed",
+    "duration": 0.00065415701828897
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestPreconditionHandling::test_mixed_preconditions",
+    "outcome": "passed",
+    "duration": 0.00042351009324193
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestOptimisticLocking::test_revision_increment",
+    "outcome": "passed",
+    "duration": 0.060204821988008916
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestDefaultBinding::test_partial_unique_index_dsl",
+    "outcome": "passed",
+    "duration": 0.0004185369471088052
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestVariableRef::test_apply_ref_basic",
+    "outcome": "passed",
+    "duration": 0.00039315910544246435
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestVariableRef::test_apply_ref_from_action_output",
+    "outcome": "passed",
+    "duration": 0.0003892759559676051
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestMultipartSupport::test_form_body_parameter",
+    "outcome": "passed",
+    "duration": 0.0005080210976302624
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestMultipartSupport::test_form_body_type",
+    "outcome": "passed",
+    "duration": 0.0004939810605719686
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestUtils::test_try_parse_json_valid",
+    "outcome": "passed",
+    "duration": 0.0004109438741579652
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestUtils::test_try_parse_json_invalid",
+    "outcome": "passed",
+    "duration": 0.00042795692570507526
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestUtils::test_try_parse_json_empty",
+    "outcome": "passed",
+    "duration": 0.00042101810686290264
+  },
+  {
+    "nodeid": "tests/test_12_business_integration.py::TestUtils::test_try_parse_json_none",
+    "outcome": "passed",
+    "duration": 0.00045095302630215883
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_eq_ne",
+    "outcome": "passed",
+    "duration": 0.0004137740470468998
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_numeric_operators",
+    "outcome": "passed",
+    "duration": 0.0004017330938950181
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_numeric_string_fallback",
+    "outcome": "passed",
+    "duration": 0.0004862670321017504
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_in_operator",
+    "outcome": "passed",
+    "duration": 0.00039179797749966383
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_contains_operator",
+    "outcome": "passed",
+    "duration": 0.00039087794721126556
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_exists_not_exists",
+    "outcome": "passed",
+    "duration": 0.0007897359319031239
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_status_code",
+    "outcome": "passed",
+    "duration": 0.0006351869087666273
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_json_path",
+    "outcome": "passed",
+    "duration": 0.0004232770297676325
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_header_case_insensitive",
+    "outcome": "passed",
+    "duration": 0.0004190448671579361
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_response_time",
+    "outcome": "passed",
+    "duration": 0.0003811480710282922
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_contains_raw_body",
+    "outcome": "passed",
+    "duration": 0.00037771312054246664
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_status_code",
+    "outcome": "passed",
+    "duration": 0.00038502493407577276
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_json_path_code",
+    "outcome": "passed",
+    "duration": 0.000401704921387136
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_header_assertion",
+    "outcome": "passed",
+    "duration": 0.0003870149375870824
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_contains_type",
+    "outcome": "passed",
+    "duration": 0.00037944898940622807
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_not_contains_type",
+    "outcome": "passed",
+    "duration": 0.00038144097197800875
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_required_all_passed",
+    "outcome": "passed",
+    "duration": 0.00048513791989535093
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAcceptanceSingleApi::test_login_passes_and_masks_sensitive",
+    "outcome": "failed",
+    "duration": 5.042740755015984,
+    "detail": "E   AssertionError: {'id': 1, 'project_id': 1, 'plan_id': 1, 'environment_id': 1, ...}\n    assert 'FAILED' == 'SUCCESS'\n      \n      - SUCCESS\n      + FAILED"
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAcceptanceBusinessFlow::test_flow_passes_end_to_end",
+    "outcome": "passed",
+    "duration": 1.1528785491827875
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestBusinessActionExecutor::test_single_action_passes",
+    "outcome": "passed",
+    "duration": 1.0115897142095491
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestNegativeExecution::test_assertion_failure_marks_failed",
+    "outcome": "failed",
+    "duration": 0.7273004670860246,
+    "detail": "E   assert 0 == 1"
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestNegativeExecution::test_http_5xx_marks_failed",
+    "outcome": "failed",
+    "duration": 0.7339528719894588,
+    "detail": "E   AssertionError: assert 'ERROR' == 'FAILED'\n      \n      - FAILED\n      + ERROR"
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestNegativeExecution::test_timeout_marks_error",
+    "outcome": "failed",
+    "duration": 0.7299232769291848,
+    "detail": "E   AssertionError: assert 'EXECUTION_ERROR' == 'HTTP_TIMEOUT'\n      \n      - HTTP_TIMEOUT\n      + EXECUTION_ERROR"
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestCrossProjectRun::test_run_hidden_as_404",
+    "outcome": "passed",
+    "duration": 1.4129738860065117
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestVariableRefEndToEnd::test_ref_passes_value_between_actions",
+    "outcome": "passed",
+    "duration": 0.9047065590275452
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::test_business_flow_api_action_receives_runtime_mock_context",
+    "outcome": "passed",
+    "duration": 0.7888602779712528
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_production_environment_skips_without_request",
+    "outcome": "passed",
+    "duration": 0.2603662679903209
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_dev_name_with_production_outbound_target_is_blocked",
+    "outcome": "passed",
+    "duration": 0.7162338949274272
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_unknown_environment_name_defaults_to_staging_and_is_denied",
+    "outcome": "passed",
+    "duration": 0.7161154079949483
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_allow_staging_unlocks_unknown_environment",
+    "outcome": "failed",
+    "duration": 0.7184335140045732,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_high_risk_unconfirmed_skips_without_request",
+    "outcome": "passed",
+    "duration": 0.7160353920189664
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_baseline_5xx_is_inconclusive_and_sends_no_mutation",
+    "outcome": "failed",
+    "duration": 0.7152156848460436,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_remove_token_200_becomes_potential_issue_with_high_finding",
+    "outcome": "failed",
+    "duration": 0.7143570958869532,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_remove_token_401_passes_without_finding",
+    "outcome": "failed",
+    "duration": 0.7476256680674851,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_remove_token_server_error_becomes_medium_finding",
+    "outcome": "failed",
+    "duration": 0.7434673100942746,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_same_fingerprint_twice_keeps_one_open_with_repeat_count",
+    "outcome": "failed",
+    "duration": 0.7254920300329104,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_false_positive_rerun_opens_a_new_finding_with_prior_status",
+    "outcome": "failed",
+    "duration": 0.7775656779995188,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestReplay::test_duplicate_submit_second_response_409_passes",
+    "outcome": "failed",
+    "duration": 0.7347721720580012,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestReplay::test_duplicate_submit_two_2xx_with_different_ids_records_high",
+    "outcome": "failed",
+    "duration": 0.7192310548853129,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBusinessFlowSkip::test_business_flow_mutation_type_is_skipped_not_blind_http",
+    "outcome": "failed",
+    "duration": 0.7307786560850218,
+    "detail": "E   UnboundLocalError: cannot access local variable 'scope' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestPlanning::test_confirm_creates_security_case_referencing_baseline",
+    "outcome": "passed",
+    "duration": 0.39148653112351894
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestPlanning::test_preview_requires_exactly_one_target",
+    "outcome": "passed",
+    "duration": 0.2343082509469241
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestPlanning::test_preview_confirmed_twice_is_rejected",
+    "outcome": "passed",
+    "duration": 0.2579431449994445
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_list_and_patch_enabled_syncs_test_case",
+    "outcome": "passed",
+    "duration": 0.5503445659996942
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_confirm_risk_records_actor_and_blocks_repeat",
+    "outcome": "passed",
+    "duration": 0.253059390000999
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_confirm_risk_refuses_case_that_needs_no_confirmation",
+    "outcome": "passed",
+    "duration": 0.23780728492420167
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_security_runs_reuses_run_service",
+    "outcome": "failed",
+    "duration": 0.7323860609903932,
+    "detail": "E   AssertionError: assert 'FAILED' == 'SUCCESS'\n      \n      - SUCCESS\n      + FAILED"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_security_runs_refuses_unknown_or_disabled_cases",
+    "outcome": "passed",
+    "duration": 0.7244135091314092
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_member_cannot_run_security_cases",
+    "outcome": "passed",
+    "duration": 1.1687781759537756
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_finding_status_transition_matrix",
+    "outcome": "passed",
+    "duration": 0.2961151720955968
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_resolve_writes_resolved_by",
+    "outcome": "passed",
+    "duration": 0.23640563001390547
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_same_status_is_idempotent_no_op",
+    "outcome": "passed",
+    "duration": 0.232830042950809
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_finding_permissions",
+    "outcome": "passed",
+    "duration": 1.599933858960867
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_other_project_cannot_read_finding_or_execution",
+    "outcome": "passed",
+    "duration": 0.7314692330546677
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_findings_list_filters",
+    "outcome": "passed",
+    "duration": 0.2348927699495107
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_migration_and_web_asset_storage",
+    "outcome": "passed",
+    "duration": 0.30540929990820587
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_confirmation_revision_and_page_change",
+    "outcome": "passed",
+    "duration": 0.3027802819851786
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_credentials_encryption_and_scope",
+    "outcome": "passed",
+    "duration": 0.2561593810096383
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_real_browser_login_operations_failure_report",
+    "outcome": "passed",
+    "duration": 2.168752020923421
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_browser_session_isolation_and_manual_storage",
+    "outcome": "passed",
+    "duration": 2.1970103529747576
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_outbound_redirect_and_no_authorization",
+    "outcome": "passed",
+    "duration": 2.1843658419093117
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_cross_project_and_viewer_permissions",
+    "outcome": "passed",
+    "duration": 0.912338636117056
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_fixture_factory_and_mock_lifecycle",
+    "outcome": "passed",
+    "duration": 1.3531872540479526
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_mixed_api_web_flow_and_report",
+    "outcome": "passed",
+    "duration": 1.2634170249802992
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_agent_draft_requires_human_review",
+    "outcome": "passed",
+    "duration": 0.33082276093773544
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_timeout_releases_browser_slot",
+    "outcome": "passed",
+    "duration": 2.0394722970668226
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_attachment_access_and_auth_revocation",
+    "outcome": "passed",
+    "duration": 1.820498478016816
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_independent_browser_concurrency",
+    "outcome": "passed",
+    "duration": 1.329559123958461
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_migration_downgrade_preserves_existing_contracts",
+    "outcome": "passed",
+    "duration": 1.183628738974221
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_cookie_and_jwt_are_used_by_real_browser",
+    "outcome": "passed",
+    "duration": 1.514105846057646
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_step_reorder_and_generic_execution_cannot_bypass_review",
+    "outcome": "passed",
+    "duration": 0.42055268795229495
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_semantic_and_fallback_locators",
+    "outcome": "passed",
+    "duration": 1.3218228080077097
+  },
+  {
+    "nodeid": "tests/test_30_web_ui.py::test_business_action_web_binding_keeps_outer_assertions",
+    "outcome": "failed",
+    "duration": 1.4787190078059211,
+    "detail": "E   AssertionError: assert 'EXECUTION_CANCELLED' == 'ASSERTION_FAILED'\n      \n      - ASSERTION_FAILED\n      + EXECUTION_CANCELLED"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_p4_migration_adds_scan_polling_and_idempotency_contract",
+    "outcome": "passed",
+    "duration": 0.058406622032634914
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_production_provider_falls_back_after_primary_http_error",
+    "outcome": "passed",
+    "duration": 0.47824495506938547
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_production_provider_exhaustion_is_retryable_and_redacts_response",
+    "outcome": "passed",
+    "duration": 0.004682715982198715
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_retryable_llm_failure_requeues_task_instead_of_failing",
+    "outcome": "failed",
+    "duration": 0.26965603104326874,
+    "detail": "E   UnboundLocalError: cannot access local variable 'model_snapshot' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_web_authoring_creates_isolated_worker_plan",
+    "outcome": "failed",
+    "duration": 0.24643913994077593,
+    "detail": "E   UnboundLocalError: cannot access local variable 'model_snapshot' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_web_authoring_browser_approval_draft_and_reverse_trace",
+    "outcome": "failed",
+    "duration": 0.25705590401776135,
+    "detail": "E   UnboundLocalError: cannot access local variable 'model_snapshot' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_api_runs_existing_executor_report_and_reverse_links",
+    "outcome": "failed",
+    "duration": 0.7214991740183905,
+    "detail": "E   UnboundLocalError: cannot access local variable 'model_snapshot' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_planner_retry_and_cancel_are_persisted",
+    "outcome": "failed",
+    "duration": 0.25355261901859194,
+    "detail": "E   UnboundLocalError: cannot access local variable 'model_snapshot' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_model_binding_obeys_organization_grants",
+    "outcome": "passed",
+    "duration": 0.02104184916242957
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_ui_worker_reuses_confirmed_web_testrun",
+    "outcome": "failed",
+    "duration": 0.719724961090833,
+    "detail": "E   UnboundLocalError: cannot access local variable 'model_snapshot' where it is not associated with a value"
+  },
+  {
+    "nodeid": "tests/test_35_tasks.py::test_task_creation_rejects_retired_or_unknown_security_fields",
+    "outcome": "passed",
+    "duration": 0.5267535130260512
+  },
+  {
+    "nodeid": "tests/test_task_notifications.py::test_task_notification_commit_and_rollback",
+    "outcome": "passed",
+    "duration": 0.2713452441385016
+  },
+  {
+    "nodeid": "tests/test_task_notifications.py::test_unbound_task_environment_returns_not_found",
+    "outcome": "passed",
+    "duration": 0.2293760428437963
+  },
+  {
+    "nodeid": "tests/test_task_notifications.py::test_read_all_does_not_expose_revoked_project_notifications",
+    "outcome": "passed",
+    "duration": 0.7649578261189163
+  },
+  {
+    "nodeid": "tests/test_task_notifications.py::test_lost_web_browser_is_not_reported_active",
+    "outcome": "passed",
+    "duration": 0.24348312302026898
+  },
+  {
+    "nodeid": "tests/test_task_notifications.py::test_task_security_finding_resource_links_are_named_and_bidirectional",
+    "outcome": "passed",
+    "duration": 1.8757444381481037
+  }
+]

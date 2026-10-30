@@ -3,24 +3,25 @@
 // 数据：GET /projects/{project_id}/reports 返回分页信封 {items,total,page,page_size}。
 // 权限（服务端为准）：读 = 项目可见（viewer+）；越权 404，前端不展示。
 // 报告统计字段全部由后端代码计算，本页只展示，不做二次计算。
-// 筛选走 FilterToolbar（服务端筛选，无关键词搜索），状态与风险走 StatusBadge + shared/status 色板。
+// 筛选走 FilterToolbar（服务端筛选，无关键词搜索），状态与风险颜色由 reports feature 提供。
 import { useMemo, useState } from 'react';
 import { Button, Progress, Table, theme } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
-import { reportsApi } from '@/api/reports';
-import { projectsApi } from '@/api/projects';
-import { FilterToolbar } from '@/components/FilterToolbar';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { PageHeader } from '@/components/PageHeader';
-import { StatusBadge } from '@/components/StatusBadge';
-import { fmtDuration, fmtTime } from '@/shared/format';
-import { REPORT_RISK_COLOR, REPORT_STATUS_COLOR } from '@/shared/status';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { reportsApi } from '@/features/reports/api/reports';
+import { projectsApi } from '@/features/projects/api/projects';
+import { FilterToolbar } from '@/shared/ui/FilterToolbar';
+import { EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { PageHeader } from '@/shared/ui/PageHeader';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { fmtDuration, fmtTime } from '@/shared/lib/format';
+import { REPORT_RISK_COLOR, REPORT_STATUS_COLOR } from '@/features/reports/status';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { REPORT_RISK_OPTIONS, REPORT_STATUS_OPTIONS } from './constants';
-import type { ReportRiskLevel, ReportStatus, TestReportListItem } from '@/types';
+import type { ReportRiskLevel, ReportStatus, TestReportListItem } from '@/features/reports/contracts';
+
 
 interface Filters {
   environment_id?: number;

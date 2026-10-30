@@ -1,4 +1,4 @@
-import { collectArrayPages } from '@/api/pagination';
+import { collectArrayPages } from '@/shared/api/pagination';
 // 测试计划页（用户视角）。
 // 单页表格：计划 CRUD + 每行「管理套件」抽屉（计划↔套件关联的增删）。
 //
@@ -23,21 +23,15 @@ import {
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
-import { testManagementApi } from '@/api/testManagement';
-import { projectsApi } from '@/api/projects';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { testManagementApi } from '@/features/test-management/api/testManagement';
+import { projectsApi } from '@/features/projects/api/projects';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_EXECUTION_MODE_OPTIONS, TEST_PLAN_STATUS_OPTIONS } from './constants';
-import type {
-  Environment,
-  TestPlan,
-  TestPlanCreate,
-  TestPlanStatus,
-  TestPlanSuiteResponse,
-  TestPlanUpdate,
-  TestSuite,
-} from '@/types';
+import type { Environment } from '@/features/environments/contracts';
+import type { TestPlan, TestPlanCreate, TestPlanStatus, TestPlanSuiteResponse, TestPlanUpdate, TestSuite } from '@/features/test-management/contracts';
+
 
 interface PlanFormValues {
   name: string;
@@ -341,9 +335,9 @@ function PlanSuitesDrawer({
 
   return (
     <Drawer title="管理计划套件" width={640} open={planId != null} onClose={onClose} destroyOnClose>
-      <Space style={{ marginBottom: 12, width: '100%' }}>
+      <div className="member-add-row">
         <Select
-          style={{ flex: 1, minWidth: 320 }}
+          className="member-add-row__select"
           showSearch
           optionFilterProp="label"
           placeholder="选择要加入的套件"
@@ -367,11 +361,12 @@ function PlanSuitesDrawer({
         >
           添加
         </Button>
-      </Space>
+      </div>
       <Table
         rowKey="id"
         size="small"
         columns={columns}
+        scroll={{ x: 'max-content' }}
         dataSource={planSuites}
         pagination={false}
         loading={planSuitesQuery.isLoading}

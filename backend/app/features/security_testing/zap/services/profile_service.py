@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+from app.platform.projects.services.access_service import get_project_or_404
+
 from sqlalchemy.orm import Session
 
 from app.features.security_testing.zap.contracts import ACTIVE_SCAN_MODES, is_active_scan
@@ -22,9 +24,9 @@ from app.features.security_testing.zap.schemas import (
     ScanProfileUpdate,
 )
 from app.features.security_testing.zap.services import _access, auth_profile_service
-from app.models.identity import User
-from app.shared.errors import AppError, CODE_SECURITY_SCAN_PROFILE_INVALID, CODE_SECURITY_SCAN_PROFILE_NOT_FOUND
-from app.shared.pagination import paginate
+from app.core.models.identity import User
+from app.core.http.errors import AppError, CODE_SECURITY_SCAN_PROFILE_INVALID, CODE_SECURITY_SCAN_PROFILE_NOT_FOUND
+from app.core.http.pagination import paginate
 
 _NOT_FOUND = AppError(
     "扫描策略不存在", status_code=404, code=CODE_SECURITY_SCAN_PROFILE_NOT_FOUND,
@@ -218,7 +220,7 @@ def list_profiles(
     is_builtin: bool | None = None,
 ) -> ScanProfileListResponse:
     """列出可见策略（viewer+）：平台内置 + 本项目自定义。"""
-    _access.get_project_or_404(db, project_id, user)
+    get_project_or_404(db, project_id, user)
     query = db.query(SecurityScanProfile).filter(
         (SecurityScanProfile.project_id == project_id) | (SecurityScanProfile.is_builtin.is_(True)),
     )

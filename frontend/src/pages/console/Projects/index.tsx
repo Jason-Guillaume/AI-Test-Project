@@ -4,10 +4,10 @@ import { Button, Input, Space } from 'antd';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { projectsApi } from '@/api/projects';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { ProjectRoleTag } from '@/components/RoleTag';
+import { projectsApi } from '@/features/projects/api/projects';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
 
 /**
  * 用户控制台的项目列表页组件。

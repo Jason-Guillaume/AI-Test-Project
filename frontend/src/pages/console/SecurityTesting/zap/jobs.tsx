@@ -19,10 +19,10 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { securityApi } from '@/api/securityTesting';
-import type { ScanJob } from '@/api/securityTesting';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { zapApi } from '@/features/security-testing/zap/api';
+import type { ScanJob } from '@/features/security-testing/zap/contracts';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import {
   authModeLabel,
   isRunningJob,
@@ -30,7 +30,7 @@ import {
   scanModeLabel,
 } from './constants';
 import { ScanJobDetailDrawer } from './jobDetail';
-import { ScanJobStatusBadge } from './jobPanels';
+import { ScanJobStatusBadge } from './panels/ScanJobStatusBadge';
 import { ScanWizardModal } from './wizard';
 
 const PAGE_SIZE = 10;
@@ -46,7 +46,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
   const [detailJob, setDetailJob] = useState<ScanJob | null>(null);
   const initialJobQuery = useQuery({
     queryKey: ['zap-job-from-task', projectId, initialJobId],
-    queryFn: () => securityApi.getScanJob(projectId, initialJobId!),
+    queryFn: () => zapApi.getScanJob(projectId, initialJobId!),
     enabled: initialJobId != null,
   });
   useEffect(() => {
@@ -56,7 +56,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
   const listQuery = useQuery({
     queryKey: ['zap-jobs', projectId, { status: statusFilter, page }],
     queryFn: () =>
-      securityApi.listScanJobs(projectId, {
+      zapApi.listScanJobs(projectId, {
         page,
         page_size: PAGE_SIZE,
         status: statusFilter,
@@ -74,7 +74,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
   };
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) => securityApi.cancelScanJob(projectId, id),
+    mutationFn: (id: number) => zapApi.cancelScanJob(projectId, id),
     onSuccess: () => {
       message.success('已请求取消，Worker 将在下一个检查点停止');
       invalidate();
@@ -248,7 +248,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
         />
       )}
 
-      <Table<ScanJob>
+      <Table<ScanJob> scroll={{ x: 'max-content' }}
         rowKey="id"
         size="small"
         columns={columns}

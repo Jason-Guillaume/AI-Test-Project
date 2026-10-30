@@ -5,14 +5,15 @@
 import { useEffect } from 'react';
 import { App, Button, Form, Input, Select, Switch } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
 import {
   FIXTURE_CLEANUP_POLICY_OPTIONS,
   FIXTURE_SCOPE_OPTIONS,
   FIXTURE_STATUS_OPTIONS,
 } from './constants';
-import type { FixtureDetail, FixtureUpdate } from '@/types';
+import type { FixtureDetail, FixtureUpdate } from '@/features/test-data/contracts';
+
 
 interface FormValues {
   name: string;

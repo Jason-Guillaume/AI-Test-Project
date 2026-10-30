@@ -4,6 +4,7 @@
 
 > 目录规范已于 2026-10-27 收敛，现行约定以 [coding-conventions.md §2.1](coding-conventions.md) 为准。本文前半部分保留审计日的代码事实；其中的旧路径和 `bootstrap/routes.py` 整理项是历史记录，不应作为当前目录结构指令。
 > 验证码功能已于 2026-10-27 从当前产品中移除；本文架构图和模块清单中的验证码记录仅反映 2026-10-15 的审计快照。
+> 2026-10-28 用户新增的 Agent 共享能力目录调整单独按 [目录重构方案](agent-cluster-refactor/08-directory-refactor.md) 与 [执行需求](agent-cluster-refactor/09-optimization-requirements.md) 实施。本文历史阶段的“不要搬目录”仅限制当时的审计统一范围，不覆盖此次明确要求的 agents/tools/skills/mcp/knowledge 迁移；其余业务模块仍保持原归属。
 
 后续可以把 **Phase A / Phase B / Phase C** 整段交给 Claude Code 执行。每一阶段的允许改动、禁止项、验收命令都写在对应章节。
 

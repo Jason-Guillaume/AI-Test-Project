@@ -19,7 +19,7 @@ from app.features.security_testing.zap.transport import (
     HttpZAPTransport,
     ZAPTransport,
 )
-from app.shared.config import settings
+from app.core.config import settings
 
 
 @dataclass(slots=True)
@@ -85,7 +85,7 @@ def build_connector(transport: ZAPTransport | None = None, *, base_url: str | No
 def _api_key() -> str:
     """读取 ZAP API Key 明文（进程内传递，不写日志）。"""
     try:
-        from app.shared.config import zap_api_key
+        from app.core.config import zap_api_key
 
         return zap_api_key()
     except Exception:  # noqa: BLE001 - 配置缺失时按「未配置」处理，不阻断健康检查

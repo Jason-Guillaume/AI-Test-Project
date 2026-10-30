@@ -13,7 +13,7 @@
 - API 类型 TestCase → ApiRequestExecutor（复用 httpx + 出站白名单）
 - BUSINESS_FLOW 类型 TestCase → business.executors.business_flow_executor.execute_flow
 - 敏感数据脱敏 → business.executors.sensitive.SensitiveDataMasker
-- JSONPath 提取 → business.executors.mapping_resolver
+- JSONPath 读取 → core.expressions；断言判定仍归 test_management
 
 本阶段不接入 LLM / LangGraph / Agent；但所有资产表均预留 source_type=AI。
 """

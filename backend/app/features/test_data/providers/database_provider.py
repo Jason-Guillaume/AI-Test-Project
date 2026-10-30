@@ -19,12 +19,12 @@ from __future__ import annotations
 
 import time
 
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.models.connection import DatabaseAccessPolicy, TargetDatabaseConnection
 from app.features.test_data.providers.base import BaseProvider, ProviderContext, ProviderResult, config_of
 from app.features.test_data.security import db_guard, sql_builder
-from app.shared.crypto import decrypt_secret
-from app.shared.errors import (
+from app.core.security.crypto import decrypt_secret
+from app.core.http.errors import (
     CODE_DATABASE_CONNECTION_FAILED,
     CODE_DATABASE_ENVIRONMENT_FORBIDDEN,
     CODE_FIXTURE_INVALID,
@@ -136,7 +136,7 @@ class DatabaseProvider(BaseProvider):
     @staticmethod
     def _resolve_values(params: list, ctx: ProviderContext) -> list:
         """把参数里的模板求值成实际值（值全部走占位符，不做字符串拼接）。"""
-        from app.features.test_data.runtime.variable_resolver import resolve_token_str
+        from app.execution.templates.resolver import resolve_token_str
 
         resolved = []
         for p in params:

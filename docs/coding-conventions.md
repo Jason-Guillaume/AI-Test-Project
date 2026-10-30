@@ -135,12 +135,12 @@ queryClient.invalidateQueries({ queryKey: ['bugs'] }); // 组织切换后可能�
 **架构检查**
 - [ ] 新代码放在正确的 feature 目录，没有横跨 feature 引入依赖
 - [ ] 新路由走 `include_router(prefix=API_PREFIX)`（后端）或 `/console` 子路由（前端）
-- [ ] 新 ORM 表**没有**被加进 `app/models/__init__.py`（除非有对应的 `000X_xxx.py` 显式迁移）
-- [ ] 错误响应通过 `app.shared.errors` 的 helper 抛（`bad_request` / `conflict` / `not_found` / `forbidden`）
+- [ ] 新 ORM 表**没有**被加进 `app/core/models/__init__.py`（除非属于九张核心基线表）
+- [ ] 错误响应通过 `app.core.http.errors` 的 helper 抛（`bad_request` / `conflict` / `not_found` / `forbidden`）
 - [ ] 权限用 `has_project_role(role, required)`，不直接比较字符串
 - [ ] 可见性用 `accessible_project_ids`，不用 `IN ALL()`
 - [ ] 事务在 service 层 commit，router 层不 commit
-- [ ] 前端 API 客户端只走 `src/api/client.ts` 的 `api` 实例，不自己 new `axios`
+- [ ] 前端 API 客户端只走 `src/shared/api/client.ts` 的 `api` 实例，不自己 new `axios`
 - [ ] 前端 queryKey 命名与后端字段对齐（snake_case）
 
 **红线检查**
@@ -159,43 +159,40 @@ queryClient.invalidateQueries({ queryKey: ['bugs'] }); // 组织切换后可能�
 ```
 backend/
 ├── app/
-│   ├── main.py                  # FastAPI 应用工厂，装配中间件 + 路由
-│   ├── models/                  # 平台核心 ORM 模型
-│   │   ├── identity.py          #   User 相关
-│   │   ├── project.py           #   Project 相关
-│   │   ├── configuration.py     #   配置相关
-│   │   └── notification.py      #   通知相关
-│   ├── features/                # 每个业务域一个包
-│   │   ├── users/               #   认证与用户管理
-│   │   ├── projects/            #   项目、成员与出站目标
-│   │   ├── api_catalog/         #   接口目录、解析器与调试
-│   │   ├── test_management/     #   测试资产与执行
-│   │   ├── test_data/           #   Provider、运行时与数据安全
-│   │   ├── agent/               #   Agent 图、节点、工具与提示词
-│   │   └── ...                  #   其他业务域保持同级
-│   ├── shared/                  # 跨 feature 的通用能力
-│   │   ├── auth.py              #   JWT 签发/校验、token_version 撤销
-│   │   ├── config.py            #   pydantic-settings 配置
-│   │   ├── database.py          #   engine + SessionLocal
-│   │   ├── dependencies.py      #   get_db 依赖
-│   │   ├── errors.py            #   错误信封、异常 helper
-│   │   ├── notify.py            #   通知写入（吞异常）
-│   │   ├── pagination.py        #   page_params + paginate
-│   │   ├── passwords.py         #   bcrypt 哈希/校验
-│   │   ├── rate_limit.py        #   进程内滑动窗口限流
-│   │   ├── request_context.py   #   请求 ID 中间件、日志配置
-│   │   └── roles.py             #   三层角色模型
-│   └── （路由只在 main.py 装配，不再保留 bootstrap 副本）
-├── alembic/                     # 数据库迁移
-│   ├── versions/
-│   │   ├── 0001_initial_schema.py
-│   │   └── 0002_add_bug_table.py
-│   └── env.py
-├── scripts/                     # 运维脚本（seed_admin.py 用 stamp base + upgrade head；e2e_smoke.sh 手工冒烟）
-├── tests/                       # pytest 用例
-├── requirements.txt             # 运行时依赖（版本锁定）
-└── pyproject.toml               # 不存在（用 requirements.txt）
+│   ├── main.py                      # 唯一应用装配入口
+│   ├── agents/                      # Agent 定义、组装、提示词与工作流
+│   │   ├── browser_authoring/       # 探索会话、步骤留痕与 Web 草稿候选生成
+│   │   ├── models/                  # Agent/探索会话的唯一 ORM 定义
+│   │   ├── services/                # Agent 配置、决策与跨能力引用
+│   │   ├── assembly/                # 依赖解析、运行快照与上下文组装
+│   │   └── workflows/legacy/        # 现有图、状态与节点；节点 key/暂停点稳定
+│   ├── orchestration/               # 任务及跨域应用用例编排
+│   │   └── tasks/                   # 任务状态、命令、租约、回执与处理器
+│   ├── execution/                   # 共用技术执行运行时
+│   │   ├── browser/                 # 唯一 Playwright 执行器、观察器、策略与会话注册表
+│   │   ├── http/                    # 受出站策略约束的共享 HTTP 请求执行
+│   │   └── templates/               # 不读取业务数据的模板解析与上下文契约
+│   ├── platform/                    # 用户、组织、项目、环境、通知与治理等平台能力
+│   ├── features/                    # 正式业务资产、规则、权限和事务
+│   │   ├── api_catalog/             # 接口目录、解析器与调试
+│   │   ├── business/                # 被测业务建模与执行
+│   │   ├── mocking/                 # Mock 资产、运行、上下文及留痕
+│   │   ├── test_management/         # 测试资产、运行与结果
+│   │   ├── test_data/               # Fixture、Provider、运行时与数据安全
+│   │   ├── web_testing/             # 正式 Web 用例、认证、确认与执行适配
+│   │   └── ...                      # 其他业务域
+│   ├── tools/                       # 稳定工具 key、注册、授权与薄适配器
+│   │   └── builtin/                 # 按 api_catalog、business、mocking 等分域
+│   ├── llm/                         # 模型 Provider、调用契约与通用追踪
+│   ├── skills/                      # Skill 定义、版本、文件树与渲染
+│   ├── mcp/                         # MCP 服务、发现、审批与协议调用
+│   └── core/                        # 唯一基础原语与九张平台核心 ORM 表
+├── alembic/                         # 数据库迁移；本次目录整理不新增迁移
+├── scripts/                         # 运维与模型发现脚本
+└── tests/                           # pytest 用例
 ```
+
+当前代码尚无 `app/knowledge/`；知识库按重构文档中的 K 阶段单独开发，不提前创建空目录或占位实现。
 
 **Feature 目录的内部规范**：
 
@@ -204,21 +201,26 @@ backend/
 - `router.py` — 默认路由入口；多组路由可拆成同级模块，由 `app/main.py` 统一装配
 - `schemas.py` — Pydantic 请求与响应模型；规模较大时可拆分子模块
 - `services/` — 业务规则与事务边界；一个服务也使用复数目录，按资源拆分
-- `models/` — 该 Feature 独占的 ORM 模型；新领域模型不放入 `app/models/`
+- `models/` — 该 Feature 独占的 ORM 模型；新领域模型不放入 `app/core/models/`
 - 可选 `executors/`、`providers/`、`runtime/`、`security/`、`parsers/` 等 — 仅在对应职责确实存在时创建
 
 其他 Feature 如需调用某个 Service，应从该 Feature 的 `services/__init__.py` 导入公开入口；内部实现放在
 `services/<resource>_service.py`，不要求每个 Feature 预建空文件。
 
-`app/models/` 只保留平台核心模型。Feature-local ORM 模型不能加入 `app/models/__init__.py`；由所属
-Feature 在运行时导入，并通过显式 Alembic 迁移建表。旧 `app.models.<feature>` 路径可短期保留为兼容
-导出，旧的 `from app.models import FeatureModel` 名称也通过懒加载兼容；新代码必须从
-`app.features.<feature>.models` 导入。
+`app/core/models/` 只定义平台核心模型。Feature 或其他能力包的 ORM 模型不能在此重复定义；由所属
+`features/`、`agents/`、`skills/`、`mcp/` 或 `tools/` 包持有唯一类定义，并由显式 Alembic 迁移建表。
+`app.models` 和 `app.shared` 旧路径兼容文件已清理；新代码与历史迁移调用方统一使用规范路径，如
+`app.core.models`、`app.core.database`、`app.core.security`、`app.core.http`。历史迁移源码不为了兼容文件而保留第二套入口。
+目录迁移不改变表名、外键或历史数据，没有结构变化时不新增迁移。
 
 **Feature 之间的依赖规则**：
 - feature 之间不能依赖对方的私有实现或 `_` 开头的模块
-- 跨 feature 的业务调用通过对方明确的公开 service contract；共享基础能力放在 `shared/`
-- ORM 模型归属唯一；确需跨域只读查询时，显式导入所属 Feature 的模型，不复制模型定义
+- 跨 feature/能力的业务调用通过对方明确的公开 service contract；平台基础原语放在 `core/`，共享 HTTP/模板执行能力放在 `execution/`，模型调用与追踪放在 `llm/`
+- `agents/` 可以组合 `skills/`、`mcp/` 与 `tools/`；`agents/browser_authoring/` 持有探索会话服务和模型候选生成，正式 Web 资产保存仍归 `features/web_testing/`
+- `execution/browser/` 只持有浏览器契约与进程资源，不查询业务 ORM；目标白名单由 Web 服务构造后注入，空闲回收后的会话状态通过 Web 服务回调持久化
+- `tools/`、`skills/`、`mcp/` 不反向依赖 Agent 图、任务 Worker 或治理聚合服务；工具 key 与目录名是不同兼容面
+- ORM 模型归属唯一；确需跨域只读查询时，显式导入所属包的模型，不复制模型定义
+- 尚未实现的知识库不创建空目录或占位服务；规划路径见 Agent 集群重构文档中的 K 阶段
 
 ### 2.2 分层规则
 
@@ -260,7 +262,7 @@ Feature 在运行时导入，并通过显式 Alembic 迁移建表。旧 `app.mod
 **Router 层不允许做的事**：
 - 权限判定（一律通过 service 的 helper，或调 `accessible_project_ids`）
 - `db.commit()` / `db.flush()`（notify 内部除外，那是通用能力）
-- 直接抛 `HTTPException`（一律通过 `app.shared.errors` 的 helper）
+- 直接抛 `HTTPException`（一律通过 `app.core.http.errors` 的 helper）
 - 拼 SQL 字符串（一律用 ORM）
 
 **Service 层必须做的事**：
@@ -272,7 +274,7 @@ Feature 在运行时导入，并通过显式 Alembic 迁移建表。旧 `app.mod
 
 ### 2.3 事务约定
 
-**SessionLocal 的三个 flag**（[app/shared/database.py:32-33](../backend/app/shared/database.py)）：
+**SessionLocal 的三个 flag**（[app/core/database/session.py:34](../backend/app/core/database/session.py)）：
 ```python
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 ```
@@ -325,21 +327,21 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 | 16 | migrations | `0001_initial_schema.py` 用 `Base.metadata.create_all` 建基线（只在空库上跑）；`0002+` 必须走显式 `op.create_table/op.add_column`；`seed_admin.py` 每次 `stamp base` + `upgrade head`（幂等） | 迁移链断裂 |
 
 **证据路径**（每条都能定位到具体代码）：
-1. `app/shared/roles.py:16-22, 31-36, 45-56, 64-65`
-2. `app/shared/roles.py:212-250`
-3. `app/shared/roles.py:162-172`
-4. `app/shared/errors.py:32, 40-48, 150-161`
-5. `app/shared/errors.py:36, 184-189` + `app/shared/auth.py:29-31, 99-113`
+1. `app/core/security/roles.py:16-22, 31-36, 45-65`
+2. `app/core/security/roles.py:212-250`
+3. `app/core/security/roles.py:162-172`
+4. `app/core/http/errors.py:32, 40-48, 225-240`
+5. `app/core/http/errors.py:225, 374-378` + `app/core/security/auth.py:32, 108-112`
 6. `app/features/projects/services/project_service.py:83-90`（`get_accessible_or_404` 定义）+ `app/features/projects/router.py:153, 177, 189, 202, 216, 238, 255, 270`（路由层调用点）+ `:315-316, 330-331`（出站目标交叉校验）
-7. `app/shared/auth.py:34-58`
-8. `app/shared/auth.py:61-68, 108-113`
-9. `app/shared/auth.py:95-100`
-10. `app/shared/notify.py:59-93`
-11. `app/shared/pagination.py:16-17, 20-25, 47-65`
-12. `app/shared/database.py:32-33`
+7. `app/core/security/auth.py:35-58`
+8. `app/core/security/auth.py:62-68, 108-113`
+9. `app/core/security/auth.py:112`
+10. `app/core/notifications/notify.py:58-93`
+11. `app/core/http/pagination.py:20-25, 47-65`
+12. `app/core/database/session.py:34`
 13. `app/main.py:49-50, 102-109, 111-133, 135-136, 162-172`
 14. `app/main.py:71-85`
-15. `app/shared/rate_limit.py:26-27, 30-50, 64-80, 85-89`
+15. `app/core/http/rate_limit.py:24-29, 52-82, 88-90`
 16. `alembic/versions/0001_initial_schema.py:22-26, 29-38` + `backend/scripts/seed_admin.py`
 
 ---
@@ -350,40 +352,30 @@ def create_xxx(self, db: Session, body: XxxCreate, *, actor: User) -> XxxRespons
 
 ```
 frontend/src/
-├── App.tsx                     # 路由表（AppRoutes）
-├── main.tsx                    # 挂载点：import dayjs locale + StrictMode + AppProviders
-├── api/                        # 每个后端 feature 一个 API 客户端
-│   ├── client.ts               # axios 实例（baseURL, interceptors, getErrorMessage）
-│   ├── auth.ts                 # 登录/注册/登出/me
-│   ├── users.ts                # 用户管理
-│   ├── organizations.ts
-│   ├── projects.ts             # 含 listMembers
-│   ├── defects.ts              # Bug CRUD
-│   ├── notifications.ts
-│   ├── dashboard.ts
-│   ├── modelConfigs.ts
-│   └── environments.ts
-├── components/                 # 通用组件（不含业务）
-│   ├── PageState.tsx           # PageContainer / LoadingState / ErrorState / EmptyState
-│   ├── ResourceTable.tsx       # 通用表格 + Pagination
-│   ├── RouteGuards.tsx         # RequireAuth / RequireAdmin / GuestOnly
-│   ├── ResultPages.tsx         # ForbiddenPage / NotFoundPage
-│   ├── RoleTag.tsx             # 角色标签
-│   └── QueryProvider.tsx       # QueryClientProvider 包装
-├── hooks/                      # 全局 hooks
-│   ├── useAuth.tsx             # AuthProvider：登录态、令牌写入、/me 恢复
-│   ├── useCapabilities.ts      # 当前用户的能力（admin/console 可见性）
-│   └── useConsoleScope.tsx     # 当前组织/项目选择态 + 缓存失效
-├── layouts/                    # 布局外壳
-│   ├── AdminLayout.tsx         # 管理端
-│   └── ConsoleLayout.tsx       # 用户控制台（含左侧菜单 + 组织/项目选择器）
-├── pages/                      # 页面组件（按路由分层）
-│   ├── auth/                   # Login / Register
-│   ├── admin/                  # Dashboard / Users / Organizations / Projects / ModelConfigs / Environments
-│   └── console/                # Workbench / Projects / ProjectDetail / Defects / Notifications / Profile
-└── types/
-    └── index.ts                # 全局类型定义（User / Project / Bug / Paginated 等）
+├── app/                         # 应用装配、路由、全局 Provider 与布局
+│   ├── App.tsx                  # 懒加载路由表；治理别名仍映射同一治理页
+│   ├── providers/               # AuthProvider、ConsoleScopeProvider、AppProviders
+│   ├── router/                  # RouteGuards、错误边界与错误页
+│   └── layouts/                 # AdminLayout、ConsoleLayout
+├── features/                    # 业务域对外 API、合同与域内 UI/逻辑
+│   └── <domain>/                # api/、contracts.ts、components/、hooks/、lib/
+├── pages/                       # 路由页面；复杂页面可拆成同目录子组件
+│   ├── auth/
+│   ├── admin/
+│   └── console/
+├── shared/                      # 不依赖业务域的基础能力
+│   ├── api/                     # Axios client、通用分页与基础合同
+│   ├── lib/                     # 通用格式化、安全跳转、选项等纯函数
+│   ├── session/                 # 会话代次与生命周期
+│   ├── theme/                   # antd 主题配置
+│   └── ui/                      # 通用展示组件
+├── widgets/                     # 跨页面组合组件，如执行详情和任务助手
+└── styles/                      # 全局基础、工作区、管理端、认证与响应式样式
 ```
+
+依赖方向：`app → pages/widgets/features/shared`；`pages → widgets/features/shared`；`features → shared`。
+`shared` 不依赖 `features`，feature 不直接导入其他 feature 的页面私有实现；跨域组合由 pages/widgets 通过公开 API 和 contracts 完成。
+全局身份/项目作用域装配位于 `app/providers`，领域能力留在 `features/<domain>`。
 
 ### 3.2 数据流
 
@@ -404,109 +396,68 @@ main.tsx (mount)
 **API 请求路径**：
 ```
 页面 useQuery / useMutation
-  └─ src/api/xxx.ts（xxxApi.list(...)）
-     └─ api/client.ts 的 axios 实例（baseURL='/api/v1'）
+  └─ src/features/<domain>/api/*.ts（领域 API）
+     └─ src/shared/api/client.ts 的 axios 实例（baseURL='/api/v1'）
         ├─ 浏览器会话：自动附带 HttpOnly Cookie；兼容旧 Bearer 客户端
         └─ 响应拦截器：
-           ├─ 401 → clear token + onAuthExpired()（跳 /login）
-           ├─ 403 + "该账户已被禁用" → clear token + onAuthExpired()
+           ├─ 真实 401 / 账户禁用 → 一次 session transition，清理旧缓存并跳 /login
+           ├─ 普通 403、登录接口 401、过期代次响应 → 保留当前页面错误语义或取消结果
            └─ 其他错误 → Promise.reject
      └─ vite.config.ts 代理（dev only）：/api → http://127.0.0.1:8001
 ```
 
-**QueryKey 命名约定**（前端唯一"契约"）：
-- `['organizations']` — 组织列表
-- `['projects', query]` — 项目列表（含过滤）
-- `['project', id, ...]` — 单个项目的资源
-- `['bugs', query]` — 缺陷列表
-- `['notifications', query]` — 通知列表
-- `['dashboard']` — 工作台聚合
+**QueryKey 与缓存边界**：当前查询声明由路由页与领域组件持有，项目资源 key 必须显式包含资源所属的 `projectId`，过滤和分页参数必须进入 key；不能以顶栏项目变化覆盖正在打开的深链资源。身份转换会通过统一 session lifecycle 取消在途查询并清空 React Query query/mutation cache。新建领域查询时，应在 feature 内集中定义 key factory 并让查询、失效复用同一工厂；不要新增全局模糊扫描失效。
 
-**作用域切换的缓存失效**（[useConsoleScope.tsx](../frontend/src/hooks/useConsoleScope.tsx)）：
-- 切换组织 → 失效 `['projects']` / `['dashboard']` / `['bugs']`
-- 切换项目 → 失效 `['project']` / `['notifications']` / `['bugs']`
-- 登出 → 服务端清除 HttpOnly Cookie，`clear()` 清空用户缓存 + 上述所有 key
+**作用域变化**（[ConsoleScopeProvider.tsx](../frontend/src/app/providers/ConsoleScopeProvider.tsx)）：
+- 仅恢复与当前用户绑定且正整数的已保存组织/项目 ID；损坏或不可用的 `localStorage` 安全回退。
+- 项目切换后重新查询项目资源；资源所属项目从资源合同或路由参数读取，不借用顶栏的当前项目。
+- 用户身份变化、登出或令牌失效由统一会话生命周期清空用户态和 query/mutation cache；项目授权列表刷新后会清理已撤权的当前项目。
 
 ### 3.3 API 客户端约定
 
-**axios 实例（[src/api/client.ts](../frontend/src/api/client.ts)）**：
+**axios 实例（[src/shared/api/client.ts](../frontend/src/shared/api/client.ts)）**：
 - `API_BASE = '/api/v1'` — 唯一前缀，不允许在业务代码里改
 - `axios.create({ baseURL: API_BASE, timeout: 30000 })` — 30s 超时
 - 浏览器认证使用 HttpOnly Cookie；写请求校验 CORS 白名单 Origin
 - 内存 `tokenStore` 仅兼容尚未迁移的 Bearer 调用方，不持久化令牌
-- 响应拦截器：401 清 token 并回调 `onAuthExpired`（跳 `/login`）；403 + 禁用文案同样处理；其他错误原样 reject
-- 浏览器令牌由服务端写入 HttpOnly Cookie；前端不读取或持久化令牌
+- 会话生命周期：只将真正的 401/账户禁用响应转换为一次会话失效；普通 403、登录表单错误及其他 API 错误保持原页面错误语义。
+- 身份切换推进 session generation；迟到查询/变更响应不得恢复旧用户状态，读请求在切换时取消。浏览器 Cookie 由服务端管理。
 
-**新增 API 的模板**（以缺陷管理为参考）：
+**领域 API 模块**（示例：[features/defects/api/defects.ts](../frontend/src/features/defects/api/defects.ts)）：
 
 ```typescript
-// src/api/defects.ts
+import { api } from '@/shared/api/client';
+import type { Paginated } from '@/shared/api/contracts';
+import type { Bug, BugListQuery, BugCreate, BugUpdate } from '../contracts';
 
-// 缺陷管理（用户视角）。
-// 与后端 backend/app/features/defects/ 一一对应。
-// 未接入：回归关联、趋势看板、修复时长统计。
-import { api } from './client';
-import type { Bug, Paginated } from '@/types';
-
-// 创建缺陷的 wire 字段（严格 snake_case，与后端 BugCreate 保持一致）。
-// 后端对 severity 默认 2、status 默认 '待确认'，所以二者都是可选。
-export interface BugCreate {
-  project_id: number;             // 必填：所属项目 ID
-  title: string;                  // 必填：缺陷标题
-  description?: string;           // 描述
-  severity?: 1 | 2 | 3 | 4;      // 严重度，缺省 2
-  status?: BugStatus;            // 状态，缺省 '待确认'
-  steps_to_reproduce?: string;   // 复现步骤
-  environment?: string;           // 环境标识
-  assignee_id?: number | null;   // 处理人；null 表示清空
-}
-
-// 更新缺陷的 wire 字段：**独立**的 interface，不含 project_id（不允许改项目归属），
-// 全部字段可选（PATCH 语义），后端用 `exclude_unset` 判定"未提交"与"提交为 None"的差异。
-export interface BugUpdate {
-  title?: string;
-  description?: string;
-  severity?: 1 | 2 | 3 | 4;
-  status?: BugStatus;
-  steps_to_reproduce?: string;
-  environment?: string;
-  assignee_id?: number | null;
-}
-
-// 查询参数（BugListQuery 由 @/types 统一导出）
-// export interface BugListQuery { ... }
-
-// 缺陷 API：只封装 HTTP 调用，不做业务判断。
-// 所有错误通过 axios 拦截器归一化，业务侧只判 isSuccess。
 export const bugsApi = {
   list: (params: BugListQuery) => api.get<Paginated<Bug>>('/bugs', { params }),
   create: (body: BugCreate) => api.post<Bug>('/bugs', body),
-  get: (id: number) => api.get<Bug>(`/bugs/${id}`),
-  update: (id: number, body: BugUpdate) => api.put<Bug>(`/bugs/${id}`, body),  // 后端是 PUT，不是 PATCH
+  update: (id: number, body: BugUpdate) => api.put<Bug>(`/bugs/${id}`, body),
   remove: (id: number) => api.delete<void>(`/bugs/${id}`),
 };
 ```
+
+请求/响应 DTO 放在所属 feature 的 `contracts.ts`；API 文件只封装 HTTP 调用，不做业务判断。
+跨域输入/输出通过公开 feature contract 引用，通用分页等无业务语义的合同归 `shared/api/contracts.ts`。
 
 **wire 字段**：**必须严格 snake_case**（与后端 Pydantic 模型保持一致）。**不要**在 API 客户端层做 snake_case ↔ camelCase 转换，前端业务代码里字段名就是 snake_case（除了 TS 保留字或特殊语义）。
 
 ### 3.4 Hook / Provider 模式
 
-**已有的三个 hooks**（[src/hooks/](../frontend/src/hooks/)）：
+**全局装配**（[app/providers](../frontend/src/app/providers/)）：
 
-| Hook | 提供什么 | 副作用 | 使用位置 |
+| Provider / Hook | 提供什么 | 责任 | 使用位置 |
 |---|---|---|---|
-| `useAuth` | `user`, `ready`, `login`, `register`, `logout` | 挂载时通过 Cookie 请求 `/me` 恢复；写 userStore | `App.tsx` 顶层 `AuthProvider` |
-| `useCapabilities` | `isAdmin`, `canAccessConsole` | 派生自 `user.role` | 布局 / 路由守卫 |
-| `useConsoleScope` | `currentOrgId`, `currentProjectId`, `setOrgId`, `setProjectId`, `clear` | 切换时 invalidate 相关 query | `/console` 子树 |
+| `AuthProvider` / `useAuth` | 用户、就绪状态、登录/注册/退出 | `/me` 恢复、会话代次、用户态和缓存清理 | `app/App.tsx` 的路由外壳 |
+| `ConsoleScopeProvider` / `useConsoleScope` | 当前组织/项目选择 | 安全恢复作用域、权限刷新和切换处理 | `/console` 子树 |
+| `AppProviders` | React Query 与 antd App | 全局客户端与消息上下文 | `main.tsx` |
 
-**新增 hook 的规则**：
-- 只做数据/状态管理，不做布局
-- 每个 hook 都要有中文 docstring，说明**发不发请求、错误怎么处理、什么时候被调用**
-- Provider 必须导出 `Provider` 和 `useXxx` 两个符号
+领域查询和 mutation 放在 feature 内的 hook/controller 或页面组合中。每个 hook 都用中文说明是否发请求、错误怎么处理、何时调用。传递 React Query `signal` 给 Axios；身份转换时要取消在途读请求，并在过期回调里检查 generation。普通 API 错误要继续交给页面错误态或 mutation 提示处理。
 
 ### 3.5 页面组件规范
 
-**页面组件标准结构**（以 [src/pages/console/Defects.tsx](../frontend/src/pages/console/Defects.tsx) 为参考）：
+**页面组件标准结构**（以 [pages/console/Defects/index.tsx](../frontend/src/pages/console/Defects/index.tsx) 为参考）：
 
 ```tsx
 // <页面名>。
@@ -555,7 +506,7 @@ export function XxxPage() {
 **Mutation 错误处理**：`onError: (e) => message.error(getErrorMessage(e, '默认文案'))`
 
 **禁止在页面里做的事**：
-- 直接 `new axios` 或 `fetch`（一律走 `src/api/`）
+- 直接 `new axios` 或 `fetch`；请求统一走领域 API 与 `src/shared/api/client.ts`
 - 在页面里做权限判定后隐藏按钮——**服务端鉴权为准**（前端只是 UX 提示）
 - 手工管理 `tokenStore` / `userStore`（通过 `useAuth`）
 
@@ -601,6 +552,7 @@ export function XxxPage() {
 | vite | `^5.4.10` | 构建工具 |
 | @vitejs/plugin-react | `^4.3.3` | React 插件 |
 | antd | `^5.21.6` | UI 组件库 |
+| @ant-design/icons | `5.6.1` | 直接使用的图标包，锁定现有解析版本 |
 | @tanstack/react-query | `^5.59.16` | 服务端状态 |
 | axios | `^1.7.7` | HTTP 客户端 |
 | react-router-dom | `^6.26.2` | 路由 |
@@ -892,16 +844,16 @@ payload = jwt.decode(token, settings.SECRET_KEY)  # 错！没有 algorithms 白�
 ```
 应该 `jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])`。
 
-**❌ 错误 8：把 Bug 加进 `app/models/__init__.py`**
+**❌ 错误 8：把 Bug 加进 `app/core/models/__init__.py`**
 ```python
-# app/models/__init__.py
+# app/core/models/__init__.py
 from .bug import Bug  # 错！0001 的 create_all 会与 0002 的 op.create_table 冲突
 ```
-`__init__.py` 保持为空（只留 0001 覆盖的模型），后续新增表都在各自的 `features/<name>/models/` 下，`app/main.py` 用 `import app.models  # noqa: F401` 触发加载就够了——但**前提**是 0002 已经用显式 `op.create_table` 建过表。
+`core/models/__init__.py` 只注册 0001 覆盖的九张基线表；后续新增表留在各自能力包的 `models/` 下，由 Alembic 当前装配显式发现。模型只从其规范所属包导入，不提供 `app.models` 旧路径转发。
 
 **❌ 错误 9：前端页面直接 new axios**
 ```typescript
-const response = await axios.get('/bugs');  // 错！必须走 src/api/defects.ts 的 bugsApi
+const response = await axios.get('/bugs');  // 错！必须走 src/features/defects/api/defects.ts 的 bugsApi
 ```
 
 **❌ 错误 10：前端页面里做权限判定隐藏按钮**
@@ -1015,8 +967,8 @@ A：不强制。如果 `type: ignore` 附近有需要解释的东西，加中文
 **Q：新增路由要登记到别的装配文件吗？**
 A：不用。运行时只认 `app/main.py` 的 `include_router`。
 
-**Q：`app/models/__init__.py` 什么时候可以往里加 import？**
-A：**基本不推荐**。当前设计是"0001 用 create_all 建所有基线表，0002+ 用显式 op.create_table"。加了 import 会让 `Base.metadata.create_all` 也认识这个表，然后 0002 的 `op.create_table` 就会冲突。除非你有理由重新设计整个迁移策略，否则永远不加。
+**Q：`app/core/models/__init__.py` 什么时候可以往里加 import？**
+A：只加属于九张平台基线表的核心模型。Feature 与其他能力模型留在所属包，由 Alembic 显式迁移；导入到 core 会把它们错误地加入 0001 基线集合。
 
 **Q：前端 queryKey 命名能自由发挥吗？**
 A：不能。必须对齐 §3.2 的约定，特别是 `['project', id, ...]` 这种前缀约定——作用域切换的缓存失效依赖这些 key 的**结构**，改结构会破坏 `useConsoleScope`。
@@ -1027,17 +979,21 @@ A：不能。必须对齐 §3.2 的约定，特别是 `['project', id, ...]` 这
 
 **后端关键文件**：
 - 应用入口：[backend/app/main.py](../backend/app/main.py)
-- 共享能力：[backend/app/shared/](../backend/app/shared/)
-  - `auth.py`（JWT）、`config.py`（配置）、`database.py`（会话）、`errors.py`（错误）、`notify.py`（通知）、`pagination.py`（分页）、`passwords.py`（哈希）、`rate_limit.py`（限流）、`request_context.py`（日志/request_id）、`roles.py`（权限）
+- 公共基础能力：[backend/app/core/](../backend/app/core/)
+  - `config.py`（配置）、`database/`（基类与会话）、`security/`（认证、权限、加密、脱敏）、`http/`（错误、分页、限流、请求上下文）、`notifications/notify.py`（通知写库）
+- 公共基础能力唯一入口：[backend/app/core/](../backend/app/core/)
+- 跨域执行能力：[backend/app/execution/](../backend/app/execution/)（HTTP 与模板解析）
+- 模型调用能力：[backend/app/llm/](../backend/app/llm/)
+- 表达式基础原语：[backend/app/core/expressions/](../backend/app/core/expressions/)
 - 特性模块：[backend/app/features/](../backend/app/features/)
 - 迁移：[backend/alembic/versions/](../backend/alembic/versions/)
 
-**前端关键文件**：
-- 应用入口：[frontend/src/App.tsx](../frontend/src/App.tsx)、[frontend/src/main.tsx](../frontend/src/main.tsx)
-- API 客户端：[frontend/src/api/](../frontend/src/api/)（`client.ts` 是所有请求的唯一入口）
-- Hooks：[frontend/src/hooks/](../frontend/src/hooks/)
-- 布局：[frontend/src/layouts/](../frontend/src/layouts/)
-- 页面：[frontend/src/pages/](../frontend/src/pages/)
+**前端关键目录**：
+- 应用与路由：[frontend/src/app/](../frontend/src/app/)；入口为 [app/App.tsx](../frontend/src/app/App.tsx) 与 [main.tsx](../frontend/src/main.tsx)
+- API 客户端：[frontend/src/shared/api/client.ts](../frontend/src/shared/api/client.ts)；领域 API 与合同在 `frontend/src/features/<domain>/`
+- 全局作用域：[frontend/src/app/providers/](../frontend/src/app/providers/)
+- 页面：[frontend/src/pages/](../frontend/src/pages/)；跨页面组合：[frontend/src/widgets/](../frontend/src/widgets/)
+- 通用 UI/工具/主题：[frontend/src/shared/](../frontend/src/shared/)
 
 **文档**：
 - [docs/current-system-analysis.md](./current-system-analysis.md) — 旧项目分析
@@ -1047,7 +1003,17 @@ A：不能。必须对齐 §3.2 的约定，特别是 `['project', id, ...]` 这
 
 ---
 
-**版本**：v1.2 · **生效日期**：2026-10-12 · **上次修订**：2026-10-12
+**版本**：v1.7 · **生效日期**：2026-10-30 · **上次修订**：2026-10-30
+
+**v1.7 修订内容**：更新前端 app/features/shared/widgets 目录、会话与作用域归属、领域 API/合同示例和当前缓存边界；保留 B0–B9 后端职责约定。
+
+**v1.6 修订内容**：记录 B0–B9 域内职责、canonical Schema/路由包、窄 Protocol、业务目标准备及事务/资源所有者约束。
+
+**v1.5 修订内容**：记录 E0–E4 业务共享能力实际归属：跨域 HTTP/模板解析在 `execution/`、表达式原语在 `core/expressions/`、模型调用与追踪在 `llm/`；业务域保留授权、结论与资源配置。
+
+**v1.4 修订内容**：清理 `app.models`、`app.shared`、旧 Agent/治理转发模块及前端纯页面转发文件；明确当前代码只使用规范导入路径。
+
+**v1.3 修订内容**：公共基础能力与平台核心模型已归并至 `app/core/`；更新现状目录、导入约定、证据路径和兼容入口说明。
 
 **v1.2 修订内容**：
 - 新增 §1.1「通用工作规范」：每次回复使用中文 + 每次工作开始前必须读取本文档
@@ -1064,6 +1030,19 @@ A：不能。必须对齐 §3.2 的约定，特别是 `['project', id, ...]` 这
 
 **维护者**：所有参与本仓库的工程师。**违反本文档的 PR 一律拒绝，除非先修文档**（且走 §7.2 讨论流程）。
 
+## 后端综合职责边界（B0–B9，2026-10-29）
+
+本轮规范入口与验证见 [综合交付记录](agent-cluster-refactor/backend-comprehensive-delivery.md)。顶层 core/execution/llm/agents/tools/skills/mcp/features 继续保持。多资源领域可将 `schemas.py`、`router.py` 改为同名包；包入口显式导出唯一 DTO/路由，不定义第二份实现、不通配转发。`main.py` 仍只挂载一次领域 router，HTTP 字段、错误信封与权限不随文件移动改变。
+
+- 用例结果唯一类型在 `test_management/executors/contracts.py`；断言/数据/模板作用域准备使用 `preparation.py`。API、业务、Web 适配归 `adapters/`，禁止跨域引用执行器私有 helper。
+- 业务动作绑定、映射、前置条件与请求只由 `business/executors/action_executor.py` 和 `targets.py` 持有；流程顺序仍在 `business_flow_executor.py`，结果写入与输出引用分别归 `result_writer.py`、`output_state.py`。用例适配经只读 `PreparedActionTarget` 先验证目标，再生成 Faker/解析数据；用例数据与平台运行请求头不得混用。用例模式保留原断言语义，流程/Provider 模式保留业务前置条件和输出契约。
+- 任务服务使用 run/plan/command/state/assembly 与既有 access/query/message/resource/serializers；`TaskService` 是稳定公开门面，不保留死私有转发。Worker 只持有生命周期、Provider 装配和分派；lease/completion 与独立 handler 各有唯一实现。处理器仅接收明确实体、上下文或窄 Protocol，不接收完整 Worker/TaskService，不传万能字典或 `Callable[..., Any]`。消息/命令仍共享调用方原事务；租约/心跳保持独立 Session、所有者和代次核验。
+- 安全 runtime 的数据库边界限于 preparation/case_runner/result_writer；HTTP 发送仅由 case_runner 调共享执行器。变异、断言、严重级别和证据归一化保持纯算法。ZAP protocol 不查库，stages 负责检查点和阶段协调；Connector/Orchestrator 为公开门面，原 ScanWorker 独占扫描队列。
+- API 目录按 interface/module/request/relation/change 拆分；底层 request_store 供导入、hash、调试复用，response_mapper 只做纯转换，response_loader 明确加载数据库数据。写入服务保留原 commit/flush/rollback 顺序。
+- Fixture 校验、引用、依赖边、存储和响应分别归明确服务模块；创建/更新/替换事务由 FixtureService 持有。DataFactory 只协调依赖计划和事务，generation_context/provider_dispatch/fixture_runner/result_writer 复用现有 Provider/模板。LifecycleManager 和 CleanupRunner 继续负责原准备/清理顺序、池租约与缓存，不新增全局上下文缓存。共享缺失值哨兵使用 `execution.templates.MISSING`。
+- Web 按 page/case/auth/execution/session 拆服务，浏览器句柄继续由 session_manager 独占。Agent 定义、工具治理、Skill/MCP 引用分别归 definition/tool_governance/reference 服务；会话状态、轮次、响应和工作区装配使用 session_state/session_turn/session_response/workspace_response。Skill/MCP 不反向依赖 Agent 协调层。
+- 跨域只读 ORM 引用仅用于既有归属/状态/快照读取（例如业务动作目标读取 API 身份、任务读取已批准用例、报告读取执行事实）；跨域写入仍经所属领域公开服务，禁止导入别域 `_` 实现。
+
 ## 附录 C：Web UI Automation Phase 1 增量约定（2026-10-19）
 
 Web UI 是既有测试执行体系的扩展：`TestCase.target_type=WEB`，步骤仍存 `TestStep`，
@@ -1072,11 +1051,11 @@ Web UI 是既有测试执行体系的扩展：`TestCase.target_type=WEB`，步�
 
 Playwright 只充当 Chromium 驱动，pytest 仍是测试入口。固定操作白名单解释结构化步骤，
 禁止执行 LLM/用户原始脚本。Agent 生成草稿不等于确认，修改步骤、页面定位或登录态后须重新审核。
-密码、Cookie、LocalStorage/JWT 和浏览器附件复用 `shared.crypto` 加密，响应不回传凭据。
+密码、Cookie、LocalStorage/JWT 和浏览器附件复用 `core.security.crypto` 加密，响应不回传凭据。
 浏览器资源只由 Web 模块独占，禁止连接或接管 ZAP 和用户浏览器。
 
 迁移 `0012` 必须兼容 `seed_admin` 的重复初始化；只显式创建 Web 扩展表，不将新模型加入
-`app/models/__init__.py`。附加 schema 类型 `WEB` 采用向后兼容扩展，旧 API/业务用例继续沿原路径执行。
+`app/core/models/__init__.py`。附加 schema 类型 `WEB` 采用向后兼容扩展，旧 API/业务用例继续沿原路径执行。
 
 人工扫码发生在独立的人工浏览器，完成后仅导入目标测试环境的 storage_state。
 生产环境和项目外目标不应通过自动化模块扩大授权；执行时以项目出站白名单为准。

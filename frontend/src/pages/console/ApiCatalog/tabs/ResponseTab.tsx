@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import { App, Button, Card, Empty, Input, InputNumber, Space, Typography } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { JsonView } from '../JsonView';
-import type { ApiInterfaceDetail, ApiResponseIn } from '@/types';
+import type { ApiInterfaceDetail, ApiResponseIn } from '@/features/api-catalog/contracts';
+
 
 // 一条响应的本地编辑态：schema/example 用文本编辑，保存时解析。
 interface ResponseRow {

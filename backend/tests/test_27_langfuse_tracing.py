@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import pytest
 
-from app.features.agent.providers import langfuse_tracer
-from app.features.agent.providers.langfuse_tracer import (
+from app.llm import tracing as langfuse_tracer
+from app.llm.tracing import (
     flush_langfuse,
     get_langfuse_client,
     llm_generation,
     update_generation,
 )
-from app.shared.config import settings
+from app.core.config import settings
 
 
 @pytest.fixture(autouse=True)

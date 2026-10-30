@@ -82,13 +82,13 @@ def _make_fixture(api, admin, project_id, *, key, name=None, entity_type="USER",
 
 def _admin_id(db):
     """查询平台管理员用户标识。"""
-    from app.models.identity import User
+    from app.core.models.identity import User
     return db.query(User).filter(User.username == "platform_admin").first().id
 
 
 def _get_or_create_env(db, name, admin_id):
     """获取或创建`env`。"""
-    from app.models.configuration import Environment
+    from app.core.models.configuration import Environment
     env = db.query(Environment).filter(Environment.name == name).first()
     if env is not None:
         return env.id
@@ -516,8 +516,8 @@ class TestPool:
         from app.features.test_data.services.pool_service import PoolService
 
         # 复用 platform_admin 拥有的项目：先建项目（直接 ORM，避免 HTTP 往返）。
-        from app.models.identity import User, Organization
-        from app.models.project import Project
+        from app.core.models.identity import User, Organization
+        from app.core.models.project import Project
         admin_user = db.query(User).filter(User.username == "platform_admin").first()
         org = db.query(Organization).filter(Organization.owner_id == admin_user.id).first()
         proj = Project(name=unique("proj"), organization_id=org.id if org else None,
@@ -546,7 +546,7 @@ class TestPool:
         )
         assert payload == {"k": "v"}
         # 条目被占用，再 acquire → 耗尽 409。
-        from app.shared.errors import AppError
+        from app.core.http.errors import AppError
         try:
             svc.acquire(db, project_id=proj.id, pool_key=pkey)
             raise AssertionError("应抛 DATA_POOL_EXHAUSTED")
@@ -623,7 +623,7 @@ class TestTargetDbAndPolicy:
         """验证生产环境策略`refused`场景及其预期结果。"""
         pid = _create_project(api, admin)
         env_id = _get_or_create_env(db, "production", _admin_id(db))
-        from app.models.project_environment import ProjectEnvironment
+        from app.platform.environment_configuration.models import ProjectEnvironment
         db.add(ProjectEnvironment(project_id=pid, environment_id=env_id, display_name="production", is_active=True))
         db.commit()
         r = api.put(

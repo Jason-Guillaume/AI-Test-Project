@@ -3,8 +3,8 @@ import { App, Button, Form, Input, Typography } from 'antd';
 import { LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { getErrorMessage } from '@/api/client';
+import { useAuth } from '@/app/providers/AuthProvider';
+import { getErrorMessage } from '@/shared/api/client';
 import { AuthFrame } from './AuthFrame';
 
 /** 注册表单的数据结构。 */

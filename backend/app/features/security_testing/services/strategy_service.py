@@ -14,17 +14,17 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.identity import User
-from app.models.project import Project
-from app.shared.errors import (
+from app.core.models.identity import User
+from app.core.models.project import Project
+from app.core.http.errors import (
     CODE_SECURITY_STRATEGY_NOT_FOUND,
     AppError,
     conflict,
     forbidden,
     not_found,
 )
-from app.shared.pagination import paginate
-from app.shared.roles import (
+from app.core.http.pagination import paginate
+from app.core.security.roles import (
     PROJECT_ROLE_VIEWER,
     has_project_role,
     project_role_for,
@@ -38,10 +38,8 @@ from app.features.security_testing.schemas import (
     SecurityStrategyResponse,
     SecurityStrategyUpdate,
 )
-from app.features.security_testing.services._access import (
-    get_project_or_404,
-    require_manage_project,
-)
+from app.features.security_testing.services.access_service import require_manage_project
+from app.platform.projects.services.access_service import get_project_or_404
 from app.features.security_testing.services.rule_service import (
     SecurityRuleService,
     apply_rule_payload,

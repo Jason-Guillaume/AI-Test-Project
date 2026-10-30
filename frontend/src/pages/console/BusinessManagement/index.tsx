@@ -10,19 +10,15 @@ import { useState } from 'react';
 import { App, Button, Col, Form, Input, Modal, Row, Select, Space } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
-import { EmptyState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
+import { EmptyState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { DOMAIN_STATUS_OPTIONS, FLOW_STATUS_OPTIONS } from './constants';
 import { DomainTree } from './DomainTree';
 import { FlowDetail } from './FlowDetail';
-import type {
-  BusinessDomainCreate,
-  BusinessDomainStatus,
-  BusinessFlowCreate,
-  BusinessFlowStatus,
-} from '@/types';
+import type { BusinessDomainCreate, BusinessDomainStatus, BusinessFlowCreate, BusinessFlowStatus } from '@/features/business/contracts';
+
 
 interface DomainFormValues {
   name: string;
@@ -94,15 +90,14 @@ function BusinessWorkspace() {
 
   return (
     <PageContainer>
-      <Row gutter={16}>
-        <Col flex="300px">
+      <Row gutter={16} className="resource-split">
+        <Col className="resource-split__sidebar">
           <div
+            className="resource-split__panel"
             style={{
               border: '1px solid #f0f0f0',
               borderRadius: 8,
               padding: 8,
-              height: 'calc(100vh - 200px)',
-              minHeight: 400,
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
@@ -148,14 +143,13 @@ function BusinessWorkspace() {
             </div>
           </div>
         </Col>
-        <Col flex="auto">
+        <Col className="resource-split__detail">
           <div
+            className="resource-split__panel"
             style={{
               border: '1px solid #f0f0f0',
               borderRadius: 8,
               padding: 16,
-              height: 'calc(100vh - 200px)',
-              minHeight: 400,
               overflow: 'auto',
             }}
           >

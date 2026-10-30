@@ -26,12 +26,12 @@ from app.features.dashboard.services.dashboard_service import (
     project_summaries,
     readiness,
 )
-from app.models.identity import User
-from app.shared.auth import get_current_user
-from app.shared.database import get_db
-from app.shared.errors import forbidden
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
-from app.shared.roles import is_platform_admin
+from app.core.models.identity import User
+from app.core.security.auth import get_current_user
+from app.core.database.session import get_db
+from app.core.http.errors import forbidden
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.security.roles import is_platform_admin
 
 router = APIRouter(prefix="/dashboard", tags=["看板"])
 

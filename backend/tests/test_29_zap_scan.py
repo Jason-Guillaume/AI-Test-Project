@@ -78,8 +78,8 @@ def _register(api, username):
 
 def _user_id(username):
     """按用户名回查 user_id：注册接口只在 201 时返回一次。"""
-    from app.models.identity import User
-    from app.shared.database import SessionLocal
+    from app.core.models.identity import User
+    from app.core.database.session import SessionLocal
 
     with SessionLocal() as session:
         return session.query(User).filter(User.username == username).one().id
@@ -175,27 +175,15 @@ def _alembic():
     return config
 
 
-def _make_environment(db, name=None):
-    """插入一条 Environment 行，用于验证生产环境识别。
-
-    环境名有唯一约束，同一测试会话里多个用例不能共用一个名字；
-    "prod-<n>" 仍命中生产环境判定（prod 是词元前缀）。
-    """
-    from app.models.configuration import Environment
-
+def _make_project_environment(api, admin, project_id, name=None, display_name=None):
+    """创建与项目绑定的生产环境，遵守扫描目标的项目隔离约束。"""
     name = name or unique("prod")
-    row = Environment(
-        name=name,
-        display_name=name,
-        base_url=BASE_URL,
-        gateway_prefix="",
-        is_active=True,
-        is_default=False,
+    response = api.post(
+        f"/projects/{project_id}/environments", username=admin,
+        json={"name": name, "display_name": display_name or name, "base_url": BASE_URL},
     )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row.id
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
 
 
 def _make_job(db, project_id, target_id, profile_id, scan_mode="API_PASSIVE",
@@ -224,8 +212,8 @@ def _project_row(db):
     表里有外键约束，写死的 1 在别的用例先建过项目时就不成立，一律走真实行。
     这些用例不依赖 HTTP 夹具，所以负责人用户也在这里按需创建。
     """
-    from app.models.identity import User
-    from app.models.project import Project
+    from app.core.models.identity import User
+    from app.core.models.project import Project
 
     owner = db.query(User).filter(User.username == _IFACE_OWNER).first()
     if owner is None:
@@ -305,8 +293,8 @@ def _job_context(db):
     也不需要 ZAP 相关的 monkeypatch。任务直接落成 COMPLETED（终态），
     既不会被后台任务领取，也不占用「单实例只跑一个」的并发额度。
     """
-    from app.models.identity import User
-    from app.models.project import Project
+    from app.core.models.identity import User
+    from app.core.models.project import Project
 
     project_id = _project_row(db)
     owner = db.get(User, db.get(Project, project_id).owner_id)
@@ -428,15 +416,17 @@ class TestMigration:
                 c.name for c in table.columns
             }, f"{table.name} 列与迁移不一致"
 
-    def test_models_not_reexported_from_app_models(self):
-        """红线 17：feature-local 模型不许进 app/models/__init__.py。"""
-        source = (BACKEND_DIR / "app" / "models" / "__init__.py").read_text(encoding="utf-8")
+    def test_zap_models_stay_out_of_core_registry(self):
+        """ZAP 模型归 Feature 所有，不得进入核心模型注册表。"""
+        from app.core.models import __all__ as core_exports
+
+        assert not list((BACKEND_DIR / "app" / "models").rglob("*.py"))
         for name in (
             "security_testing", "security_scan", "SecurityScanTarget",
             "SecurityScanJob", "SecurityScanProfile", "SecurityScanFinding",
             "SecurityScanAuthProfile", "SecurityScanEvent",
         ):
-            assert name not in source, f"app/models/__init__.py 不应暴露 {name}"
+            assert name not in core_exports, f"app.core.models 不应注册 {name}"
 
     def test_partial_unique_indexes(self, db):
         """验证`partial``unique``indexes`场景及其预期结果。"""
@@ -1439,8 +1429,10 @@ class TestScanTarget:
 
     def test_is_production_derived_from_environment(self, api, admin, db):
         """验证是否生产环境`derived`从环境场景及其预期结果。"""
-        env_id = _make_environment(db, "生产环境")
         pid = _project(api, admin)
+        env_id = _make_project_environment(
+            api, admin, pid, unique("prod"), display_name="生产环境",
+        )
         r = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin,
             json=_target_body(environment_id=env_id),
@@ -1777,7 +1769,7 @@ class TestScanProfile:
 class TestScanPlan:
     def test_plan_is_read_only(self, api, admin, db):
         """计划预览不写库、不发 ZAP 请求：这是人工确认闸门的前置动作。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         pid = _project(api, admin)
         target_id = api.post(
@@ -1803,7 +1795,7 @@ class TestScanPlan:
 
     def test_plan_reports_limitations_without_zap(self, api, admin, db, monkeypatch):
         """验证计划`reports``limitations`不带ZAP场景及其预期结果。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
         pid = _project(api, admin)
@@ -1823,8 +1815,8 @@ class TestScanPlan:
     def test_plan_blocks_production_active_scan(self, api, admin, db):
         """生产环境任何阶段禁止主动扫描——计划阶段就 403，不进确认流程。"""
         # 用英文词元（prod-<n>）验证按词元切分的判定口径，与用例 657 的中文判定互补。
-        env_id = _make_environment(db)
         pid = _project(api, admin)
+        env_id = _make_project_environment(api, admin, pid)
         target_id = api.post(
             f"/projects/{pid}/security/scan-targets", username=admin,
             json=_target_body(environment_id=env_id, active_scan_allowed=True,
@@ -1846,7 +1838,7 @@ class TestScanPlan:
 class TestScanJob:
     def test_create_refused_when_zap_disabled(self, api, admin, db, monkeypatch):
         """验证创建`refused`当ZAP`disabled`场景及其预期结果。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
         pid = _project(api, admin)
@@ -1863,7 +1855,7 @@ class TestScanJob:
 
     def test_create_job_returns_pending(self, api, admin, db, monkeypatch):
         """验证创建`job``returns``pending`场景及其预期结果。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -1886,7 +1878,7 @@ class TestScanJob:
 
     def test_duplicate_target_job_rejected(self, api, admin, db, monkeypatch):
         """验证重复目标`job`被拒绝场景及其预期结果。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -1909,7 +1901,7 @@ class TestScanJob:
 
     def test_active_scan_requires_editor_and_confirmation(self, api, admin, db):
         """主动扫描的四道闸：权限、环境、目标授权、人工确认（§二十三）。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         pid = _project(api, admin)
         target_id = api.post(
@@ -1953,7 +1945,7 @@ class TestScanJob:
 
     def test_cancel_pending_job(self, api, admin, db, monkeypatch):
         """验证`cancel``pending``job`场景及其预期结果。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -2205,7 +2197,7 @@ class TestAlertSeverityFilter:
 class TestZapHealth:
     def test_health_reports_not_available(self, api, admin, monkeypatch):
         """验证`health``reports`不`available`场景及其预期结果。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", None, raising=False)
@@ -2224,7 +2216,7 @@ class TestZapHealth:
 
     def test_capabilities_reports_not_available(self, api, admin, monkeypatch):
         """能力探测服务不可达时返回 available=false，绝不假装支持。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", False, raising=False)
         r = api.get("/security/zap/capabilities", username=admin)
@@ -2244,7 +2236,7 @@ class TestZapHealth:
 
     def test_health_does_not_open_connection(self, api, admin, monkeypatch):
         """健康检查只读配置，不发起网络请求。"""
-        from app.shared.config import settings
+        from app.core.config import settings
         from app.features.security_testing.zap import client as zap_client
 
         called = []
@@ -2268,7 +2260,7 @@ class TestZapHealth:
 
 def _zap_on(monkeypatch, *, enabled=True, base_url=BASE_URL):
     """检查测试环境是否启用了 ZAP。"""
-    from app.shared.config import settings
+    from app.core.config import settings
 
     monkeypatch.setattr(settings, "ZAP_ENABLED", enabled, raising=False)
     monkeypatch.setattr(settings, "ZAP_BASE_URL", base_url, raising=False)
@@ -2277,7 +2269,7 @@ def _zap_on(monkeypatch, *, enabled=True, base_url=BASE_URL):
 def _terminal_orchestrator(status="COMPLETED"):
     """返回一个 orchestrator 工厂：把任务写成终态，不碰 ZAP。"""
     from app.features.security_testing.zap.contracts import JOB_STATUS_COMPLETED
-    from app.shared.database import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.features.security_testing.zap.models.job import SecurityScanJob
 
     if status == JOB_STATUS_COMPLETED:
@@ -2470,7 +2462,7 @@ class TestScanWorker:
                 def run(self, job_id):
                     """运行对应数据。"""
                     seen.append(job_id)
-                    from app.shared.database import SessionLocal
+                    from app.core.database.session import SessionLocal
                     from app.features.security_testing.zap.models.job import SecurityScanJob
 
                     with SessionLocal() as session:
@@ -2531,7 +2523,7 @@ def _settle_other_jobs(db, *keep_ids):
     「单实例同一时间只跑一个」的并发额度，让本用例一个任务都领不到。
     keep_ids 里的是本用例自己关心的任务（可以处于任何状态）。
     """
-    from app.shared.database import SessionLocal
+    from app.core.database.session import SessionLocal
 
     keep = [int(job_id) for job_id in keep_ids] or [-1]
     placeholders = ", ".join(f":keep{i}" for i in range(len(keep)))

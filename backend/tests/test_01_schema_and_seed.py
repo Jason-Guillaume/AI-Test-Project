@@ -61,7 +61,7 @@ ADMIN_CRED_ENV_KEYS = ("INIT_ADMIN_USERNAME", "INIT_ADMIN_PASSWORD")
 def _run_seed(extra_env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """在独立进程中执行初始化脚本；凭据环境变量一律置空以验证「必须显式提供」。
 
-    注意不能直接删掉这两个键：app.shared.config 在导入时会 load_dotenv()，
+    注意不能直接删掉这两个键：app.core.config 在导入时会 load_dotenv()，
     工作目录下 backend/.env 里的开发凭据会被重新灌进环境变量，导致「未提供
     凭据」分支测不到。置为空串后 dotenv 不会覆盖已有值，脚本读到空值即跳过。
 
@@ -187,7 +187,7 @@ def _run_seed_into(target_dsn: str) -> subprocess.CompletedProcess[str]:
 def test_seed_admin_targets_the_database_named_on_the_command_line(db):
     """--database-url 与 .env 里的库不同时，种子数据必须写进命令行指定的那个库。
 
-    回归用例：app.shared.database 在首次导入时用 settings.DATABASE_URL 建好 engine，
+    回归用例：app.core.database.session 在首次导入时用 settings.DATABASE_URL 建好 engine，
     若 --database-url 的覆盖发生在导入之后，就会出现「迁移打到目标库、种子数据
     却写进 .env 库」的静默错库。
 

@@ -62,8 +62,8 @@ def target_server():
 @pytest.fixture()
 def web_setup(api, admin, db, target_server):
     """创建授权项目与环境，不修改开发数据库或 ZAP 资源。"""
-    from app.features.environment_configuration.models import ProjectEnvironment
-    from app.models.configuration import Environment
+    from app.platform.environment_configuration.models import ProjectEnvironment
+    from app.core.models.configuration import Environment
     response = api.post("/projects", username=admin, json={"name": unique("web")})
     assert response.status_code == 201, response.text
     project_id = response.json()["id"]
@@ -140,7 +140,7 @@ def test_credentials_encryption_and_scope(api, admin, db, web_setup):
     response = api.post(f"/projects/{project}/web-auth-profiles", username=admin, json=body)
     assert response.status_code == 201, response.text
     assert "Unique-Secret" not in response.text and "jwt-secret" not in response.text
-    from app.features.web_ui.models import WebAuthProfile
+    from app.features.web_testing.models import WebAuthProfile
     row = db.get(WebAuthProfile, response.json()["id"])
     assert "Unique-Secret" not in row.secret_encrypted
     bad = {**body, "storage_state": {"cookies": [], "origins": [{"origin": "https://outside.invalid", "localStorage": []}]}}
@@ -232,7 +232,7 @@ def test_fixture_factory_and_mock_lifecycle(api, admin, db, web_setup):
     from tests.test_19_data_factory import _make_fixture, _step
     from tests.test_20_test_data_lifecycle import _declare_fixtures
     from tests.test_21_mock_management import _create_service, _create_endpoint, _create_scenario, _skey
-    from app.features.mock_management.models import MockContext
+    from app.features.mocking.models import MockContext
     from app.features.test_data.models.execution import DataExecution
     project, env = web_setup
     _make_fixture(api, admin, project, key="WEB_DATA", steps=[_step("STATIC", 1, config={"values": {"username": "Factory-user"}})],
@@ -292,7 +292,7 @@ def test_mixed_api_web_flow_and_report(api, admin, db, web_setup):
 
 def test_agent_draft_requires_human_review(api, admin, db, web_setup, monkeypatch):
     """Agent 使用平台 Provider，页面上下文可用但凭据不进 prompt；生成不自动执行。"""
-    from app.features.agent.tools import web_ui_tool
+    from app.features.web_testing.services import draft_service
     project, env = web_setup
     page = api.post(f"/projects/{project}/web-pages", username=admin, json={"name": "页面", "path": "/", "elements": []})
     assert page.status_code == 201
@@ -303,7 +303,7 @@ def test_agent_draft_requires_human_review(api, admin, db, web_setup, monkeypatc
             """返回结构化步骤，记录上下文供断言。"""
             captured.append(user_content)
             return {"name": unique("ai-web"), "steps": [step("NAVIGATE", "/")]}
-    monkeypatch.setattr(web_ui_tool, "ProductionLLMProvider", lambda _db: Provider())
+    monkeypatch.setattr(draft_service, "ProductionLLMProvider", lambda _db: Provider())
     generated = api.post(f"/projects/{project}/web-agent/draft", username=admin, json={"instruction": "检查页面", "page_object_ids": [page.json()["id"]]})
     assert generated.status_code == 201, generated.text
     case = generated.json()
@@ -316,7 +316,7 @@ def test_agent_draft_requires_human_review(api, admin, db, web_setup, monkeypatc
         def generate_structured(self, *_args, **_kwargs):
             """恶意字段应被 Pydantic 拒绝。"""
             return {"name": "bad", "steps": [{"name": "bad", "operation": "EVALUATE", "script": "os.system('bad')"}]}
-    monkeypatch.setattr(web_ui_tool, "ProductionLLMProvider", lambda _db: BadProvider())
+    monkeypatch.setattr(draft_service, "ProductionLLMProvider", lambda _db: BadProvider())
     assert api.post(f"/projects/{project}/web-agent/draft", username=admin, json={"instruction": "生成脚本"}).status_code == 400
 
 
@@ -356,10 +356,10 @@ def test_attachment_access_and_auth_revocation(api, admin, web_setup):
 def test_independent_browser_concurrency(db, web_setup, target_server):
     """两个真实 Chromium 并发运行，storage_state 和浏览器资源互不共享。"""
     from concurrent.futures import ThreadPoolExecutor
-    from app.features.web_ui.runtime.playwright_executor import PlaywrightExecutor
-    from app.features.web_ui.runtime.policy import TargetPolicy
+    from app.execution.browser.playwright_executor import PlaywrightExecutor
+    from app.features.web_testing.services.target_policy_service import build_target_policy
     project, _ = web_setup
-    policy1, policy2 = TargetPolicy(db, project), TargetPolicy(db, project)
+    policy1, policy2 = build_target_policy(db, project), build_target_policy(db, project)
     def run(policy, logged):
         """线程内创建和关闭自己的 Playwright 驱动与 BrowserContext。"""
         state = {"cookies": [], "origins": [{"origin": f"http://127.0.0.1:{target_server}", "localStorage": [{"name": "logged", "value": "yes"}]}]} if logged else None
@@ -393,10 +393,10 @@ def test_migration_downgrade_preserves_existing_contracts(db):
 
 def test_cookie_and_jwt_are_used_by_real_browser(api, admin, web_setup, target_server):
     """Cookie 和 JWT 以已授权环境为作用域注入真实 Context；测试值不进入步骤日志。"""
-    from app.features.web_ui.runtime.playwright_executor import PlaywrightExecutor
-    from app.features.web_ui.runtime.policy import TargetPolicy
-    from app.features.web_ui.runtime.adapter import validate_storage_state
-    from app.models.configuration import Environment
+    from app.execution.browser.playwright_executor import PlaywrightExecutor
+    from app.features.web_testing.services.target_policy_service import build_target_policy
+    from app.features.web_testing.services.execution_adapter import validate_storage_state
+    from app.core.models.configuration import Environment
     project, env = web_setup
     auth = api.post(f"/projects/{project}/web-auth-profiles", username=admin, json={
         "name": "JWT 与 Cookie", "environment_id": env, "jwt": "Jwt-Session-Only-1234",
@@ -415,7 +415,7 @@ def test_cookie_and_jwt_are_used_by_real_browser(api, admin, web_setup, target_s
 
 def test_step_reorder_and_generic_execution_cannot_bypass_review(api, admin, db, web_setup, monkeypatch):
     """步骤编辑与排序使用原 TestStep；通用计划执行入口同样执行人工确认门禁。"""
-    from app.features.web_ui.runtime.playwright_executor import PlaywrightExecutor
+    from app.execution.browser.playwright_executor import PlaywrightExecutor
     from tests.test_15_test_executor import _build_plan_with_cases
     from app.features.test_management.models.test_step import TestStep
     project, env = web_setup
@@ -441,8 +441,8 @@ def test_step_reorder_and_generic_execution_cannot_bypass_review(api, admin, db,
 
 def test_semantic_and_fallback_locators(db, web_setup, target_server):
     """Role、Label、Text、CSS、XPath 都经过固定 Playwright 定位 API。"""
-    from app.features.web_ui.runtime.playwright_executor import PlaywrightExecutor
-    from app.features.web_ui.runtime.policy import TargetPolicy
+    from app.execution.browser.playwright_executor import PlaywrightExecutor
+    from app.features.web_testing.services.target_policy_service import build_target_policy
     project, _ = web_setup
     steps = [step("NAVIGATE", "/")]
     for strategy, value, extra in (("ROLE", "button", {"name": "Login"}), ("LABEL", "User", {}),
@@ -450,7 +450,7 @@ def test_semantic_and_fallback_locators(db, web_setup, target_server):
                                     ("XPATH", "//*[@data-testid='output']", {})):
         steps.append({"name": strategy, "operation": "ASSERT", "locator": {"strategy": strategy, "value": value, **extra},
                       "assertion": "COUNT", "operator": "EQ", "expected": "1"})
-    result = PlaywrightExecutor().execute(steps=steps, base_url=f"http://127.0.0.1:{target_server}", policy=TargetPolicy(db, project), timeout_ms=1000)
+    result = PlaywrightExecutor().execute(steps=steps, base_url=f"http://127.0.0.1:{target_server}", policy=build_target_policy(db, project), timeout_ms=1000)
     assert result.status == "PASSED", result
 
 

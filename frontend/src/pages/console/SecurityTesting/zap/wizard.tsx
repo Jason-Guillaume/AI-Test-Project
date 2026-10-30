@@ -28,15 +28,10 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { securityApi } from '@/api/securityTesting';
-import type {
-  ScanJobCreate,
-  ScanPlan,
-  ScanProfile,
-  ScanTarget,
-} from '@/api/securityTesting';
-import { JsonView } from '@/components/JsonView';
-import { getErrorMessage } from '@/api/client';
+import { zapApi } from '@/features/security-testing/zap/api';
+import type { ScanJobCreate, ScanPlan, ScanProfile, ScanTarget } from '@/features/security-testing/zap/contracts';
+import { JsonView } from '@/shared/ui/JsonView';
+import { getErrorMessage } from '@/shared/api/client';
 import {
   authModeLabel,
   authStatusLabel,
@@ -64,16 +59,16 @@ export function ScanWizardModal({
   // 只拉启用的目标；策略与认证配置全拉（策略表要能显示平台内置）。
   const targetsQuery = useQuery({
     queryKey: ['zap-targets', projectId, 'wizard'],
-    queryFn: () => securityApi.listScanTargets(projectId, { page: 1, page_size: 100, enabled: true }),
+    queryFn: () => zapApi.listScanTargets(projectId, { page: 1, page_size: 100, enabled: true }),
   });
   const profilesQuery = useQuery({
     queryKey: ['zap-profiles', projectId, 'wizard'],
-    queryFn: () => securityApi.listScanProfiles(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => zapApi.listScanProfiles(projectId, { page: 1, page_size: 100 }),
   });
   const authProfilesQuery = useQuery({
     queryKey: ['zap-auth-profiles', projectId, 'wizard'],
     queryFn: () =>
-      securityApi.listScanAuthProfiles(projectId, { page: 1, page_size: 100 }),
+      zapApi.listScanAuthProfiles(projectId, { page: 1, page_size: 100 }),
   });
 
   const targets = targetsQuery.data?.items ?? [];
@@ -104,7 +99,7 @@ export function ScanWizardModal({
     queryKey: ['zap-plan', projectId, targetId, profileId, needConfirm ? confirmed : null],
     queryFn: () => {
       if (!jobBody) return Promise.reject(new Error('尚未选择目标或策略'));
-      return securityApi.planScanJob(projectId, jobBody);
+      return zapApi.planScanJob(projectId, jobBody);
     },
     enabled: step === 3 && jobBody != null,
   });
@@ -112,7 +107,7 @@ export function ScanWizardModal({
   const submitMutation = useMutation({
     mutationFn: () => {
       if (!jobBody) return Promise.reject(new Error('尚未选择目标或策略'));
-      return securityApi.createScanJob(projectId, jobBody);
+      return zapApi.createScanJob(projectId, jobBody);
     },
     onSuccess: (job) => {
       message.success(`扫描任务 #${job.id} 已登记，等待执行`);
@@ -267,7 +262,7 @@ export function ScanWizardModal({
         targets.length === 0 ? (
           <Empty description="没有已启用的扫描目标，请先到「扫描目标」新建" />
         ) : (
-          <Table<ScanTarget>
+          <Table<ScanTarget> scroll={{ x: 'max-content' }}
             rowKey="id"
             size="small"
             columns={targetColumns}
@@ -288,7 +283,7 @@ export function ScanWizardModal({
           {profiles.length === 0 ? (
             <Empty description="没有可用的扫描策略，请先到「扫描策略与认证」新建" />
           ) : (
-            <Table<ScanProfile>
+            <Table<ScanProfile> scroll={{ x: 'max-content' }}
               rowKey="id"
               size="small"
               columns={profileColumns}

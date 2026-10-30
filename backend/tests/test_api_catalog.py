@@ -609,9 +609,9 @@ def test_import_update_writes_change_log(api, admin):
 
 def test_debug_outbound_whitelist_deny_and_hit(api, admin, db):
     """调试出站白名单：未配目标 403；配目标后放行（连接失败 400，证明白名单通过）。"""
-    from app.models.configuration import Environment
-    from app.models.identity import User
-    from app.models.project import ProjectOutboundTarget
+    from app.core.models.configuration import Environment
+    from app.core.models.identity import User
+    from app.core.models.project import ProjectOutboundTarget
 
     project_id, _ = _create_project(api, admin)
 
@@ -639,7 +639,7 @@ def test_debug_outbound_whitelist_deny_and_hit(api, admin, db):
     )
     db.add(env)
     db.flush()
-    from app.models.project_environment import ProjectEnvironment
+    from app.platform.environment_configuration.models import ProjectEnvironment
     db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id,
         display_name=env.display_name, base_url=env.base_url, gateway_prefix="", default_headers={}, is_active=True))
     db.commit()

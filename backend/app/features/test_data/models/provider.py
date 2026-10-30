@@ -10,7 +10,7 @@ config_json 里的密码字段禁止出现；数据库操作只存 connection_id
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class DataProvider(Base):

@@ -10,11 +10,11 @@
 import { useEffect, useState } from 'react';
 import { App, Button, Col, Form, Input, Modal, Row, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { API_STATUS_OPTIONS, METHOD_OPTIONS } from './constants';
 import { ApiToolbar } from './ApiToolbar';
 import { ModuleTree } from './ModuleTree';
@@ -22,12 +22,8 @@ import { ApiDetail } from './ApiDetail';
 import { ImportDialog } from './ImportDialog';
 import { ModuleApiList } from './ModuleApiList';
 import './ApiCatalog.css';
-import type {
-  ApiImportRecord,
-  ApiInterfaceCreate,
-  ApiModule,
-  ApiStatus,
-} from '@/types';
+import type { ApiImportRecord, ApiInterfaceCreate, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
+
 
 interface CreateFormValues {
   name: string;
@@ -219,7 +215,7 @@ function ApiCatalogWorkspace() {
           <Form.Item name="module_id" label="所属模块" tooltip="留空归入未分类">
             <Select allowClear placeholder="未分类" options={moduleOptions} showSearch optionFilterProp="label" />
           </Form.Item>
-          <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+          <div className="form-field-row">
             <Form.Item
               name="method"
               label="方法"
@@ -235,7 +231,7 @@ function ApiCatalogWorkspace() {
             >
               <Select options={API_STATUS_OPTIONS} style={{ width: '100%' }} />
             </Form.Item>
-          </Space>
+          </div>
           <Form.Item
             name="path"
             label="路径"

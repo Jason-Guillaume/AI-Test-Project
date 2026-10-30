@@ -49,13 +49,10 @@ from app.features.test_management.schemas import (
     TestStepResponse,
     TestStepUpdate,
 )
-from app.features.test_management.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_case_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import (
+from app.features.test_management.services.access_service import resolve_case_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_FIXTURE_DISABLED,
     CODE_FIXTURE_NOT_FOUND,
     AppError,
@@ -63,8 +60,8 @@ from app.shared.errors import (
     conflict,
     not_found,
 )
-from app.shared.notify import notify
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.core.notifications.notify import notify
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(c: TestCase) -> TestCaseResponse:

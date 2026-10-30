@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import ts from 'typescript';
 
-const source = await readFile(new URL('../src/api/pagination.ts', import.meta.url), 'utf8');
+const source = await readFile(new URL('../src/shared/api/pagination.ts', import.meta.url), 'utf8');
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022 } }).outputText;
 const { collectPages, collectArrayPages } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);
 

@@ -27,21 +27,17 @@ from app.features.test_data.schemas import (
     DataProviderResponse,
     DataProviderUpdate,
 )
-from app.features.test_data.services._access import (
-    get_project_or_404,
-    require_admin,
-    require_writable_project,
-    resolve_provider_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import (
+from app.features.test_data.services.access_service import require_admin, resolve_provider_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_DATABASE_OPERATION_FORBIDDEN,
     AppError,
     bad_request,
     conflict,
     not_found,
 )
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 # 各类型的默认风险等级。
 DEFAULT_RISK_BY_TYPE: dict[str, str] = {

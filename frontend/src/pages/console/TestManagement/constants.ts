@@ -1,24 +1,8 @@
 // 测试管理页常量：下拉选项与文案标签，与后端 test_management 枚举字面量严格对齐。
 // 仅放纯静态选项，不放业务逻辑。§27：source_type 预留 AI，当前仅 MANUAL（不在此暴露 AI 选项）。
 
-import type {
-  CaseExecutionStatus,
-  TestCaseType,
-  TestAssertionType,
-  TestDataSourceType,
-  TestExecutionMode,
-  TestOperator,
-  TestPlanStatus,
-  TestPreconditionType,
-  TestPriority,
-  TestRunStatus,
-  TestStatus,
-  TestStepType,
-  TestStrategyCategory,
-  TestSuiteType,
-  TestTargetType,
-  TestValueType,
-} from '@/types';
+import type { CaseExecutionStatus, TestCaseType, TestAssertionType, TestDataSourceType, TestExecutionMode, TestOperator, TestPlanStatus, TestPreconditionType, TestPriority, TestRunStatus, TestStatus, TestStepType, TestStrategyCategory, TestSuiteType, TestTargetType, TestValueType } from '@/features/test-management/contracts';
+
 
 export const TEST_STRATEGY_CATEGORY_OPTIONS = [
   { value: 'FUNCTIONAL' as TestStrategyCategory, label: '功能测试 FUNCTIONAL' },

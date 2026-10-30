@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { App, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
 import { VARIABLE_DATA_TYPE_OPTIONS } from './constants';
-import type { BusinessActionDetail, BusinessVariable, BusinessVariableCreate, BusinessVariableUpdate } from '@/types';
+import type { BusinessActionDetail, BusinessVariable, BusinessVariableCreate, BusinessVariableUpdate } from '@/features/business/contracts';
+
 
 export function VariableEditor({
   action,
@@ -219,14 +220,14 @@ function VariableFormModal({
         <Form.Item name="name" label="变量名" rules={[{ required: true, message: '请输入变量名' }]}>
           <Input maxLength={100} placeholder="如 project_id" />
         </Form.Item>
-        <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+        <div className="form-field-row">
           <Form.Item name="data_type" label="数据类型" style={{ flex: 1, margin: 0 }}>
             <Select options={VARIABLE_DATA_TYPE_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="required" label="必填" valuePropName="checked" style={{ flex: 0, margin: 0 }}>
             <Switch />
           </Form.Item>
-        </Space>
+        </div>
         <Form.Item name="description" label="描述">
           <Input.TextArea rows={2} maxLength={1000} />
         </Form.Item>

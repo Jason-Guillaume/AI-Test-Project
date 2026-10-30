@@ -1,0 +1,887 @@
+[
+  {
+    "file": "backend/app/agents/services/definition_service.py",
+    "line": 50,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/agents/services/definition_service.py",
+    "line": 57,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/definition_service.py",
+    "line": 112,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/definition_service.py",
+    "line": 135,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/definition_service.py",
+    "line": 137,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/agents/services/message_store.py",
+    "line": 30,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/proposal_service.py",
+    "line": 40,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/proposal_service.py",
+    "line": 63,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/proposal_service.py",
+    "line": 84,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/proposal_service.py",
+    "line": 108,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/session_access.py",
+    "line": 23,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/session_access.py",
+    "line": 61,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/session_turn.py",
+    "line": 290,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/tool_governance_service.py",
+    "line": 97,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/agents/services/tool_governance_service.py",
+    "line": 105,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router/apis.py",
+    "line": 208,
+    "call": "_DEBUG.execute"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/change_service.py",
+    "line": 42,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 143,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 144,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 190,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 192,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 200,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 218,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/import_service.py",
+    "line": 230,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 106,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 122,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 160,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 173,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 190,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 191,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/interface_service.py",
+    "line": 200,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 26,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 27,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 61,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 62,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 83,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 84,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 119,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 120,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 140,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/module_service.py",
+    "line": 145,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/relation_service.py",
+    "line": 69,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/relation_service.py",
+    "line": 70,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/relation_service.py",
+    "line": 87,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/request_service.py",
+    "line": 57,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/request_service.py",
+    "line": 87,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/request_store.py",
+    "line": 57,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/request_store.py",
+    "line": 70,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/api_catalog/services/request_store.py",
+    "line": 85,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/business/executors/action_executor.py",
+    "line": 243,
+    "call": "_EXECUTOR.execute"
+  },
+  {
+    "file": "backend/app/features/business/executors/business_flow_executor.py",
+    "line": 60,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/business/executors/business_flow_executor.py",
+    "line": 94,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/business/executors/business_flow_executor.py",
+    "line": 87,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/business/executors/result_writer.py",
+    "line": 38,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/runtime/case_runner.py",
+    "line": 387,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/runtime/result_writer.py",
+    "line": 70,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/runtime/result_writer.py",
+    "line": 119,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/services/job_command_service.py",
+    "line": 34,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/services/job_plan_service.py",
+    "line": 204,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/services/job_plan_service.py",
+    "line": 207,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/finding_writer.py",
+    "line": 153,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/finding_writer.py",
+    "line": 52,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/finding_writer.py",
+    "line": 84,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/finding_writer.py",
+    "line": 133,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/finding_writer.py",
+    "line": 87,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/finding_writer.py",
+    "line": 108,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/importing.py",
+    "line": 70,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/persistence.py",
+    "line": 104,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/persistence.py",
+    "line": 115,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/stages/persistence.py",
+    "line": 160,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 29,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 67,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 27,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 230,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 101,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 166,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/completion_service.py",
+    "line": 232,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/api_execution.py",
+    "line": 89,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/api_execution.py",
+    "line": 136,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/chat.py",
+    "line": 30,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 219,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 403,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 314,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 353,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 261,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 290,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 326,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 335,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/planning.py",
+    "line": 344,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_execution.py",
+    "line": 119,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 98,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 149,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 50,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 122,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 128,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 56,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 78,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 140,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/security_planning.py",
+    "line": 88,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/handlers/web_authoring.py",
+    "line": 66,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 96,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 98,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 252,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 30,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 65,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 101,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 123,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 255,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 118,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/lease_service.py",
+    "line": 125,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/worker.py",
+    "line": 199,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/runtime/worker.py",
+    "line": 185,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/command_service.py",
+    "line": 69,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/command_service.py",
+    "line": 49,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/services/message_service.py",
+    "line": 78,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/services/message_service.py",
+    "line": 121,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/run_service.py",
+    "line": 56,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/services/run_service.py",
+    "line": 129,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/services/state_service.py",
+    "line": 33,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/services/task_service.py",
+    "line": 191,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/tasks/services/task_service.py",
+    "line": 195,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/task_service.py",
+    "line": 198,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 106,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 122,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 194,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 320,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 160,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 246,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 362,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 248,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 284,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 381,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/tasks/services/web_authoring_service.py",
+    "line": 385,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/data_factory.py",
+    "line": 65,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/data_factory.py",
+    "line": 96,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/data_factory.py",
+    "line": 192,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/data_factory.py",
+    "line": 204,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/data_factory.py",
+    "line": 227,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/fixture_runner.py",
+    "line": 40,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/fixture_runner.py",
+    "line": 90,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/provider_dispatch.py",
+    "line": 62,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/provider_dispatch.py",
+    "line": 80,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/provider_dispatch.py",
+    "line": 41,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/result_writer.py",
+    "line": 39,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/runtime/result_writer.py",
+    "line": 41,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_dependencies.py",
+    "line": 133,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 120,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 126,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 146,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 189,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 218,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 222,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 237,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_service.py",
+    "line": 240,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/test_data/services/fixture_storage.py",
+    "line": 23,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/test_management/executors/adapters/api.py",
+    "line": 69,
+    "call": "_EXECUTOR.execute"
+  },
+  {
+    "file": "backend/app/features/web_ui/runtime/adapter.py",
+    "line": 137,
+    "call": "PlaywrightExecutor().execute"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/auth_service.py",
+    "line": 45,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/auth_service.py",
+    "line": 54,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 96,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 106,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 122,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 126,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 75,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 60,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 77,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/case_service.py",
+    "line": 62,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/page_service.py",
+    "line": 50,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/page_service.py",
+    "line": 40,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/page_service.py",
+    "line": 42,
+    "call": "db.rollback"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 105,
+    "call": "db.flush"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 123,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 179,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 239,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 158,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 121,
+    "call": "db.commit"
+  },
+  {
+    "file": "backend/app/features/web_ui/services/session_service.py",
+    "line": 76,
+    "call": "db.commit"
+  }
+]

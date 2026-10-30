@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // Mock 服务详情：服务信息 + Runtime 调用地址 + 接口（Endpoint）管理。
 //
 // 数据：
@@ -36,13 +36,15 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { buildRuntimeUrl, mockManagementApi } from '@/api/mockManagement';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
-import { fmtTime } from '@/shared/format';
-import type { ApiInterface, MockEndpoint } from '@/types';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { buildRuntimeUrl, mockManagementApi } from '@/features/mocking/api/mockManagement';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { fmtTime } from '@/shared/lib/format';
+import type { ApiInterface } from '@/features/api-catalog/contracts';
+import type { MockEndpoint } from '@/features/mocking/contracts';
+
 import { HTTP_METHOD_OPTIONS } from './constants';
 
 interface EndpointFormValues {

@@ -1,13 +1,9 @@
 import { Button, Card, Col, Row, Skeleton, Tag } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
-import { dashboardApi } from '@/api/dashboard';
-import type {
-  DashboardCharts as DashboardChartsData,
-  DashboardDailyCount,
-  DashboardDefectSeverityItem,
-  DashboardExecutionTrendItem,
-} from '@/types';
+import { dashboardApi } from '@/features/dashboard/api/dashboard';
+import type { DashboardCharts as DashboardChartsData, DashboardDailyCount, DashboardDefectSeverityItem, DashboardExecutionTrendItem } from '@/features/dashboard/contracts';
+
 
 const SEVERITY_COLORS: Record<number, string> = {
   1: 'var(--chart-severity-low)',

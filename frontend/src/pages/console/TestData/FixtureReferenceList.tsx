@@ -3,7 +3,8 @@
 // §7.3：用例名称列表，点进去跳转 /console/test-asset 并带 case id。
 // 现有 TestAsset 页不支持深链状态机，Phase A 先只展示 case id，不新做路由状态机。
 import { Empty, Table } from 'antd';
-import type { FixtureDetail } from '@/types';
+import type { FixtureDetail } from '@/features/test-data/contracts';
+
 
 /**
  * 引用关系 Tab：只读展示 referenced_cases（仅含 test_case_id 与 sort）。

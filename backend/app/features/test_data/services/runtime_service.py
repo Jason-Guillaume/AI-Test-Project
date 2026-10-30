@@ -22,14 +22,14 @@ from app.features.test_data.schemas import (
     DataProviderTestRequest,
     FixtureGenerateRequest,
 )
-from app.features.test_data.services._access import get_project_or_404
-from app.features.environment_configuration.services.environment_service import (
+from app.platform.projects.services.access_service import get_project_or_404
+from app.platform.environment_configuration.services.environment_service import (
     list_project_environment_options,
     resolve_project_environment,
 )
-from app.models.configuration import Environment
-from app.models.identity import User
-from app.shared.errors import (
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_DATA_EXECUTION_NOT_FOUND,
     AppError,
     bad_request,

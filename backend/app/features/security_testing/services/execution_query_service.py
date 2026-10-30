@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.features.security_testing.models import SecurityExecution
 from app.features.security_testing.schemas import SecurityExecutionRead
-from app.features.security_testing.services._access import get_project_or_404
-from app.models.identity import User
-from app.shared.errors import CODE_SECURITY_EXECUTION_FAILED, AppError
+from app.platform.projects.services.access_service import get_project_or_404
+from app.core.models.identity import User
+from app.core.http.errors import CODE_SECURITY_EXECUTION_FAILED, AppError
 
 __all__ = ["ExecutionQueryService"]
 

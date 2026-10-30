@@ -4,11 +4,12 @@ import { App, Button, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { notificationsApi } from '@/api/notifications';
-import { getErrorMessage } from '@/api/client';
-import type { Notification, NotificationList } from '@/types';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
+import { notificationsApi } from '@/features/notifications/api/notifications';
+import { getErrorMessage } from '@/shared/api/client';
+import type { Notification, NotificationList } from '@/features/notifications/contracts';
+
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 
 /**
  * 用户控制台的通知中心页组件。
@@ -104,10 +105,10 @@ export function ConsoleNotificationsPage() {
 
   return (
     <PageContainer>
-      <Space
+      <Space wrap className="ui-list-toolbar"
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
-        <Space>
+        <Space wrap>
           <Select /* allowClear：点击清空即回到不筛选状态，值为 undefined */ allowClear
             placeholder="按状态筛选"
             style={{ width: 140 }}

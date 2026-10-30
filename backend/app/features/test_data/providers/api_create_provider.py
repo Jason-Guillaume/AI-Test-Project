@@ -6,7 +6,7 @@
 3. ``VariableResolver`` 先把 ``expression`` 求值成具体值字典（按 target 分组）。
 4. 交给现有 ``resolve_input_mappings`` 组装 headers/query/path/body/cookies——
    **不改**它的位置语义，只把 target 映射成 business_variable 传入。
-5. ``ApiRequestExecutor.build_url`` + ``execute``。
+5. ``build_environment_url`` + 共享 ``ApiRequestExecutor.execute``。
 6. ``resolve_output_mappings`` 按 JSONPath 取输出。
 7. 请求 / 响应快照经 ``SensitiveDataMasker`` 脱敏。
 8. Cleanup 句柄只存 method + path **模板**（不存已替换的值），执行清理时再次解析
@@ -19,12 +19,13 @@ import json
 import time
 
 from app.features.api_catalog.models.api_interface import ApiInterface
-from app.features.business.executors.api_executor import ApiRequestExecutor
+from app.execution.http.executor import ApiRequestExecutor
+from app.execution.http.request_builder import build_environment_url, get_environment_headers
 from app.features.business.executors.mapping_resolver import (
     resolve_input_mappings,
     resolve_output_mappings,
 )
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.providers.base import (
     CLEANUP_HANDLE_KEY,
     RESPONSE_BODY_KEY,
@@ -33,8 +34,8 @@ from app.features.test_data.providers.base import (
     ProviderResult,
     config_of,
 )
-from app.features.test_data.runtime.variable_resolver import resolve_token_str
-from app.shared.errors import (
+from app.execution.templates.resolver import resolve_token_str
+from app.core.http.errors import (
     CODE_DATA_RESOLVE_FAILED,
     CODE_PROVIDER_NOT_FOUND,
     AppError,
@@ -113,11 +114,11 @@ class ApiCreateProvider(BaseProvider):
         json_body = body or None
         body_type = "json" if json_body else "none"
 
-        base_headers = _EXECUTOR.get_environment_headers(ctx.environment)
+        base_headers = get_environment_headers(ctx.environment)
         base_headers.update(cfg.headers or {})
         base_headers.update(request_parts["headers"])
 
-        url = _EXECUTOR.build_url(ctx.environment, iface.path, request_parts["path_params"])
+        url = build_environment_url(ctx.environment, iface.path, request_parts["path_params"])
         method = iface.method.upper()
 
         started = time.perf_counter()

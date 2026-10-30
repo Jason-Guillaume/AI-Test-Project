@@ -1,11 +1,7 @@
 // Mock Management 页面的选项与标签常量。
 // 取值与后端 features/mock_management/schemas.py 的 Literal 严格对齐。
-import type {
-  MockBehaviorType,
-  MockMatcherOperator,
-  MockMatcherSource,
-  MockScope,
-} from '@/types';
+import type { MockBehaviorType, MockMatcherOperator, MockMatcherSource, MockScope } from '@/features/mocking/contracts';
+
 
 /** 行为类型：决定依赖服务在本次调用中如何表现。 */
 export const BEHAVIOR_OPTIONS: { value: MockBehaviorType; label: string; color: string }[] = [

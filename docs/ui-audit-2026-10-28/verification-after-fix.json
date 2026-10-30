@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-28",
+  "scope": "S00 and UI-01 through UI-14 code changes",
+  "themeVerification": {
+    "method": "React server rendering and Ant Design CSS extraction in frontend/tests/uiTheme.test.mjs",
+    "modes": ["light", "dark"],
+    "components": ["Table", "Tabs", "Tag", "Menu", "Progress", "Layout", "Typography"],
+    "unresolvedTokenDeclarationsAfterFix": 0,
+    "originalSampleInvalidColorDeclarations": 25
+  },
+  "checks": {
+    "npm test": { "passed": 6, "failed": 0 },
+    "npm run lint": "passed",
+    "npm run build": "passed (includes TypeScript compilation)",
+    "git diff --check": "passed"
+  },
+  "browserVisualAcceptance": "not run: no connected browser available",
+  "existingUncommittedChanges": "preserved"
+}

@@ -23,15 +23,15 @@ import pytest
 
 from tests.conftest import unique
 
-from app.features.notifications.models.channel import NotificationChannel
-from app.features.notifications.models.notification_record import NotificationRecord
-from app.features.notifications.services import FeishuNotificationService
+from app.platform.notifications.models.channel import NotificationChannel
+from app.platform.notifications.models.notification_record import NotificationRecord
+from app.orchestration.report_delivery.card_builder import should_notify
 from app.features.reports.models.report import TestReport
 from app.features.reports.services import ReportService
 from app.features.reports.services.ai_summary import generate_summary
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
-from app.models.identity import User
+from app.core.models.identity import User
 
 API = "/api/v1"
 
@@ -590,8 +590,6 @@ class TestFeishuSend:
     def test_notify_conditions(self, db, owner):
         """§十七：ALWAYS / ONLY_FAILED / ONLY_HIGH_RISK 判定，未知条件宽松处理。"""
         pid, _actor = owner
-        feishu = FeishuNotificationService()
-
         def _report(risk, failed=0, error=0, total=3):
             """创建并保存测试报告记录。"""
             rep = TestReport(project_id=pid, report_no=unique("rpt"), title="t", status="COMPLETED",
@@ -603,15 +601,15 @@ class TestFeishuSend:
             return rep
 
         all_pass = _report("LOW")
-        assert feishu._should_send("ALWAYS", all_pass) is True
-        assert feishu._should_send("ONLY_FAILED", all_pass) is False
-        assert feishu._should_send("ONLY_FAILED", _report("MEDIUM", failed=1)) is True
-        assert feishu._should_send("ONLY_FAILED", _report("MEDIUM", error=1)) is True
-        assert feishu._should_send("ONLY_HIGH_RISK", all_pass) is False
-        assert feishu._should_send("ONLY_HIGH_RISK", _report("HIGH")) is True
-        assert feishu._should_send("ONLY_HIGH_RISK", _report("CRITICAL")) is True
+        assert should_notify("ALWAYS", all_pass) is True
+        assert should_notify("ONLY_FAILED", all_pass) is False
+        assert should_notify("ONLY_FAILED", _report("MEDIUM", failed=1)) is True
+        assert should_notify("ONLY_FAILED", _report("MEDIUM", error=1)) is True
+        assert should_notify("ONLY_HIGH_RISK", all_pass) is False
+        assert should_notify("ONLY_HIGH_RISK", _report("HIGH")) is True
+        assert should_notify("ONLY_HIGH_RISK", _report("CRITICAL")) is True
         # 未知条件按 ALWAYS 宽松处理，避免漏报。
-        assert feishu._should_send("SOMETHING_ELSE", all_pass) is True
+        assert should_notify("SOMETHING_ELSE", all_pass) is True
 
     def test_disabled_channel_is_skipped(self, db, api, admin, owner):
         """验证`disabled`渠道是否跳过场景及其预期结果。"""
@@ -656,7 +654,7 @@ class TestSecretBoundary:
             f"/projects/{pid}/notification-channels", username=admin,
             json={"name": unique("channel"), "webhook_url": _WEBHOOK, "secret": _SECRET},
         )
-        from app.features.agent.tools.report_tool import get_report_brief
+        from app.tools.builtin.reports.report_tool import get_report_brief
 
         brief = get_report_brief(db, rid, actor)
         blob = str(brief)

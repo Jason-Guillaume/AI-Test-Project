@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_module import ApiModule
 from app.features.api_catalog.schemas import InternalApiSchema
-from app.shared.errors import bad_request
+from app.core.http.errors import bad_request
 
 DEFAULT_MODULE_NAME = "未分类"
 

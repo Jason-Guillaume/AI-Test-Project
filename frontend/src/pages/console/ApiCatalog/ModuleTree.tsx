@@ -5,12 +5,13 @@ import { useMemo, useState } from 'react';
 import { App, Button, Form, Input, Modal, Select, Space, Tag } from 'antd';
 import { DeleteOutlined, DownOutlined, EditOutlined, FolderOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { collectPages } from '@/api/pagination';
-import { LoadingState, ErrorState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { collectPages } from '@/shared/api/pagination';
+import { LoadingState, ErrorState } from '@/shared/ui/PageState';
 import { METHOD_COLOR } from './constants';
-import type { ApiInterface, ApiModule, ApiModuleCreate, ApiStatus } from '@/types';
+import type { ApiInterface, ApiModule, ApiModuleCreate, ApiStatus } from '@/features/api-catalog/contracts';
+
 
 type TreeDataNode =
   | { kind: 'module'; module: ApiModule; children?: TreeDataNode[] }

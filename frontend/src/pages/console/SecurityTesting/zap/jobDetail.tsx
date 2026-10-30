@@ -3,30 +3,20 @@
 // 展示：任务基本信息、当前阶段与进度、事件时间线、告警、覆盖率、关联疑似问题、报告。
 // 进度通过 GET /scan-jobs/{id}/progress 轮询，任务结束后停止轮询。
 // progress = -1 时后端不给精确百分比，只展示阶段与计数，不能编一个 0% 出来。
-import { type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Drawer, Progress, Space, Spin, Tabs, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { securityApi } from '@/api/securityTesting';
-import type { ScanJob } from '@/api/securityTesting';
-import { ErrorState } from '@/components/PageState';
-import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
-import {
-  authModeLabel,
-  authResultColor,
-  authResultLabel,
-  BROWSER_AUTH_MODES,
-  jobStatusLabel,
-  isRunningJob,
-  scanModeLabel,
-} from './constants';
-import {
-  JobAlertsPanel,
-  JobCoveragePanel,
-  JobEventsPanel,
-  JobFindingsPanel,
-  JobReportPanel,
-  ScanJobStatusBadge,
-} from './jobPanels';
+import { zapApi } from '@/features/security-testing/zap/api';
+import type { ScanJob } from '@/features/security-testing/zap/contracts';
+import { ErrorState } from '@/shared/ui/PageState';
+import { TaskSourceLinks } from '@/features/tasks/components/TaskSourceLinks';
+import { authModeLabel, authResultColor, authResultLabel, BROWSER_AUTH_MODES, isRunningJob, jobStatusLabel, scanModeLabel } from './constants';
+import { JobAlertsPanel } from './panels/JobAlertsPanel';
+import { JobCoveragePanel } from './panels/JobCoveragePanel';
+import { JobEventsPanel } from './panels/JobEventsPanel';
+import { JobFindingsPanel } from './panels/JobFindingsPanel';
+import { JobReportPanel } from './panels/JobReportPanel';
+import { ScanJobStatusBadge } from './panels/ScanJobStatusBadge';
 
 /** 任务详情抽屉。job 由调用方传入（已加载好的任务对象）。 */
 export function ScanJobDetailDrawer({
@@ -41,7 +31,7 @@ export function ScanJobDetailDrawer({
   // 运行中才轮询进度；结束后一次即可（仍拉一次拿到最终计数）。
   const progressQuery = useQuery({
     queryKey: ['zap-progress', projectId, job.id],
-    queryFn: () => securityApi.getScanProgress(projectId, job.id),
+    queryFn: () => zapApi.getScanProgress(projectId, job.id),
     refetchInterval: (query) => isRunningJob(query.state.data?.status ?? job.status) ? 5000 : false,
   });
   const running = isRunningJob(progressQuery.data?.status ?? job.status);

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.models.pool import DataPool, DataPoolItem, DataPoolLease
 from app.features.test_data.schemas import (
     FIXTURE_SCOPES,
@@ -31,21 +31,17 @@ from app.features.test_data.schemas import (
     DataPoolUpdate,
     DataPoolItemListResponse,
 )
-from app.features.test_data.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_pool_item_project_id,
-    resolve_pool_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import (
+from app.features.test_data.services.access_service import resolve_pool_item_project_id, resolve_pool_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_DATA_POOL_EXHAUSTED,
     AppError,
     bad_request,
     conflict,
     not_found,
 )
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 
 def _mask_value(value: object) -> object:

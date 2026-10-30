@@ -4,15 +4,16 @@ import { App, Button, Modal, Space, Table, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { projectsApi } from '@/api/projects';
-import type { ProjectMember } from '@/types';
+import { projectsApi } from '@/features/projects/api/projects';
+import type { ProjectMember } from '@/features/projects/contracts';
+
 import {
   canManageProject,
   canManageProjectMembers,
-} from '@/hooks/useCapabilities';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { ProjectRoleTag } from '@/components/RoleTag';
-import { getErrorMessage } from '@/api/client';
+} from '@/features/identity/hooks/useCapabilities';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
+import { getErrorMessage } from '@/shared/api/client';
 
 /**
  * 用户控制台的项目详情页组件。

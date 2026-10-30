@@ -1,14 +1,15 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 业务规则面板：展示与管理流程级的业务规则。
 // 规则可关联到流程或具体步骤；表达式仅人工维护，第一阶段不自动执行（标记「未接入」）。
 import { useState } from 'react';
 import { App, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
 import { RULE_TYPE_OPTIONS } from './constants';
-import type { BusinessAction, BusinessRule, BusinessRuleCreate } from '@/types';
+import type { BusinessAction, BusinessRule, BusinessRuleCreate } from '@/features/business/contracts';
+
 
 const RULE_TYPE_LABELS: Record<string, { color: string; text: string }> = {
   GENERAL: { color: 'blue', text: '通用' },
@@ -213,7 +214,7 @@ function RuleFormModal({
         <Form.Item name="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]}>
           <Input maxLength={200} />
         </Form.Item>
-        <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+        <div className="form-field-row">
           <Form.Item name="rule_type" label="类型" style={{ flex: 1, margin: 0 }}>
             <Select options={RULE_TYPE_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
@@ -226,7 +227,7 @@ function RuleFormModal({
               disabled={isEdit}
             />
           </Form.Item>
-        </Space>
+        </div>
         <Form.Item name="expression" label="规则表达式" tooltip="第一阶段仅人工维护，不自动执行">
           <Input.TextArea rows={2} placeholder="如 task.status == CREATED" />
         </Form.Item>

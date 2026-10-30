@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy import inspect, text
 
 from app.features.test_management.models.test_case import TestCase as CaseEntity
-from app.models.configuration import ModelConfiguration
+from app.core.models.configuration import ModelConfiguration
 from tests.conftest import unique
 from tests.test_15_test_executor import (
     StubServer,
@@ -86,8 +86,8 @@ def _seed_default_model(db, admin_id):
 
 def _bind_environment(db, project_id, environment_id, admin_id):
     """为测试项目显式绑定隔离环境，保持生产侧项目环境校验生效。"""
-    from app.features.environment_configuration.models import ProjectEnvironment
-    from app.models.configuration import Environment
+    from app.platform.environment_configuration.models import ProjectEnvironment
+    from app.core.models.configuration import Environment
 
     environment = db.get(Environment, environment_id)
     db.add(ProjectEnvironment(project_id=project_id, environment_id=environment_id, base_url=environment.base_url, gateway_prefix=environment.gateway_prefix or "", default_headers=environment.default_headers or {}, created_by=admin_id))
@@ -119,8 +119,8 @@ def test_production_provider_falls_back_after_primary_http_error(db, monkeypatch
     """主模型 HTTP 故障时按快照顺序调用备用模型，并校验其结构化结果。"""
     import httpx
 
-    from app.features.agent.providers import llm_provider
-    from app.features.tasks.schemas import TaskPlanOutput
+    from app.llm.providers import openai_compatible as llm_provider
+    from app.orchestration.tasks.schemas import TaskPlanOutput
 
     backup = ModelConfiguration(
         domain_id=unique("fallback"), label="备用模型", provider="openai-compatible",
@@ -168,7 +168,8 @@ def test_production_provider_exhaustion_is_retryable_and_redacts_response(db, mo
     """候选模型全部超时后返回可恢复错误，不把服务端响应正文泄入事件。"""
     import httpx
 
-    from app.features.agent.providers.llm_provider import LLMError, ProductionLLMProvider
+    from app.llm import LLMError
+    from app.llm.providers import ProductionLLMProvider
 
     primary = ModelConfiguration(
         domain_id=unique("unavailable"), label="不可用模型", provider="openai-compatible",
@@ -177,7 +178,7 @@ def test_production_provider_exhaustion_is_retryable_and_redacts_response(db, mo
     db.add(primary)
     db.commit()
     monkeypatch.setattr(
-        "app.features.agent.providers.llm_provider.httpx.post",
+        "app.llm.providers.openai_compatible.httpx.post",
         lambda *args, **kwargs: httpx.Response(503, text="sensitive upstream body"),
     )
     provider = ProductionLLMProvider(db, model_config_ids=[primary.id])
@@ -193,8 +194,8 @@ def test_production_provider_exhaustion_is_retryable_and_redacts_response(db, mo
 
 def test_retryable_llm_failure_requeues_task_instead_of_failing(api, admin, db, monkeypatch):
     """真实任务的模型路由耗尽会持久化延迟重试，不把运行直接终止为 FAILED。"""
-    from app.features.agent.providers.llm_provider import LLMError
-    from app.features.tasks.runtime import worker as task_worker_module
+    from app.llm import LLMError
+    from app.orchestration.tasks.runtime import worker as task_worker_module
 
     class UnavailableTaskLLM:
         """只模拟外部 LLM 边界连续不可用，实际调度仍由 TaskWorker 完成。"""
@@ -252,8 +253,8 @@ def test_retryable_llm_failure_requeues_task_instead_of_failing(api, admin, db, 
 
 def test_task_web_authoring_creates_isolated_worker_plan(api, admin, db, monkeypatch):
     """无已确认用例的 Web 编写创建独立运行与 UI Worker，不混入执行用例/报告链路。"""
-    from app.features.tasks.models import TaskAgentInstance
-    from app.features.tasks.runtime import worker as task_worker_module
+    from app.orchestration.tasks.models import TaskAgentInstance
+    from app.orchestration.tasks.runtime import worker as task_worker_module
 
     monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
     admin_id = _admin_id(db)
@@ -310,7 +311,7 @@ def test_task_web_authoring_creates_isolated_worker_plan(api, admin, db, monkeyp
 @pytest.fixture
 def task_browser_registry():
     """保证任务内浏览器在真实 Chromium 集成用例退出时释放。"""
-    from app.features.web_ui.runtime.session_manager import registry
+    from app.execution.browser.session_manager import registry
 
     registry.close_all()
     yield
@@ -319,12 +320,12 @@ def task_browser_registry():
 
 def test_task_web_authoring_browser_approval_draft_and_reverse_trace(api, admin, db, monkeypatch, web_authoring_web_setup, task_browser_registry):
     """任务内真实受控浏览器遵守人工步骤门禁，草稿未确认且双向追溯到本次运行。"""
-    from app.features.agent.models.agent_session import AgentSession
-    from app.features.tasks.models import TaskAgentInstance
-    from app.features.tasks.router import web_authoring_service
-    from app.features.tasks.runtime import worker as task_worker_module
-    from app.features.web_ui.models import WebAgentSession, WebAgentStep
-    from app.features.web_ui.runtime.session_manager import registry
+    from app.agents.models.session import AgentSession
+    from app.orchestration.tasks.models import TaskAgentInstance
+    from app.orchestration.tasks.router import web_authoring_service
+    from app.orchestration.tasks.runtime import worker as task_worker_module
+    from app.features.web_testing.models import WebAgentSession, WebAgentStep
+    from app.execution.browser.session_manager import registry
     from tests.test_33_web_agent_loop import ScriptedProvider, _propose, _web_intent
 
     monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
@@ -439,7 +440,7 @@ def test_task_web_authoring_browser_approval_draft_and_reverse_trace(api, admin,
 
 def test_task_api_runs_existing_executor_report_and_reverse_links(api, admin, db, monkeypatch):
     """从创建、幂等、方案确认到真实 HTTP TestRun、报告和管理页回链走完闭环。"""
-    from app.features.tasks.runtime import worker as task_worker_module
+    from app.orchestration.tasks.runtime import worker as task_worker_module
 
     monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
     admin_id = _admin_id(db)
@@ -469,6 +470,12 @@ def test_task_api_runs_existing_executor_report_and_reverse_links(api, admin, db
         task = created.json()
         assert task["latest_run"]["status"] == "QUEUED"
 
+        outsider = unique("task-outsider")
+        assert api.register(outsider).status_code == 201
+        api.login(outsider)
+        hidden_run = api.get(f"/task-runs/{task['latest_run']['id']}", username=outsider)
+        assert hidden_run.status_code == 404, hidden_run.text
+
         duplicate = api.post(f"/projects/{project_id}/tasks", username=admin, json=body)
         assert duplicate.status_code == 201, duplicate.text
         assert duplicate.json()["id"] == task["id"]
@@ -494,17 +501,23 @@ def test_task_api_runs_existing_executor_report_and_reverse_links(api, admin, db
         assert {"MAIN", "PLANNER", "API_WORKER", "REVIEWER", "REPORT_AGENT"} <= roles
 
         main_agent = next(agent for agent in detail.json()["agents"] if agent["role"] == "MAIN")
+        goal_update_body = {
+            "recipient_instance_id": main_agent["id"],
+            "message_type": "GOAL_UPDATE",
+            "content": "新的整体目标仍是执行健康检查并核实正式报告",
+            "client_message_id": unique("goal-update"),
+        }
         goal_update = api.post(
             f"/task-runs/{run_id}/messages",
             username=admin,
-            json={
-                "recipient_instance_id": main_agent["id"],
-                "message_type": "GOAL_UPDATE",
-                "content": "新的整体目标仍是执行健康检查并核实正式报告",
-                "client_message_id": unique("goal-update"),
-            },
+            json=goal_update_body,
         )
         assert goal_update.status_code == 202, goal_update.text
+        duplicate_goal_update = api.post(
+            f"/task-runs/{run_id}/messages", username=admin, json=goal_update_body,
+        )
+        assert duplicate_goal_update.status_code == 202, duplicate_goal_update.text
+        assert duplicate_goal_update.json()["created_run_id"] == goal_update.json()["created_run_id"]
         old_run = api.get(f"/task-runs/{run_id}", username=admin)
         assert old_run.json()["run"]["status"] == "SUPERSEDED"
         run_id = goal_update.json()["created_run_id"]
@@ -590,7 +603,7 @@ def test_task_api_runs_existing_executor_report_and_reverse_links(api, admin, db
 
 def test_task_planner_retry_and_cancel_are_persisted(api, admin, db, monkeypatch):
     """Planner 的可重试失败回队列，之后可取消待确认运行且命令可幂等重放。"""
-    from app.features.tasks.runtime import worker as task_worker_module
+    from app.orchestration.tasks.runtime import worker as task_worker_module
 
     class FailFirstPlanner(DeterministicTaskLLM):
         """首个 Planner 调用失败一次，其余模型职责复用确定性输出。"""
@@ -671,9 +684,10 @@ def test_task_planner_retry_and_cancel_are_persisted(api, admin, db, monkeypatch
 
 def test_task_model_binding_obeys_organization_grants(db):
     """任务创建和后台调用分别尊重组织智能体开关、模型白名单及配置停用。"""
-    from app.features.tasks.services.task_service import TaskService
-    from app.models.identity import Organization, OrganizationMember, User
-    from app.models.project import Project
+    from app.orchestration.tasks.services.task_service import TaskService
+    from app.orchestration.tasks.services.assembly_service import resolve_authorized_model
+    from app.core.models.identity import Organization, OrganizationMember, User
+    from app.core.models.project import Project
     from fastapi import HTTPException
 
     actor = User(username=unique("task-member"), role="test", is_active=True)
@@ -698,18 +712,18 @@ def test_task_model_binding_obeys_organization_grants(db):
     db.commit()
 
     with pytest.raises(HTTPException) as disabled:
-        TaskService._resolve_authorized_model(db, project.id, actor)
+        resolve_authorized_model(db, project.id, actor)
     assert disabled.value.status_code == 403
 
     grant.agent_enabled = True
     db.commit()
     with pytest.raises(HTTPException) as unassigned:
-        TaskService._resolve_authorized_model(db, project.id, actor)
+        resolve_authorized_model(db, project.id, actor)
     assert unassigned.value.status_code == 403
 
     grant.allowed_model_ids = [model.domain_id]
     db.commit()
-    assert TaskService._resolve_authorized_model(db, project.id, actor).id == model.id
+    assert resolve_authorized_model(db, project.id, actor).id == model.id
     assert TaskService.assert_agent_model_access(db, project.id, actor, model.id).id == model.id
 
     grant.allowed_model_ids = []
@@ -720,7 +734,7 @@ def test_task_model_binding_obeys_organization_grants(db):
 
 def test_task_ui_worker_reuses_confirmed_web_testrun(api, admin, db, monkeypatch):
     """已确认 Web 用例由独立 UI Worker 走真实 TestRun/Playwright/ReportService 链。"""
-    from app.features.tasks.runtime import worker as task_worker_module
+    from app.orchestration.tasks.runtime import worker as task_worker_module
 
     monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
     admin_id = _admin_id(db)
@@ -791,7 +805,7 @@ def test_task_ui_worker_reuses_confirmed_web_testrun(api, admin, db, monkeypatch
 
 def test_task_creation_rejects_retired_or_unknown_security_fields(api, admin, db):
     """旧 ZAP 配置和未知安全选项必须显式报错，不能被当成普通任务静默忽略。"""
-    from app.features.tasks.models import Task
+    from app.orchestration.tasks.models import Task
 
     project_id = _create_project(api, admin)
     base = {"goal": "验证未知任务字段不会被忽略", "environment_id": 1, "case_ids": [1]}

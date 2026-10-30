@@ -23,9 +23,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.features.agent.graph import run_agent
-from app.features.agent.models.agent_session import AgentSession
-from app.features.agent.providers.llm_provider import FakeLLMProvider
+from app.agents.workflows.legacy.graph import run_agent
+from app.agents.models.session import AgentSession
+from app.llm.providers import FakeLLMProvider
 from app.features.security_testing.models import (
     SecurityCase,
     SecurityExecution,
@@ -37,7 +37,7 @@ from app.features.security_testing.schemas import PlanPreviewRequest
 from app.features.security_testing.services.plan_service import PlanService
 from app.features.test_management.models.execution import CaseExecution
 from app.features.test_management.models.test_case import TestCase
-from app.shared.errors import CODE_SECURITY_BASELINE_NOT_FOUND, AppError
+from app.core.http.errors import CODE_SECURITY_BASELINE_NOT_FOUND, AppError
 from tests.conftest import unique
 from tests.test_16_agent import _create_session_http
 from tests.test_25_security_execution import (

@@ -10,8 +10,9 @@ from app.features.defects.schemas import DefectSourceRequest
 from app.features.defects.services.defect_service import DefectService
 from app.features.security_testing.models.finding import SecurityFinding
 from app.features.test_management.models.execution import CaseExecution, TestRun
-from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, conflict, not_found
+from app.platform.projects.services.access_service import check_writable, get_project_or_404
 
 
 class DefectSourceService:
@@ -35,7 +36,7 @@ class DefectSourceService:
         project_id = run.project_id if run is not None else getattr(source, "project_id", None)
         if project_id is None:
             raise not_found("来源不存在")
-        project = self.defects._get_project_or_404(db, project_id, user)
+        project = get_project_or_404(db, project_id, user)
         return source, project
 
     def list_for_source(self, db: Session, source_type: str, source_id: int, user: User):
@@ -57,7 +58,7 @@ class DefectSourceService:
     def link(self, db: Session, body: DefectSourceRequest, actor: User):
         """人工确认后原子创建缺陷和来源，或幂等关联现有缺陷。"""
         source, project = self._source(db, body.source_type, body.source_id, actor, lock=True)
-        self.defects._check_writable(db, project, actor)
+        check_writable(db, project, actor)
         if (body.bug_id is None) == (body.bug is None):
             raise bad_request("请选择创建缺陷或关联已有缺陷")
         if body.source_type == "CASE_EXECUTION" and source.status not in {"FAILED", "ERROR"}:

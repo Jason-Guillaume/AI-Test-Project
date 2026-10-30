@@ -21,16 +21,17 @@ import {
 } from 'antd';
 import { EditOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { projectsApi } from '@/api/projects';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState } from '@/components/PageState';
+import { businessApi } from '@/features/business/api/business';
+import { projectsApi } from '@/features/projects/api/projects';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState } from '@/shared/ui/PageState';
 import { FLOW_STATUS_OPTIONS } from './constants';
 import { FlowSteps } from './FlowSteps';
 import { VariableRefPanel } from './VariableRefPanel';
 import { RulePanel } from './RulePanel';
 import { ActionDrawer } from './ActionDrawer';
-import type { BusinessActionCreate, BusinessFlowUpdate, BusinessFlowStatus, FlowExecution, FlowExecutionRequest, ActionExecution } from '@/types';
+import type { BusinessActionCreate, BusinessFlowUpdate, BusinessFlowStatus, FlowExecution, FlowExecutionRequest, ActionExecution } from '@/features/business/contracts';
+
 
 const FLOW_STATUS_LABELS: Record<string, { color: string; text: string }> = {
   DRAFT: { color: 'blue', text: '草稿' },

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_SECURITY_FIXTURE_REQUIRED,
     CODE_SECURITY_MUTATION_INVALID,
     AppError,

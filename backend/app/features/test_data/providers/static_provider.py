@@ -13,8 +13,8 @@ from app.features.test_data.providers.base import (
     ProviderResult,
     config_of,
 )
-from app.features.test_data.runtime.variable_resolver import resolve_template
-from app.shared.errors import CODE_VARIABLE_RESOLVE_FAILED, AppError
+from app.execution.templates.resolver import resolve_template
+from app.core.http.errors import CODE_VARIABLE_RESOLVE_FAILED, AppError
 
 
 class StaticProvider(BaseProvider):

@@ -217,20 +217,171 @@ def test_skill_zip_rejects_path_traversal(api, admin):
     assert response.status_code == 400, response.text
 
 
-def test_agent_runtime_variable_preview_matches_task_guidance():
-    from app.features.tasks.models.task import TaskRun
-    from app.features.tasks.runtime.worker import _agent_guidance
+def test_skill_and_mcp_deletion_preserve_agent_reference_protection(api, admin, db):
+    """治理路由删除 Skill/MCP 时仍拒绝破坏现存 Agent 引用。"""
+    from app.mcp.models import MCPServer
 
-    run = TaskRun(input_snapshot={
-        "agent_definition": {
-            "instruction": "现在是 {{.Now}}，目录 {{.DataDir}}，环境 {{.EnvName}}。",
-            "settings_json": {"runtime_variables": [{"name": "EnvName", "value": "测试环境"}]},
-            "skills": [{"name": "规则", "files_json": {"SKILL.md": "执行 {{.EnvName}} 检查。", "notes.md": "目录 {{.DataDir}}"}}],
-        },
-    })
-    rendered = _agent_guidance(run)
+    skill_response = api.post(
+        "/agent-governance/skills",
+        username=admin,
+        json={"name": unique("referenced-skill"), "content": "保留引用", "is_enabled": False},
+    )
+    assert skill_response.status_code == 201, skill_response.text
+    skill = skill_response.json()
+    enabled_skill = api.patch(
+        f"/agent-governance/skills/{skill['id']}",
+        username=admin,
+        json={"is_enabled": True},
+    )
+    assert enabled_skill.status_code == 200, enabled_skill.text
+    agent_payload = _agent_payload(unique("reference-guard-agent"))
+    agent_payload.update({"skill_keys": [skill["key"]], "is_enabled": True})
+    agent_response = api.post("/agent-governance/agents", username=admin, json=agent_payload)
+    assert agent_response.status_code == 201, agent_response.text
+    agent = agent_response.json()
+
+    update = api.patch(
+        f"/agent-governance/skills/{skill['id']}",
+        username=admin,
+        json={"is_enabled": False},
+    )
+    assert update.status_code == 409, update.text
+    assert api.delete(f"/agent-governance/skills/{skill['id']}", username=admin).status_code == 409
+    restore = api.post(
+        f"/agent-governance/skills/{skill['id']}/versions/1/restore", username=admin,
+    )
+    assert restore.status_code == 409, restore.text
+    usage = api.get(f"/agent-governance/skills/{skill['id']}/usage", username=admin)
+    assert usage.status_code == 200, usage.text
+    assert usage.json()["total_loads"] == 0
+
+    server_response = api.post(
+        "/agent-governance/mcp-servers",
+        username=admin,
+        json={"name": unique("reference-mcp"), "endpoint": "https://mcp.example.test/mcp"},
+    )
+    assert server_response.status_code == 201, server_response.text
+    server = db.get(MCPServer, server_response.json()["id"])
+    # 直接构造一次已发现工具快照，确保该引用保护测试不访问外部 MCP 服务。
+    server.discovered_tools_json = [{"name": "read_report", "annotations": {"readOnlyHint": True}}]
+    db.commit()
+    mcp_agent_payload = _agent_payload(unique("mcp-reference-agent"))
+    mcp_agent_payload.update({"tool_keys": [f"mcp:{server.id}:read_report"]})
+    mcp_agent_response = api.post("/agent-governance/agents", username=admin, json=mcp_agent_payload)
+    assert mcp_agent_response.status_code == 201, mcp_agent_response.text
+    mcp_agent = mcp_agent_response.json()
+    assert api.delete(f"/agent-governance/mcp-servers/{server.id}", username=admin).status_code == 409
+
+    # 先移除 Agent 引用，随后服务删除成功，确认保护是引用条件而非永久禁止。
+    skill_agent_update = api.patch(
+        f"/agent-governance/agents/{agent['id']}", username=admin,
+        json={"is_enabled": False, "skill_keys": []},
+    )
+    assert skill_agent_update.status_code == 200, skill_agent_update.text
+    mcp_agent_update = api.patch(
+        f"/agent-governance/agents/{mcp_agent['id']}", username=admin,
+        json={"tool_keys": []},
+    )
+    assert mcp_agent_update.status_code == 200, mcp_agent_update.text
+    assert api.delete(f"/agent-governance/skills/{skill['id']}", username=admin).status_code == 204
+    assert api.delete(f"/agent-governance/mcp-servers/{server.id}", username=admin).status_code == 204
+
+
+def test_agent_runtime_variable_preview_matches_task_guidance():
+    from app.agents.services.task_decision_service import build_task_agent_guidance
+
+    profile = {
+        "instruction": "现在是 {{.Now}}，目录 {{.DataDir}}，环境 {{.EnvName}}。",
+        "settings_json": {"runtime_variables": [{"name": "EnvName", "value": "测试环境"}]},
+        "skills": [{"name": "规则", "files_json": {"SKILL.md": "执行 {{.EnvName}} 检查。", "notes.md": "目录 {{.DataDir}}"}}],
+    }
+    rendered = build_task_agent_guidance(profile)
     assert "{{.Now}}" not in rendered
     assert "{{.DataDir}}" not in rendered
     assert "{{.EnvName}}" not in rendered
     assert "测试环境" in rendered
     assert "任务运行时数据目录" in rendered
+
+
+def test_skill_usage_read_model_counts_distinct_runs_and_limits_recent_tasks(api, admin, db):
+    """治理 read model 统计总加载数、去重运行数和最近十次使用。"""
+    from datetime import datetime, timedelta, timezone
+
+    from app.orchestration.tasks.models.task import Task, TaskRun
+    from app.skills.models import SkillUsageEvent
+
+    skill_response = api.post(
+        "/agent-governance/skills",
+        username=admin,
+        json={
+            "name": unique("usage-skill"),
+            "content": "只用于统计回归。",
+            "is_enabled": False,
+        },
+    )
+    assert skill_response.status_code == 201, skill_response.text
+    skill = skill_response.json()
+
+    agent_payload = _agent_payload(unique("usage-agent"))
+    agent_payload["skill_keys"] = [skill["key"]]
+    agent_response = api.post("/agent-governance/agents", username=admin, json=agent_payload)
+    assert agent_response.status_code == 201, agent_response.text
+    agent = agent_response.json()
+
+    project_response = api.post(
+        "/projects",
+        username=admin,
+        json={"name": unique("usage-project"), "description": "Skill usage read model"},
+    )
+    assert project_response.status_code == 201, project_response.text
+    project_id = project_response.json()["id"]
+
+    base_time = datetime.now(timezone.utc).replace(tzinfo=None)
+    runs: list[tuple[TaskRun, Task]] = []
+    for number in range(11):
+        task = Task(
+            project_id=project_id,
+            title=f"usage task {number}",
+            goal="统计最近使用",
+        )
+        db.add(task)
+        db.flush()
+        run = TaskRun(
+            task_id=task.id,
+            run_number=number + 1,
+            goal_snapshot=task.goal,
+            input_snapshot={},
+        )
+        db.add(run)
+        db.flush()
+        db.add(SkillUsageEvent(
+            skill_definition_id=skill["id"],
+            agent_definition_id=agent["id"],
+            task_run_id=run.id,
+            created_at=base_time - timedelta(minutes=number),
+        ))
+        runs.append((run, task))
+
+    # 同一运行再次加载应增加总次数，但不能增加去重后的任务运行数。
+    oldest_run = runs[0][0]
+    db.add(SkillUsageEvent(
+        skill_definition_id=skill["id"],
+        agent_definition_id=agent["id"],
+        task_run_id=oldest_run.id,
+        created_at=base_time - timedelta(minutes=20),
+    ))
+    db.commit()
+
+    response = api.get(f"/agent-governance/skills/{skill['id']}/usage", username=admin)
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["total_loads"] == 12
+    assert data["task_count"] == 11
+    assert data["agents"] == [{"id": agent["id"], "name": agent["name"], "loads": 12}]
+    assert len(data["recent_tasks"]) == 10
+    assert data["recent_tasks"][0]["title"] == "usage task 10"
+    assert data["recent_tasks"][-1]["title"] == "usage task 1"
+    assert data["last_used_at"] is not None
+
+    missing = api.get("/agent-governance/skills/2147483647/usage", username=admin)
+    assert missing.status_code == 404

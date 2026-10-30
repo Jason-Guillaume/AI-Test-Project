@@ -1,0 +1,50 @@
+[
+  {
+    "file": "backend/tests/test_12_business_integration.py",
+    "assertions_before": 62,
+    "assertions_after": 62,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_23_security_mutation.py",
+    "assertions_before": 269,
+    "assertions_after": 270,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_28_zap_connector.py",
+    "assertions_before": 206,
+    "assertions_after": 206,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_32_zap_agent_approval.py",
+    "assertions_before": 57,
+    "assertions_after": 57,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_35_tasks.py",
+    "assertions_before": 141,
+    "assertions_after": 141,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_36_agent_governance_details.py",
+    "assertions_before": 69,
+    "assertions_after": 69,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_audit_flow_headers.py",
+    "assertions_before": 3,
+    "assertions_after": 3,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  },
+  {
+    "file": "backend/tests/test_task_notifications.py",
+    "assertions_before": 20,
+    "assertions_after": 20,
+    "reason": "Only canonical helper imports, exact IO-owner source-guard paths, or connector protocol-state instrumentation updated; no nodeid removed or assertion suppressed."
+  }
+]

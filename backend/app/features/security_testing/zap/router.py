@@ -14,6 +14,8 @@ Router 不拼 ZAP API 请求（§六）：本层只做参数收敛与 service �
 
 from __future__ import annotations
 
+from app.platform.projects.services.access_service import get_project_or_404
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -49,10 +51,10 @@ from app.features.security_testing.zap.services import (
     profile_service,
     target_service,
 )
-from app.models.identity import User
-from app.shared.auth import get_current_user, require_platform_admin
-from app.shared.database import get_db
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.models.identity import User
+from app.core.security.auth import get_current_user, require_platform_admin
+from app.core.database.session import get_db
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 router = APIRouter(tags=["安全扫描"])
 
@@ -122,7 +124,7 @@ def get_scan_target(
     user: User = Depends(get_current_user),
 ) -> ScanTargetRead:
     """获取扫描目标。"""
-    _access.get_project_or_404(db, project_id, user)
+    get_project_or_404(db, project_id, user)
     row = _TARGETS.get_or_none(db, project_id, target_id)
     if row is None:
         raise _access.target_forbidden()
@@ -201,7 +203,7 @@ def get_scan_profile(
     user: User = Depends(get_current_user),
 ) -> ScanProfileRead:
     """获取扫描配置档案。"""
-    _access.get_project_or_404(db, project_id, user)
+    get_project_or_404(db, project_id, user)
     row = _PROFILES.get_or_none(db, project_id, profile_id)
     if row is None:
         raise _access.profile_not_found()

@@ -12,14 +12,15 @@
 import { useMemo, useState } from 'react';
 import { Select, Space, Tabs } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { projectsApi } from '@/api/projects';
-import { EmptyState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { projectsApi } from '@/features/projects/api/projects';
+import { EmptyState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TestDataTab } from './TestDataTab';
 import { FixtureTab } from './FixtureTab';
 import { ProviderTab } from './ProviderTab';
 import { ExecutionTab } from './ExecutionTab';
-import type { Environment } from '@/types';
+import type { Environment } from '@/features/environments/contracts';
+
 
 /**
  * 测试数据中心页。

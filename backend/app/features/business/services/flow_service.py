@@ -41,16 +41,13 @@ from app.features.business.schemas import (
     BusinessVariableRefResponse,
     BusinessVariableResponse,
 )
-from app.features.business.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_flow_project_id,
-)
+from app.features.business.services.access_service import resolve_flow_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
 from app.features.business.services.binding_service import _binding_detail
-from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
-from app.shared.notify import notify
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, conflict, not_found
+from app.core.notifications.notify import notify
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 
 def _flow_response(flow: BusinessFlow) -> BusinessFlowResponse:

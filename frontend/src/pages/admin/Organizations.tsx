@@ -14,15 +14,14 @@ import {
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  organizationsApi,
-  type MemberGrant,
-} from '@/api/organizations';
-import type { Organization, OrganizationMember, OrganizationRole } from '@/types';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { OrgRoleTag } from '@/components/RoleTag';
-import { getErrorMessage } from '@/api/client';
-import { PageHeader } from '@/components/PageHeader';
+import { organizationsApi } from '@/features/organizations/api/organizations';
+import type { MemberGrant } from '@/features/organizations/contracts';
+import type { Organization, OrganizationMember, OrganizationRole } from '@/features/organizations/contracts';
+
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { OrgRoleTag } from '@/features/identity/components/RoleTag';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 // 组织角色下拉选项：owner > admin > member 三级
 const ORG_ROLE_OPTIONS: { label: string; value: OrganizationRole }[] = [
@@ -148,10 +147,10 @@ export function AdminOrganizationsPage() {
         </Button>
       </Space>
 
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div className="organization-layout">
         {/* 左侧：组织列表；点击选中高亮，切换右侧详情 */}
         <List
-          style={{ width: 280 }}
+          className="organization-layout__list"
           bordered
           dataSource={orgs}
           renderItem={(org: Organization) => (
@@ -176,10 +175,10 @@ export function AdminOrganizationsPage() {
           )}
         />
 
-        <div style={{ flex: 1 }}>
+        <div style={{ minWidth: 0 }}>
           {activeOrg ? (
             <>
-              <Space
+              <Space wrap className="ui-list-toolbar"
                 style={{
                   marginBottom: 12,
                   justifyContent: 'space-between',

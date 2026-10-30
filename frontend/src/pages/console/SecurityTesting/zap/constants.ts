@@ -2,16 +2,8 @@
 // 取值与后端 features/security_testing/zap/contracts.py、schemas.py 的 Literal 严格对齐。
 // 严重级别复用 ../constants 的 SEVERITY_OPTIONS（字面量一致：INFO/LOW/MEDIUM/HIGH/CRITICAL）。
 
-import type {
-  CoverageStage,
-  ScanAuthMode,
-  ScanAuthStatus,
-  ScanAuthorizationStatus,
-  ScanJobStatus,
-  ScanMode,
-  ScanTargetType,
-} from '@/api/securityTesting';
-import type { Option } from '@/shared/options';
+import type { CoverageStage, ScanAuthMode, ScanAuthStatus, ScanAuthorizationStatus, ScanJobStatus, ScanMode, ScanTargetType } from '@/features/security-testing/zap/contracts';
+import type { Option } from '@/shared/lib/options';
 
 // --------------------------------------------------------------------------- 扫描目标类型
 

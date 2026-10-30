@@ -3,30 +3,31 @@
 // 每条用例执行再打开宽屏抽屉查看步骤时间线 / 断言 / 截图 / Trace / 请求响应快照。
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；越权 404，前端不展示。
-// 颜色与状态语义统一走 shared/status 与 theme token，不在本页重复定义色板。
+// 颜色与状态语义统一走 test-management/status 与 theme token，不在本页重复定义色板。
 import { useEffect, useState } from 'react';
 import { App, Button, Empty, Table, theme, Typography } from 'antd';
 import { EyeOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
-import { getErrorMessage } from '@/api/client';
-import { reportsApi } from '@/api/reports';
-import { testManagementApi } from '@/api/testManagement';
-import { CaseExecutionDetail } from '@/components/exec/CaseExecutionDetail';
-import { DetailDrawer } from '@/components/DetailDrawer';
-import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { StatusBadge } from '@/components/StatusBadge';
-import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
-import { fmtDuration, fmtTime } from '@/shared/format';
+import { getErrorMessage } from '@/shared/api/client';
+import { reportsApi } from '@/features/reports/api/reports';
+import { testManagementApi } from '@/features/test-management/api/testManagement';
+import { CaseExecutionDetail } from '@/widgets/execution-detail/CaseExecutionDetail';
+import { DetailDrawer } from '@/shared/ui/DetailDrawer';
+import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { TaskSourceLinks } from '@/features/tasks/components/TaskSourceLinks';
+import { fmtDuration, fmtTime } from '@/shared/lib/format';
 import {
   CASE_EXECUTION_STATUS_COLOR,
   CASE_EXECUTION_STATUS_LABEL,
   TEST_RUN_STATUS_COLOR,
-} from '@/shared/status';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+} from '@/features/test-management/status';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_RUN_STATUS_OPTIONS } from './constants';
-import type { CaseExecution, TestRun } from '@/types';
+import type { CaseExecution, TestRun } from '@/features/test-management/contracts';
+
 
 /** 执行历史页。 */
 export function ConsoleExecutionHistoryPage() {

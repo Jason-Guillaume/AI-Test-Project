@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react';
 import { Button, Space, Tag, Typography } from 'antd';
 import { FolderOpenOutlined, RightOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { ErrorState, LoadingState } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { API_STATUS_COLOR, METHOD_COLOR } from './constants';
-import type { ApiInterface, ApiModule, ApiStatus } from '@/types';
+import type { ApiInterface, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
+
 
 export function ModuleApiList({
   projectId,

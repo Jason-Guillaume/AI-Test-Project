@@ -210,7 +210,7 @@ def db(test_database):
     Yields:
         Session: 与隔离测试库绑定的数据库会话。
     """
-    from app.shared.database import SessionLocal
+    from app.core.database.session import SessionLocal
 
     session = SessionLocal()
     try:
@@ -254,10 +254,10 @@ def admin(api, admin_user):
     """
     if admin_user in api.tokens:
         return admin_user
-    from app.models.identity import Organization, User
-    from app.shared.database import SessionLocal
-    from app.shared.passwords import hash_password
-    from app.features.organizations.services.organization_service import ensure_personal_organization
+    from app.core.models.identity import Organization, User
+    from app.core.database.session import SessionLocal
+    from app.core.security.passwords import hash_password
+    from app.platform.organizations.services.organization_service import ensure_personal_organization
 
     with SessionLocal() as session:
         existing = (

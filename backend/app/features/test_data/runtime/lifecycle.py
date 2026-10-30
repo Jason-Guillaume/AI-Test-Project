@@ -23,7 +23,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.models.execution import (
     DataExecution,
     FixtureCache,
@@ -32,9 +32,9 @@ from app.features.test_data.models.execution import (
 from app.features.test_data.models.fixture import Fixture
 from app.features.test_data.runtime.cleanup_runner import CleanupRunner
 from app.features.test_data.runtime.data_factory import DataFactory
-from app.models.configuration import Environment
-from app.models.identity import User
-from app.shared.errors import (
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_DATA_RESOLVE_FAILED,
     CODE_FIXTURE_DISABLED,
     CODE_FIXTURE_NOT_FOUND,

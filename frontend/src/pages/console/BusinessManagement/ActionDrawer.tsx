@@ -5,14 +5,15 @@ import { useState } from 'react';
 import { App, Button, Descriptions, Form, Input, Select, Space, Tabs, Tag } from 'antd';
 import { EditOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
 import { ACTION_TYPE_OPTIONS } from './constants';
 import { PreconditionEditor } from './PreconditionEditor';
 import { VariableEditor } from './VariableEditor';
 import { StateEditor } from './StateEditor';
 import { BindingEditor } from './BindingEditor';
-import type { BusinessActionDetail, BusinessActionUpdate } from '@/types';
+import type { BusinessActionDetail, BusinessActionUpdate } from '@/features/business/contracts';
+
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
   NORMAL: '常规动作',
@@ -125,14 +126,14 @@ export function ActionDrawer({
         <Form.Item name="name" label="步骤名称" rules={[{ required: true, message: '请输入步骤名称' }]}>
           <Input maxLength={200} />
         </Form.Item>
-        <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+        <div className="form-field-row">
           <Form.Item name="action_key" label="业务标识" rules={[{ required: true, message: '请输入业务标识' }]} style={{ flex: 1, margin: 0 }}>
             <Input maxLength={100} />
           </Form.Item>
           <Form.Item name="action_type" label="动作类型" style={{ flex: 1, margin: 0 }}>
             <Select options={ACTION_TYPE_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
-        </Space>
+        </div>
         <Form.Item name="sort" label="排序值">
           <Input type="number" />
         </Form.Item>

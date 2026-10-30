@@ -1,0 +1,19 @@
+{
+  "exit_code": 2,
+  "collected": 451,
+  "passed": 0,
+  "failed": 0,
+  "errors": 3,
+  "skipped": 0,
+  "duration_seconds": 2.841,
+  "warnings": 11,
+  "warning_categories": {
+    "DeprecationWarning": 1,
+    "UserWarning": 10
+  },
+  "source_digest": "5c774d06a1e69ec9a24d9e54d38175769a4f6476b03e4699addb48ca07371853",
+  "command": "env -u TEST_DATABASE_NAME TEST_POSTGRES_USER=root TEST_POSTGRES_PASSWORD=<runtime secret> TEST_POSTGRES_HOST=127.0.0.1 TEST_POSTGRES_PORT=5432 .venv/bin/python -m pytest -q --tb=no -ra -p comprehensive_pytest_plugin",
+  "database_policy": "Only testplatform_test-p<PID>, never testplatform_dev",
+  "collection_errors": 3,
+  "note": "Initial reporting hook did not include collection errors; corrected from pytest terminal output, exit code 2. Circular preparation-constant dependency fixed before next run."
+}

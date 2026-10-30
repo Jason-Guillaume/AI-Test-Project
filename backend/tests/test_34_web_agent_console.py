@@ -18,7 +18,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from app.features.web_ui.runtime.session_manager import registry
+from app.execution.browser.session_manager import registry
 from tests.conftest import unique
 from tests.test_16_agent import _create_session_http
 from tests.test_25_security_execution import _actor
@@ -173,7 +173,7 @@ class TestPromote:
         两个端点路径都不带 project_id，归属由会话行判定。观测虽是「只读语义」，
         但会推进浏览器上下文并在句柄失效时把会话置为 FAILED，所以按写权限校验。
         """
-        from app.features.web_ui.models import WebAgentSession
+        from app.features.web_testing.models import WebAgentSession
 
         project_id, env_id = web_setup
         wsid = _explore_to_accepted(db, api, admin, project_id, env_id)
@@ -225,8 +225,8 @@ class TestStepStatusBoundary:
         """
         from fastapi import HTTPException
 
-        from app.features.web_ui.models import WebAgentStep
-        from app.features.web_ui.router import service as web_ui_service
+        from app.features.web_testing.models import WebAgentStep
+        from app.features.web_testing.router import service as web_ui_service
 
         project_id, env_id = web_setup
         wsid, _ = _open_browser_session(db, project_id, env_id, budget=2)

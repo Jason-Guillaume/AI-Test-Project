@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 接口关联 Tab：维护当前接口参与的关联（前置条件 / 输出→输入 / 后续步骤）。
 // 列表同时返回「当前接口是 source（发出）」与「当前接口是 target（被依赖）」两个方向，
 // 故用「方向」列区分，「对端接口」按方向取另一侧名称；新增固定以当前接口为 source。
@@ -18,18 +18,13 @@ import {
 } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
-import { ResourceTable } from '@/components/ResourceTable';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { ResourceTable } from '@/shared/ui/ResourceTable';
 import { RELATION_TYPE_OPTIONS } from '../constants';
-import type {
-  ApiInterface,
-  ApiInterfaceDetail,
-  ApiRelation,
-  ApiRelationCreate,
-  RelationType,
-} from '@/types';
+import type { ApiInterface, ApiInterfaceDetail, ApiRelation, ApiRelationCreate, RelationType } from '@/features/api-catalog/contracts';
+
 
 const RELATION_LABEL: Record<RelationType, string> = {
   PRECONDITION: '前置条件',

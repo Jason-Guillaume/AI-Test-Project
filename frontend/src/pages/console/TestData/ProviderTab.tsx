@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 数据工厂 Tab：Data Provider 列表 + 新增/编辑/试跑/启用停用。
 //
 // §7.4：表列 名称、类型、状态、风险等级、使用次数、最近执行状态。
@@ -8,9 +8,9 @@ import { collectPages } from '@/api/pagination';
 import { useState } from 'react';
 import { App, Button, Popconfirm, Space, Switch, Table, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState } from '@/components/PageState';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
 import {
   PROVIDER_EXECUTION_STATUS_COLOR,
   PROVIDER_TYPE_OPTIONS,
@@ -20,7 +20,9 @@ import {
 } from './constants';
 import { ProviderModal } from './ProviderModal';
 import { ExecutionDetailDrawer } from './ExecutionDetailDrawer';
-import type { DataExecutionDetail, DataProvider, ProviderExecutionStatus, ProviderType, RiskLevel } from '@/types';
+import type { DataProvider, ProviderExecutionStatus, ProviderType, RiskLevel } from '@/features/test-data/contracts';
+import type { DataExecutionDetail } from '@/features/test-data/executionContracts';
+
 
 /**
  * Data Provider 列表。

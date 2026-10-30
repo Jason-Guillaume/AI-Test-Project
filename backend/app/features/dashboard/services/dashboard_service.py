@@ -31,12 +31,12 @@ from app.features.defects.schemas import SEVERITY_LABELS
 from app.features.reports.models.report import TestReport
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
-from app.models.configuration import Environment, ModelConfiguration
-from app.models.identity import Organization, OrganizationMember, User
-from app.models.notification import Notification
-from app.models.project import Project, ProjectMember
-from app.shared.errors import bad_request
-from app.shared.roles import (
+from app.core.models.configuration import Environment, ModelConfiguration
+from app.core.models.identity import Organization, OrganizationMember, User
+from app.core.models.notification import Notification
+from app.core.models.project import Project, ProjectMember
+from app.core.http.errors import bad_request
+from app.core.security.roles import (
     accessible_organization_ids,
     accessible_project_ids,
     is_platform_admin,

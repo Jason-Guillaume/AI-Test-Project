@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from app.features.test_data.models.pool import DataPool, DataPoolItem, DataPoolLease
 from app.features.test_data.providers.base import BaseProvider, ProviderContext, ProviderResult, config_of
-from app.shared.errors import CODE_PROVIDER_DISABLED, AppError
+from app.core.http.errors import CODE_PROVIDER_DISABLED, AppError
 
 
 class PoolProvider(BaseProvider):

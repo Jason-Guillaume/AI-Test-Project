@@ -12,7 +12,7 @@ fixture_id 是 RESTRICT：被引用的 Fixture 不允许直接删除（服务层
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestCaseFixture(Base):

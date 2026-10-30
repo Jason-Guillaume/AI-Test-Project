@@ -1,0 +1,54 @@
+{
+  "run_id": "20261029-pre-fix",
+  "phase": "F0 修复前基线",
+  "captured_at_client_date": "2026-10-29",
+  "code_state": {
+    "head": "e46cbc9fde7ad387a29f934dbce26f30f37d2b2c",
+    "branch": "develop",
+    "status_sha256": "6d07bd82cf30883d69b08fe0d22cf35d5eccd4968cd89424dbdebb52c0ddc4c5",
+    "tracked_diff_sha256": "1451c65c9cfc1b85908c0789ae75e089b86e16f54e40a47e5a26ea29e3416ad5",
+    "changed_path_count": 426,
+    "untracked_path_count": 51,
+    "preexisting_worktree_changes": true
+  },
+  "database": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "credential": "仅来自当前会话用户提供的测试口令；未保存",
+    "database_name_policy": "清除 TEST_DATABASE_NAME 覆盖；conftest.py 按 pytest 进程使用 testplatform_test-p<PID> 并在 teardown 删除",
+    "development_database_used": false
+  },
+  "runs": {
+    "default": {
+      "command": "cd backend && env -u TEST_DATABASE_NAME TEST_POSTGRES_USER=root TEST_POSTGRES_PASSWORD=<已提供测试专用口令> TEST_POSTGRES_HOST=127.0.0.1 TEST_POSTGRES_PORT=5432 .venv/bin/python -m pytest -q --tb=no -r fE --junitxml=<临时 JUnit>",
+      "exit_code": 1,
+      "collected": 1035,
+      "passed": 963,
+      "failed": 69,
+      "errors": 3,
+      "skipped": 0,
+      "warnings": 79,
+      "warning_categories": "本次命令使用 -r fE，未输出警告类别；仅保存总数。",
+      "duration_seconds": 320.353,
+      "timestamp": "2026-10-29T10:42:12.318694+08:00"
+    },
+    "tests_dir": {
+      "command": "cd backend && env -u TEST_DATABASE_NAME TEST_POSTGRES_USER=root TEST_POSTGRES_PASSWORD=<已提供测试专用口令> TEST_POSTGRES_HOST=127.0.0.1 TEST_POSTGRES_PORT=5432 .venv/bin/python -m pytest tests/ -q --tb=no -r fE --junitxml=<临时 JUnit>",
+      "exit_code": 1,
+      "collected": 1032,
+      "passed": 963,
+      "failed": 69,
+      "errors": 0,
+      "skipped": 0,
+      "warnings": 46,
+      "warning_categories": "本次命令使用 -r fE，未输出警告类别；仅保存总数。",
+      "duration_seconds": 301.412,
+      "timestamp": "2026-10-29T10:47:42.716093+08:00"
+    }
+  },
+  "historical_comparison": {
+    "latest_reported_aggregate": "963 passed, 69 failed, 3 errors",
+    "historical_failure_nodeids_available": false,
+    "per_nodeid_origin": "只凭旧聚合记录无法断言逐项历史来源；当前结果作为本轮修复前基线。"
+  }
+}

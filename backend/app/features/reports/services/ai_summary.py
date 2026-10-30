@@ -15,8 +15,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from app.features.agent.prompts import load_prompt
-from app.features.agent.providers.sanitizer import mask_secret_values
+from app.features.reports.prompts import load_report_summary_prompt
+from app.core.security.sanitizer import mask_secret_values
 from app.features.reports.schemas import AISummary
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def generate_summary(
         校验通过的 AISummary dict（纯结构化字段）；LLM 失败 / 校验失败返回 None。
         返回 None 时调用方应将 ai_summary 置空、报告仍 COMPLETED（§九）。
     """
-    system = load_prompt("report_summary")
+    system = load_report_summary_prompt()
     instructions = str(additional_instructions or "").strip()
     if instructions:
         system = (

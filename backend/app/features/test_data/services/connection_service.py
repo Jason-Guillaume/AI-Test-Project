@@ -29,19 +29,13 @@ from app.features.test_data.schemas import (
     TargetDbConnectionUpdate,
 )
 from app.features.test_data.security import db_guard
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
-from app.features.test_data.services._access import (
-    get_project_or_404,
-    require_admin,
-    require_admin_project,
-    require_writable_project,
-    resolve_connection_project_id,
-    resolve_policy_project_id,
-)
-from app.models.configuration import Environment
-from app.models.identity import User
-from app.shared.crypto import decrypt_secret, encrypt_secret
-from app.shared.errors import (
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
+from app.features.test_data.services.access_service import require_admin, require_admin_project, resolve_connection_project_id, resolve_policy_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
+from app.core.security.crypto import decrypt_secret, encrypt_secret
+from app.core.http.errors import (
     CODE_DATABASE_ENVIRONMENT_FORBIDDEN,
     CODE_DATABASE_OPERATION_FORBIDDEN,
     AppError,
@@ -49,7 +43,7 @@ from app.shared.errors import (
     conflict,
     not_found,
 )
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 # 连通性探测的最长等待；不重试，失败直接返回给调用方。
 PING_TIMEOUT_SECONDS = 5
@@ -90,7 +84,7 @@ def _policy_response(policy: DatabaseAccessPolicy, db: Session) -> DatabasePolic
     resp = DatabasePolicyResponse.model_validate(policy)
     env = db.get(Environment, policy.environment_id)
     resp.environment_name = env.name if env is not None else None
-    from app.features.environment_configuration.models import ProjectEnvironment
+    from app.platform.environment_configuration.models import ProjectEnvironment
     binding = db.query(ProjectEnvironment).filter_by(
         project_id=policy.project_id, environment_id=policy.environment_id
     ).first()

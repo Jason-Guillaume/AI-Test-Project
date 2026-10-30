@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.test_management.models.test_plan import TestPlan, TestPlanSuite
 from app.features.test_management.models.test_suite import TestSuite
 from app.features.test_management.schemas import (
@@ -23,16 +23,12 @@ from app.features.test_management.schemas import (
     TestPlanSuiteResponse,
     TestPlanUpdate,
 )
-from app.features.test_management.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_plan_project_id,
-    resolve_suite_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
-from app.shared.notify import notify
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.features.test_management.services.access_service import resolve_plan_project_id, resolve_suite_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, conflict, not_found
+from app.core.notifications.notify import notify
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 
 def _response(p: TestPlan) -> TestPlanResponse:

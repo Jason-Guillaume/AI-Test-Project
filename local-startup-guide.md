@@ -110,6 +110,25 @@ npm run dev
 
 打开 [http://localhost:5173](http://localhost:5173)，使用初始化时设置的账号登录。管理端位于 `/admin`，用户控制台位于 `/console`。Vite 默认把 `/api` 请求原样代理到 `http://127.0.0.1:8001`；后端端口不同时，可在启动前端时设置 `VITE_API_PROXY_TARGET`。
 
+## 本地 Docker 全栈部署
+
+完成后端 `.env` 配置和数据库初始化后，可在仓库根目录用 Docker 启动 PostgreSQL、后端和生产构建的前端：
+
+```bash
+python3 scripts/docker_compose.py up -d --build
+python3 scripts/docker_compose.py ps
+```
+
+浏览器访问 [http://127.0.0.1:8080](http://127.0.0.1:8080)。前端容器通过 Nginx 将 `/api` 和健康检查请求转发给后端；后端启动时自动执行 `alembic upgrade head`。Compose 辅助脚本从 `backend/.env` 的 `DATABASE_URL` 读取 PostgreSQL 初始化变量，不会打印凭据。停止服务但保留数据库数据：
+
+```bash
+python3 scripts/docker_compose.py down
+```
+
+如果本机 `5432` 已有服务占用，可通过根目录 `.env` 设置 `POSTGRES_PORT=55432`，或在启动命令前设置 `POSTGRES_PORT=55432`。容器之间仍通过 Compose 的 `postgres:5432` 通信；若在 Docker 外运行后端，则需让 `backend/.env` 的 `DATABASE_URL` 使用映射到宿主机的端口。
+
+不要对含有需要保留数据的数据库运行 `down -v`。
+
 ## 验证服务和运行检查
 
 ```bash

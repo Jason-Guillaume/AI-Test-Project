@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { App, Button, Empty, Form, Modal, Popconfirm, Select, Space, Table } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
-import type { BusinessActionDetail, BusinessVariableRefCreate } from '@/types';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
+import type { BusinessActionDetail, BusinessVariableRefCreate } from '@/features/business/contracts';
+
 
 export function VariableRefPanel({
   flowId,

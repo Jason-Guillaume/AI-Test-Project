@@ -1,313 +1,18 @@
-import { collectPages } from '@/api/pagination';
-// 调用记录 + 作用域（Context）页。
-//
-// 数据：
-//   - GET /projects/{pid}/mock-executions   参数：service_id / matched / test_run_id / context_id
-//   - GET /projects/{pid}/mock-contexts     参数：status / test_run_id
-//   - POST /mock-contexts/{context_id}/close
-//
-// 请求 / 响应快照由后端 SensitiveDataMasker 脱敏后落库，这里只读展示。
-// MockContext 的 expires_at 由 Runtime 读取时惰性清理（默认 30 分钟），这里只做展示与手动关闭。
+import { collectPages } from '@/shared/api/pagination';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Col,
-  DatePicker,
-  Drawer,
-  Flex,
-  Input,
-  Popconfirm,
-  Row,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd';
-import { ReloadOutlined, StopOutlined } from '@ant-design/icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Alert, Button, Card, Col, DatePicker, Flex, Input, Row, Select, Space, Table, Tag, Typography } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { getErrorMessage } from '@/api/client';
-import { mockManagementApi } from '@/api/mockManagement';
-import { EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
-import type { MockContext, MockContextStatus, MockExecution } from '@/types';
-import {
-  fmtJson,
-  statusCodeColor,
-} from './constants';
-
-const STATUS_OPTIONS: { value: MockContextStatus; label: string }[] = [
-  { value: 'ACTIVE', label: 'ACTIVE' },
-  { value: 'CLOSED', label: 'CLOSED' },
-  { value: 'EXPIRED', label: 'EXPIRED' },
-];
-
-/** 时间标签：把 ISO 字符串压成 HH:mm:ss。 */
-function fmtTs(v: string | null): string {
-  if (!v) return '-';
-  const m = v.match(/T(\d{2}:\d{2}:\d{2})/);
-  return m ? m[1] : v.slice(0, 19);
-}
-
-/** 作用域行：状态 + 过期时间 + 覆盖数 + 手动关闭。 */
-function ContextsCard({
-  projectId,
-  testRunId,
-  onFilter,
-  onClose,
-}: {
-  projectId: number;
-  testRunId?: number;
-  onFilter: (contextId: string) => void;
-  onClose: (contextId: string) => void;
-}) {
-  const [status, setStatus] = useState<MockContextStatus | undefined>();
-  const queryClient = useQueryClient();
-  const ctxQuery = useQuery({
-    queryKey: ['mock-contexts', projectId, status, testRunId],
-    queryFn: () => mockManagementApi.listContexts(projectId, { status, test_run_id: testRunId, page: 1, page_size: 50 }),
-    enabled: projectId != null,
-  });
-  const rows = (ctxQuery.data ?? []) as unknown as MockContext[];
-
-  const columns: TableColumnsType<MockContext> = [
-    {
-      title: 'Context ID',
-      dataIndex: 'context_id',
-      width: 210,
-      render: (v: string) => (
-        <Typography.Text copyable={{ text: v }} code style={{ fontSize: 12 }}>
-          {v}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      render: (v: MockContextStatus) => (
-        <Tag color={v === 'ACTIVE' ? 'green' : v === 'CLOSED' ? 'blue' : 'default'}>{v}</Tag>
-      ),
-    },
-    {
-      title: '执行',
-      width: 120,
-      render: (_, r) => (r.test_run_id ? <Tag color="geekblue">Run #{r.test_run_id}</Tag> : <Typography.Text type="secondary">手动</Typography.Text>),
-    },
-    {
-      title: '场景覆盖',
-      dataIndex: 'scenario_overrides',
-      width: 100,
-      render: (v: unknown) => {
-        const n = v && typeof v === 'object' ? Object.keys(v as Record<string, unknown>).length : 0;
-        return n ? <Tag color="purple">{n} 个场景</Tag> : <Typography.Text type="secondary">-</Typography.Text>;
-      },
-    },
-    { title: '过期时间', dataIndex: 'expires_at', width: 170, render: (v: string) => fmtTs(v) },
-    { title: '创建时间', dataIndex: 'created_at', width: 170, render: (v: string) => fmtTs(v) },
-    {
-      title: '操作',
-      width: 150,
-      render: (_, row) => (
-        <Space size="small">
-          <Button size="small" onClick={() => onFilter(row.context_id)}>
-            筛选调用
-          </Button>
-          <Popconfirm title="确认关闭该作用域？" description="关闭后不再命中场景覆盖。" onConfirm={() => onClose(row.context_id)}>
-            <Button size="small" danger icon={<StopOutlined />}>
-              关闭
-            </Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
-  return (
-    <Card
-      size="small"
-      style={{ marginBottom: 16 }}
-      title="Mock 作用域（Context · scenario_overrides 并发隔离）"
-      extra={
-        <Select
-          allowClear
-          size="small"
-          placeholder="按状态"
-          style={{ width: 130 }}
-          options={STATUS_OPTIONS}
-          value={status}
-          onChange={setStatus}
-        />
-      }
-    >
-      <Table<MockContext>
-        rowKey="context_id"
-        size="small"
-        columns={columns}
-        dataSource={rows}
-        scroll={{ x: 900 }}
-        pagination={false}
-        loading={ctxQuery.isLoading}
-        locale={{ emptyText: <EmptyState description="还没有执行过带 Mock 的测试用例" /> }}
-      />
-      {rows.length > 0 && (
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          style={{ marginTop: 8 }}
-          loading={ctxQuery.isFetching}
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['mock-contexts', projectId] })}
-        >
-          刷新
-        </Button>
-      )}
-    </Card>
-  );
-}
-
-/** 执行详情抽屉：展示已脱敏的请求 / 响应快照。 */
-function ExecutionDrawer({
-  projectId,
-  rowId,
-  onClose,
-  onFilter,
-}: {
-  projectId: number | null;
-  rowId: number | null;
-  onClose: () => void;
-  onFilter: (contextId: string) => void;
-}) {
-  const { message: msg } = App.useApp();
-  const queryClient = useQueryClient();
-  const detailQuery = useQuery({
-    queryKey: ['mock-execution', rowId],
-    queryFn: () => mockManagementApi.getExecution(rowId!),
-    enabled: rowId != null,
-  });
-  const row = detailQuery.data;
-  const closeMutation = useMutation({
-    mutationFn: (cid: string) => mockManagementApi.closeContext(cid),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['mock-contexts', projectId] });
-      msg.success('作用域已关闭');
-    },
-    onError: (e) => msg.error(getErrorMessage(e, '关闭作用域失败')),
-  });
-
-  const block = (label: string, value: unknown) => (
-    <div style={{ marginBottom: 12 }}>
-      <Typography.Text strong style={{ fontSize: 12 }}>
-        {label}
-      </Typography.Text>
-      <pre
-        style={{
-          margin: '4px 0 0',
-          maxHeight: 260,
-          overflow: 'auto',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-          fontSize: 12,
-          background: 'var(--ant-color-fill-quaternary, rgba(0,0,0,0.04))',
-          padding: 8,
-          borderRadius: 4,
-        }}
-      >
-        {fmtJson(value)}
-      </pre>
-    </div>
-  );
-
-  return (
-    <Drawer
-      title={row ? `调用记录 #${row.id} · ${row.method} ${row.path}` : '调用记录详情'}
-      open={rowId != null}
-      onClose={onClose}
-      width={680}
-    >
-      {detailQuery.isLoading ? (
-        <LoadingState />
-      ) : row ? (
-        <div>
-          <Space wrap size="small" style={{ marginBottom: 12 }}>
-            <Tag color="blue">{row.method}</Tag>
-            <Tag color={statusCodeColor(row.response_status)}>{row.response_status ?? '-'}</Tag>
-            <Tag color={row.matched ? 'green' : 'red'}>{row.matched ? '命中场景' : '未命中'}</Tag>
-            {row.service_key ? <Tag color="geekblue">{row.service_key}</Tag> : null}
-            {row.scenario_key ? <Tag color="purple">{row.scenario_key}</Tag> : null}
-            {row.duration_ms != null ? <Tag>耗时 {row.duration_ms}ms</Tag> : null}
-            {row.test_run_id ? <Tag color="geekblue">Run #{row.test_run_id}</Tag> : null}
-            {row.error_code ? <Tag color="red">{row.error_code}</Tag> : null}
-          </Space>
-
-          {row.error_message && (
-            <Alert
-              type="error"
-              showIcon
-              style={{ marginBottom: 12 }}
-              message={`失败原因：${row.error_message}`}
-            />
-          )}
-
-          {row.mock_context_id && (
-            <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
-              <Typography.Text copyable={{ text: row.mock_context_id }} code style={{ fontSize: 12 }}>
-                Context {row.mock_context_id}
-              </Typography.Text>
-              <Popconfirm title="关闭该作用域？" onConfirm={() => closeMutation.mutate(row.mock_context_id!)}>
-                <Button size="small" icon={<StopOutlined />}>
-                  关闭作用域
-                </Button>
-              </Popconfirm>
-            </Flex>
-          )}
-
-          {row.request_id && (
-            <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
-              request_id：{row.request_id}
-            </Typography.Text>
-          )}
-
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            请求快照（Authorization、X-Api-Key、password、token 等敏感字段已脱敏）
-          </Typography.Text>
-          {block('查询参数', row.query_snapshot)}
-          {block('请求头', row.header_snapshot)}
-          {block('请求体', row.body_snapshot)}
-          {block('响应头', row.response_header_snapshot)}
-          {block('响应体', row.response_body_snapshot)}
-          <Button
-            size="small"
-            icon={<ReloadOutlined />}
-            loading={detailQuery.isFetching}
-            style={{ marginTop: 4 }}
-            onClick={() => detailQuery.refetch()}
-          >
-            刷新
-          </Button>
-          {row.mock_context_id && (
-            <Button
-              size="small"
-              style={{ marginLeft: 8, marginTop: 4 }}
-              onClick={() => {
-                onFilter(row.mock_context_id!);
-                onClose();
-              }}
-            >
-              按此作用域筛选
-            </Button>
-          )}
-        </div>
-      ) : (
-        <EmptyState description="调用记录不存在" />
-      )}
-    </Drawer>
-  );
-}
+import { mockManagementApi } from '@/features/mocking/api/mockManagement';
+import { EmptyState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import type { MockExecution } from '@/features/mocking/contracts';
+import { statusCodeColor } from './constants';
+import { MockContextsCard } from './components/MockContextsCard';
+import { MockExecutionDrawer } from './components/MockExecutionDrawer';
+import { fmtTs } from './components/contextPresentation';
 
 /** 调用记录与执行作用域页。 */
 export function ConsoleMockExecutionListPage() {
@@ -555,7 +260,7 @@ export function ConsoleMockExecutionListPage() {
         </Row>
       </Card>
 
-      <ContextsCard
+      <MockContextsCard
         projectId={projectId}
         testRunId={filters.test_run_id}
         onFilter={(cid) => setFilters((f) => ({ ...f, context_id: cid, page: 1 }))}
@@ -584,7 +289,7 @@ export function ConsoleMockExecutionListPage() {
         locale={{ emptyText: <EmptyState description="还没有 Mock 调用记录" /> }}
       />
 
-      <ExecutionDrawer
+      <MockExecutionDrawer
         projectId={projectId}
         rowId={selectedId}
         onClose={() => setFilters((f) => ({ ...f, selected: null }))}

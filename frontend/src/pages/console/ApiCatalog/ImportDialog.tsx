@@ -4,15 +4,12 @@ import { useRef, useState } from 'react';
 import { App, Button, Input, Modal, Select, Space, Tabs, Typography, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
 import { IMPORT_SOURCE_OPTIONS } from './constants';
 import { ImportPreview } from './ImportPreview';
-import type {
-  ApiImportPreviewResponse,
-  ApiModule,
-  ApiSourceType,
-} from '@/types';
+import type { ApiImportPreviewResponse, ApiModule, ApiSourceType } from '@/features/api-catalog/contracts';
+
 
 const MAX_DOCUMENT_SIZE = 2 * 1024 * 1024;
 

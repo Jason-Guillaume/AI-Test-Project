@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { ErrorState, LoadingState } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import type { ApiChangeLog, ApiInterfaceDetail, ChangeType } from '@/types';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import type { ApiChangeLog, ApiInterfaceDetail, ChangeType } from '@/features/api-catalog/contracts';
+
 
 // 变更类型色板：增=绿、删=红、改=橙/金，便于扫读。
 const CHANGE_TYPE_COLOR: Record<ChangeType, string> = {

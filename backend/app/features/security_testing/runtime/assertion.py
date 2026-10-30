@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from app.shared.errors import CODE_SECURITY_EXPECTATION_INVALID, AppError
+from app.core.http.errors import CODE_SECURITY_EXPECTATION_INVALID, AppError
 
 from app.features.security_testing.runtime.types import MutationTraceEntry
 from app.features.security_testing.schemas import SECURITY_EXPECTATIONS

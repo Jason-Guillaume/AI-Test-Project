@@ -14,7 +14,7 @@ from __future__ import annotations
 from app.features.business.executors.business_flow_executor import execute_flow
 from app.features.business.models.business_flow import BusinessFlow
 from app.features.test_data.providers.base import BaseProvider, ProviderContext, ProviderResult, config_of
-from app.shared.errors import CODE_DATA_RESOLVE_FAILED, CODE_PROVIDER_NOT_FOUND, AppError
+from app.core.http.errors import CODE_DATA_RESOLVE_FAILED, CODE_PROVIDER_NOT_FOUND, AppError
 
 
 class BusinessFlowProvider(BaseProvider):

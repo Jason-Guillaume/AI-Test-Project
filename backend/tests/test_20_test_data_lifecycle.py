@@ -753,15 +753,15 @@ class TestProjectIsolation:
 
 def _make_run_ctx(db, user):
     """构造运行`ctx`。"""
-    from app.features.agent.nodes._context import NodeContext
-    from app.features.agent.providers.llm_provider import FakeLLMProvider
+    from app.agents.workflows.legacy.nodes._context import NodeContext
+    from app.llm.providers import FakeLLMProvider
 
     return NodeContext(db=db, user=user, provider=FakeLLMProvider())
 
 
 def _user_of(db, username):
     """按用户名查询用户记录。"""
-    from app.models.identity import User
+    from app.core.models.identity import User
 
     return db.query(User).filter(User.username == username).first()
 
@@ -771,8 +771,8 @@ class TestAgentFixtureReference:
 
     def test_validator_rejects_missing_fixture(self, api, admin, db):
         """验证校验器拒绝缺失固定数据场景及其预期结果。"""
-        from app.features.agent.nodes.validator import validator_node
-        from app.features.agent.schemas import TestCaseDraft
+        from app.agents.workflows.legacy.nodes.validator import validator_node
+        from app.tools.builtin.test_management.contracts import TestCaseDraft
 
         pid = _create_project(api, admin)
         user = _user_of(db, admin)
@@ -798,8 +798,8 @@ class TestAgentFixtureReference:
 
     def test_save_cases_persists_required_fixtures(self, api, admin, db):
         """验证保存`cases``persists`必填`fixtures`场景及其预期结果。"""
-        from app.features.agent.schemas import TestCaseDraft
-        from app.features.agent.tools.test_asset_tool import save_cases
+        from app.tools.builtin.test_management.contracts import TestCaseDraft
+        from app.tools.builtin.test_management.test_asset_tool import save_cases
         from app.features.test_data.models.case_fixture import TestCaseFixture
 
         pid = _create_project(api, admin)
@@ -862,8 +862,8 @@ class TestAgentFixtureReference:
         """验证保存`cases``refuses`缺失固定数据不带`side``effects`场景及其预期结果。"""
         from fastapi import HTTPException
 
-        from app.features.agent.schemas import TestCaseDraft
-        from app.features.agent.tools.test_asset_tool import save_cases
+        from app.tools.builtin.test_management.contracts import TestCaseDraft
+        from app.tools.builtin.test_management.test_asset_tool import save_cases
 
         from app.features.test_data.models.case_fixture import TestCaseFixture
 

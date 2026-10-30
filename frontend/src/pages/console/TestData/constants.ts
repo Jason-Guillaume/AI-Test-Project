@@ -1,26 +1,8 @@
 // 测试数据中心下拉选项与字面量映射。
 // 字面量值与后端 features/test_data/schemas.py 的枚举严格一致，前端只做展示包装，
 // 不在前端重新定义业务语义（脱敏、风险、环境分级以后端为准）。
-import type {
-  AssetSource,
-  AssetStatus,
-  CleanupStatus,
-  DataExecutionStatus,
-  DbEnvironmentClass,
-  DbOperation,
-  FixtureCleanupPolicy,
-  FixtureOnFailure,
-  FixturePhase,
-  FixtureScope,
-  FixtureStatus,
-  FixtureStepType,
-  PoolItemStatus,
-  PoolStatus,
-  ProviderExecutionStatus,
-  ProviderType,
-  RiskLevel,
-  ValueType,
-} from '@/types';
+import type { AssetSource, AssetStatus, CleanupStatus, DataExecutionStatus, DbEnvironmentClass, DbOperation, FixtureCleanupPolicy, FixtureOnFailure, FixturePhase, FixtureScope, FixtureStatus, FixtureStepType, PoolItemStatus, PoolStatus, ProviderExecutionStatus, ProviderType, RiskLevel, ValueType } from '@/features/test-data/contracts';
+
 
 /** 通用下拉选项：label 为中文展示，value 为后端字面量。 */
 export interface Option<T extends string = string> {

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from app.platform.projects.services.access_service import get_project_or_404
+
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
@@ -22,11 +24,11 @@ from app.features.security_testing.zap.schemas import (
     ScanTargetUpdate,
 )
 from app.features.security_testing.zap.services import _access
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
-from app.models.configuration import Environment
-from app.models.identity import User
-from app.shared.errors import AppError, CODE_SECURITY_SCAN_TARGET_NOT_FOUND
-from app.shared.pagination import paginate
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
+from app.core.http.errors import AppError, CODE_SECURITY_SCAN_TARGET_NOT_FOUND
+from app.core.http.pagination import paginate
 
 _TARGET_NOT_FOUND = AppError(
     "扫描目标不存在", status_code=404, code=CODE_SECURITY_SCAN_TARGET_NOT_FOUND,
@@ -181,7 +183,7 @@ def list_targets(
     db: Session, project_id: int, user: User, page: int, page_size: int, enabled: bool | None = None,
 ) -> ScanTargetListResponse:
     """列出项目下的扫描目标（viewer+）。"""
-    _access.get_project_or_404(db, project_id, user)
+    get_project_or_404(db, project_id, user)
     query = db.query(SecurityScanTarget).filter(SecurityScanTarget.project_id == project_id)
     if enabled is not None:
         query = query.filter(SecurityScanTarget.enabled == enabled)

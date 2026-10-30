@@ -1,0 +1,10 @@
+{
+  "docs/coding-conventions.md": "0189c04f276ce778944f7db66471be8507b9bbde224bbe674f8ff8c7063267c6",
+  "docs/README.md": "797ec1ab456e0719e800eaf08159ff023b898bbb698d126f93fde2a26a50526b",
+  "docs/agent-cluster-refactor/README.md": "5913a51ceec26988b65789700633e411f9baf25f6e780d8ba86445f8773a5658",
+  "docs/agent-cluster-refactor/02-architecture.md": "f9e5aeccd82b38879aefab6bf0077e328190a98ebdf1381ed0a2aff59c1cc1cc",
+  "docs/agent-governance-runtime.md": "143ea004793c81d573e2bcc39675aac37fe463793acb9068b367adef2f8561b1",
+  "docs/agent-cluster-refactor/backend-stabilization-delivery.md": "b92f657f89a565708e5bed74ee6f526c9a8cb004d74e64bcd65197912f4216bc",
+  "docs/agent-cluster-refactor/task-module-split-delivery.md": "02c21314e4fec3faadf16fae73291c5991bd6217aa5b9a67a057d81d1508502e",
+  "docs/agent-cluster-refactor/business-capability-extraction-delivery.md": "a0eee581e87fa8ce6be2507650a076157721ab2649f7cdad86ba58182bb3492b"
+}

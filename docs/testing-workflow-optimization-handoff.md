@@ -43,6 +43,9 @@
 - 当前任务创建对 API/Web 一般要求已确认用例；同一运行不支持混合 API 与 Web 用例。支持仅凭自然语言目标开始交互式 Web 编写需要新增真实工作流，不能简单去掉校验。
 - 缺陷与回归、外部通知等能力有未接入项；安全疑似问题不等于已确认缺陷。
 
+
+2026-10-30 当前路径补记：后端任务编排在 `backend/app/orchestration/tasks/`，正式 Web 测试在 `backend/app/features/web_testing/`，Mock 能力在 `backend/app/features/mocking/`，Agent 浏览器探索服务在 `backend/app/agents/browser_authoring/`，共用浏览器运行时在 `backend/app/execution/browser/`。本交接文档前述需求与历史观察不变；当前实现和验证以[能力边界整改交付记录](agent-cluster-refactor/backend-capability-refactor-delivery.md)为准。
+
 相关入口：`frontend/src/layouts/ConsoleLayout.tsx`、`frontend/src/pages/console/WebUI/`、`frontend/src/pages/console/WebUIAgent/`、`frontend/src/pages/console/Tasks/`、`frontend/src/components/tasks/`、`backend/app/features/tasks/`、`backend/app/features/web_ui/`、`backend/app/features/defects/`、`backend/app/features/notifications/`。既有任务设计参考 `docs/agent-cluster-refactor/`；该目录部分交付记录和测试基线可能过时，以当前代码为准。
 
 ## 四、功能需求

@@ -4,8 +4,8 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import 'dayjs/locale/zh-cn'; // 导入 dayjs 简体中文语言包，必须先于任何渲染完成
 import '@/styles/app.css';
-import { AppProviders } from '@/components/QueryProvider';
-import { App } from '@/App';
+import { AppProviders } from '@/app/providers/AppProviders';
+import { App } from '@/app/App';
 
 // React 根节点：与 index.html 中的 <div id="root"> 对应，整棵应用树挂载在此。
 const rootElement = document.getElementById('root');

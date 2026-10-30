@@ -12,6 +12,8 @@ MANUAL（飞书 SSO）模式不存任何凭据：飞书账号密码不捕获不�
 
 from __future__ import annotations
 
+from app.platform.projects.services.access_service import get_project_or_404
+
 import hashlib
 from datetime import datetime
 
@@ -26,10 +28,10 @@ from app.features.security_testing.zap.schemas import (
     ScanAuthProfileUpdate,
 )
 from app.features.security_testing.zap.services import _access
-from app.models.identity import User
-from app.shared.crypto import decrypt_secret, encrypt_secret
-from app.shared.errors import AppError, CODE_SECURITY_SCAN_AUTH_PROFILE_NOT_FOUND
-from app.shared.pagination import paginate
+from app.core.models.identity import User
+from app.core.security.crypto import decrypt_secret, encrypt_secret
+from app.core.http.errors import AppError, CODE_SECURITY_SCAN_AUTH_PROFILE_NOT_FOUND
+from app.core.http.pagination import paginate
 
 _NOT_FOUND = AppError(
     "认证配置不存在", status_code=404, code=CODE_SECURITY_SCAN_AUTH_PROFILE_NOT_FOUND,
@@ -164,7 +166,7 @@ def list_profiles(
     db: Session, project_id: int, user: User, page: int, page_size: int, enabled: bool | None = None,
 ) -> ScanAuthProfileListResponse:
     """列出认证配置（viewer+）；响应不含任何凭据明文。"""
-    _access.get_project_or_404(db, project_id, user)
+    get_project_or_404(db, project_id, user)
     query = db.query(SecurityScanAuthProfile).filter(
         SecurityScanAuthProfile.project_id == project_id,
     )

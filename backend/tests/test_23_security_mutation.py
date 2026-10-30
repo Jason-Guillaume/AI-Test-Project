@@ -86,7 +86,7 @@ from app.features.security_testing.schemas import (
     SECURITY_EXPECTATIONS,
     SECURITY_RESULTS,
 )
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_SECURITY_CONFIRMATION_REQUIRED,
     CODE_SECURITY_EXPECTATION_INVALID,
     CODE_SECURITY_FIXTURE_REQUIRED,
@@ -99,7 +99,7 @@ from tests.conftest import BACKEND_DIR
 RUNTIME_DIR = BACKEND_DIR / "app" / "features" / "security_testing" / "runtime"
 
 #: 执行器所在模块。runtime 里只有 runner.py 允许引用它。
-_EXECUTOR_MODULE = "app.features.business.executors.api_executor"
+_EXECUTOR_MODULE = "app.execution.http.executor"
 
 
 def _imports_executor(path: Path) -> bool:
@@ -222,7 +222,7 @@ def _fields_for(rule: MutationRuleView, spec: FieldSpec) -> list[FieldSpec]:
 class TestSourceGuards:
     """§6.3：引擎是纯函数，禁止出站、查库、eval。
 
-    ``runner.py`` 是文档化的唯一例外（§21 Phase E）：它负责查库、写 execution、
+    ``case_runner.py/preparation.py/result_writer.py`` 是文档化的领域 IO 边界（§21 Phase E）：它负责查库、写 execution、
     调 ``ApiRequestExecutor``。变异、断言、严重级别仍然是纯函数。对 runner 单独
     断言「不直接 import httpx」——出站必须经由执行器，不能自己拼 httpx 调用。
     """
@@ -230,7 +230,7 @@ class TestSourceGuards:
     def test_runtime_modules_do_no_http_db_or_eval(self) -> None:
         """验证运行时`modules``do`无HTTP数据库或`eval`场景及其预期结果。"""
         for path in sorted(RUNTIME_DIR.glob("*.py")):
-            is_runner = path.name == "runner.py"
+            is_runner = path.name in {"case_runner.py", "preparation.py", "result_writer.py"}
             tree = ast.parse(path.read_text())
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
@@ -257,14 +257,17 @@ class TestSourceGuards:
         offenders = [
             path.name
             for path in sorted(RUNTIME_DIR.glob("*.py"))
-            if path.name != "runner.py"
+            if path.name != "case_runner.py"
             and _imports_executor(path)
         ]
-        assert offenders == [], f"只有 runner.py 可以引用执行器：{offenders}"
+        assert offenders == [], f"只有 case_runner.py 可以引用执行器：{offenders}"
 
     def test_runner_imports_the_executor(self) -> None:
         """runner 必须真的接上执行器，否则所有闸门都只拦自己。"""
-        assert _imports_executor(RUNTIME_DIR / "runner.py")
+        assert _imports_executor(RUNTIME_DIR / "case_runner.py")
+        from app.features.security_testing.runtime.runner import run_security_case
+        from app.features.security_testing.runtime.case_runner import run_security_case as canonical_run
+        assert run_security_case is canonical_run
 
     def test_no_result_value_uses_vulnerable(self) -> None:
         """§5.6：结果只用五态，不使用「已确认漏洞」。"""

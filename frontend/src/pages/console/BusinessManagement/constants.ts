@@ -1,16 +1,8 @@
 // 业务管理页常量：下拉选项与文案标签，与后端枚举字面量严格对齐。
 // 仅放纯静态选项，不放业务逻辑。
 
-import type {
-  BusinessActionType,
-  BusinessApiLocation,
-  BusinessDomainStatus,
-  BusinessFlowStatus,
-  BusinessPreconditionOperator,
-  BusinessPreconditionType,
-  BusinessRuleType,
-  BusinessVariableDataType,
-} from '@/types';
+import type { BusinessActionType, BusinessApiLocation, BusinessDomainStatus, BusinessFlowStatus, BusinessPreconditionOperator, BusinessPreconditionType, BusinessRuleType, BusinessVariableDataType } from '@/features/business/contracts';
+
 
 export const DOMAIN_STATUS_OPTIONS = [
   { value: 'ACTIVE' as BusinessDomainStatus, label: '启用' },

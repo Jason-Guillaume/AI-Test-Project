@@ -93,11 +93,11 @@ def run_migrations(dsn_url: str) -> None:
 
 def seed_builtin_environment(dsn_url: str) -> None:
     """写入内置环境行，保证环境选择器与执行链路有可用数据。"""
-    # 必须在导入 app.shared.database 之前设置：engine 在首次导入时就按 DATABASE_URL 建好。
+    # 必须在导入 app.core.database.session 之前设置：engine 在首次导入时就按 DATABASE_URL 建好。
     os.environ["DATABASE_URL"] = dsn_url
-    from app.features.environment_configuration.schemas import builtin_environments
-    from app.models.configuration import Environment
-    from app.shared.database import SessionLocal
+    from app.platform.environment_configuration.schemas import builtin_environments
+    from app.core.models.configuration import Environment
+    from app.core.database.session import SessionLocal
 
     with SessionLocal() as session:
         # 幂等检查：已存在同名环境就跳过，重复执行脚本不会写入重复行。
@@ -130,12 +130,12 @@ def seed_builtin_environment(dsn_url: str) -> None:
 
 def seed_admin(dsn_url: str) -> str | None:
     """创建初始管理员与演示账号；已存在时跳过，不覆盖历史密码。"""
-    # 同样要在导入 app.shared.database 之前设置 DATABASE_URL（见上方说明）。
+    # 同样要在导入 app.core.database.session 之前设置 DATABASE_URL（见上方说明）。
     os.environ["DATABASE_URL"] = dsn_url
-    from app.features.organizations.services.organization_service import ensure_personal_organization
-    from app.models.identity import Organization, User
-    from app.shared.database import SessionLocal
-    from app.shared.passwords import hash_password
+    from app.platform.organizations.services.organization_service import ensure_personal_organization
+    from app.core.models.identity import Organization, User
+    from app.core.database.session import SessionLocal
+    from app.core.security.passwords import hash_password
 
     username = (os.getenv("INIT_ADMIN_USERNAME") or "").strip()
     password = os.getenv("INIT_ADMIN_PASSWORD") or ""
@@ -181,13 +181,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--drop", action="store_true", help="先删除目标数据库（仅本地调试）")
     args = parser.parse_args(argv)
 
-    # 命令行 --database-url 必须先于任何 app 导入生效：app.shared.database 在首次
+    # 命令行 --database-url 必须先于任何 app 导入生效：app.core.database.session 在首次
     # 导入时用 settings.DATABASE_URL 建好 engine，之后再改 os.environ 也不影响它。
     # 否则会出现「迁移打到 A 库、种子数据写进 .env 里的 B 库」这种静默错库。
     if args.database_url:
         os.environ["DATABASE_URL"] = args.database_url
 
-    from app.shared.config import settings
+    from app.core.config import settings
 
     dsn_url = args.database_url or settings.DATABASE_URL
     if not dsn_url:

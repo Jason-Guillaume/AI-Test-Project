@@ -1,0 +1,19 @@
+{
+  "method": "React SSR + Ant Design CSS extraction; no browser rendering",
+  "literalTokenDeclarations": 25,
+  "uniqueDeclarations": [
+    "color:token.colorTextHeading",
+    "background:token.colorFillQuaternary",
+    "background:token.colorPrimaryBg",
+    "background:token.colorPrimaryBgHover",
+    "color:token.colorPrimary",
+    "background:token.colorPrimary",
+    "color:token.colorTextSecondary",
+    "color:token.colorText",
+    "background-color:token.colorFillTertiary",
+    "background-color:token.colorPrimaryBg",
+    "stroke:token.colorPrimary",
+    "background-color:token.colorPrimary"
+  ],
+  "cssBytes": 188033
+}

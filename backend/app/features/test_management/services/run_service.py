@@ -20,12 +20,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.business.executors.context import ExecutionContext
 from app.features.test_data.models.case_fixture import TestCaseFixture
 from app.features.test_data.models.fixture import Fixture
 from app.features.test_data.runtime.lifecycle import CleanupOutcome, LifecycleManager
-from app.features.mock_management.runtime.lifecycle import MockLifecycle
+from app.features.mocking.runtime.lifecycle import MockLifecycle
 from app.features.test_management.executors import test_case_executor
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
@@ -38,21 +38,17 @@ from app.features.test_management.schemas import (
     TestRunListResponse,
     TestRunResponse,
 )
-from app.features.test_management.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_plan_project_id,
-    resolve_run_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import (
+from app.features.test_management.services.access_service import resolve_plan_project_id, resolve_run_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_CLEANUP_FAILED,
     CODE_SETUP_FAILED,
     AppError,
     bad_request,
     not_found,
 )
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 def _response(r: TestRun) -> TestRunResponse:

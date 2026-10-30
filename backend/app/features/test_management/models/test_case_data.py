@@ -13,7 +13,7 @@ required=True 时缺失将导致用例执行失败。
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestCaseData(Base):

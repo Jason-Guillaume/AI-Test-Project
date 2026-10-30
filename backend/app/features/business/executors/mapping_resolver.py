@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 
+from app.core.expressions.paths import extract_dot_path, extract_jsonpath
+
 
 def resolve_input_mappings(
     mappings: list[dict],
@@ -124,91 +126,10 @@ def _extract_from_response(body: object, expression: str, api_field: str) -> obj
 
     # JSONPath 提取。
     if expression and expression.startswith("$"):
-        return _jsonpath_extract(body, expression)
+        return extract_jsonpath(body, expression)
 
     # 点号路径提取（如 data.id → body["data"]["id"]）。
     if api_field:
-        return _dot_path_extract(body, api_field)
+        return extract_dot_path(body, api_field)
 
     return None
-
-
-def _jsonpath_extract(body: object, path: str) -> object:
-    """简易 JSONPath 提取。
-
-    支持：
-    - $.data.id → body["data"]["id"]
-    - $.data[0].name → body["data"][0]["name"]
-    - $ → body 本身
-    """
-    if not path.startswith("$"):
-        return None
-
-    expr = path[1:]  # 去掉开头的 $
-    if not expr:
-        return body
-
-    # 处理点号和数组索引。
-    parts = _parse_jsonpath_parts(expr)
-
-    current = body
-    for part in parts:
-        if isinstance(part, int):
-            if isinstance(current, list) and 0 <= part < len(current):
-                current = current[part]
-            else:
-                return None
-        else:
-            if isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                return None
-
-    return current
-
-
-def _parse_jsonpath_parts(expr: str) -> list[str | int]:
-    """将 JSONPath 表达式解析为点号和数组索引的列表。
-
-    例如：'.data[0].name' → ['data', 0, 'name']
-    """
-    parts: list[str | int] = []
-    current = ""
-
-    for ch in expr:
-        if ch == ".":
-            if current:
-                parts.append(current)
-            current = ""
-        elif ch == "[":
-            if current:
-                parts.append(current)
-                current = ""
-        elif ch == "]":
-            try:
-                parts.append(int(current))
-            except (ValueError, TypeError):
-                pass
-            current = ""
-        else:
-            current += ch
-
-    if current:
-        parts.append(current)
-
-    return parts
-
-
-def _dot_path_extract(body: object, path: str) -> object:
-    """用点号路径从 dict 中提取值。
-
-    例如：'data.id' → body["data"]["id"]
-    """
-    parts = path.split(".")
-    current = body
-    for part in parts:
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            return None
-    return current

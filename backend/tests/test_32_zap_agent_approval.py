@@ -26,11 +26,11 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import text
 
-from app.features.agent.graph import run_agent
-from app.features.agent.models.agent_session import AgentSession
-from app.features.agent.providers.llm_provider import FakeLLMProvider
-from app.features.agent.tools import zap_scan_tool
-from app.shared.errors import CODE_SECURITY_SCAN_TARGET_NOT_FOUND
+from app.agents.workflows.legacy.graph import run_agent
+from app.agents.models.session import AgentSession
+from app.llm.providers import FakeLLMProvider
+from app.tools.builtin import zap_scan_tool
+from app.core.http.errors import CODE_SECURITY_SCAN_TARGET_NOT_FOUND
 from tests.conftest import unique
 from tests.test_16_agent import _create_session_http
 from tests.test_25_security_execution import _actor
@@ -100,7 +100,7 @@ def _scan_intent_payload(**extra) -> dict:
 class TestToolGate:
     def test_create_refused_without_human_approval(self, db, api, admin, monkeypatch):
         """`human_approved=False` 在进 service 之前就被工具层拒绝。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -205,7 +205,7 @@ class TestAgentApprovalGate:
 
     def test_workspace_offers_confirm_security_scan(self, api, admin, db):
         """ZAP_SCAN_REVIEW 阶段给前端 confirm_security_scan 按钮（唯一创建入口）。"""
-        from app.features.agent.router import _build_workspace
+        from app.agents.services.workspace_response import build_workspace
 
         scene = _scene(db, api, admin)
         session, user = _open_session(db, api, admin, scene.pid)
@@ -216,7 +216,7 @@ class TestAgentApprovalGate:
             db, session, user, provider, content="发起扫描",
             zap_scan_target_id=scene.target_id, zap_scan_profile_id=scene.profile_id,
         )
-        workspace = _build_workspace(state, session)
+        workspace = build_workspace(state, session)
         assert workspace.suggested_actions == ["confirm_security_scan"]
         # 计划随工作区下发，供确认弹窗展示实际范围。
         assert workspace.zap_scan_plan["is_active_scan"] is False
@@ -226,7 +226,7 @@ class TestAgentApprovalGate:
 class TestAgentHumanConfirm:
     def test_passive_confirm_creates_one_job(self, db, api, admin, monkeypatch):
         """人工确认被动扫描计划：创建且仅创建一个 PENDING 任务。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -253,7 +253,7 @@ class TestAgentHumanConfirm:
 
     def test_active_confirm_without_note_is_refused(self, db, api, admin, monkeypatch):
         """主动扫描缺批准说明：SECURITY_SCAN_NOT_AUTHORIZED，不创建任务。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -276,7 +276,7 @@ class TestAgentHumanConfirm:
 
     def test_active_confirm_with_note_records_approver(self, db, api, admin, monkeypatch):
         """主动扫描：批准说明来自人工输入，任务记录 approved_by = 确认人。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -303,7 +303,7 @@ class TestAgentHumanConfirm:
 
     def test_confirmation_note_from_action_payload_only(self, db, api, admin, monkeypatch):
         """批准说明只能来自 action_payload：state 里 LLM 可写的同名键无效。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -323,7 +323,7 @@ class TestAgentHumanConfirm:
 
     def test_double_confirm_creates_only_one_job(self, db, api, admin, monkeypatch):
         """重复点击确认不会重复创建任务（防止重复领取 / 重复执行）。"""
-        from app.shared.config import settings
+        from app.core.config import settings
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)
         monkeypatch.setattr(settings, "ZAP_BASE_URL", BASE_URL, raising=False)
@@ -343,7 +343,7 @@ class TestAgentHumanConfirm:
 
     def test_plan_upgraded_to_active_after_review_is_refused(self, db, api, admin, monkeypatch):
         """人在预览的是被动计划，期间策略被改成主动：不能用被动确认放行主动扫描。"""
-        from app.shared.config import settings
+        from app.core.config import settings
         from app.features.security_testing.zap.models.profile import SecurityScanProfile
 
         monkeypatch.setattr(settings, "ZAP_ENABLED", True, raising=False)

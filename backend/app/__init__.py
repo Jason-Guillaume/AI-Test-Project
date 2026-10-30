@@ -1,6 +1,6 @@
 """测试开发平台后端。
 
-顶层包：作为 `app.main`、`app.features.*`、`app.models`、`app.shared`
+顶层包：作为 `app.main`、`app.features.*`、`app.core`、`app.agents`、`app.skills`、`app.mcp` 与 `app.tools`
 的共同父包，负责统一命名空间；对外暴露版本号供 `GET /api/v1/meta` 与运维侧识别使用。
 """
 

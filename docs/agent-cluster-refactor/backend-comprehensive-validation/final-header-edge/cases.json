@@ -1,0 +1,177 @@
+[
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_late_attempt_cannot_overwrite_current_generation[old-owner-complete]",
+    "outcome": "passed",
+    "duration": 4.783011485822499
+  },
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_late_attempt_cannot_overwrite_current_generation[old-owner-fail]",
+    "outcome": "passed",
+    "duration": 0.24984417390078306
+  },
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_late_attempt_cannot_overwrite_current_generation[new-owner-complete]",
+    "outcome": "passed",
+    "duration": 0.2432241290807724
+  },
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_late_attempt_cannot_overwrite_current_generation[new-owner-fail]",
+    "outcome": "passed",
+    "duration": 0.3151464582188055
+  },
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_invalid_action_target_does_not_generate_faker[missing]",
+    "outcome": "passed",
+    "duration": 0.27134852192830294
+  },
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_invalid_action_target_does_not_generate_faker[cross_project]",
+    "outcome": "passed",
+    "duration": 0.27383544214535505
+  },
+  {
+    "nodeid": "tests/test_backend_comprehensive_refactor.py::test_case_action_keeps_data_separate_from_runtime_headers",
+    "outcome": "passed",
+    "duration": 0.3739984459243715
+  },
+  {
+    "nodeid": "tests/test_audit_flow_headers.py::test_action_headers_include_runtime_context_and_respect_overrides",
+    "outcome": "passed",
+    "duration": 0.0007944479584693909
+  },
+  {
+    "nodeid": "tests/test_audit_flow_headers.py::test_action_headers_ignore_invalid_runtime_headers",
+    "outcome": "passed",
+    "duration": 0.0009582579368725419
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_eq_ne",
+    "outcome": "passed",
+    "duration": 0.0009524108609184623
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_numeric_operators",
+    "outcome": "passed",
+    "duration": 0.0008361379150301218
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_numeric_string_fallback",
+    "outcome": "passed",
+    "duration": 0.0007128239376470447
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_in_operator",
+    "outcome": "passed",
+    "duration": 0.0008881769608706236
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_contains_operator",
+    "outcome": "passed",
+    "duration": 0.0006690340815111995
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_exists_not_exists",
+    "outcome": "passed",
+    "duration": 0.0011491811601445079
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_status_code",
+    "outcome": "passed",
+    "duration": 0.0005592191591858864
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_json_path",
+    "outcome": "passed",
+    "duration": 0.0007660980336368084
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_header_case_insensitive",
+    "outcome": "passed",
+    "duration": 0.0006014410173520446
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_response_time",
+    "outcome": "passed",
+    "duration": 0.0008694961434230208
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_extract_contains_raw_body",
+    "outcome": "passed",
+    "duration": 0.0007303889142349362
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_status_code",
+    "outcome": "passed",
+    "duration": 0.0009547187946736813
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_json_path_code",
+    "outcome": "passed",
+    "duration": 0.0008899449603632092
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_header_assertion",
+    "outcome": "passed",
+    "duration": 0.0010282560251653194
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_contains_type",
+    "outcome": "passed",
+    "duration": 0.0009261869126930833
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_run_not_contains_type",
+    "outcome": "passed",
+    "duration": 0.0010270180646330118
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAssertionEngine::test_required_all_passed",
+    "outcome": "passed",
+    "duration": 0.0008043500129133463
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAcceptanceSingleApi::test_login_passes_and_masks_sensitive",
+    "outcome": "passed",
+    "duration": 1.1765686138533056
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestAcceptanceBusinessFlow::test_flow_passes_end_to_end",
+    "outcome": "passed",
+    "duration": 1.0119895761599764
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestBusinessActionExecutor::test_single_action_passes",
+    "outcome": "passed",
+    "duration": 0.9065082629676908
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestNegativeExecution::test_assertion_failure_marks_failed",
+    "outcome": "passed",
+    "duration": 0.9539006119593978
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestNegativeExecution::test_http_5xx_marks_failed",
+    "outcome": "passed",
+    "duration": 0.8682874361984432
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestNegativeExecution::test_timeout_marks_error",
+    "outcome": "passed",
+    "duration": 1.3593645878136158
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestCrossProjectRun::test_run_hidden_as_404",
+    "outcome": "passed",
+    "duration": 1.1889107410097495
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::TestVariableRefEndToEnd::test_ref_passes_value_between_actions",
+    "outcome": "passed",
+    "duration": 0.9665615529520437
+  },
+  {
+    "nodeid": "tests/test_15_test_executor.py::test_business_flow_api_action_receives_runtime_mock_context",
+    "outcome": "passed",
+    "duration": 1.692827406921424
+  }
+]

@@ -18,14 +18,11 @@ from app.features.business.schemas import (
     BusinessDomainResponse,
     BusinessDomainUpdate,
 )
-from app.features.business.services._access import (
-    get_project_or_404,
-    require_writable_project,
-)
-from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
-from app.shared.notify import notify
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, conflict, not_found
+from app.core.notifications.notify import notify
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 
 def _domain_response(domain: BusinessDomain) -> BusinessDomainResponse:

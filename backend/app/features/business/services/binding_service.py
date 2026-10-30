@@ -30,15 +30,11 @@ from app.features.business.schemas import (
     BusinessBindingResponse,
     BusinessBindingUpdate,
 )
-from app.features.business.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_action_project_id,
-    resolve_binding_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import bad_request, conflict, not_found
-from app.shared.notify import notify
+from app.features.business.services.access_service import resolve_action_project_id, resolve_binding_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, conflict, not_found
+from app.core.notifications.notify import notify
 
 # OUTPUT 映射只能取 RESPONSE；INPUT 映射取 BODY/HEADER/QUERY/PATH（不含 RESPONSE）。
 _INPUT_LOCATIONS = {"BODY", "HEADER", "QUERY", "PATH"}
@@ -93,7 +89,7 @@ def _binding_detail(db: Session, binding: BusinessBinding) -> BusinessBindingDet
 
     if binding.binding_type == "WEB":
         from app.features.test_management.models.test_case import TestCase
-        from app.features.web_ui.models import WebCase
+        from app.features.web_testing.models import WebCase
         case_id = (binding.config_json or {}).get("web_case_id")
         case = db.get(TestCase, case_id) if isinstance(case_id, int) else None
         valid = bool(case and case.project_id == resolve_binding_project_id(db, binding.id) and db.get(WebCase, case_id))
@@ -140,7 +136,7 @@ def _ensure_web_in_project(db, config, api_id, project_id):
     if api_id is not None or not isinstance(config, dict) or set(config) != {"web_case_id"} or type(config["web_case_id"]) is not int:
         raise bad_request("WEB 绑定只允许 config_json.web_case_id，不接受接口或脚本")
     from app.features.test_management.models.test_case import TestCase
-    from app.features.web_ui.models import WebCase
+    from app.features.web_testing.models import WebCase
     case_id = config["web_case_id"]
     case = db.get(TestCase, case_id)
     if case is None or case.project_id != project_id or db.get(WebCase, case_id) is None:

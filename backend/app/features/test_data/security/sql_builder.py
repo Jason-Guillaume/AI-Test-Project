@@ -23,7 +23,7 @@ from app.features.test_data.security.db_guard import (
     check_sensitive_columns,
     validate_identifier,
 )
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_DATABASE_OPERATION_FORBIDDEN,
     CODE_DATABASE_TABLE_NOT_ALLOWED,
     AppError,

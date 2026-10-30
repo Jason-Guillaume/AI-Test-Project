@@ -1,13 +1,7 @@
 // 接口管理页共享常量：方法/状态/分类的颜色与下拉选项。
 // 后端取值集合为准，这里只做展示映射，不自行扩值。
-import type {
-  ApiSourceType,
-  ApiStatus,
-  BodyType,
-  ImportClassification,
-  ParamLocation,
-  RelationType,
-} from '@/types';
+import type { ApiSourceType, ApiStatus, BodyType, ImportClassification, ParamLocation, RelationType } from '@/features/api-catalog/contracts';
+
 
 // HTTP 方法色板：在模块树、列表、调试结果里给方法打 Tag。
 export const METHOD_COLOR: Record<string, string> = {

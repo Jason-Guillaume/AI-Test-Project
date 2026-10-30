@@ -18,13 +18,10 @@ from app.features.business.schemas import (
     BusinessVariableRefCreate,
     BusinessVariableRefResponse,
 )
-from app.features.business.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_flow_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import bad_request, not_found
+from app.features.business.services.access_service import resolve_flow_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, not_found
 
 
 def _ref_response(ref: BusinessVariableRef) -> BusinessVariableRefResponse:

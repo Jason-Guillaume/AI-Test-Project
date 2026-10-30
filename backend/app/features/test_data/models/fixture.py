@@ -12,7 +12,7 @@ Fixture 是「测试需要的业务状态配方」，不是静态 JSON 结果。
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class Fixture(Base):

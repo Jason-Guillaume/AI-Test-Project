@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // Mock 接口详情页：场景列表 + 场景编辑（行为 / 响应 / 匹配规则 / 试跑）。
 //
 // 数据：
@@ -38,10 +38,11 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
-import { getErrorMessage } from '@/api/client';
-import { mockManagementApi } from '@/api/mockManagement';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import type { MockScenario } from '@/types';
+import { getErrorMessage } from '@/shared/api/client';
+import { mockManagementApi } from '@/features/mocking/api/mockManagement';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import type { MockScenario } from '@/features/mocking/contracts';
+
 import { ScenarioEditor } from './ScenarioEditor';
 import { behaviorColor, behaviorLabel, MOCK_KEY_PATTERN, statusCodeColor } from './constants';
 

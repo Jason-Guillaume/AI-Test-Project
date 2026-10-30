@@ -15,7 +15,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from app.shared.errors import CODE_SECURITY_MUTATION_INVALID, AppError
+from app.core.http.errors import CODE_SECURITY_MUTATION_INVALID, AppError
 
 __all__ = [
     "ReplayOutcome",

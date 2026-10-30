@@ -116,8 +116,8 @@ def _user(api, admin, project_id, prefix, role="member"):
 
 def _user_id(username):
     """按用户名取 user_id：注册接口只在 201 时返回一次，这里回查一遍。"""
-    from app.models.identity import User
-    from app.shared.database import SessionLocal
+    from app.core.models.identity import User
+    from app.core.database.session import SessionLocal
 
     with SessionLocal() as session:
         return session.query(User).filter(User.username == username).one().id
@@ -258,14 +258,14 @@ class TestMigration:
             missing = expected - live_indexes
             assert not missing, f"{table.name} 缺索引: {sorted(missing)}"
 
-    def test_models_not_reexported_from_app_models(self):
-        """红线 17：安全模型不得被 app/models/__init__.py 反向 import。"""
-        from pathlib import Path
+    def test_security_models_stay_out_of_core_registry(self):
+        """安全模型归 Feature 所有，核心注册表只暴露九张平台基线表。"""
+        from app.core.models import __all__ as core_exports
 
-        init_source = Path("app/models/__init__.py").read_text(encoding="utf-8")
-        assert "security_testing" not in init_source
+        assert not list((BACKEND_DIR / "app" / "models").rglob("*.py"))
+        assert "security_testing" not in core_exports
         for table in SECURITY_TABLES:
-            assert table not in init_source
+            assert table not in core_exports
 
     def test_downgrade_removes_only_security_tables(self, db):
         """downgrade 到 0010 删除后续 feature 表，Mock 保留；再升级至当前 head。"""

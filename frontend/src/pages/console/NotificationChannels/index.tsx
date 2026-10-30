@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 飞书通知渠道管理页：渠道 CRUD + 连通性测试 + 发送记录审计。
 //
 // 数据：
@@ -39,21 +39,15 @@ import {
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
-import { notificationChannelsApi } from '@/api/notificationChannels';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
-import { fmtTime } from '@/shared/format';
-import { NOTIFY_CONDITION_OPTIONS, NOTIFY_STATUS_COLOR, NOTIFY_STATUS_OPTIONS } from '@/shared/notify';
-import { labelOf } from '@/shared/options';
-import type {
-  ChannelCreateRequest,
-  ChannelUpdateRequest,
-  NotificationChannel,
-  NotificationRecord,
-  NotifyCondition,
-  NotifyStatus,
-} from '@/types';
+import { notificationChannelsApi } from '@/features/notifications/api/notificationChannels';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { fmtTime } from '@/shared/lib/format';
+import { NOTIFY_CONDITION_OPTIONS, NOTIFY_STATUS_COLOR, NOTIFY_STATUS_OPTIONS } from '@/features/notifications/constants';
+import { labelOf } from '@/shared/lib/options';
+import type { ChannelCreateRequest, ChannelUpdateRequest, NotificationChannel, NotificationRecord, NotifyCondition, NotifyStatus } from '@/features/notifications/contracts';
+
 
 interface ChannelFormValues {
   name: string;

@@ -13,7 +13,7 @@ target_type/target_id 指向被测对象；config_json 存放步骤级配置
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestStep(Base):

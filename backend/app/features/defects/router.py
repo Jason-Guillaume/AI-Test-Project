@@ -26,11 +26,11 @@ from app.features.defects.schemas import (
 )
 from app.features.defects.services.defect_service import DefectService
 from app.features.defects.services.source_service import DefectSourceService
-from app.models.identity import User
-from app.models.project import Project
-from app.shared.auth import get_current_user
-from app.shared.database import get_db
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.models.identity import User
+from app.core.models.project import Project
+from app.core.security.auth import get_current_user
+from app.core.database.session import get_db
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 router = APIRouter(prefix="/bugs", tags=["缺陷管理"])
 # 服务实例无状态，路由层复用一个单例即可。

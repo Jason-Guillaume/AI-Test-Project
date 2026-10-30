@@ -6,7 +6,7 @@
 
 - ``resolve``：模板变量解析函数，复用 ``test_case_executor`` 的现有实现，
   本模块不自己再写一套解析规则。
-- ``build_url``：URL 拼接函数，复用 ``ApiRequestExecutor.build_url``。
+- ``build_url``：URL 拼接函数，调用 ``app.execution.http.request_builder``。
   runner 是唯一允许 import 执行器的模块，URL 拼接因此放在 runner 调用，
   这里只保留路径参数替换的纯实现，供需要单独校验 path 占位符的地方复用。
 

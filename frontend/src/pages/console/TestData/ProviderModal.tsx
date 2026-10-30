@@ -8,8 +8,8 @@
 import { useEffect, useState } from 'react';
 import { App, Form, Input, Modal, Select, Switch } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
 import { PROVIDER_TYPE_OPTIONS, RISK_LEVEL_OPTIONS } from './constants';
 import { ProviderConfigApi } from './ProviderConfigApi';
 import { ProviderConfigBusiness } from './ProviderConfigBusiness';
@@ -17,7 +17,8 @@ import { ProviderConfigDatabase } from './ProviderConfigDatabase';
 import { ProviderConfigFaker } from './ProviderConfigFaker';
 import { ProviderConfigPool } from './ProviderConfigPool';
 import { ProviderConfigStatic } from './ProviderConfigStatic';
-import type { DataProvider, DataProviderCreate, DataProviderUpdate, ProviderType } from '@/types';
+import type { DataProvider, DataProviderCreate, DataProviderUpdate, ProviderType } from '@/features/test-data/contracts';
+
 
 const ENV_KEY_OPTIONS = ['base_url', 'gateway_prefix', 'default_headers'].map((k) => ({
   label: k,

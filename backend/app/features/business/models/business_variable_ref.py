@@ -11,7 +11,7 @@ source_action_id / target_action_id 都带 ondelete=CASCADE：任一动作被删
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.sql import func
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class BusinessVariableRef(Base):

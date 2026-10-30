@@ -1,4 +1,4 @@
-import { collectArrayPages } from '@/api/pagination';
+import { collectArrayPages } from '@/shared/api/pagination';
 // 测试套件页（用户视角）。
 // 单页表格：套件 CRUD + 每行「管理用例」抽屉（套件↔用例关联的增删）。
 //
@@ -24,18 +24,13 @@ import {
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
-import { testManagementApi } from '@/api/testManagement';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { testManagementApi } from '@/features/test-management/api/testManagement';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_SUITE_TYPE_OPTIONS } from './constants';
-import type {
-  TestSuite,
-  TestSuiteCaseResponse,
-  TestSuiteCreate,
-  TestSuiteType,
-  TestSuiteUpdate,
-} from '@/types';
+import type { TestSuite, TestSuiteCaseResponse, TestSuiteCreate, TestSuiteType, TestSuiteUpdate } from '@/features/test-management/contracts';
+
 
 interface SuiteFormValues {
   name: string;
@@ -347,9 +342,9 @@ function SuiteCasesDrawer({
 
   return (
     <Drawer title="管理套件用例" width={640} open={suiteId != null} onClose={onClose} destroyOnClose>
-      <Space style={{ marginBottom: 12, width: '100%' }}>
+      <div className="member-add-row">
         <Select
-          style={{ flex: 1, minWidth: 320 }}
+          className="member-add-row__select"
           showSearch
           optionFilterProp="label"
           placeholder="选择要加入的用例"
@@ -376,11 +371,12 @@ function SuiteCasesDrawer({
         >
           添加
         </Button>
-      </Space>
+      </div>
       <Table
         rowKey="id"
         size="small"
         columns={columns}
+        scroll={{ x: 'max-content' }}
         dataSource={suiteCases}
         pagination={false}
         loading={suiteCasesQuery.isLoading}

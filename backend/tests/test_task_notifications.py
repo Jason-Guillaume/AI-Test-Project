@@ -3,10 +3,11 @@
 import pytest
 from fastapi import HTTPException
 
-from app.features.tasks.models import Task, TaskEvent, TaskResourceRef, TaskRun
-from app.features.tasks.services.task_service import TaskService
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
-from app.models.notification import Notification
+from app.orchestration.tasks.models import Task, TaskEvent, TaskResourceRef, TaskRun
+from app.orchestration.tasks.services.task_service import TaskService
+from app.orchestration.tasks.services.state_service import append_event
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
+from app.core.models.notification import Notification
 from tests.conftest import unique
 from tests.test_15_test_executor import _admin_id, _create_project, _make_env
 
@@ -21,7 +22,7 @@ def test_task_notification_commit_and_rollback(api, admin, db):
     db.add(run)
     db.commit()
 
-    TaskService._append_event(db, run, "plan.proposed", {"version": 1})
+    append_event(db, run, "plan.proposed", {"version": 1})
     db.commit()
     notice = db.query(Notification).filter_by(user_id=user_id, event_type="task.plan_ready", project_id=project_id).one()
     assert notice.payload["detail"] == {"task_id": task.id, "run_id": run.id}
@@ -29,7 +30,7 @@ def test_task_notification_commit_and_rollback(api, admin, db):
     assert response.status_code == 200
     assert any(item["id"] == notice.id for item in response.json()["items"])
 
-    TaskService._append_event(db, run, "run.completed", {"status": "SUCCEEDED"})
+    append_event(db, run, "run.completed", {"status": "SUCCEEDED"})
     db.flush()
     db.rollback()
     assert db.query(Notification).filter_by(user_id=user_id, event_type="task.completed", project_id=project_id).count() == 0
@@ -46,7 +47,7 @@ def test_unbound_task_environment_returns_not_found(api, admin, db):
 
 def test_read_all_does_not_expose_revoked_project_notifications(api, admin, db):
     """权限撤销后，批量已读响应不能返回或修改已隐藏的任务通知。"""
-    from app.models.identity import User
+    from app.core.models.identity import User
     from tests.conftest import DEFAULT_PASSWORD, unique
 
     project_id = _create_project(api, admin)
@@ -69,7 +70,7 @@ def test_read_all_does_not_expose_revoked_project_notifications(api, admin, db):
 
 def test_lost_web_browser_is_not_reported_active(api, admin, db):
     """浏览器句柄丢失时刷新页面明确提示，不能伪称会话恢复。"""
-    from app.features.web_ui.models import WebAgentSession
+    from app.features.web_testing.models import WebAgentSession
 
     project_id = _create_project(api, admin)
     environment_id = _make_env(db, "http://127.0.0.1", _admin_id(db))

@@ -24,15 +24,11 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { projectsApi } from '@/api/projects';
-import { securityApi } from '@/api/securityTesting';
-import type {
-  ScanTarget,
-  ScanTargetCreate,
-  ScanTargetUpdate,
-} from '@/api/securityTesting';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { projectsApi } from '@/features/projects/api/projects';
+import { zapApi } from '@/features/security-testing/zap/api';
+import type { ScanTarget, ScanTargetCreate, ScanTargetUpdate } from '@/features/security-testing/zap/contracts';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import {
   AUTHORIZATION_STATUS_OPTIONS,
   authStatusLabel,
@@ -70,7 +66,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
   const listQuery = useQuery({
     queryKey: ['zap-targets', projectId, { enabled: enabledFilter, page }],
     queryFn: () =>
-      securityApi.listScanTargets(projectId, {
+      zapApi.listScanTargets(projectId, {
         page,
         page_size: PAGE_SIZE,
         enabled: enabledFilter,
@@ -82,7 +78,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
   };
 
   const createMutation = useMutation({
-    mutationFn: (body: ScanTargetCreate) => securityApi.createScanTarget(projectId, body),
+    mutationFn: (body: ScanTargetCreate) => zapApi.createScanTarget(projectId, body),
     onSuccess: () => {
       message.success('扫描目标已创建');
       setDrawer(null);
@@ -93,7 +89,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, body }: { id: number; body: ScanTargetUpdate }) =>
-      securityApi.updateScanTarget(projectId, id, body),
+      zapApi.updateScanTarget(projectId, id, body),
     onSuccess: () => {
       message.success('扫描目标已更新');
       setDrawer(null);
@@ -103,7 +99,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
   });
 
   const removeMutation = useMutation({
-    mutationFn: (id: number) => securityApi.removeScanTarget(projectId, id),
+    mutationFn: (id: number) => zapApi.removeScanTarget(projectId, id),
     onSuccess: () => {
       message.success('扫描目标已删除');
       invalidate();
@@ -194,7 +190,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
   return (
     <div>
       <Card size="small" style={{ marginBottom: 12 }}>
-        <Space>
+        <Space wrap className="ui-list-toolbar">
           <Select
             allowClear
             placeholder="启用状态"
@@ -215,7 +211,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
         </Space>
       </Card>
 
-      <Table<ScanTarget>
+      <Table<ScanTarget> scroll={{ x: 'max-content' }}
         rowKey="id"
         size="small"
         columns={columns}

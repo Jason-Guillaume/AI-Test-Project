@@ -6,10 +6,10 @@
 - 记录面：data_execution / fixture_execution / provider_execution，快照落库前统一脱敏。
 
 约束（与业务执行器同层，不重复实现）：
-- HTTP 出站只走 business.executors.api_executor.ApiRequestExecutor；
+- 被测目标 HTTP 出站只走 app.execution.http.executor.ApiRequestExecutor；
 - 业务流程只走 business.executors.business_flow_executor（execute_flow / run_action）；
 - 脱敏只走 business.executors.sensitive.SensitiveDataMasker；
-- 环境解析只走 app.models.configuration.Environment。
+- 环境解析只走 app.core.models.configuration.Environment。
 
 本 feature 的 ORM 模型**不**加入 app/models/__init__.py，由 alembic/versions/0009
 显式建表（feature-local 红线）。

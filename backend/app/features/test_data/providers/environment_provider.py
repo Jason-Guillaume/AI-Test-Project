@@ -1,7 +1,7 @@
 """ENVIRONMENT Provider（§9.5）：读取本次运行环境的某个键。
 
 键名单（属性名 / default_headers 键）集中定义在
-``variable_resolver.ENV_ATTR_KEYS`` 与 ``resolve_env_key``——ENVIRONMENT 步骤、
+``app.execution.templates.resolver.ENV_ATTR_KEYS`` 与 ``resolve_env_key``——ENVIRONMENT 步骤、
 `${env.X}` 模板、以及用例执行器都走这同一份实现，避免三份名单漂移。
 这里只做一个薄的转接，把键的读取出口收敛到这一个 Provider 模块。
 """
@@ -14,7 +14,7 @@ from app.features.test_data.providers.base import (
     ProviderResult,
     config_of,
 )
-from app.features.test_data.runtime.variable_resolver import resolve_env_key
+from app.execution.templates.resolver import resolve_env_key
 
 __all__ = ["EnvironmentProvider", "resolve_env_key"]
 

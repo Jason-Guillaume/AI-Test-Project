@@ -10,10 +10,10 @@ from __future__ import annotations
 from sqlalchemy import select, text
 
 from app.features.dashboard.services.dashboard_service import readiness
-from app.models.identity import Organization, User
-from app.models.notification import Notification
-from app.models.project import Project
-from app.shared.database import SessionLocal
+from app.core.models.identity import Organization, User
+from app.core.models.notification import Notification
+from app.core.models.project import Project
+from app.core.database.session import SessionLocal
 
 from tests.conftest import DEFAULT_PASSWORD, unique
 

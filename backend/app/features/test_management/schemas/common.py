@@ -1,0 +1,129 @@
+"""test_management 资源契约；字段、默认值、校验和 wire 名称保持不变。"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+
+TEST_STRATEGY_CATEGORIES = (
+    "FUNCTIONAL", "PARAMETER", "BOUNDARY", "AUTH", "PERMISSION",
+    "BUSINESS", "EXCEPTION", "IDEMPOTENCY", "SECURITY", "DATA_CONSISTENCY",
+)
+
+
+TestStrategyCategory = Literal[
+    "FUNCTIONAL", "PARAMETER", "BOUNDARY", "AUTH", "PERMISSION",
+    "BUSINESS", "EXCEPTION", "IDEMPOTENCY", "SECURITY", "DATA_CONSISTENCY",
+]
+
+
+TEST_PRIORITIES = ("P0", "P1", "P2", "P3")
+
+
+TestPriority = Literal["P0", "P1", "P2", "P3"]
+
+
+TEST_TARGET_TYPES = ("API", "BUSINESS_FLOW", "BUSINESS_ACTION", "WEB")
+
+
+TestTargetType = Literal["API", "BUSINESS_FLOW", "BUSINESS_ACTION", "WEB"]
+
+
+TEST_STATUSES = ("DRAFT", "ACTIVE", "DEPRECATED")
+
+
+TestStatus = Literal["DRAFT", "ACTIVE", "DEPRECATED"]
+
+
+TEST_SOURCE_TYPES = ("MANUAL", "AI")
+
+
+TestSourceType = Literal["MANUAL", "AI"]
+
+
+TEST_CASE_TYPES = (
+    "FUNCTIONAL", "BUSINESS", "NEGATIVE", "BOUNDARY", "PERMISSION", "SECURITY", "EXCEPTION",
+)
+
+
+TestCaseType = Literal[
+    "FUNCTIONAL", "BUSINESS", "NEGATIVE", "BOUNDARY", "PERMISSION", "SECURITY", "EXCEPTION",
+]
+
+
+TEST_PRECONDITION_TYPES = ("VARIABLE", "TEXT", "FIXTURE", "API", "BUSINESS_ACTION", "BUSINESS_FLOW")
+
+
+TestPreconditionType = Literal[
+    "VARIABLE", "TEXT", "FIXTURE", "API", "BUSINESS_ACTION", "BUSINESS_FLOW"
+]
+
+
+TEST_OPERATORS = ("EQ", "NE", "GT", "GE", "LT", "LE", "IN", "CONTAINS", "EXISTS", "NOT_EXISTS")
+
+
+TestOperator = Literal["EQ", "NE", "GT", "GE", "LT", "LE", "IN", "CONTAINS", "EXISTS", "NOT_EXISTS"]
+
+
+TEST_VALUE_TYPES = ("STRING", "INTEGER", "NUMBER", "BOOLEAN", "OBJECT", "ARRAY")
+
+
+TestValueType = Literal["STRING", "INTEGER", "NUMBER", "BOOLEAN", "OBJECT", "ARRAY"]
+
+
+TEST_DATA_SOURCE_TYPES = ("STATIC", "ENVIRONMENT", "VARIABLE", "RUNTIME", "FAKER", "FIXTURE")
+
+
+TestDataSourceType = Literal["STATIC", "ENVIRONMENT", "VARIABLE", "RUNTIME", "FAKER", "FIXTURE"]
+
+
+TEST_STEP_TYPES = ("SETUP", "ACTION", "ASSERT", "CLEANUP")
+
+
+TestStepType = Literal["SETUP", "ACTION", "ASSERT", "CLEANUP"]
+
+
+TEST_ASSERTION_TYPES = (
+    "STATUS_CODE", "JSON_PATH", "HEADER", "RESPONSE_TIME", "CONTAINS", "NOT_CONTAINS",
+)
+
+
+TestAssertionType = Literal[
+    "STATUS_CODE", "JSON_PATH", "HEADER", "RESPONSE_TIME", "CONTAINS", "NOT_CONTAINS"
+]
+
+
+TEST_SUITE_TYPES = ("SMOKE", "REGRESSION", "BUSINESS", "CUSTOM")
+
+
+TestSuiteType = Literal["SMOKE", "REGRESSION", "BUSINESS", "CUSTOM"]
+
+
+TEST_PLAN_STATUSES = ("DRAFT", "ACTIVE", "DISABLED")
+
+
+TestPlanStatus = Literal["DRAFT", "ACTIVE", "DISABLED"]
+
+
+TEST_EXECUTION_MODES = ("MANUAL", "SCHEDULED", "CI")
+
+
+TestExecutionMode = Literal["MANUAL", "SCHEDULED", "CI"]
+
+
+TEST_RUN_STATUSES = ("PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELLED")
+
+
+TestRunStatus = Literal["PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELLED"]
+
+
+CASE_EXECUTION_STATUSES = ("PENDING", "RUNNING", "PASSED", "FAILED", "SKIPPED", "ERROR")
+
+
+CaseExecutionStatus = Literal["PENDING", "RUNNING", "PASSED", "FAILED", "SKIPPED", "ERROR"]
+
+
+CASE_EXECUTOR_TYPES = ("API", "BUSINESS_FLOW", "BUSINESS_ACTION")
+
+
+CaseExecutorType = Literal["API", "BUSINESS_FLOW", "BUSINESS_ACTION"]

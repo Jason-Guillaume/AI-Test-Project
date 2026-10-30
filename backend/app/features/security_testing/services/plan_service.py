@@ -27,7 +27,7 @@ from app.features.security_testing.models import (
     SecurityStrategy,
 )
 from app.features.security_testing.runtime import business_plan as bp
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.security_testing.schemas import (
     MAX_PREVIEW_ITEMS,
     MUTATION_TYPES,
@@ -40,16 +40,13 @@ from app.features.security_testing.schemas import (
     SecurityPlanRead,
     validate_no_script_keys,
 )
-from app.features.security_testing.services._access import (
-    get_project_or_404,
-    require_writable_project,
-)
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.test_data.models.case_fixture import TestCaseFixture
 from app.features.test_data.models.fixture import Fixture
 from app.features.test_management.models.test_case import TestCase
-from app.models.identity import User
-from app.shared.errors import (
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_SECURITY_BASELINE_NOT_FOUND,
     CODE_SECURITY_MUTATION_INVALID,
     CODE_SECURITY_MUTATION_NOT_ALLOWED,

@@ -16,7 +16,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.features.test_data.models.fixture import Fixture, FixtureDependency
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_FIXTURE_DEPENDENCY_CYCLE,
     CODE_FIXTURE_NOT_FOUND,
     AppError,

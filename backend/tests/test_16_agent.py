@@ -13,21 +13,21 @@ from __future__ import annotations
 
 from tests.conftest import unique
 
-from app.features.agent.graph import run_agent
-from app.features.agent.providers.llm_provider import FakeLLMProvider
-from app.features.agent.providers.sanitizer import (
+from app.agents.workflows.legacy.graph import run_agent
+from app.llm.providers import FakeLLMProvider
+from app.core.security.sanitizer import (
     assert_no_real_secret,
     sanitize_context,
     sanitize_text,
 )
-from app.features.agent.services import session_service
-from app.features.agent.state import make_initial_state, set_error
-from app.features.agent.tools.test_asset_tool import semantic_key
-from app.features.notifications.models.notification_record import NotificationRecord
+from app.agents.services import session_service
+from app.agents.workflows.legacy.state import make_initial_state, set_error
+from app.tools.builtin.test_management.test_asset_tool import semantic_key
+from app.platform.notifications.models.notification_record import NotificationRecord
 from app.features.reports.models.report import TestReport
 from app.features.test_management.models.execution import TestRun
-from app.models.configuration import Environment
-from app.models.identity import User
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
 
 API = "/api/v1"
 
@@ -96,7 +96,7 @@ def _create_env(db, project_id):
     db.add(env)
     db.commit()
     db.refresh(env)
-    from app.models.project_environment import ProjectEnvironment
+    from app.platform.environment_configuration.models import ProjectEnvironment
     db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id,
         base_url=env.base_url, display_name=env.display_name or env.name,
         gateway_prefix="", default_headers={}, is_active=True))
@@ -113,7 +113,7 @@ def _create_session_http(api, actor, project_id):
 
 def _get_session_obj(db, session_id):
     """获取会话`obj`。"""
-    from app.features.agent.models.agent_session import AgentSession
+    from app.agents.models.session import AgentSession
     return db.get(AgentSession, session_id)
 
 
@@ -227,7 +227,7 @@ class TestSanitizer:
 
     def test_build_chat_messages_role_isolation(self):
         """验证构建`chat``messages`角色`isolation`场景及其预期结果。"""
-        from app.features.agent.providers.sanitizer import build_chat_messages
+        from app.core.security.sanitizer import build_chat_messages
         msgs = build_chat_messages(
             "你是测试助手。", "业务数据：接口参数...",
             history=[{"role": "USER", "content": "你好"}, {"role": "ASSISTANT", "content": "您好"}],

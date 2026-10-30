@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_SECURITY_CONFIRMATION_REQUIRED,
     CODE_SECURITY_FIXTURE_REQUIRED,
     CODE_SECURITY_MUTATION_INVALID,

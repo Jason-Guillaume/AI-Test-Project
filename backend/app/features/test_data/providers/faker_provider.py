@@ -1,7 +1,7 @@
 """FAKER Provider（§9.4）：只调固定白名单方法生成假数据，不执行用户代码。
 
 生成器白名单与 `${faker.phone}` 模板共用同一个入口
-``variable_resolver.generate_faker_value``，保证 Fixture 步骤和用例数据不是两套
+``app.execution.templates.resolver.generate_faker_value``，保证 Fixture 步骤和用例数据不是两套
 随机实现。结果写进私有变量的 ``output_key``（缺省用生成器名）。
 
 locale 只允许 zh_CN / en_US；非法生成器与非法 locale 都是配置错误，
@@ -16,8 +16,8 @@ from app.features.test_data.providers.base import (
     ProviderResult,
     config_of,
 )
-from app.features.test_data.runtime.variable_resolver import FAKER_LOCALES, generate_faker_value
-from app.shared.errors import CODE_FIXTURE_INVALID, CODE_VARIABLE_RESOLVE_FAILED, AppError
+from app.execution.templates.resolver import FAKER_LOCALES, generate_faker_value
+from app.core.http.errors import CODE_FIXTURE_INVALID, CODE_VARIABLE_RESOLVE_FAILED, AppError
 
 
 class FakerProvider(BaseProvider):

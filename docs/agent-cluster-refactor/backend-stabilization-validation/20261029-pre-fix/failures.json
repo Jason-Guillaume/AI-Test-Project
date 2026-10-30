@@ -1,0 +1,714 @@
+{
+  "run_id": "20261029-pre-fix",
+  "nodeids_by_entry": {
+    "default": [
+      {
+        "nodeid": "app.agents.workflows.legacy.nodes.test_case_generator::test_case_generator_node",
+        "kind": "error",
+        "exception_type": null
+      },
+      {
+        "nodeid": "app.agents.workflows.legacy.nodes.test_planner::test_planner_node",
+        "kind": "error",
+        "exception_type": null
+      },
+      {
+        "nodeid": "app.agents.workflows.legacy.nodes.test_point_generator::test_point_generator_node",
+        "kind": "error",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_create_read_patch_delete",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_list_pagination_shape",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_entry_url_must_share_host_with_base",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_non_public_base_url_rejected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_base_url_changed_to_disallowed_host_rejected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_is_production_derived_from_environment",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_inflight_job_blocks_delete",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_member_cannot_create_target",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_editor_can_create_target",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_outsider_gets_404",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_credential_never_returned_in_response",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_list_does_not_return_credential",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_credential_stored_as_ciphertext",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_manual_mode_rejects_credential",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_update_rotates_and_removes_credential",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_delete",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_member_cannot_create_auth_profile",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_builtin_profiles_visible_and_protected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_builtin_profile_cannot_be_deleted_or_renamed_by_code",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_builtin_profile_cannot_bind_project_auth_profile",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_active_enabled_requires_active_mode",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_custom_profile_crud_and_auth_binding",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_auth_binding_must_be_same_project",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_outsider_cannot_see_other_projects_profile",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanPlan::test_plan_is_read_only",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanPlan::test_plan_reports_limitations_without_zap",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanPlan::test_plan_blocks_production_active_scan",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_create_refused_when_zap_disabled",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_create_job_returns_pending",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_duplicate_target_job_rejected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_active_scan_requires_editor_and_confirmation",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_cancel_pending_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_query_endpoints_for_a_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_list_jobs_filters",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_cross_project_job_is_404",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_unauthenticated_gets_401",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAlertSeverityFilter::test_http_severity_param_reaches_the_filter",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAlertSeverityFilter::test_alerts_do_not_leak_credential_from_the_link",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_health_reports_not_available",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_capabilities_reports_not_available",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_health_requires_platform_admin",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_health_does_not_open_connection",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_claims_pending_job_and_preserves_terminal_state",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_marks_cancelled_job_without_claiming",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_sweeps_stale_inflight_job_to_timed_out",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_ignores_fresh_inflight_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_claims_at_most_one_job_at_a_time",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_start_spawns_thread_when_enabled",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_30_web_ui::test_agent_draft_requires_human_review",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_31_web_ui_console::test_real_console_create_confirm_debug_report",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestToolGate::test_create_refused_without_human_approval",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestToolGate::test_preview_never_confirms_and_writes_nothing",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_llm_intent_only_stops_at_plan_review",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_llm_hallucinated_confirmation_is_ignored",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_llm_approval_note_never_reaches_prompt_history",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_workspace_offers_confirm_security_scan",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_passive_confirm_creates_one_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_active_confirm_without_note_is_refused",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_active_confirm_with_note_records_approver",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_confirmation_note_from_action_payload_only",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_double_confirm_creates_only_one_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_plan_upgraded_to_active_after_review_is_refused",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_cross_project_target_is_404",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_multiple_targets_returns_clarify_not_guess",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_explicit_target_id_bypasses_ambiguity",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_unique_target_is_auto_selected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_missing_profile_is_readable_error",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_33_web_agent_loop.TestIntentPromptContract::test_every_intent_is_advertised_in_intent_prompt",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_36_agent_governance_details::test_skill_file_tree_versions_usage_and_zip_import",
+        "kind": "failure",
+        "exception_type": null
+      }
+    ],
+    "tests_dir": [
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_create_read_patch_delete",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_list_pagination_shape",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_entry_url_must_share_host_with_base",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_non_public_base_url_rejected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_base_url_changed_to_disallowed_host_rejected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_is_production_derived_from_environment",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_inflight_job_blocks_delete",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_member_cannot_create_target",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_editor_can_create_target",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanTarget::test_outsider_gets_404",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_credential_never_returned_in_response",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_list_does_not_return_credential",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_credential_stored_as_ciphertext",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_manual_mode_rejects_credential",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_update_rotates_and_removes_credential",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_delete",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAuthProfile::test_member_cannot_create_auth_profile",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_builtin_profiles_visible_and_protected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_builtin_profile_cannot_be_deleted_or_renamed_by_code",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_builtin_profile_cannot_bind_project_auth_profile",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_active_enabled_requires_active_mode",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_custom_profile_crud_and_auth_binding",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_auth_binding_must_be_same_project",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanProfile::test_outsider_cannot_see_other_projects_profile",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanPlan::test_plan_is_read_only",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanPlan::test_plan_reports_limitations_without_zap",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanPlan::test_plan_blocks_production_active_scan",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_create_refused_when_zap_disabled",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_create_job_returns_pending",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_duplicate_target_job_rejected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_active_scan_requires_editor_and_confirmation",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_cancel_pending_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_query_endpoints_for_a_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_list_jobs_filters",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_cross_project_job_is_404",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanJob::test_unauthenticated_gets_401",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAlertSeverityFilter::test_http_severity_param_reaches_the_filter",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestAlertSeverityFilter::test_alerts_do_not_leak_credential_from_the_link",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_health_reports_not_available",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_capabilities_reports_not_available",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_health_requires_platform_admin",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestZapHealth::test_health_does_not_open_connection",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_claims_pending_job_and_preserves_terminal_state",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_marks_cancelled_job_without_claiming",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_sweeps_stale_inflight_job_to_timed_out",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_ignores_fresh_inflight_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_tick_claims_at_most_one_job_at_a_time",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_29_zap_scan.TestScanWorker::test_start_spawns_thread_when_enabled",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_30_web_ui::test_agent_draft_requires_human_review",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_31_web_ui_console::test_real_console_create_confirm_debug_report",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestToolGate::test_create_refused_without_human_approval",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestToolGate::test_preview_never_confirms_and_writes_nothing",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_llm_intent_only_stops_at_plan_review",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_llm_hallucinated_confirmation_is_ignored",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_llm_approval_note_never_reaches_prompt_history",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentApprovalGate::test_workspace_offers_confirm_security_scan",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_passive_confirm_creates_one_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_active_confirm_without_note_is_refused",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_active_confirm_with_note_records_approver",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_confirmation_note_from_action_payload_only",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_double_confirm_creates_only_one_job",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_plan_upgraded_to_active_after_review_is_refused",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentHumanConfirm::test_cross_project_target_is_404",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_multiple_targets_returns_clarify_not_guess",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_explicit_target_id_bypasses_ambiguity",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_unique_target_is_auto_selected",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_32_zap_agent_approval.TestAgentScopeGuard::test_missing_profile_is_readable_error",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_33_web_agent_loop.TestIntentPromptContract::test_every_intent_is_advertised_in_intent_prompt",
+        "kind": "failure",
+        "exception_type": null
+      },
+      {
+        "nodeid": "tests.test_36_agent_governance_details::test_skill_file_tree_versions_usage_and_zip_import",
+        "kind": "failure",
+        "exception_type": null
+      }
+    ]
+  }
+}

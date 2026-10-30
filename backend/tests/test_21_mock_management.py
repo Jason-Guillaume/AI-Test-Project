@@ -173,8 +173,8 @@ def test_mock_service_crud_token_and_permissions(api, admin, db):
     service_id = svc["id"]
 
     # 库里只存哈希：明文不入库，哈希可校验。
-    from app.features.mock_management.models import MockService
-    from app.features.mock_management.services.token_service import verify_token
+    from app.features.mocking.models import MockService
+    from app.features.mocking.services.token_service import verify_token
 
     row = db.get(MockService, service_id)
     assert row.runtime_token_hash
@@ -503,7 +503,7 @@ def test_mock_matching_priority_and_concurrency_isolation(api, admin, db):
     assert r_def.json() == {"who": "A"}
 
     # Context Override > Explicit Matcher：覆盖到 C，即使 ?env=B 也返回 C。
-    from app.features.mock_management.services.mock_runtime_service import MockRuntimeService
+    from app.features.mocking.services.mock_runtime_service import MockRuntimeService
 
     rt = MockRuntimeService()
     ctx_c = rt.activate_context(
@@ -875,7 +875,7 @@ def test_mock_review_fixes_matcher_and_record_safety(api, admin, db):
     - 执行面鉴权头 X-Mock-Token 绝不出现在调用记录快照里。
     - 未命中的调用也持久化 error_code / error_message（之前只存在于内存响应）。
     """
-    from app.features.mock_management.matchers.request_matcher import (
+    from app.features.mocking.matchers.request_matcher import (
         RequestSnapshot,
         evaluate_matcher,
         extract_jsonpath,
@@ -1081,7 +1081,7 @@ def test_mock_context_propagated_to_executed_request(api, admin, db):
         # test_run_id 过滤的数据来源——修复前这三列永远为空，摘要恒为 involved=False。
         # 用新开一个仍处于 ACTIVE 的 Context（上面的已随用例结束 CLOSED），
         # 否则无法区分「记录来自 Context」与「恰好命中同一条场景」。
-        from app.features.mock_management.services.mock_runtime_service import MockRuntimeService
+        from app.features.mocking.services.mock_runtime_service import MockRuntimeService
 
         dep_ctx = MockRuntimeService().activate_context(
             db, project_id=project_id, test_run_id=run["id"],

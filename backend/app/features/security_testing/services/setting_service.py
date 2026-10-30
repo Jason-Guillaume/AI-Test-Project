@@ -9,17 +9,15 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.identity import User
-from app.shared.errors import conflict
-from app.shared.roles import PROJECT_ROLE_VIEWER, has_project_role, project_role_for
-from app.shared.errors import not_found
+from app.core.models.identity import User
+from app.core.http.errors import conflict
+from app.core.security.roles import PROJECT_ROLE_VIEWER, has_project_role, project_role_for
+from app.core.http.errors import not_found
 
 from app.features.security_testing.models import SecurityProjectSetting
 from app.features.security_testing.schemas import SecuritySettingRead, SecuritySettingUpdate
-from app.features.security_testing.services._access import (
-    get_project_or_404,
-    require_manage_project,
-)
+from app.features.security_testing.services.access_service import require_manage_project
+from app.platform.projects.services.access_service import get_project_or_404
 
 
 class SecuritySettingService:

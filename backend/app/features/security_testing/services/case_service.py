@@ -28,19 +28,16 @@ from app.features.security_testing.schemas import (
     SecurityExecutionRead,
     SecurityRunRequest,
 )
-from app.features.security_testing.services._access import (
-    get_project_or_404,
-    require_writable_project,
-)
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
 from app.features.test_management.models.test_case import TestCase
 from app.features.test_management.models.test_plan import TestPlan, TestPlanSuite
 from app.features.test_management.models.test_suite import TestSuite, TestSuiteCase
 from app.features.test_management.schemas import TestRunCreateRequest, TestRunResponse
 from app.features.test_management.services.run_service import RunService
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
-from app.models.identity import User
-from app.shared.errors import bad_request, not_found
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, not_found
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 __all__ = ["SecurityCaseService"]
 

@@ -1,0 +1,284 @@
+[
+  {
+    "category": "DeprecationWarning",
+    "message": "The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.",
+    "nodeid": "",
+    "when": "config"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalParameter\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalBody\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiParameterIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiBodyIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiResponseIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiParameterResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiRequestBodyResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiResponseResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema\" in \"ImportPreviewItem\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_16_agent.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_16_agent.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_17_report_notification.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_17_report_notification.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_17_report_notification.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_25_security_execution.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_25_security_execution.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestStep' because it has a __init__ constructor (from: tests/test_25_security_execution.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_26_security_agent_report.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_26_security_agent_report.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_02_auth_flow.py::test_registration_validation",
+    "when": "runtest"
+  },
+  {
+    "category": "InsecureKeyLengthWarning",
+    "message": "The HMAC key is 12 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.",
+    "nodeid": "tests/test_03_token_revocation.py::test_expired_token_is_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_04_admin_authorization.py::test_pagination_contract",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_04_admin_authorization.py::test_pagination_contract",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_04_admin_authorization.py::test_pagination_contract",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_08_defects.py::test_defect_validation_rejects_bad_input",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_08_defects.py::test_defect_validation_rejects_bad_input",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_08_defects.py::test_defect_validation_rejects_bad_input",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_13_test_asset.py::TestStrategy::test_strategy_invalid_category_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "SAWarning",
+    "message": "fully NULL primary key identity cannot load any object.  This condition may raise an error in a future release.",
+    "nodeid": "tests/test_17_report_notification.py::TestSecretBoundary::test_llm_echoed_webhook_is_scrubbed_before_persist",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_18_test_data_crud.py::TestFixtureCrud::test_bad_key_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "Use 'content=<...>' to upload raw bytes/text content.",
+    "nodeid": "tests/test_21_mock_management.py::test_mock_execution_plane_separation_and_masking",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_21_mock_management.py::test_mock_case_mocks_crud_and_validation",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_unsupported_mutation_type_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_status_code_out_of_range_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_invalid_category_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_bad_strategy_key_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_bad_risk_level_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_bad_target_location_rejected",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_finding_status_transition_matrix",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_30_web_ui.py::test_migration_and_web_asset_storage",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_30_web_ui.py::test_migration_and_web_asset_storage",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_33_web_agent_loop.py::TestBudgetBoundary::test_zero_length_budget_is_rejected_upstream",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_35_tasks.py::test_task_creation_rejects_retired_or_unknown_security_fields",
+    "when": "runtest"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_35_tasks.py::test_task_creation_rejects_retired_or_unknown_security_fields",
+    "when": "runtest"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Duplicate Operation ID mock_runtime_api_v1_mock__project_id___service_key___path__options for function mock_runtime at /private/tmp/backend-comprehensive-b4-checkpoint/backend/app/features/mock_management/runtime_router.py",
+    "nodeid": "tests/test_business_capability_extraction.py::test_main_registers_zap_management_routes_by_method_and_path",
+    "when": "runtest"
+  }
+]

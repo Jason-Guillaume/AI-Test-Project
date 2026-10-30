@@ -13,26 +13,21 @@ import {
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import {
-  projectsApi,
-  type ProjectCreate,
-} from '@/api/projects';
-import type {
-  Paginated,
-  Project,
-  ProjectMember,
-  ProjectRole,
-} from '@/types';
-import { organizationsApi } from '@/api/organizations';
+import { projectsApi } from '@/features/projects/api/projects';
+import type { ProjectCreate } from '@/features/projects/contracts';
+import type { Paginated } from '@/shared/api/contracts';
+import type { Project, ProjectMember, ProjectRole } from '@/features/projects/contracts';
+
+import { organizationsApi } from '@/features/organizations/api/organizations';
 import {
   ErrorState,
   LoadingState,
   PageContainer,
-} from '@/components/PageState';
-import { ProjectRoleTag } from '@/components/RoleTag';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { getErrorMessage } from '@/api/client';
-import { PageHeader } from '@/components/PageHeader';
+} from '@/shared/ui/PageState';
+import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 // 项目角色下拉选项：viewer < member < editor 三级
 const PROJECT_ROLE_OPTIONS: { label: string; value: ProjectRole }[] = [
@@ -134,7 +129,7 @@ export function AdminProjectsPage() {
   return (
     <PageContainer>
       <PageHeader title="项目管理" subtitle="管理全平台项目归属、负责人和成员角色" />
-      <Space
+      <Space wrap className="ui-list-toolbar"
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
         <Input.Search

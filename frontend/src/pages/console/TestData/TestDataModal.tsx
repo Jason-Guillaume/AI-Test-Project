@@ -7,14 +7,15 @@
 import { useEffect } from 'react';
 import { App, Form, Input, Modal, Select } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
 import {
   ASSET_SOURCE_OPTIONS,
   ASSET_STATUS_OPTIONS,
   FIXTURE_SCOPE_OPTIONS,
 } from './constants';
-import type { TestDataAsset, TestDataAssetCreate, TestDataAssetUpdate } from '@/types';
+import type { TestDataAsset, TestDataAssetCreate, TestDataAssetUpdate } from '@/features/test-data/contracts';
+
 
 interface FormValues {
   name: string;

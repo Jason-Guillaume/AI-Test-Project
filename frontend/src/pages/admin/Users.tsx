@@ -19,13 +19,16 @@ import { PlusOutlined, ReloadOutlined, TeamOutlined, UserSwitchOutlined } from '
 import dayjs from 'dayjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { usersApi, type UserListQuery, type UserUpdate } from '@/api/users';
-import type { Paginated, PlatformRole, User } from '@/types';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { PlatformRoleTag } from '@/components/RoleTag';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { getErrorMessage } from '@/api/client';
-import { PageHeader } from '@/components/PageHeader';
+import { usersApi } from '@/features/users/api/users';
+import type { UserListQuery, UserUpdate } from '@/features/users/contracts';
+import type { Paginated } from '@/shared/api/contracts';
+import type { PlatformRole, User } from '@/features/identity/contracts';
+
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { PlatformRoleTag } from '@/features/identity/components/RoleTag';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 // 平台角色下拉选项：admin > test > dev 三级
 const ROLE_OPTIONS: { label: string; value: PlatformRole }[] = [

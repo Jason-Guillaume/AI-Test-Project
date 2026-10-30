@@ -30,13 +30,12 @@ ai-test-project/
 │   └── tests/                   pytest（隔离库 testplatform_test）
 ├── frontend/                    React 18 + TS 5.6 + Vite 5 + antd 5
 │   └── src/
-│       ├── App.tsx              单应用双入口的路由表（共享登录态与权限上下文）
-│       ├── layouts/             AdminLayout.tsx · ConsoleLayout.tsx
-│       ├── pages/
-│       │   ├── auth/            登录 / 注册
-│       │   ├── admin/           /admin/*  平台管理端
-│       │   └── console/         /console/* 用户控制台
-│       └── api/ components/ hooks/ types/    请求客户端 · 基础组件 · hooks · 类型
+│       ├── app/                 App.tsx、providers/、router/、layouts/
+│       ├── features/            按业务域组织 API、contracts 与域内能力
+│       ├── pages/               auth/、admin/、console/ 路由页面
+│       ├── shared/              api/、lib/、session/、theme/、ui/
+│       ├── widgets/             执行详情、任务助手等跨页面组合
+│       └── styles/              基础、工作区、管理端、认证与响应式样式
 ├── docs/
 │   ├── README.md                    文档索引（全部文档分类导航）
 │   ├── getting-started.md           前后端本地联调启动指南
@@ -51,7 +50,7 @@ ai-test-project/
 技术栈（实际安装版本）：Python 3.14 / FastAPI 0.141.1 / SQLAlchemy 2.0.54 / Alembic 1.20.0 /
 psycopg 3.3.6 / PyJWT 2.15.1 / bcrypt 4.3.0 / pydantic 2.14 / uvicorn 0.53.0；
 React 18.3 / TypeScript 5.6（strict）/ Vite 5.4 / antd 5.21 / @tanstack/react-query 5.59 /
-react-router-dom 6.26 / dayjs。
+react-router-dom 6.26 / dayjs；图标包 `@ant-design/icons` 5.6.1。
 
 依赖来源只有一处：后端是 `backend/requirements.txt`（**没有** `pyproject.toml`，所以装依赖用
 `pip install -r requirements.txt`，不能用 `pip install -e .`）；前端是 `frontend/package-lock.json`
@@ -113,7 +112,7 @@ react-router-dom 6.26 / dayjs。
 
 ## 5. 验证
 
-三条命令，本地均已跑通：
+以下是 README 早期的验证记录（历史结果）；当前后端回归见 [稳定化交付记录](docs/agent-cluster-refactor/backend-stabilization-delivery.md)：
 
 ```bash
 # 后端单测（隔离库 testplatform_test）
@@ -133,7 +132,9 @@ INIT_ADMIN_USERNAME=e2e-admin INIT_ADMIN_PASSWORD="$(python3 -c 'import secrets;
 #   == 结果：118 通过，0 失败 ==
 ```
 
-6 条 warning 都是无害的：Starlette `TestClient` 弃用、`HTTP_422_UNPROCESSABLE_ENTITY`
+2026-10-29 后端全量回归：`1042 passed, 47 warnings`（F0–F4 稳定化后，隔离测试库，0 skipped）；逐项基线、失败 nodeid 与差异见 [验证资产](docs/agent-cluster-refactor/backend-stabilization-validation/20261029-post-fix/summary.json)。
+
+该 52 passed 历史运行记录了 6 条 warning，包括 Starlette `TestClient` 弃用、`HTTP_422_UNPROCESSABLE_ENTITY`
 弃用、以及一处**故意**用 12 字节密钥触发的 `InsecureKeyLengthWarning`
 （用来验证「密钥过短会被 PyJWT 警告」的行为）。
 

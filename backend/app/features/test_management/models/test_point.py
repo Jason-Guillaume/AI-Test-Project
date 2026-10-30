@@ -12,7 +12,7 @@ priority ∈ {P0, P1, P2, P3}。
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestPoint(Base):

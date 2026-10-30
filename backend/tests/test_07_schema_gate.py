@@ -34,7 +34,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, inspect
 
 from app.main import app
-from app.shared.config import settings
+from app.core.config import settings
 
 with TestClient(app) as client:
     health = client.get("/healthz")

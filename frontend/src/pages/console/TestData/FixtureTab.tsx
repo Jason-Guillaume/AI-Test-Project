@@ -10,14 +10,16 @@
 import { useMemo, useState } from 'react';
 import { App, Button, Col, Form, Input, Modal, Row, Select, Space, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { FIXTURE_SCOPE_OPTIONS, FIXTURE_STATUS_OPTIONS } from './constants';
 import { FixtureTree } from './FixtureTree';
 import { FixtureDetail } from './FixtureDetail';
 import { ExecutionDetailDrawer } from './ExecutionDetailDrawer';
-import type { DataExecutionDetail, FixtureBrief, FixtureCreate } from '@/types';
+import type { FixtureBrief, FixtureCreate } from '@/features/test-data/contracts';
+import type { DataExecutionDetail } from '@/features/test-data/executionContracts';
+
 
 interface CreateValues {
   name: string;
@@ -137,15 +139,14 @@ export function FixtureTab({
 
   return (
     <>
-      <Row gutter={16}>
-        <Col flex="320px">
+      <Row gutter={16} className="resource-split">
+        <Col className="resource-split__sidebar">
           <div
+            className="resource-split__panel"
             style={{
               border: '1px solid #f0f0f0',
               borderRadius: 8,
               padding: 8,
-              height: 'calc(100vh - 280px)',
-              minHeight: 400,
               overflow: 'auto',
             }}
           >
@@ -170,19 +171,18 @@ export function FixtureTab({
             />
           </div>
         </Col>
-        <Col flex="auto">
+        <Col className="resource-split__detail">
           <div
+            className="resource-split__panel"
             style={{
               border: '1px solid #f0f0f0',
               borderRadius: 8,
               padding: 16,
-              height: 'calc(100vh - 280px)',
-              minHeight: 400,
               overflow: 'auto',
             }}
           >
             {selectedId != null ? (
-              <Space style={{ marginBottom: 12 }}>
+              <Space wrap style={{ marginBottom: 12 }}>
                 <Button type="primary" onClick={handleGenerate}>
                   生成
                 </Button>

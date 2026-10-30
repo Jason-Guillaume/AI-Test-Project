@@ -24,11 +24,12 @@ from app.features.defects.schemas import (
     BugUpdate,
     SEVERITY_LABELS,
 )
-from app.models.identity import User
-from app.models.project import Project
-from app.shared.errors import bad_request, forbidden, not_found
-from app.shared.notify import notify
-from app.shared.roles import (
+from app.core.models.identity import User
+from app.core.models.project import Project
+from app.core.http.errors import bad_request, forbidden, not_found
+from app.core.notifications.notify import notify
+from app.platform.projects.services.access_service import check_writable, get_project_or_404
+from app.core.security.roles import (
     PROJECT_ROLE_MEMBER,
     PROJECT_ROLE_VIEWER,
     accessible_project_ids,
@@ -42,15 +43,6 @@ class DefectService:
 
     # ---------------------------------------------------------------- 可见性
 
-    def _get_project_or_404(self, db: Session, project_id: int, user: User) -> Project:
-        """取项目并校验可见性；不可见与不存在共用 404。"""
-        project = db.get(Project, project_id)
-        if project is None:
-            raise not_found("项目不存在")
-        # 权限判定：至少 viewer；否则统一 404 隐藏项目存在性。
-        if not has_project_role(project_role_for(db, project, user), PROJECT_ROLE_VIEWER):
-            raise not_found("项目不存在")
-        return project
 
     def get_bug_or_404(self, db: Session, bug_id: int, user: User) -> Bug:
         """按 ID 取缺陷并校验可见性；越权与不存在共用 404。"""
@@ -137,11 +129,6 @@ class DefectService:
 
     # ---------------------------------------------------------------- 写入
 
-    def _check_writable(self, db: Session, project: Project, actor: User) -> None:
-        """写操作权限校验：至少 project member。"""
-        role = project_role_for(db, project, actor)
-        if not has_project_role(role, PROJECT_ROLE_MEMBER):
-            raise forbidden("需要项目成员权限")
 
     def _validate_assignee(self, db: Session, project: Project, assignee_id: int) -> User:
         """校验处理人：必须存在、启用且为该项目成员；返回用户对象。"""
@@ -154,8 +141,8 @@ class DefectService:
 
     def create_bug(self, db: Session, body: BugCreate, *, actor: User, commit: bool = True) -> Bug:
         """新增缺陷；创建者成为报告人。"""
-        project = self._get_project_or_404(db, body.project_id, actor)
-        self._check_writable(db, project, actor)
+        project = get_project_or_404(db, body.project_id, actor)
+        check_writable(db, project, actor)
 
         # 创建时若直接指定处理人，走与更新相同的校验；报告人本身默认可作为处理人。
         if body.assignee_id is not None and body.assignee_id != actor.id:
@@ -200,7 +187,7 @@ class DefectService:
         project = db.get(Project, bug.project_id)
         if project is None:
             raise not_found("缺陷所属项目不存在")
-        self._check_writable(db, project, actor)
+        check_writable(db, project, actor)
 
         old_status = bug.status
         old_assignee_id = bug.assignee_id
@@ -263,6 +250,6 @@ class DefectService:
         project = db.get(Project, bug.project_id)
         if project is None:
             raise not_found("缺陷所属项目不存在")
-        self._check_writable(db, project, actor)
+        check_writable(db, project, actor)
         db.delete(bug)
         db.commit()

@@ -22,4 +22,9 @@ Agent、Skill、MCP 与内置工具由平台管理员在「Agent 治理中心」
 
 ## 数据库
 
-本次治理配置与 Agent 绑定迁移链截至 `0023_builtin_security_skills`。部署代码后先执行仓库的 Alembic 升级流程，再使用 Agent 子节点和内置安全 Skill；当前不自动启动或修改运行中的后端服务。
+截至 2026-10-28，本地 Alembic 迁移链实测 head 为 `0029_agent_tool_overrides`。共享目录迁移只调整 Python 模型归属，没有新增结构迁移。部署前仍应按仓库流程执行 `alembic upgrade head`；目录迁移本身不自动启动或修改运行中的后端服务。
+
+
+## 综合拆分后的服务归属（2026-10-29）
+
+Agent 的定义/修订、工具授权、Skill/MCP 引用分别由 `app/agents/services/definition_service.py`、`tool_governance_service.py`、`reference_service.py` 持有；依赖校验归 `link_validation.py`。治理路由继续调用 Agent 上层协调入口，保留正在引用 Skill/MCP 的删除与恢复保护。会话公开门面委托 session_access/message_store/proposal_service/session_state/session_turn/session_response；工作区装配为 `workspace_response.build_workspace`，任务内 Web 服务不再引用 Agent Router 私有函数。Legacy 图边与人工暂停点没有重写。统一目录与验证见 [后端综合交付记录](agent-cluster-refactor/backend-comprehensive-delivery.md)。

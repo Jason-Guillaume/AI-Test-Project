@@ -23,8 +23,9 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.features.business.executors.api_executor import ApiRequestExecutor
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.execution.http.executor import ApiRequestExecutor
+from app.execution.http.request_builder import build_environment_url
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.models.execution import (
     DataExecution,
     FixtureExecution,
@@ -41,15 +42,15 @@ from app.features.test_data.providers import (
     provider_for_step_type,
     run_safe,
 )
-from app.features.test_data.runtime.variable_resolver import (
+from app.execution.templates.resolver import (
     ResolveScope,
     resolve_template,
     resolve_token_str,
 )
-from app.features.environment_configuration.services.environment_service import resolve_project_environment
-from app.models.configuration import Environment
-from app.models.identity import User
-from app.shared.errors import (
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment
+from app.core.models.configuration import Environment
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_CLEANUP_FAILED,
     CODE_DATA_EXECUTION_NOT_FOUND,
     CODE_FIXTURE_NOT_FOUND,
@@ -315,7 +316,7 @@ class CleanupRunner:
                 CODE_CLEANUP_FAILED, f"清理请求体解析结果不是对象或数组：{type(resolved_body).__name__}",
             )
 
-        url = _EXECUTOR.build_url(environment, resolved_path, {})
+        url = build_environment_url(environment, resolved_path, {})
         started = time.perf_counter()
         result = _EXECUTOR.execute(
             db,

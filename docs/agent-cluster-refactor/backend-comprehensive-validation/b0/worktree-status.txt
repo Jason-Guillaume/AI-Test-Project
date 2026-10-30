@@ -1,0 +1,435 @@
+ M README.md
+ M backend/.env.example
+ M backend/alembic/env.py
+ M backend/alembic/versions/0001_initial_schema.py
+ M backend/app/__init__.py
+ D backend/app/features/agent/__init__.py
+ D backend/app/features/agent/graph.py
+ D backend/app/features/agent/models/__init__.py
+ D backend/app/features/agent/models/agent_message.py
+ D backend/app/features/agent/models/agent_session.py
+ D backend/app/features/agent/nodes/__init__.py
+ D backend/app/features/agent/nodes/_context.py
+ D backend/app/features/agent/nodes/context_loader.py
+ D backend/app/features/agent/nodes/execution.py
+ D backend/app/features/agent/nodes/intent.py
+ D backend/app/features/agent/nodes/notification_sender.py
+ D backend/app/features/agent/nodes/query.py
+ D backend/app/features/agent/nodes/report_generator.py
+ D backend/app/features/agent/nodes/report_review.py
+ D backend/app/features/agent/nodes/result_analyzer.py
+ D backend/app/features/agent/nodes/router.py
+ D backend/app/features/agent/nodes/save_asset.py
+ D backend/app/features/agent/nodes/security_context.py
+ D backend/app/features/agent/nodes/security_plan.py
+ D backend/app/features/agent/nodes/test_case_generator.py
+ D backend/app/features/agent/nodes/test_planner.py
+ D backend/app/features/agent/nodes/test_point_generator.py
+ D backend/app/features/agent/nodes/validator.py
+ D backend/app/features/agent/nodes/web_agent.py
+ D backend/app/features/agent/nodes/zap_scan.py
+ D backend/app/features/agent/prompts/__init__.py
+ D backend/app/features/agent/prompts/intent.md
+ D backend/app/features/agent/prompts/report_summary.md
+ D backend/app/features/agent/prompts/result_analysis.md
+ D backend/app/features/agent/prompts/test_case.md
+ D backend/app/features/agent/prompts/test_point.md
+ D backend/app/features/agent/prompts/web_decide.md
+ D backend/app/features/agent/providers/__init__.py
+ D backend/app/features/agent/providers/langfuse_tracer.py
+ D backend/app/features/agent/providers/llm_provider.py
+ D backend/app/features/agent/providers/sanitizer.py
+ D backend/app/features/agent/router.py
+ D backend/app/features/agent/schemas.py
+ D backend/app/features/agent/services/__init__.py
+ D backend/app/features/agent/services/session_service.py
+ D backend/app/features/agent/state.py
+ D backend/app/features/agent/tools/__init__.py
+ D backend/app/features/agent/tools/api_catalog_tool.py
+ D backend/app/features/agent/tools/business_tool.py
+ D backend/app/features/agent/tools/execution_tool.py
+ D backend/app/features/agent/tools/fixture_tool.py
+ D backend/app/features/agent/tools/mock_tool.py
+ D backend/app/features/agent/tools/notification_tool.py
+ D backend/app/features/agent/tools/report_tool.py
+ D backend/app/features/agent/tools/security_tool.py
+ D backend/app/features/agent/tools/test_asset_tool.py
+ D backend/app/features/agent/tools/web_ui_tool.py
+ D backend/app/features/agent/tools/zap_scan_tool.py
+ D backend/app/features/agent_governance/catalog.py
+ D backend/app/features/agent_governance/models/__init__.py
+ D backend/app/features/agent_governance/models/governance.py
+ M backend/app/features/agent_governance/router.py
+ D backend/app/features/agent_governance/schemas.py
+ D backend/app/features/agent_governance/services/__init__.py
+ D backend/app/features/agent_governance/services/governance_service.py
+ M backend/app/features/api_catalog/models/api_change_log.py
+ M backend/app/features/api_catalog/models/api_import_record.py
+ M backend/app/features/api_catalog/models/api_interface.py
+ M backend/app/features/api_catalog/models/api_module.py
+ M backend/app/features/api_catalog/models/api_parameter.py
+ M backend/app/features/api_catalog/models/api_relation.py
+ M backend/app/features/api_catalog/models/api_request_body.py
+ M backend/app/features/api_catalog/models/api_response.py
+ M backend/app/features/api_catalog/router.py
+ M backend/app/features/api_catalog/services/__init__.py
+ M backend/app/features/api_catalog/services/api_service.py
+ M backend/app/features/api_catalog/services/debug_service.py
+ M backend/app/features/api_catalog/services/import_service.py
+ M backend/app/features/api_catalog/services/module_resolver.py
+ M backend/app/features/business/executors/__init__.py
+ D backend/app/features/business/executors/api_executor.py
+ M backend/app/features/business/executors/business_flow_executor.py
+ M backend/app/features/business/executors/mapping_resolver.py
+ M backend/app/features/business/executors/precondition_evaluator.py
+ D backend/app/features/business/executors/sensitive.py
+ M backend/app/features/business/models/business_action.py
+ M backend/app/features/business/models/business_api_mapping.py
+ M backend/app/features/business/models/business_binding.py
+ M backend/app/features/business/models/business_domain.py
+ M backend/app/features/business/models/business_flow.py
+ M backend/app/features/business/models/business_precondition.py
+ M backend/app/features/business/models/business_rule.py
+ M backend/app/features/business/models/business_state.py
+ M backend/app/features/business/models/business_variable.py
+ M backend/app/features/business/models/business_variable_ref.py
+ M backend/app/features/business/models/execution.py
+ M backend/app/features/business/router.py
+ M backend/app/features/business/services/__init__.py
+ D backend/app/features/business/services/_access.py
+ M backend/app/features/business/services/binding_service.py
+ M backend/app/features/business/services/config_service.py
+ M backend/app/features/business/services/domain_service.py
+ M backend/app/features/business/services/execution_service.py
+ M backend/app/features/business/services/flow_service.py
+ M backend/app/features/business/services/ref_service.py
+ M backend/app/features/business/services/rule_service.py
+ M backend/app/features/dashboard/router.py
+ M backend/app/features/dashboard/services/dashboard_service.py
+ M backend/app/features/defects/models/bug.py
+ M backend/app/features/defects/models/source_link.py
+ M backend/app/features/defects/router.py
+ M backend/app/features/defects/services/defect_service.py
+ M backend/app/features/defects/services/source_service.py
+ M backend/app/features/environment_configuration/models/project_environment.py
+ M backend/app/features/environment_configuration/router.py
+ M backend/app/features/environment_configuration/services/environment_service.py
+ M backend/app/features/mock_management/__init__.py
+ M backend/app/features/mock_management/matchers/__init__.py
+ M backend/app/features/mock_management/models/__init__.py
+ M backend/app/features/mock_management/router.py
+ M backend/app/features/mock_management/runtime/response_builder.py
+ M backend/app/features/mock_management/runtime_router.py
+ M backend/app/features/mock_management/services/__init__.py
+ D backend/app/features/mock_management/services/_access.py
+ M backend/app/features/mock_management/services/api_mock_integration_service.py
+ M backend/app/features/mock_management/services/mock_context_service.py
+ M backend/app/features/mock_management/services/mock_endpoint_service.py
+ M backend/app/features/mock_management/services/mock_execution_query_service.py
+ M backend/app/features/mock_management/services/mock_runtime_service.py
+ M backend/app/features/mock_management/services/mock_scenario_service.py
+ M backend/app/features/mock_management/services/mock_service_service.py
+ M backend/app/features/mock_management/services/test_case_mock_service.py
+ M backend/app/features/mock_management/services/token_service.py
+ M backend/app/features/model_configuration/router.py
+ M backend/app/features/model_configuration/services/__init__.py
+ M backend/app/features/model_configuration/services/model_config_service.py
+ M backend/app/features/notifications/channel_router.py
+ M backend/app/features/notifications/models/channel.py
+ M backend/app/features/notifications/models/notification_record.py
+ M backend/app/features/notifications/router.py
+ M backend/app/features/notifications/services/channel_service.py
+ M backend/app/features/notifications/services/feishu_service.py
+ M backend/app/features/organizations/router.py
+ M backend/app/features/organizations/services/organization_service.py
+ M backend/app/features/projects/router.py
+ M backend/app/features/projects/services/__init__.py
+ M backend/app/features/projects/services/project_service.py
+ M backend/app/features/reports/models/report.py
+ M backend/app/features/reports/router.py
+ M backend/app/features/reports/services/ai_summary.py
+ M backend/app/features/reports/services/report_service.py
+ M backend/app/features/security_testing/models/execution.py
+ M backend/app/features/security_testing/models/finding.py
+ M backend/app/features/security_testing/models/plan.py
+ M backend/app/features/security_testing/models/project_setting.py
+ M backend/app/features/security_testing/models/rule.py
+ M backend/app/features/security_testing/models/security_case.py
+ M backend/app/features/security_testing/models/strategy.py
+ M backend/app/features/security_testing/router.py
+ M backend/app/features/security_testing/runtime/assertion.py
+ M backend/app/features/security_testing/runtime/baseline.py
+ M backend/app/features/security_testing/runtime/candidate_resolver.py
+ M backend/app/features/security_testing/runtime/mutation_engine.py
+ M backend/app/features/security_testing/runtime/operators.py
+ M backend/app/features/security_testing/runtime/replay.py
+ M backend/app/features/security_testing/runtime/runner.py
+ M backend/app/features/security_testing/runtime/schema_reader.py
+ M backend/app/features/security_testing/runtime/trace.py
+ M backend/app/features/security_testing/runtime/types.py
+ M backend/app/features/security_testing/schemas.py
+ M backend/app/features/security_testing/services/__init__.py
+ D backend/app/features/security_testing/services/_access.py
+ M backend/app/features/security_testing/services/case_service.py
+ M backend/app/features/security_testing/services/execution_query_service.py
+ M backend/app/features/security_testing/services/finding_service.py
+ M backend/app/features/security_testing/services/plan_service.py
+ M backend/app/features/security_testing/services/rule_service.py
+ M backend/app/features/security_testing/services/setting_service.py
+ M backend/app/features/security_testing/services/strategy_service.py
+ M backend/app/features/security_testing/zap/auth.py
+ M backend/app/features/security_testing/zap/client.py
+ M backend/app/features/security_testing/zap/models/auth_profile.py
+ M backend/app/features/security_testing/zap/models/finding_link.py
+ M backend/app/features/security_testing/zap/models/job.py
+ M backend/app/features/security_testing/zap/models/profile.py
+ M backend/app/features/security_testing/zap/models/target.py
+ M backend/app/features/security_testing/zap/orchestrator.py
+ M backend/app/features/security_testing/zap/router.py
+ M backend/app/features/security_testing/zap/scope_guard.py
+ M backend/app/features/security_testing/zap/services/_access.py
+ M backend/app/features/security_testing/zap/services/auth_profile_service.py
+ M backend/app/features/security_testing/zap/services/job_service.py
+ M backend/app/features/security_testing/zap/services/profile_service.py
+ M backend/app/features/security_testing/zap/services/target_service.py
+ M backend/app/features/security_testing/zap/worker.py
+ M backend/app/features/tasks/adapters.py
+ M backend/app/features/tasks/models/__init__.py
+ M backend/app/features/tasks/models/task.py
+ M backend/app/features/tasks/router.py
+ D backend/app/features/tasks/runtime/subagents.py
+ M backend/app/features/tasks/runtime/worker.py
+ M backend/app/features/tasks/schemas.py
+ M backend/app/features/tasks/services/__init__.py
+ M backend/app/features/tasks/services/task_service.py
+ M backend/app/features/tasks/services/web_authoring_service.py
+ M backend/app/features/test_data/__init__.py
+ M backend/app/features/test_data/models/asset.py
+ M backend/app/features/test_data/models/case_fixture.py
+ M backend/app/features/test_data/models/connection.py
+ M backend/app/features/test_data/models/execution.py
+ M backend/app/features/test_data/models/fixture.py
+ M backend/app/features/test_data/models/pool.py
+ M backend/app/features/test_data/models/provider.py
+ M backend/app/features/test_data/providers/api_create_provider.py
+ M backend/app/features/test_data/providers/base.py
+ M backend/app/features/test_data/providers/business_action_provider.py
+ M backend/app/features/test_data/providers/business_flow_provider.py
+ M backend/app/features/test_data/providers/database_provider.py
+ M backend/app/features/test_data/providers/environment_provider.py
+ M backend/app/features/test_data/providers/faker_provider.py
+ M backend/app/features/test_data/providers/pool_provider.py
+ M backend/app/features/test_data/providers/static_provider.py
+ M backend/app/features/test_data/router.py
+ M backend/app/features/test_data/runtime/__init__.py
+ M backend/app/features/test_data/runtime/cleanup_runner.py
+ M backend/app/features/test_data/runtime/data_factory.py
+ M backend/app/features/test_data/runtime/fixture_resolver.py
+ M backend/app/features/test_data/runtime/lifecycle.py
+ D backend/app/features/test_data/runtime/variable_resolver.py
+ M backend/app/features/test_data/security/db_guard.py
+ M backend/app/features/test_data/security/sql_builder.py
+ M backend/app/features/test_data/services/__init__.py
+ D backend/app/features/test_data/services/_access.py
+ M backend/app/features/test_data/services/asset_service.py
+ M backend/app/features/test_data/services/connection_service.py
+ M backend/app/features/test_data/services/execution_query_service.py
+ M backend/app/features/test_data/services/fixture_service.py
+ M backend/app/features/test_data/services/pool_service.py
+ M backend/app/features/test_data/services/provider_service.py
+ M backend/app/features/test_data/services/runtime_service.py
+ M backend/app/features/test_management/__init__.py
+ M backend/app/features/test_management/executors/assertion_engine.py
+ M backend/app/features/test_management/executors/test_case_executor.py
+ M backend/app/features/test_management/models/execution.py
+ M backend/app/features/test_management/models/test_assertion.py
+ M backend/app/features/test_management/models/test_case.py
+ M backend/app/features/test_management/models/test_case_data.py
+ M backend/app/features/test_management/models/test_case_precondition.py
+ M backend/app/features/test_management/models/test_plan.py
+ M backend/app/features/test_management/models/test_point.py
+ M backend/app/features/test_management/models/test_step.py
+ M backend/app/features/test_management/models/test_strategy.py
+ M backend/app/features/test_management/models/test_suite.py
+ M backend/app/features/test_management/router.py
+ M backend/app/features/test_management/services/__init__.py
+ D backend/app/features/test_management/services/_access.py
+ M backend/app/features/test_management/services/case_service.py
+ M backend/app/features/test_management/services/plan_service.py
+ M backend/app/features/test_management/services/point_service.py
+ M backend/app/features/test_management/services/run_service.py
+ M backend/app/features/test_management/services/strategy_service.py
+ M backend/app/features/test_management/services/suite_service.py
+ M backend/app/features/users/admin.py
+ M backend/app/features/users/auth.py
+ M backend/app/features/users/schemas.py
+ M backend/app/features/users/services/user_service.py
+ M backend/app/features/web_ui/models/web_ui.py
+ M backend/app/features/web_ui/router.py
+ M backend/app/features/web_ui/runtime/adapter.py
+ M backend/app/features/web_ui/runtime/observer.py
+ M backend/app/features/web_ui/runtime/playwright_executor.py
+ M backend/app/features/web_ui/runtime/policy.py
+ M backend/app/features/web_ui/runtime/session_manager.py
+ M backend/app/features/web_ui/services/__init__.py
+ M backend/app/features/web_ui/services/web_ui_service.py
+ M backend/app/main.py
+ D backend/app/models/__init__.py
+ D backend/app/models/agent_governance.py
+ D backend/app/models/configuration.py
+ D backend/app/models/identity.py
+ D backend/app/models/notification.py
+ D backend/app/models/project.py
+ D backend/app/models/project_environment.py
+ D backend/app/shared/__init__.py
+ D backend/app/shared/auth.py
+ D backend/app/shared/config.py
+ D backend/app/shared/crypto.py
+ D backend/app/shared/database.py
+ D backend/app/shared/dependencies.py
+ D backend/app/shared/errors.py
+ D backend/app/shared/notify.py
+ D backend/app/shared/pagination.py
+ D backend/app/shared/passwords.py
+ D backend/app/shared/rate_limit.py
+ D backend/app/shared/request_context.py
+ D backend/app/shared/roles.py
+ M backend/scripts/seed_admin.py
+ M backend/tests/conftest.py
+ M backend/tests/test_01_schema_and_seed.py
+ M backend/tests/test_02_auth_flow.py
+ M backend/tests/test_03_token_revocation.py
+ M backend/tests/test_05_isolation.py
+ M backend/tests/test_06_persistence.py
+ M backend/tests/test_07_schema_gate.py
+ M backend/tests/test_11_business_executor.py
+ M backend/tests/test_12_business_integration.py
+ M backend/tests/test_15_test_executor.py
+ M backend/tests/test_16_agent.py
+ M backend/tests/test_17_report_notification.py
+ M backend/tests/test_18_test_data_crud.py
+ M backend/tests/test_19_data_factory.py
+ M backend/tests/test_20_test_data_lifecycle.py
+ M backend/tests/test_22_security_strategy.py
+ M backend/tests/test_23_security_mutation.py
+ M backend/tests/test_24_security_business.py
+ M backend/tests/test_25_security_execution.py
+ M backend/tests/test_26_security_agent_report.py
+ M backend/tests/test_27_langfuse_tracing.py
+ M backend/tests/test_29_zap_scan.py
+ M backend/tests/test_30_web_ui.py
+ M backend/tests/test_31_web_ui_console.py
+ M backend/tests/test_32_web_agent_runtime.py
+ M backend/tests/test_32_zap_agent_approval.py
+ M backend/tests/test_33_web_agent_loop.py
+ M backend/tests/test_35_tasks.py
+ M backend/tests/test_36_agent_governance_details.py
+ M backend/tests/test_api_catalog.py
+ M backend/tests/test_task_notifications.py
+ M docs/README.md
+ M docs/agent-cluster-refactor/02-architecture.md
+ M docs/agent-cluster-refactor/07-agent-handoff.md
+ M docs/agent-cluster-refactor/README.md
+ M docs/agent-governance-runtime.md
+ M docs/architecture-audit-unification-plan.md
+ M docs/coding-conventions.md
+ M frontend/src/App.tsx
+ M frontend/src/components/ResourceTable.tsx
+ M frontend/src/layouts/ConsoleLayout.tsx
+ M frontend/src/pages/admin/AgentGovernance.tsx
+ M frontend/src/pages/admin/Environments.tsx
+ M frontend/src/pages/admin/Organizations.tsx
+ M frontend/src/pages/admin/Projects.tsx
+ M frontend/src/pages/console/Agent/AgentPage.tsx
+ D frontend/src/pages/console/Agent/index.ts
+ M frontend/src/pages/console/ApiCatalog/index.tsx
+ M frontend/src/pages/console/ApiCatalog/tabs/DebugTab.tsx
+ M frontend/src/pages/console/ApiCatalog/tabs/OverviewTab.tsx
+ M frontend/src/pages/console/BusinessManagement/ActionDrawer.tsx
+ M frontend/src/pages/console/BusinessManagement/PreconditionEditor.tsx
+ M frontend/src/pages/console/BusinessManagement/RulePanel.tsx
+ M frontend/src/pages/console/BusinessManagement/VariableEditor.tsx
+ M frontend/src/pages/console/BusinessManagement/index.tsx
+ M frontend/src/pages/console/Defects/index.tsx
+ M frontend/src/pages/console/MockManagement/ScenarioEditor.tsx
+ D frontend/src/pages/console/MockManagement/index.ts
+ M frontend/src/pages/console/Notifications/index.tsx
+ M frontend/src/pages/console/Reports/ReportDetail.tsx
+ D frontend/src/pages/console/Reports/index.ts
+ M frontend/src/pages/console/SecurityTesting/CasesTab.tsx
+ M frontend/src/pages/console/SecurityTesting/FindingsTab.tsx
+ M frontend/src/pages/console/SecurityTesting/StrategyTab.tsx
+ M frontend/src/pages/console/SecurityTesting/index.tsx
+ M frontend/src/pages/console/SecurityTesting/zap/jobPanels.tsx
+ M frontend/src/pages/console/SecurityTesting/zap/jobs.tsx
+ M frontend/src/pages/console/SecurityTesting/zap/policies.tsx
+ M frontend/src/pages/console/SecurityTesting/zap/targets.tsx
+ M frontend/src/pages/console/SecurityTesting/zap/wizard.tsx
+ D frontend/src/pages/console/Tasks/index.tsx
+ M frontend/src/pages/console/TestData/FixtureTab.tsx
+ M frontend/src/pages/console/TestManagement/TestAsset.tsx
+ M frontend/src/pages/console/TestManagement/TestPlans.tsx
+ M frontend/src/pages/console/TestManagement/TestSuites.tsx
+ D frontend/src/pages/console/TestManagement/index.ts
+ M frontend/src/pages/console/WebUI/Editors.tsx
+ M frontend/src/pages/console/WebUI/StepEditor.tsx
+ M frontend/src/styles/app.css
+ M frontend/src/theme/index.ts
+?? .idea/
+?? backend/app/agents/
+?? backend/app/core/
+?? backend/app/execution/
+?? backend/app/features/api_catalog/services/request_service.py
+?? backend/app/features/business/services/access_service.py
+?? backend/app/features/mock_management/services/access_service.py
+?? backend/app/features/projects/services/outbound_service.py
+?? backend/app/features/reports/prompts/
+?? backend/app/features/security_testing/services/access_service.py
+?? backend/app/features/tasks/runtime/contracts.py
+?? backend/app/features/tasks/runtime/handlers/
+?? backend/app/features/tasks/services/access.py
+?? backend/app/features/tasks/services/message_service.py
+?? backend/app/features/tasks/services/query_service.py
+?? backend/app/features/tasks/services/resource_service.py
+?? backend/app/features/tasks/services/serializers.py
+?? backend/app/features/test_data/services/access_service.py
+?? backend/app/features/test_management/services/access_service.py
+?? backend/app/features/web_ui/services/draft_service.py
+?? backend/app/llm/
+?? backend/app/mcp/
+?? backend/app/skills/
+?? backend/app/tools/
+?? backend/pytest.ini
+?? backend/tests/test_business_capability_extraction.py
+?? backend/tests/test_core_consolidation.py
+?? backend/tests/test_task_module_split.py
+?? docs/2026-10-28-ui-display-audit-report.md
+?? docs/agent-cluster-refactor/08-directory-refactor.md
+?? docs/agent-cluster-refactor/09-optimization-requirements.md
+?? docs/agent-cluster-refactor/10-core-consolidation-plan.md
+?? docs/agent-cluster-refactor/11-core-consolidation-agent-prompt.md
+?? docs/agent-cluster-refactor/12-task-module-split-plan.md
+?? docs/agent-cluster-refactor/13-task-module-split-agent-prompt.md
+?? docs/agent-cluster-refactor/14-business-capability-extraction-plan.md
+?? docs/agent-cluster-refactor/15-business-capability-agent-prompt.md
+?? docs/agent-cluster-refactor/16-backend-stabilization-and-split-plan.md
+?? docs/agent-cluster-refactor/17-backend-stabilization-agent-prompt.md
+?? docs/agent-cluster-refactor/18-backend-comprehensive-refactor-plan.md
+?? docs/agent-cluster-refactor/19-backend-comprehensive-agent-prompt.md
+?? docs/agent-cluster-refactor/backend-comprehensive-validation/
+?? docs/agent-cluster-refactor/backend-stabilization-delivery.md
+?? docs/agent-cluster-refactor/backend-stabilization-validation/
+?? docs/agent-cluster-refactor/business-capability-extraction-delivery.md
+?? docs/agent-cluster-refactor/core-consolidation-delivery.md
+?? docs/agent-cluster-refactor/directory-refactor-delivery.md
+?? docs/agent-cluster-refactor/task-module-split-delivery.md
+?? docs/project-knowledge-business-assembly-plan.md
+?? docs/ui-audit-2026-10-28/
+?? frontend/src/pages/console/Tasks/TaskDetailActivity.tsx
+?? frontend/src/pages/console/Tasks/TaskDetailPage.tsx
+?? frontend/src/pages/console/Tasks/TaskListPage.tsx
+?? frontend/src/pages/console/Tasks/TaskRunPanels.tsx
+?? frontend/src/pages/console/Tasks/taskLabels.ts
+?? frontend/src/pages/console/Tasks/taskTypes.ts
+?? frontend/tests/uiTheme.test.mjs
+?? pytest.ini

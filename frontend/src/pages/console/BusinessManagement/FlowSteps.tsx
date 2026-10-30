@@ -4,9 +4,10 @@
 import { App, Button, Card, Empty, Popconfirm, Space, Tag } from 'antd';
 import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
-import type { BusinessAction } from '@/types';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
+import type { BusinessAction } from '@/features/business/contracts';
+
 
 interface FlowStepsProps {
   actions: BusinessAction[];

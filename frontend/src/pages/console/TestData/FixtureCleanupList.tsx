@@ -2,7 +2,8 @@
 //
 // §7.3：Cleanup 同一 FixtureStepList，phase=CLEANUP。
 import { FixtureStepList } from './FixtureStepList';
-import type { FixtureDetail } from '@/types';
+import type { FixtureDetail } from '@/features/test-data/contracts';
+
 
 /** Cleanup 步骤表，行为与生成流程一致，仅 phase 不同。 */
 export function FixtureCleanupList({ fixture }: { fixture: FixtureDetail }) {

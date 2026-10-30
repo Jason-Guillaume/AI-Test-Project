@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 左侧业务域 / 流程树。
 // 两栏结构：域列表 → 选中域后展示其下流程。点击域切换流程列表，点击流程选中进入详情。
 // 域与流程均支持删除（弹窗确认）；新建在 index.tsx 的主弹窗中完成。
@@ -6,9 +6,10 @@ import { useState } from 'react';
 import { App, Button, Empty, Input, Popconfirm, Skeleton, Tag } from 'antd';
 import { DeleteOutlined, FolderOutlined, PlayCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
-import type { BusinessDomain } from '@/types';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
+import type { BusinessDomain } from '@/features/business/contracts';
+
 
 interface DomainTreeProps {
   projectId: number;

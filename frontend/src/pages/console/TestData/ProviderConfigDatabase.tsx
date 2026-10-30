@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // DATABASE_INSERT / DATABASE_PATCH Provider 配置：connection + table + operation + where + values。
 //
 // §9.6 / §10：被测库直写。connection 从本项目已建连接里选（本模块内）；
@@ -7,7 +7,7 @@ import { collectPages } from '@/api/pagination';
 import { useState } from 'react';
 import { Form, Input, Select } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
+import { testDataApi } from '@/features/test-data/api/testData';
 
 interface ConfigProps {
   value: Record<string, unknown>;

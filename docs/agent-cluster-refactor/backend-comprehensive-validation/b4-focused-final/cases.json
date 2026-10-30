@@ -1,0 +1,3048 @@
+[
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestMigration::test_head_and_tables_created",
+    "outcome": "passed",
+    "duration": 2.1727304350351915
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestMigration::test_partial_unique_indexes",
+    "outcome": "passed",
+    "duration": 0.006459964090026915
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestMigration::test_orm_matches_migrated_schema",
+    "outcome": "passed",
+    "duration": 0.05908339098095894
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestMigration::test_security_models_stay_out_of_core_registry",
+    "outcome": "passed",
+    "duration": 0.0006350050680339336
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestMigration::test_downgrade_removes_only_security_tables",
+    "outcome": "passed",
+    "duration": 0.971775671117939
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinStrategies::test_builtin_strategies_seeded",
+    "outcome": "passed",
+    "duration": 0.004324407083913684
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinStrategies::test_builtin_rule_counts",
+    "outcome": "passed",
+    "duration": 0.004930553957819939
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinStrategies::test_reserved_categories_get_no_builtin_strategy_or_rule",
+    "outcome": "passed",
+    "duration": 0.005101316026411951
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinStrategies::test_parameter_basic_rules_are_fieldless_templates",
+    "outcome": "passed",
+    "duration": 0.0034538599429652095
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinStrategies::test_migration_insert_is_idempotent",
+    "outcome": "passed",
+    "duration": 0.015890609938651323
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinStrategies::test_builtin_rules_have_no_script_keys",
+    "outcome": "passed",
+    "duration": 0.0016877868911251426
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestSecuritySetting::test_get_returns_defaults_without_insert",
+    "outcome": "passed",
+    "duration": 2.0719098040135577
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestSecuritySetting::test_update_then_conflict_on_stale_revision",
+    "outcome": "passed",
+    "duration": 0.2592055780114606
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestSecuritySetting::test_allow_production_stored_but_never_effective",
+    "outcome": "passed",
+    "duration": 0.24070971098262817
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestSecuritySetting::test_viewer_cannot_update_setting",
+    "outcome": "passed",
+    "duration": 0.6767020480474457
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestStrategyCrud::test_create_list_get_update_delete",
+    "outcome": "passed",
+    "duration": 0.28121588099747896
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestStrategyCrud::test_list_filters",
+    "outcome": "passed",
+    "duration": 0.2622583780903369
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestStrategyCrud::test_list_includes_system_templates",
+    "outcome": "passed",
+    "duration": 0.25173448713030666
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestStrategyCrud::test_duplicate_strategy_key_conflict",
+    "outcome": "passed",
+    "duration": 0.23848129413090646
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestStrategyCrud::test_stale_revision_conflict",
+    "outcome": "passed",
+    "duration": 0.2372096141334623
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestStrategyCrud::test_empty_patch_is_noop",
+    "outcome": "passed",
+    "duration": 0.23765720101073384
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestReservedCategory::test_create_reserved_forces_enabled_false",
+    "outcome": "passed",
+    "duration": 0.2591676920419559
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestReservedCategory::test_reserved_strategy_cannot_be_enabled",
+    "outcome": "passed",
+    "duration": 0.25677994487341493
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestReservedCategory::test_reserved_rule_cannot_be_enabled",
+    "outcome": "passed",
+    "duration": 0.3104543099179864
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestReservedCategory::test_reserved_rule_can_be_disabled",
+    "outcome": "passed",
+    "duration": 0.24788793199695647
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestReservedCategory::test_builtin_adds_no_rule_to_reserved_strategy",
+    "outcome": "passed",
+    "duration": 0.28125222818925977
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_create_rule_under_strategy",
+    "outcome": "passed",
+    "duration": 0.24691883090417832
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_script_keys_rejected",
+    "outcome": "passed",
+    "duration": 0.2651339048752561
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_nested_script_key_rejected",
+    "outcome": "passed",
+    "duration": 0.2567755989730358
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_unknown_config_key_rejected",
+    "outcome": "passed",
+    "duration": 0.2517566019669175
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_unsupported_mutation_type_rejected",
+    "outcome": "passed",
+    "duration": 0.24548323708586395
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_expectation_mismatch_rejected",
+    "outcome": "passed",
+    "duration": 0.2379604228772223
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_unknown_expectation_rejected",
+    "outcome": "passed",
+    "duration": 0.2596621759003028
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_status_code_out_of_range_rejected",
+    "outcome": "passed",
+    "duration": 0.24764904601033777
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_replay_count_capped",
+    "outcome": "passed",
+    "duration": 0.24922446405980736
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_update_and_delete_rule",
+    "outcome": "passed",
+    "duration": 0.255841059028171
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestRuleCrud::test_update_rule_validation_follows_final_type",
+    "outcome": "passed",
+    "duration": 0.27871786593459547
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinReadonly::test_builtin_strategy_is_read_only",
+    "outcome": "passed",
+    "duration": 0.24299932399298996
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestBuiltinReadonly::test_builtin_rule_is_read_only",
+    "outcome": "passed",
+    "duration": 0.2261307711014524
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestPermissions::test_viewer_can_read_not_write",
+    "outcome": "passed",
+    "duration": 0.738543324987404
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestPermissions::test_member_can_read_but_not_manage",
+    "outcome": "passed",
+    "duration": 0.6923564849421382
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestPermissions::test_editor_can_manage",
+    "outcome": "passed",
+    "duration": 0.7043279269710183
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestPermissions::test_platform_admin_can_manage_any_project",
+    "outcome": "passed",
+    "duration": 0.2571988560957834
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestPermissions::test_cross_project_is_hidden_as_not_found",
+    "outcome": "passed",
+    "duration": 0.7484663750510663
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestPermissions::test_delete_isolated_per_project",
+    "outcome": "passed",
+    "duration": 0.2655601880978793
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_invalid_category_rejected",
+    "outcome": "passed",
+    "duration": 0.24926770897582173
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_bad_strategy_key_rejected",
+    "outcome": "passed",
+    "duration": 0.22836262395139784
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_bad_risk_level_rejected",
+    "outcome": "passed",
+    "duration": 0.22509982401970774
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_bad_target_location_rejected",
+    "outcome": "passed",
+    "duration": 0.22645844507496804
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_missing_ids_are_not_found",
+    "outcome": "passed",
+    "duration": 0.23235489905346185
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_unauthenticated_rejected",
+    "outcome": "passed",
+    "duration": 0.0033806340070441365
+  },
+  {
+    "nodeid": "tests/test_22_security_strategy.py::TestValidation::test_finding_partial_index_only_covers_open_status",
+    "outcome": "passed",
+    "duration": 0.0027598890010267496
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSourceGuards::test_runtime_modules_do_no_http_db_or_eval",
+    "outcome": "passed",
+    "duration": 0.0474733249284327
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSourceGuards::test_runner_is_the_only_outbound_module",
+    "outcome": "passed",
+    "duration": 0.03986767423339188
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSourceGuards::test_runner_imports_the_executor",
+    "outcome": "passed",
+    "duration": 0.0028171129524707794
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSourceGuards::test_no_result_value_uses_vulnerable",
+    "outcome": "passed",
+    "duration": 0.00045030901674181223
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_parameter_row_schema_overrides_column_type",
+    "outcome": "passed",
+    "duration": 0.0005031309556216002
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_parameter_row_without_schema_keeps_column_type",
+    "outcome": "passed",
+    "duration": 0.0004622340202331543
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_body_json_schema_expands_first_level_only",
+    "outcome": "passed",
+    "duration": 0.0005496729863807559
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_nullable_type_marks_spec_nullable",
+    "outcome": "passed",
+    "duration": 0.0005832728929817677
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_form_field_tree",
+    "outcome": "passed",
+    "duration": 0.0007499639177694917
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_no_schema_yields_no_parameter_fields",
+    "outcome": "passed",
+    "duration": 0.0007745989132672548
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_find_field_case_rules",
+    "outcome": "passed",
+    "duration": 0.0005924799479544163
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_integer_variants_are_the_fixed_set",
+    "outcome": "passed",
+    "duration": 0.000565533060580492
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_over_max_value_for_number_and_string",
+    "outcome": "passed",
+    "duration": 0.0007743480382487178
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_over_max_string_is_capped_at_256",
+    "outcome": "passed",
+    "duration": 0.00047510198783129454
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_under_min_value",
+    "outcome": "passed",
+    "duration": 0.0004879368934780359
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_invalid_enum_prefers_unknown_then_fallback",
+    "outcome": "passed",
+    "duration": 0.00044170685578137636
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_invalid_format_samples[date-9999-99-99]",
+    "outcome": "passed",
+    "duration": 0.0006632799049839377
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_invalid_format_samples[email-not-an-email]",
+    "outcome": "passed",
+    "duration": 0.0005655979039147496
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_invalid_format_samples[uri-not a uri]",
+    "outcome": "passed",
+    "duration": 0.0005649999948218465
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_invalid_format_samples[uuid-not-uuid]",
+    "outcome": "passed",
+    "duration": 0.0006064660847187042
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_invalid_format_rejects_unknown_format",
+    "outcome": "passed",
+    "duration": 0.0004447359824553132
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_type_mutation_matrix",
+    "outcome": "passed",
+    "duration": 0.0004773290129378438
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_value_for_rejects_null_when_nullable_and_optional",
+    "outcome": "passed",
+    "duration": 0.00044412678107619286
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSchemaReader::test_value_for_rejects_mismatched_operators",
+    "outcome": "passed",
+    "duration": 0.00047174200881272554
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_remove_token_drops_authorization_and_masks_trace",
+    "outcome": "passed",
+    "duration": 0.0005451791221275926
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_engine_does_not_mutate_baseline",
+    "outcome": "passed",
+    "duration": 0.0005684627685695887
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_empty_token_keeps_bearer_prefix",
+    "outcome": "passed",
+    "duration": 0.0004968169378116727
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_empty_token_without_scheme_becomes_empty_string",
+    "outcome": "passed",
+    "duration": 0.0004690970527008176
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_invalid_token_uses_fixed_sentinel",
+    "outcome": "passed",
+    "duration": 0.0004488839767873287
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_malformed_token_uses_fixed_sentinel",
+    "outcome": "passed",
+    "duration": 0.0004532552557066083
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_wrong_auth_scheme_uses_fixed_invalid_basic",
+    "outcome": "passed",
+    "duration": 0.0005651590181514621
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_sentinels_are_not_jwt_shaped",
+    "outcome": "passed",
+    "duration": 0.0004139059456065297
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_missing_auth_header_is_inconclusive_not_pass",
+    "outcome": "passed",
+    "duration": 0.0004907929105684161
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_cookie_auth_targets_cookie_header",
+    "outcome": "passed",
+    "duration": 0.0005214388947933912
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[bearer-headers0-Authorization]",
+    "outcome": "passed",
+    "duration": 0.0006664238171651959
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[basic-headers1-Authorization]",
+    "outcome": "passed",
+    "duration": 0.0006264238618314266
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[cookie-headers2-Cookie]",
+    "outcome": "passed",
+    "duration": 0.000616902019828558
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[apikey-headers3-X-Api-Key]",
+    "outcome": "passed",
+    "duration": 0.0006257931236177683
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[apikey-headers4-api_key]",
+    "outcome": "passed",
+    "duration": 0.0006188539555296302
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[apikey-headers5-Authorization]",
+    "outcome": "passed",
+    "duration": 0.0006211809813976288
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[unknown-headers6-Authorization]",
+    "outcome": "passed",
+    "duration": 0.0006250248989090323
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[none-headers7-X-Api-Key]",
+    "outcome": "passed",
+    "duration": 0.0008466980652883649
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_resolve_auth_header[none-headers8-Authorization]",
+    "outcome": "passed",
+    "duration": 0.0007508570561185479
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_expired_token_requires_fixture_source",
+    "outcome": "passed",
+    "duration": 0.000534476013854146
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_expired_token_missing_fixture_output",
+    "outcome": "passed",
+    "duration": 0.0004953789757564664
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_expired_token_uses_fixture_value_verbatim",
+    "outcome": "passed",
+    "duration": 0.00046093505807220936
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_authorization_mutation_with_source_swaps_identity",
+    "outcome": "passed",
+    "duration": 0.0004670920316129923
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthenticationOperators::test_authorization_mutation_without_source_removes_header",
+    "outcome": "passed",
+    "duration": 0.00043845397885888815
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_remove_field_on_required_body_field",
+    "outcome": "passed",
+    "duration": 0.0004482679069042206
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_remove_field_refuses_optional_field",
+    "outcome": "passed",
+    "duration": 0.0004806279903277755
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_parameter_mutation_requires_named_field",
+    "outcome": "passed",
+    "duration": 0.0004645449807867408
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_parameter_mutation_requires_schema",
+    "outcome": "passed",
+    "duration": 0.0005498070968315005
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_null_value",
+    "outcome": "passed",
+    "duration": 0.0005386830307543278
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_empty_string",
+    "outcome": "passed",
+    "duration": 0.00047131406608968973
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_type_mutation[integer-abc]",
+    "outcome": "passed",
+    "duration": 0.0006066790083423257
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_type_mutation[number-abc]",
+    "outcome": "passed",
+    "duration": 0.0005877708317711949
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_type_mutation[string-1]",
+    "outcome": "passed",
+    "duration": 0.0005937500391155481
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_type_mutation[boolean-yes]",
+    "outcome": "passed",
+    "duration": 0.0005884350975975394
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_zero_and_negative",
+    "outcome": "passed",
+    "duration": 0.0004814419662579894
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_negative_refuses_when_schema_allows_negative",
+    "outcome": "passed",
+    "duration": 0.00045633502304553986
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_over_max_writes_value_and_reports_capping",
+    "outcome": "passed",
+    "duration": 0.0009752101032063365
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_under_min",
+    "outcome": "passed",
+    "duration": 0.0004662571009248495
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_invalid_enum",
+    "outcome": "passed",
+    "duration": 0.000459750066511333
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_invalid_format",
+    "outcome": "passed",
+    "duration": 0.00045584305189549923
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_nested_body_field_by_json_path",
+    "outcome": "passed",
+    "duration": 0.00046433601528406143
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_parameter_operator_writes_each_location[PATH]",
+    "outcome": "passed",
+    "duration": 0.0006749560125172138
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_parameter_operator_writes_each_location[QUERY]",
+    "outcome": "passed",
+    "duration": 0.0008132030488923192
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_parameter_operator_writes_each_location[HEADER]",
+    "outcome": "passed",
+    "duration": 0.0005492930067703128
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_parameter_operator_writes_each_location[COOKIE]",
+    "outcome": "passed",
+    "duration": 0.0005373558960855007
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestParameterOperators::test_header_case_insensitive_lookup",
+    "outcome": "passed",
+    "duration": 0.00048453500494360924
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_remove_header_defaults_to_content_type",
+    "outcome": "passed",
+    "duration": 0.0004545010160654783
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_remove_header_records_json_content_type_limitation",
+    "outcome": "passed",
+    "duration": 0.00047000497579574585
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_remove_header_missing_records_note",
+    "outcome": "passed",
+    "duration": 0.0005001630634069443
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_empty_header",
+    "outcome": "passed",
+    "duration": 0.00044853007420897484
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_invalid_header_value",
+    "outcome": "passed",
+    "duration": 0.000523609109222889
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_invalid_header_value_refuses_auth_header",
+    "outcome": "passed",
+    "duration": 0.00046434986870735884
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_content_type_mutation_uses_raw_body",
+    "outcome": "passed",
+    "duration": 0.0004665600135922432
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_content_type_mutation_requires_json_body",
+    "outcome": "passed",
+    "duration": 0.0005395049229264259
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_method_mutation_default_pair[POST-GET]",
+    "outcome": "passed",
+    "duration": 0.0005957669345661998
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_method_mutation_default_pair[post-GET]",
+    "outcome": "passed",
+    "duration": 0.0005855119088664651
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_method_mutation_default_pair[GET-POST]",
+    "outcome": "passed",
+    "duration": 0.0005928610917180777
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_method_mutation_uses_config_whitelist",
+    "outcome": "passed",
+    "duration": 0.0005710870027542114
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_method_mutation_rejects_unknown_method",
+    "outcome": "passed",
+    "duration": 0.0005084479926154017
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_method_mutation_without_target_requires_whitelist",
+    "outcome": "passed",
+    "duration": 0.0004742309683933854
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_delete_requires_confirmation",
+    "outcome": "passed",
+    "duration": 0.0005069290054962039
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestHeaderAndMethodOperators::test_delete_allowed_when_rule_and_case_are_confirmed",
+    "outcome": "passed",
+    "duration": 0.00047249800991266966
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_unknown_mutation_type_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0005090408958494663
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_script_key_in_config_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0004680330166593194
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_reserved_category_is_never_executed[INJECTION]",
+    "outcome": "passed",
+    "duration": 0.0005319240735843778
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_reserved_category_is_never_executed[RATE_LIMIT]",
+    "outcome": "passed",
+    "duration": 0.0005429380107671022
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_reserved_category_is_never_executed[UPLOAD]",
+    "outcome": "passed",
+    "duration": 0.0005748389521613717
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_reserved_category_is_never_executed[SSRF]",
+    "outcome": "passed",
+    "duration": 0.0005647389916703105
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_unregistered_operator_is_not_allowed[REPLAY_SAME_REQUEST]",
+    "outcome": "passed",
+    "duration": 0.0005307310493662953
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_unregistered_operator_is_not_allowed[DUPLICATE_SUBMIT]",
+    "outcome": "passed",
+    "duration": 0.0005232088733464479
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_unregistered_operator_is_not_allowed[BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0005335559835657477
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_unregistered_operator_is_not_allowed[SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0005908110179007053
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_confirmation_gate_blocks_before_operator",
+    "outcome": "passed",
+    "duration": 0.0004962640814483166
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_accepts_view_orm_row_and_dict",
+    "outcome": "passed",
+    "duration": 0.0005332190776243806
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_rule_view_defaults_for_missing_columns",
+    "outcome": "passed",
+    "duration": 0.0004310819786041975
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_all_registered_types_are_in_the_contract_whitelist",
+    "outcome": "passed",
+    "duration": 0.0005060411058366299
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_authorization_operators_are_registered",
+    "outcome": "passed",
+    "duration": 0.00040763604920357466
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestEngine::test_notes_and_traces_are_separate_channels",
+    "outcome": "passed",
+    "duration": 0.0005657189758494496
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_parse_source_normalises_and_drops_incomplete",
+    "outcome": "passed",
+    "duration": 0.0005260738544166088
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_read_sources_prefers_explicit_keys",
+    "outcome": "passed",
+    "duration": 0.000523880124092102
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_read_sources_splits_candidates_list",
+    "outcome": "passed",
+    "duration": 0.0006089910166338086
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_read_sources_ignores_malformed_candidates",
+    "outcome": "passed",
+    "duration": 0.0004795769928023219
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_resolve_value_accepts_numeric_id",
+    "outcome": "passed",
+    "duration": 0.00042488507460802794
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_resolve_value_missing_output_raises_fixture_required",
+    "outcome": "passed",
+    "duration": 0.0005794070893898606
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_resolve_value_blank_string_counts_as_missing",
+    "outcome": "passed",
+    "duration": 0.0005544578889384866
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_resolve_value_without_named_source_is_a_skip",
+    "outcome": "passed",
+    "duration": 0.0004989000735804439
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_resource_target_requires_location_and_field",
+    "outcome": "passed",
+    "duration": 0.0005720710614696145
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestCandidateResolver::test_resource_target_rejects_header_location",
+    "outcome": "passed",
+    "duration": 0.0006972369737923145
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_cross_user_swaps_token_and_resource_id",
+    "outcome": "passed",
+    "duration": 0.0005635428242385387
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_cross_user_trace_masks_token_keeps_resource_id",
+    "outcome": "passed",
+    "duration": 0.0005769949639216065
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_cross_user_missing_candidate_raises_fixture_required",
+    "outcome": "passed",
+    "duration": 0.0005954550579190254
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_cross_user_without_named_source_is_skipped",
+    "outcome": "passed",
+    "duration": 0.00045723910443484783
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_idor_in_path",
+    "outcome": "passed",
+    "duration": 0.000510112033225596
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_idor_in_body_supports_nested_field",
+    "outcome": "passed",
+    "duration": 0.0004890429554507136
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_idor_in_query",
+    "outcome": "passed",
+    "duration": 0.00045923609286546707
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_idor_refuses_path_without_placeholder",
+    "outcome": "passed",
+    "duration": 0.0006426291074603796
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_cross_project_swaps_business_project_id_only",
+    "outcome": "passed",
+    "duration": 0.0004884881200268865
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_cross_project_never_falls_back_to_platform_id",
+    "outcome": "passed",
+    "duration": 0.0004568620352074504
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_role_downgrade_uses_low_privilege_token_from_fixture",
+    "outcome": "passed",
+    "duration": 0.00046308303717523813
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_role_downgrade_without_named_token_is_skipped",
+    "outcome": "passed",
+    "duration": 0.000464743934571743
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_role_downgrade_skips_when_fixture_has_no_low_priv_token",
+    "outcome": "passed",
+    "duration": 0.0004525430267676711
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_resource_owner_change_replaces_body_owner",
+    "outcome": "passed",
+    "duration": 0.00044299697037786245
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAuthorizationAndIdor::test_authorization_operator_severities_are_still_resolved",
+    "outcome": "passed",
+    "duration": 0.000541756977327168
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[Authorization]",
+    "outcome": "passed",
+    "duration": 0.0005695190047845244
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[authorization]",
+    "outcome": "passed",
+    "duration": 0.0004938329802826047
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[token]",
+    "outcome": "passed",
+    "duration": 0.00048367807175964117
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[access_token]",
+    "outcome": "passed",
+    "duration": 0.0004867750685662031
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[Cookie]",
+    "outcome": "passed",
+    "duration": 0.00048369995784014463
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[password]",
+    "outcome": "passed",
+    "duration": 0.0005016011418774724
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[api_key]",
+    "outcome": "passed",
+    "duration": 0.0005902829580008984
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[X-Api-Key]",
+    "outcome": "passed",
+    "duration": 0.0004801989998668432
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[x-auth-token]",
+    "outcome": "passed",
+    "duration": 0.00048062007408589125
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[signature]",
+    "outcome": "passed",
+    "duration": 0.0004980530356988311
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_sensitive_keys_are_masked[session_id]",
+    "outcome": "passed",
+    "duration": 0.0006654089083895087
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_non_sensitive_values_stay_plaintext[task_id-123]",
+    "outcome": "passed",
+    "duration": 0.0005794328171759844
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_non_sensitive_values_stay_plaintext[project_id-7]",
+    "outcome": "passed",
+    "duration": 0.0007458840264007449
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_non_sensitive_values_stay_plaintext[id-abc-1]",
+    "outcome": "passed",
+    "duration": 0.0005633950931951404
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_non_sensitive_values_stay_plaintext[priority-3]",
+    "outcome": "passed",
+    "duration": 0.0005468911258503795
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_non_sensitive_values_stay_plaintext[page-1]",
+    "outcome": "passed",
+    "duration": 0.0005462911212816834
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_non_sensitive_values_stay_plaintext[X-Request-Id-r-1]",
+    "outcome": "passed",
+    "duration": 0.00061940704472363
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_mask_value_handles_containers_and_none",
+    "outcome": "passed",
+    "duration": 0.00042163010220974684
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_trace_entry_to_dict_masks_before_and_after",
+    "outcome": "passed",
+    "duration": 0.00046795106027275324
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_trace_entry_note_is_carried",
+    "outcome": "passed",
+    "duration": 0.00042176502756774426
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_entries_to_dicts_is_the_persist_shape",
+    "outcome": "passed",
+    "duration": 0.0005645800847560167
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_request_snapshot_masks_every_channel",
+    "outcome": "passed",
+    "duration": 0.0005291909910738468
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_request_diff_records_each_changed_field",
+    "outcome": "passed",
+    "duration": 0.0005348960403352976
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestTraceMasking::test_request_diff_masks_sensitive_keys",
+    "outcome": "passed",
+    "duration": 0.0005040669348090887
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_expected_codes_pass[401]",
+    "outcome": "passed",
+    "duration": 0.000714440131559968
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_expected_codes_pass[403]",
+    "outcome": "passed",
+    "duration": 0.0005304518854245543
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_expected_codes_pass[404]",
+    "outcome": "passed",
+    "duration": 0.0004973390605300665
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_2xx_is_potential_issue",
+    "outcome": "passed",
+    "duration": 0.0004159100353717804
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_5xx_is_unexpected_server_error",
+    "outcome": "passed",
+    "duration": 0.0004171059699729085
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_redirect_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.00043511809781193733
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_unexpected_4xx_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.0004195640794932842
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_without_baseline_auth_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.00043931801337748766
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_deny_respects_rule_status_codes",
+    "outcome": "passed",
+    "duration": 0.00042645097710192204
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_no_status_code_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.0004451690474525094
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_validation_expected_codes_pass[400]",
+    "outcome": "passed",
+    "duration": 0.000508570927195251
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_validation_expected_codes_pass[422]",
+    "outcome": "passed",
+    "duration": 0.0005370340077206492
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_validation_5xx_is_unexpected_server_error",
+    "outcome": "passed",
+    "duration": 0.00045324896927922964
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_validation_2xx_without_echo_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.0008887569420039654
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_validation_2xx_with_echoed_invalid_value_is_issue",
+    "outcome": "passed",
+    "duration": 0.0004420570330694318
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_validation_2xx_echo_in_list_body",
+    "outcome": "passed",
+    "duration": 0.00042113312520086765
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_second_response[codes0-PASS]",
+    "outcome": "passed",
+    "duration": 0.0005751439603045583
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_second_response[codes1-PASS]",
+    "outcome": "passed",
+    "duration": 0.0005699619650840759
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_second_response[codes2-POTENTIAL_ISSUE]",
+    "outcome": "passed",
+    "duration": 0.0007011230336502194
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_second_response[codes3-POTENTIAL_ISSUE]",
+    "outcome": "passed",
+    "duration": 0.0006754390196874738
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_same_business_id_passes",
+    "outcome": "passed",
+    "duration": 0.0005624380428344011
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_missing_id_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.0005427609430626035
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_single_execution_is_inconclusive",
+    "outcome": "passed",
+    "duration": 0.0005151620134711266
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_idempotent_accepts_integer_status_code",
+    "outcome": "passed",
+    "duration": 0.0004681260325014591
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_allow_expectation",
+    "outcome": "passed",
+    "duration": 0.00044734496623277664
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_unknown_expectation_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0019085140665993094
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestAssertion::test_result_values_are_the_five_states_only",
+    "outcome": "passed",
+    "duration": 0.002817542990669608
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_auth_without_token_is_high",
+    "outcome": "passed",
+    "duration": 0.0024327189894393086
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_auth_on_unauthenticated_endpoint_builds_no_finding",
+    "outcome": "passed",
+    "duration": 0.0015451349318027496
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_idor_with_candidate_in_response_is_critical",
+    "outcome": "passed",
+    "duration": 0.0007980199297890067
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_idor_without_candidate_in_response_is_high",
+    "outcome": "passed",
+    "duration": 0.0007021758938208222
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_cross_user_critical_when_candidate_leaks",
+    "outcome": "passed",
+    "duration": 0.0006582768401131034
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_cross_project_is_high",
+    "outcome": "passed",
+    "duration": 0.0007159810047596693
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_server_error_is_medium",
+    "outcome": "passed",
+    "duration": 0.0007351090898737311
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_server_error_honours_lower_rule_default",
+    "outcome": "passed",
+    "duration": 0.0007099779322743416
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_critical_is_not_lowered_by_rule_default",
+    "outcome": "passed",
+    "duration": 0.0006843379233032465
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_method_mutation_levels",
+    "outcome": "passed",
+    "duration": 0.0006412420189008117
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_idempotent_new_result_is_high",
+    "outcome": "passed",
+    "duration": 0.0007297140546143055
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_business_state_levels_by_method",
+    "outcome": "passed",
+    "duration": 0.0007336370181292295
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_uncovered_case_falls_back_to_rule_severity",
+    "outcome": "passed",
+    "duration": 0.0006830780766904354
+  },
+  {
+    "nodeid": "tests/test_23_security_mutation.py::TestSeverity::test_non_2xx_without_classification_uses_rule_default",
+    "outcome": "passed",
+    "duration": 0.0006197100738063455
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_calls_execute_exactly_twice",
+    "outcome": "passed",
+    "duration": 0.0006845019524917006
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_three_calls_are_allowed",
+    "outcome": "passed",
+    "duration": 0.0008606041083112359
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_count_outside_2_or_3_is_rejected[0]",
+    "outcome": "passed",
+    "duration": 0.0009665071265771985
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_count_outside_2_or_3_is_rejected[1]",
+    "outcome": "passed",
+    "duration": 0.0008650770178064704
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_count_outside_2_or_3_is_rejected[4]",
+    "outcome": "passed",
+    "duration": 0.0012724540429189801
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_count_outside_2_or_3_is_rejected[5]",
+    "outcome": "passed",
+    "duration": 0.001058761146850884
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_count_outside_2_or_3_is_rejected[10]",
+    "outcome": "passed",
+    "duration": 0.0009769699536263943
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_interval_outside_cap_is_rejected[-1]",
+    "outcome": "passed",
+    "duration": 0.0009794010547921062
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_interval_outside_cap_is_rejected[5001]",
+    "outcome": "passed",
+    "duration": 0.001057836809195578
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_interval_outside_cap_is_rejected[60000]",
+    "outcome": "passed",
+    "duration": 0.0008901150431483984
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_interval_is_applied_between_attempts_only",
+    "outcome": "passed",
+    "duration": 0.0007489898707717657
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_zero_interval_never_sleeps",
+    "outcome": "passed",
+    "duration": 0.0007362689357250929
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_execute_receives_the_same_request",
+    "outcome": "passed",
+    "duration": 0.0007419779431074858
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_transport_error_is_recorded_not_swallowed",
+    "outcome": "passed",
+    "duration": 0.0008463830454275012
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_executor_exception_propagates",
+    "outcome": "passed",
+    "duration": 0.0007908020634204149
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayLoop::test_outcome_feeds_the_idempotent_assertion",
+    "outcome": "passed",
+    "duration": 0.0006512149702757597
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_defaults",
+    "outcome": "passed",
+    "duration": 0.0008146300679072738
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_reads_explicit_values",
+    "outcome": "passed",
+    "duration": 0.0006045880727469921
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_tolerates_string_and_float",
+    "outcome": "passed",
+    "duration": 0.0006083169719204307
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_boolean_is_not_a_count",
+    "outcome": "passed",
+    "duration": 0.0006156018935143948
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_count_is_rejected[1]",
+    "outcome": "passed",
+    "duration": 0.0007302960148081183
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_count_is_rejected[4]",
+    "outcome": "passed",
+    "duration": 0.0005518419202417135
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_count_is_rejected[100]",
+    "outcome": "passed",
+    "duration": 0.0006411949871107936
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_count_is_rejected[x]",
+    "outcome": "passed",
+    "duration": 0.0005595210241153836
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_count_is_rejected[count4]",
+    "outcome": "passed",
+    "duration": 0.0008855669293552637
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_interval_is_rejected[-1]",
+    "outcome": "passed",
+    "duration": 0.0007252811919897795
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_interval_is_rejected[5001]",
+    "outcome": "passed",
+    "duration": 0.0007011679699644446
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_interval_is_rejected[60000]",
+    "outcome": "passed",
+    "duration": 0.000714875990524888
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayParams::test_bad_interval_is_rejected[abc]",
+    "outcome": "passed",
+    "duration": 0.001263367012143135
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_method_mutation_to_delete[DELETE]",
+    "outcome": "passed",
+    "duration": 0.0008120030397549272
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_method_mutation_to_delete[delete]",
+    "outcome": "passed",
+    "duration": 0.0005940300179645419
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_method_mutation_to_non_delete_does_not[GET]",
+    "outcome": "passed",
+    "duration": 0.0005389390280470252
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_method_mutation_to_non_delete_does_not[POST]",
+    "outcome": "passed",
+    "duration": 0.0007255139062181115
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_method_mutation_to_non_delete_does_not[PUT]",
+    "outcome": "passed",
+    "duration": 0.0005004300037398934
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_replay_and_duplicate_always_need_confirmation[REPLAY_SAME_REQUEST-GET]",
+    "outcome": "passed",
+    "duration": 0.0007779268780723214
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_replay_and_duplicate_always_need_confirmation[REPLAY_SAME_REQUEST-POST]",
+    "outcome": "passed",
+    "duration": 0.0007774489931762218
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_replay_and_duplicate_always_need_confirmation[DUPLICATE_SUBMIT-POST]",
+    "outcome": "passed",
+    "duration": 0.0006871991790831089
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[POST-True-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0008229929953813553
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[POST-True-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0007277331314980984
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[PUT-True-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0010882689384743571
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[PUT-True-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0008552900981158018
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[PATCH-True-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0008474050555378199
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[PATCH-True-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0009463130263611674
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[DELETE-True-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.000981330987997353
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[DELETE-True-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.000666219973936677
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[GET-False-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0006620540516451001
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[GET-False-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0006019859574735165
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[get-False-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0005994379753246903
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[get-False-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0006866868352517486
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[None-True-BUSINESS_STATE]",
+    "outcome": "passed",
+    "duration": 0.0007024060469120741
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_business_state_only_for_write_methods[None-True-SEQUENCE_BYPASS]",
+    "outcome": "passed",
+    "duration": 0.0008315850282087922
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_strategy_risk_level[HIGH-POST-True]",
+    "outcome": "passed",
+    "duration": 0.0007227188907563686
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_strategy_risk_level[CRITICAL-PATCH-True]",
+    "outcome": "passed",
+    "duration": 0.0006238860078155994
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_strategy_risk_level[HIGH-GET-False]",
+    "outcome": "passed",
+    "duration": 0.0007397449808195233
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_strategy_risk_level[MEDIUM-POST-False]",
+    "outcome": "passed",
+    "duration": 0.0009719330118969083
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_strategy_risk_level[LOW-POST-False]",
+    "outcome": "passed",
+    "duration": 0.0008549380581825972
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_strategy_risk_level[INFO-POST-False]",
+    "outcome": "passed",
+    "duration": 0.0007515221368521452
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNeedsConfirmation::test_rule_flag_always_wins",
+    "outcome": "passed",
+    "duration": 0.0005943449214100838
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_write_like_action_keys[CREATE_TASK]",
+    "outcome": "passed",
+    "duration": 0.0005665100179612637
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_write_like_action_keys[SUBMIT_ORDER]",
+    "outcome": "passed",
+    "duration": 0.0004928410053253174
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_write_like_action_keys[PAY_ORDER]",
+    "outcome": "passed",
+    "duration": 0.0005035221111029387
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_write_like_action_keys[SAVE_DRAFT]",
+    "outcome": "passed",
+    "duration": 0.000523413997143507
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_write_like_action_keys[ADD_USER]",
+    "outcome": "passed",
+    "duration": 0.0004899799823760986
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_write_like_action_keys[INSERT_RECORD]",
+    "outcome": "passed",
+    "duration": 0.0005880598910152912
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[LOGIN]",
+    "outcome": "passed",
+    "duration": 0.0005676989676430821
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[GET_TASK]",
+    "outcome": "passed",
+    "duration": 0.0005783638916909695
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[RUN_TASK]",
+    "outcome": "passed",
+    "duration": 0.0005502760177478194
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[DELETE_TASK]",
+    "outcome": "passed",
+    "duration": 0.0005662628682330251
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[UPDATE_TASK]",
+    "outcome": "passed",
+    "duration": 0.0006131159607321024
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[QUERY_LIST]",
+    "outcome": "passed",
+    "duration": 0.000587256858125329
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_non_write_action_keys[]",
+    "outcome": "passed",
+    "duration": 0.0007816208526492119
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_idempotency_rule_type_counts",
+    "outcome": "passed",
+    "duration": 0.0005031469045206904
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateCandidate::test_rule_expression_is_not_evaluated",
+    "outcome": "passed",
+    "duration": 0.0005735518643632531
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestFixtureGap::test_unknown_scope_does_not_block",
+    "outcome": "passed",
+    "duration": 0.0004422961501404643
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestFixtureGap::test_missing_fixture_blocks",
+    "outcome": "passed",
+    "duration": 0.0005758139304816723
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestFixtureGap::test_available_fixture_does_not_block",
+    "outcome": "passed",
+    "duration": 0.0009141010232269764
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestFixtureGap::test_candidates_and_fixture_key_are_all_checked",
+    "outcome": "passed",
+    "duration": 0.0006288280710577965
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestFixtureGap::test_config_without_sources_never_blocks",
+    "outcome": "passed",
+    "duration": 0.0007531919982284307
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestStateFixtureKey::test_default_key",
+    "outcome": "passed",
+    "duration": 0.0007574509363621473
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestStateFixtureKey::test_empty_parts_yield_empty_key",
+    "outcome": "passed",
+    "duration": 0.0006096250144764781
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNextAction::test_next_is_the_action_after_the_skipped_one",
+    "outcome": "passed",
+    "duration": 0.0006261969683691859
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNextAction::test_last_action_has_no_next",
+    "outcome": "passed",
+    "duration": 0.00044746510684490204
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNextAction::test_empty_flow_has_no_next",
+    "outcome": "passed",
+    "duration": 0.0005438718944787979
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestNextAction::test_missing_next_action_returns_none",
+    "outcome": "passed",
+    "duration": 0.0005379080539569259
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_generates_item_when_post_state_exists",
+    "outcome": "passed",
+    "duration": 0.0008058239473029971
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_no_item_when_post_state_is_empty",
+    "outcome": "passed",
+    "duration": 0.000427564955316484
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_blocked_when_terminal_fixture_is_missing",
+    "outcome": "passed",
+    "duration": 0.000425460166297853
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_not_blocked_when_fixture_is_available",
+    "outcome": "passed",
+    "duration": 0.00042312988080084324
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_fixture_key_from_rule_config_wins",
+    "outcome": "passed",
+    "duration": 0.0004137848736718297
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_no_item_when_neither_entity_nor_fixture_key",
+    "outcome": "passed",
+    "duration": 0.00042972597293555737
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestBusinessStateItem::test_write_method_requires_confirmation",
+    "outcome": "passed",
+    "duration": 0.000490686041302979
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestSequenceBypassItem::test_target_is_the_action_after_the_skipped_one",
+    "outcome": "passed",
+    "duration": 0.0006503739859908819
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestSequenceBypassItem::test_skipped_action_is_never_the_target",
+    "outcome": "passed",
+    "duration": 0.00045329390559345484
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestSequenceBypassItem::test_no_target_when_skipped_is_the_last_action",
+    "outcome": "passed",
+    "duration": 0.0005078050307929516
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestSequenceBypassItem::test_blocked_when_prerequisite_fixture_is_missing",
+    "outcome": "passed",
+    "duration": 0.00044972996693104506
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestSequenceBypassItem::test_not_blocked_when_fixture_is_available",
+    "outcome": "passed",
+    "duration": 0.00047192408237606287
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestSequenceBypassItem::test_rule_fixture_key_wins_over_derived_key",
+    "outcome": "passed",
+    "duration": 0.0005438379012048244
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateSubmitItem::test_generate_for_create_like_action",
+    "outcome": "passed",
+    "duration": 0.0009165650699287653
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateSubmitItem::test_skip_non_write_action",
+    "outcome": "passed",
+    "duration": 0.000651282025501132
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateSubmitItem::test_out_of_range_replay_count_is_rejected_at_plan_time",
+    "outcome": "passed",
+    "duration": 0.0005216940771788359
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestDuplicateSubmitItem::test_accept_idempotency_rule",
+    "outcome": "passed",
+    "duration": 0.00047496915794909
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayItem::test_defaults_are_snapped_into_the_item",
+    "outcome": "passed",
+    "duration": 0.0005483468994498253
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayItem::test_explicit_count_and_interval_are_kept",
+    "outcome": "passed",
+    "duration": 0.0005154649261385202
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestReplayItem::test_out_of_range_config_is_rejected_before_snapping",
+    "outcome": "passed",
+    "duration": 0.0005285419756546617
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestItemShape::test_item_has_the_preview_keys",
+    "outcome": "passed",
+    "duration": 0.000467516016215086
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestItemShape::test_risk_level_comes_from_strategy",
+    "outcome": "passed",
+    "duration": 0.0004953878233209252
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestItemShape::test_item_name_shape",
+    "outcome": "passed",
+    "duration": 0.0006873189704492688
+  },
+  {
+    "nodeid": "tests/test_24_security_business.py::TestFlowIsNotModified::test_execute_flow_has_no_skip_parameter",
+    "outcome": "passed",
+    "duration": 0.006252859020605683
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_production_environment_skips_without_request",
+    "outcome": "passed",
+    "duration": 0.26936098106671125
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_dev_name_with_production_outbound_target_is_blocked",
+    "outcome": "passed",
+    "duration": 0.7135107010835782
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_unknown_environment_name_defaults_to_staging_and_is_denied",
+    "outcome": "passed",
+    "duration": 0.7174545919988304
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_allow_staging_unlocks_unknown_environment",
+    "outcome": "passed",
+    "duration": 0.8421028360025957
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestEnvironmentGate::test_high_risk_unconfirmed_skips_without_request",
+    "outcome": "passed",
+    "duration": 0.7212575811427087
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_baseline_5xx_is_inconclusive_and_sends_no_mutation",
+    "outcome": "passed",
+    "duration": 0.9433384529547766
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_remove_token_200_becomes_potential_issue_with_high_finding",
+    "outcome": "failed",
+    "duration": 0.8190304419258609,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_remove_token_401_passes_without_finding",
+    "outcome": "failed",
+    "duration": 0.7971040980191901,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_remove_token_server_error_becomes_medium_finding",
+    "outcome": "failed",
+    "duration": 0.804668021039106,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_same_fingerprint_twice_keeps_one_open_with_repeat_count",
+    "outcome": "failed",
+    "duration": 0.7872027428820729,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBaselineAndMutation::test_false_positive_rerun_opens_a_new_finding_with_prior_status",
+    "outcome": "failed",
+    "duration": 0.8079953108681366,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestReplay::test_duplicate_submit_second_response_409_passes",
+    "outcome": "failed",
+    "duration": 0.7872428169939667,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestReplay::test_duplicate_submit_two_2xx_with_different_ids_records_high",
+    "outcome": "failed",
+    "duration": 0.780395795009099,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestBusinessFlowSkip::test_business_flow_mutation_type_is_skipped_not_blind_http",
+    "outcome": "failed",
+    "duration": 0.7794544270727783,
+    "detail": "E   NameError: name 'build_rule_view' is not defined"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestPlanning::test_confirm_creates_security_case_referencing_baseline",
+    "outcome": "passed",
+    "duration": 0.2608101100195199
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestPlanning::test_preview_requires_exactly_one_target",
+    "outcome": "passed",
+    "duration": 0.22767912305425853
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestPlanning::test_preview_confirmed_twice_is_rejected",
+    "outcome": "passed",
+    "duration": 0.2428369529079646
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_list_and_patch_enabled_syncs_test_case",
+    "outcome": "passed",
+    "duration": 0.2695506379241124
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_confirm_risk_records_actor_and_blocks_repeat",
+    "outcome": "passed",
+    "duration": 0.2490298559423536
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_confirm_risk_refuses_case_that_needs_no_confirmation",
+    "outcome": "passed",
+    "duration": 0.2340842830017209
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_security_runs_reuses_run_service",
+    "outcome": "failed",
+    "duration": 0.9534229701384902,
+    "detail": "E   AssertionError: assert 'FAILED' == 'SUCCESS'\n      \n      - SUCCESS\n      + FAILED"
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_security_runs_refuses_unknown_or_disabled_cases",
+    "outcome": "passed",
+    "duration": 0.7311080208746716
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_member_cannot_run_security_cases",
+    "outcome": "passed",
+    "duration": 1.2843975450377911
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_finding_status_transition_matrix",
+    "outcome": "passed",
+    "duration": 0.2976415678858757
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_resolve_writes_resolved_by",
+    "outcome": "passed",
+    "duration": 0.2375777461566031
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_same_status_is_idempotent_no_op",
+    "outcome": "passed",
+    "duration": 0.2580533219734207
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_finding_permissions",
+    "outcome": "passed",
+    "duration": 1.6550596640445292
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_other_project_cannot_read_finding_or_execution",
+    "outcome": "passed",
+    "duration": 0.7406031431164593
+  },
+  {
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_findings_list_filters",
+    "outcome": "passed",
+    "duration": 0.2493634009733796
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityIntent::test_generate_security_test_intent_stops_at_plan_review",
+    "outcome": "passed",
+    "duration": 0.7386504400055856
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityIntent::test_multi_target_returns_clarify",
+    "outcome": "passed",
+    "duration": 0.7177947158925235
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityIntent::test_unmatched_strategy_gives_readable_error",
+    "outcome": "passed",
+    "duration": 0.7219040169147775
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityIntent::test_llm_output_with_script_is_rejected",
+    "outcome": "passed",
+    "duration": 0.7197302869753912
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestWorkspaceActions::test_plan_review_offers_confirm_security_plan",
+    "outcome": "passed",
+    "duration": 0.7324772790307179
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestWorkspaceActions::test_pending_risk_adds_confirm_security_risk",
+    "outcome": "passed",
+    "duration": 0.7318315788870677
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestPlanBaselineResolution::test_preview_by_api_id_resolves_baseline_case",
+    "outcome": "passed",
+    "duration": 0.23532796499785036
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestPlanBaselineResolution::test_preview_by_api_id_requires_a_usable_baseline[no_case]",
+    "outcome": "passed",
+    "duration": 0.2352631911635399
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestPlanBaselineResolution::test_preview_by_api_id_requires_a_usable_baseline[security_case_only]",
+    "outcome": "passed",
+    "duration": 0.23156147892586887
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestPlanBaselineResolution::test_preview_by_api_id_requires_a_usable_baseline[disabled_only]",
+    "outcome": "passed",
+    "duration": 0.2483033740427345
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestPlanBaselineResolution::test_missing_baseline_reaches_agent_as_readable_error",
+    "outcome": "passed",
+    "duration": 0.7224437011172995
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityExecutionAndReport::test_execute_without_risk_confirmation_is_skipped",
+    "outcome": "passed",
+    "duration": 0.7190878610126674
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityExecutionAndReport::test_confirm_execute_report_security_summary",
+    "outcome": "failed",
+    "duration": 0.8998318820958957,
+    "detail": "E   AssertionError: assert ['baseline'] == ['baseline', 'mutation']\n      \n      Right contains one more item: 'mutation'\n      Use -v to get more diff"
+  },
+  {
+    "nodeid": "tests/test_26_security_agent_report.py::TestSecurityExecutionAndReport::test_ai_summary_failure_does_not_break_security_summary",
+    "outcome": "failed",
+    "duration": 0.9041067321086302,
+    "detail": "E   assert 0 == 1"
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_requires_base_url",
+    "outcome": "passed",
+    "duration": 0.0005995858227834105
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_base_host_only_exposes_netloc",
+    "outcome": "passed",
+    "duration": 0.0005725540686398745
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_api_key_sent_as_header_by_default",
+    "outcome": "passed",
+    "duration": 0.0005280009936541319
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_api_key_query_mode_puts_key_in_query",
+    "outcome": "passed",
+    "duration": 0.0006058560684323311
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_absolute_url_path_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0006208269624039531
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_timeout_maps_to_transport_error",
+    "outcome": "passed",
+    "duration": 0.0006887400522828102
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_http_error_maps_to_transport_error",
+    "outcome": "passed",
+    "duration": 0.0005268050590530038
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_non_json_response_raises",
+    "outcome": "passed",
+    "duration": 0.0005673329578712583
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_error_body_is_truncated",
+    "outcome": "passed",
+    "duration": 0.0005488698370754719
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestTransport::test_close_is_idempotent",
+    "outcome": "passed",
+    "duration": 0.0004883850924670696
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_health_returns_version_and_addons",
+    "outcome": "passed",
+    "duration": 0.0005400250665843487
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_version_below_minimum_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0005161970620974898
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_version_at_minimum_is_accepted",
+    "outcome": "passed",
+    "duration": 0.0005129859782755375
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_unparseable_version_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0008611700031906366
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_connectivity_failure_is_retryable_unavailable",
+    "outcome": "passed",
+    "duration": 0.0006645958637818694
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_unknown_exception_is_wrapped_not_propagated",
+    "outcome": "passed",
+    "duration": 0.0005562941078096628
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_api_key_rejected_maps_to_auth_failed",
+    "outcome": "passed",
+    "duration": 0.0005496658850461245
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_server_5xx_is_retryable",
+    "outcome": "passed",
+    "duration": 0.0005317159229889512
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_capabilities_reports_unsupported_components",
+    "outcome": "passed",
+    "duration": 0.0005394920008257031
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_capabilities_without_scannerpool_addon",
+    "outcome": "passed",
+    "duration": 0.0004899019841104746
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_capabilities_degrades_when_unreachable",
+    "outcome": "passed",
+    "duration": 0.0005114792147651315
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_capability_probe_never_mutates_state",
+    "outcome": "passed",
+    "duration": 0.0005058069946244359
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestConnectorBasics::test_get_version_does_not_gate_on_minimum",
+    "outcome": "passed",
+    "duration": 0.0004763721954077482
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_apply_scope_sets_host_and_regex",
+    "outcome": "passed",
+    "duration": 0.0004984908737242222
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_apply_scope_defaults_to_base_host",
+    "outcome": "passed",
+    "duration": 0.00046209816355258226
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_apply_scope_escapes_regex_metacharacters",
+    "outcome": "passed",
+    "duration": 0.00047202990390360355
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_create_scan_context_rejects_empty_host",
+    "outcome": "passed",
+    "duration": 0.00047270802315324545
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_create_scan_context_prefix_mode",
+    "outcome": "passed",
+    "duration": 0.0004632660420611501
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_create_scan_context_exact_mode",
+    "outcome": "passed",
+    "duration": 0.00045556004624813795
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_scope_blocks_out_of_scope_requests",
+    "outcome": "passed",
+    "duration": 0.0004991260357201099
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_out_of_scope_active_scan_is_rejected",
+    "outcome": "passed",
+    "duration": 0.002704966929741204
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_excluded_paths_are_not_scanned",
+    "outcome": "passed",
+    "duration": 0.0013174479827284813
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestScopeAndContext::test_clean_scan_context_resets_everything",
+    "outcome": "passed",
+    "duration": 0.0011570429196581244
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_bearer_token_verified_logged_in",
+    "outcome": "passed",
+    "duration": 0.000765052973292768
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_bearer_without_value_is_logged_out",
+    "outcome": "passed",
+    "duration": 0.0009556231088936329
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_none_mode_is_unverifiable",
+    "outcome": "passed",
+    "duration": 0.0010235121008008718
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_verify_authentication_without_plugin_is_unverifiable",
+    "outcome": "passed",
+    "duration": 0.0009460060391575098
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_credential_never_leaks_into_result",
+    "outcome": "passed",
+    "duration": 0.0008157130796462297
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_credential_stored_only_in_transport_not_in_connector",
+    "outcome": "passed",
+    "duration": 0.0007846440421417356
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_established_true_for_cookie_based",
+    "outcome": "passed",
+    "duration": 0.000712864100933075
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_not_established_with_header_based",
+    "outcome": "passed",
+    "duration": 0.0005983079317957163
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_manual_mode_reports_unsupported",
+    "outcome": "passed",
+    "duration": 0.0005187549395486712
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_false_for_none",
+    "outcome": "passed",
+    "duration": 0.0005144499009475112
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_false_when_cookie_value_missing",
+    "outcome": "passed",
+    "duration": 0.0007354010595008731
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAuthentication::test_browser_session_reset_after_cleanup",
+    "outcome": "passed",
+    "duration": 0.0007941891672089696
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_traditional_spider_skips_spa_and_login_pages",
+    "outcome": "passed",
+    "duration": 0.0011296910233795643
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_discovers_spa_pages_with_browser_session",
+    "outcome": "passed",
+    "duration": 0.0010616449872031808
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_with_only_bearer_reaches_nothing",
+    "outcome": "passed",
+    "duration": 0.0008132640505209565
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_with_manual_login_reaches_business_pages",
+    "outcome": "passed",
+    "duration": 0.0009001839207485318
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_depth_limit",
+    "outcome": "passed",
+    "duration": 0.0009056269191205502
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_page_count_limit",
+    "outcome": "passed",
+    "duration": 0.0008371210424229503
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_target_regex_filters",
+    "outcome": "passed",
+    "duration": 0.0008739859331399202
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_client_spider_missing_component_raises_plugin_missing",
+    "outcome": "passed",
+    "duration": 0.000895736156962812
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_wait_passive_scan_completes",
+    "outcome": "passed",
+    "duration": 0.0012948750518262386
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_wait_passive_scan_timeout_keeps_running_true",
+    "outcome": "passed",
+    "duration": 0.0012197920586913824
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_hung_spider_is_stoppable",
+    "outcome": "passed",
+    "duration": 0.001162070082500577
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_spider_rejects_url_outside_scope",
+    "outcome": "passed",
+    "duration": 0.0008547219913452864
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestSpidersAndPassive::test_progress_reports_stage_and_counts",
+    "outcome": "passed",
+    "duration": 0.0012622741051018238
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_limits_are_hard_capped",
+    "outcome": "passed",
+    "duration": 0.0009607180254533887
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_only_selected_rules_are_enabled",
+    "outcome": "passed",
+    "duration": 0.0009215169120579958
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_all_default_rules_enabled_when_no_selection",
+    "outcome": "passed",
+    "duration": 0.001087997923605144
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_excluded_paths_are_not_active_scanned",
+    "outcome": "passed",
+    "duration": 0.0012701218947768211
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_active_scan_requires_login_session_for_protected_endpoints",
+    "outcome": "passed",
+    "duration": 0.0011335009476169944
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_active_scan_rejected_when_attack_disabled",
+    "outcome": "passed",
+    "duration": 0.0006530588725581765
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_active_scan_rejected_when_out_of_scope",
+    "outcome": "passed",
+    "duration": 0.0008619860745966434
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_active_scan_zero_duration_is_clamped",
+    "outcome": "passed",
+    "duration": 0.0011670321691781282
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_set_active_scan_limits_also_clamps",
+    "outcome": "passed",
+    "duration": 0.0009467010386288166
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_stop_scan_stops_active_scan",
+    "outcome": "passed",
+    "duration": 0.00229287997353822
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestActiveScan::test_progress_is_not_running_when_scan_finished",
+    "outcome": "passed",
+    "duration": 0.0022011720575392246
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_fields_are_mapped",
+    "outcome": "passed",
+    "duration": 0.003100974834524095
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_evidence_is_redacted",
+    "outcome": "passed",
+    "duration": 0.0011026218999177217
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_url_credentials_are_redacted",
+    "outcome": "passed",
+    "duration": 0.0008974759839475155
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_confidence_is_preserved_not_merged",
+    "outcome": "passed",
+    "duration": 0.0007483981316909194
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_counts_group_by_severity",
+    "outcome": "passed",
+    "duration": 0.0008914760546758771
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_alert_filter_by_rule_ids",
+    "outcome": "passed",
+    "duration": 0.0007242010906338692
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_statistics_degrade_to_zero_on_missing_endpoint",
+    "outcome": "passed",
+    "duration": 0.002062580897472799
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_missing_alert_endpoint_fails_result_import",
+    "outcome": "passed",
+    "duration": 0.0009025339968502522
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_list_urls_empty_when_endpoint_missing",
+    "outcome": "passed",
+    "duration": 0.0008874189807102084
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_scan_statistics_counts_urls_and_alerts",
+    "outcome": "passed",
+    "duration": 0.002572864992544055
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_list_urls_redacts_credentials",
+    "outcome": "passed",
+    "duration": 0.000986112980172038
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_openapi_import_missing_component_raises",
+    "outcome": "passed",
+    "duration": 0.000898601021617651
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_openapi_import_empty_document_rejected",
+    "outcome": "passed",
+    "duration": 0.0020776899764314294
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_openapi_import_records_upload",
+    "outcome": "passed",
+    "duration": 0.0007122191600501537
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_passive_rules_are_listable",
+    "outcome": "passed",
+    "duration": 0.000814968952909112
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestAlertsAndStatistics::test_stop_scan_clears_scan_ids",
+    "outcome": "passed",
+    "duration": 0.0009564058855175972
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_risk_mapping_only_goes_down",
+    "outcome": "passed",
+    "duration": 0.001013937871903181
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_parse_zap_version",
+    "outcome": "passed",
+    "duration": 0.0009823449654504657
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_redact_text_bearer_and_cookie",
+    "outcome": "passed",
+    "duration": 0.0007223120192065835
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_redact_url_keeps_non_credential_params",
+    "outcome": "passed",
+    "duration": 0.0007826689397916198
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_redact_url_without_query_is_untouched",
+    "outcome": "passed",
+    "duration": 0.0004721779841929674
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_mock_rejects_unknown_endpoint",
+    "outcome": "passed",
+    "duration": 0.0005342541262507439
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_mock_closed_transport_raises",
+    "outcome": "passed",
+    "duration": 0.000536989071406424
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestContracts::test_mock_drops_credential_query_params_in_alert_urls",
+    "outcome": "passed",
+    "duration": 0.001190909999422729
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestMockWorldConfig::test_world_without_client_spider_addon",
+    "outcome": "passed",
+    "duration": 0.0006467100465670228
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestMockWorldConfig::test_world_custom_rules_can_disable_rules",
+    "outcome": "passed",
+    "duration": 0.0006360099650919437
+  },
+  {
+    "nodeid": "tests/test_28_zap_connector.py::TestMockWorldConfig::test_mock_world_does_not_send_any_real_request",
+    "outcome": "passed",
+    "duration": 0.0013193748891353607
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestMigration::test_head_and_tables_created",
+    "outcome": "passed",
+    "duration": 0.0239064518827945
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestMigration::test_orm_matches_migrated_schema",
+    "outcome": "passed",
+    "duration": 0.03342648991383612
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestMigration::test_zap_models_stay_out_of_core_registry",
+    "outcome": "passed",
+    "duration": 0.000782878021709621
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestMigration::test_partial_unique_indexes",
+    "outcome": "passed",
+    "duration": 0.00410943606402725
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestMigration::test_downgrade_removes_only_zap_tables",
+    "outcome": "passed",
+    "duration": 0.8658069079974666
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_production_environment_detected",
+    "outcome": "passed",
+    "duration": 0.0007235921220853925
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_non_production_environment_not_flagged",
+    "outcome": "passed",
+    "duration": 0.0007983860559761524
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_validate_target_url_normalizes_trailing_slash",
+    "outcome": "passed",
+    "duration": 0.0009608529508113861
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_reserved_address_rejected",
+    "outcome": "passed",
+    "duration": 0.0011875929776579142
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_scheme_credentials_rejected",
+    "outcome": "passed",
+    "duration": 0.0008493399946019053
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_port_scope_requires_explicit_whitelist_entry",
+    "outcome": "passed",
+    "duration": 0.0009305350249633193
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_whitelist_entry_tolerates_scheme_credentials_and_paths",
+    "outcome": "passed",
+    "duration": 0.001195416902191937
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_allowlist_normalization_ignores_port",
+    "outcome": "passed",
+    "duration": 0.0007960270158946514
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_ip_literal_alternate_forms_not_bypass",
+    "outcome": "passed",
+    "duration": 0.0005766870453953743
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_empty_allowlist_allows_any_host_but_keeps_port",
+    "outcome": "passed",
+    "duration": 0.0007041209610179067
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_allowlist_port_mismatch_is_rejected",
+    "outcome": "passed",
+    "duration": 0.0005842159735038877
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_allowlist_entry_forms_scheme_credentials_and_ipv6",
+    "outcome": "passed",
+    "duration": 0.001121409935876727
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_numeric_ip_forms_rejected_even_when_resolver_says_public",
+    "outcome": "passed",
+    "duration": 0.0009163249051198363
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_normal_hostnames_are_not_misclassified_as_numeric",
+    "outcome": "passed",
+    "duration": 0.0006380729610100389
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_allowlist_entry_that_parses_to_empty_must_be_rejected",
+    "outcome": "passed",
+    "duration": 0.0005468978779390454
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_redirect_restricted_to_same_host_when_no_allowlist",
+    "outcome": "passed",
+    "duration": 0.0006022979505360126
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_redirect_allowed_when_in_whitelist",
+    "outcome": "passed",
+    "duration": 0.0005701830377802253
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_compile_path_regex_escapes_metacharacters",
+    "outcome": "passed",
+    "duration": 0.000602112035267055
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_default_active_exclude_regex_contains_high_risk_paths",
+    "outcome": "passed",
+    "duration": 0.0004217050736770034
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_destructive_methods_and_blocked_actions",
+    "outcome": "passed",
+    "duration": 0.00040934013668447733
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScopeGuard::test_active_scan_authorization_gate",
+    "outcome": "passed",
+    "duration": 0.00043221586383879185
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestOpenAPIExport::test_document_shape_and_normalization",
+    "outcome": "passed",
+    "duration": 0.024951169034466147
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestOpenAPIExport::test_normalized_path_collision_keeps_one_operation",
+    "outcome": "passed",
+    "duration": 0.012949278112500906
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestOpenAPIExport::test_db_rejects_duplicate_method_path",
+    "outcome": "passed",
+    "duration": 0.0056812610710039735
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestOpenAPIExport::test_truncation_reports_limit_in_description",
+    "outcome": "passed",
+    "duration": 0.01808145293034613
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestOpenAPIExport::test_only_active_filters_draft_interfaces",
+    "outcome": "passed",
+    "duration": 0.009950681938789785
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestOpenAPIExport::test_credential_header_is_not_exported_as_value",
+    "outcome": "passed",
+    "duration": 0.01178857299964875
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_mapping_replaces_sensitive_values_with_placeholder",
+    "outcome": "passed",
+    "duration": 0.0006043519824743271
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_mapping_recurses_into_nested_structures",
+    "outcome": "passed",
+    "duration": 0.00047577708028256893
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_mapping_preserves_non_sensitive_payload_verbatim",
+    "outcome": "passed",
+    "duration": 0.0005349430721253157
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_value_decides_by_key_name_not_value_shape",
+    "outcome": "passed",
+    "duration": 0.0004282930167391896
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_text_masks_bearer_and_cookie_in_header_echo",
+    "outcome": "passed",
+    "duration": 0.0005396220367401838
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_text_is_case_and_separator_insensitive",
+    "outcome": "passed",
+    "duration": 0.000493739964440465
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_text_only_touches_known_shapes",
+    "outcome": "passed",
+    "duration": 0.000426876125857234
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_url_masks_credential_params_but_keeps_param_names",
+    "outcome": "passed",
+    "duration": 0.0007823649793863297
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_url_matches_credential_names_case_and_separator_insensitively",
+    "outcome": "passed",
+    "duration": 0.0005622301250696182
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_url_leaves_urls_without_query_unchanged",
+    "outcome": "passed",
+    "duration": 0.0004432720597833395
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_mapping_truncates_overlong_text",
+    "outcome": "passed",
+    "duration": 0.0005857018986716866
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_mapping_caps_list_items",
+    "outcome": "passed",
+    "duration": 0.000577423837967217
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_sensitive_key_detection_normalizes_case_and_separators",
+    "outcome": "passed",
+    "duration": 0.000471597071737051
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_redact_helpers_treat_empty_input_as_empty",
+    "outcome": "passed",
+    "duration": 0.0005619660951197147
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestEvidenceRedaction::test_normalizer_emits_redacted_evidence",
+    "outcome": "passed",
+    "duration": 0.0006174849113449454
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_create_read_patch_delete",
+    "outcome": "passed",
+    "duration": 0.34631904994603246
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_list_pagination_shape",
+    "outcome": "passed",
+    "duration": 0.25342135096434504
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_entry_url_must_share_host_with_base",
+    "outcome": "passed",
+    "duration": 0.228742104023695
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_non_public_base_url_rejected",
+    "outcome": "passed",
+    "duration": 0.23726966802496463
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_base_url_changed_to_disallowed_host_rejected",
+    "outcome": "passed",
+    "duration": 0.235176470130682
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_is_production_derived_from_environment",
+    "outcome": "passed",
+    "duration": 0.24843714199960232
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_unknown_environment_id_rejected",
+    "outcome": "passed",
+    "duration": 0.23156919400207698
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_inflight_job_blocks_delete",
+    "outcome": "passed",
+    "duration": 0.24920207494869828
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_member_cannot_create_target",
+    "outcome": "passed",
+    "duration": 0.6586179630830884
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_editor_can_create_target",
+    "outcome": "passed",
+    "duration": 0.6741762940073386
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanTarget::test_outsider_gets_404",
+    "outcome": "passed",
+    "duration": 0.6916552479378879
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_credential_never_returned_in_response",
+    "outcome": "passed",
+    "duration": 0.23725304589606822
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_list_does_not_return_credential",
+    "outcome": "passed",
+    "duration": 0.2503297149669379
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_credential_stored_as_ciphertext",
+    "outcome": "passed",
+    "duration": 0.23245206789579242
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_manual_mode_rejects_credential",
+    "outcome": "passed",
+    "duration": 0.2285981181776151
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_update_rotates_and_removes_credential",
+    "outcome": "passed",
+    "duration": 0.24688620399683714
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_delete",
+    "outcome": "passed",
+    "duration": 0.24538108112756163
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAuthProfile::test_member_cannot_create_auth_profile",
+    "outcome": "passed",
+    "duration": 0.669374026125297
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_builtin_profiles_visible_and_protected",
+    "outcome": "passed",
+    "duration": 0.23319472803268582
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_builtin_profile_cannot_be_deleted_or_renamed_by_code",
+    "outcome": "passed",
+    "duration": 0.2698335099266842
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_builtin_profile_cannot_bind_project_auth_profile",
+    "outcome": "passed",
+    "duration": 0.2481134100817144
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_active_enabled_requires_active_mode",
+    "outcome": "passed",
+    "duration": 0.2252921878825873
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_custom_profile_crud_and_auth_binding",
+    "outcome": "passed",
+    "duration": 0.2524535710690543
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_auth_binding_must_be_same_project",
+    "outcome": "passed",
+    "duration": 0.27211069187615067
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanProfile::test_outsider_cannot_see_other_projects_profile",
+    "outcome": "passed",
+    "duration": 0.682103558909148
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanPlan::test_plan_is_read_only",
+    "outcome": "passed",
+    "duration": 0.2733340378617868
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanPlan::test_plan_reports_limitations_without_zap",
+    "outcome": "passed",
+    "duration": 0.25369797786697745
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanPlan::test_plan_blocks_production_active_scan",
+    "outcome": "passed",
+    "duration": 0.2586110590491444
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_create_refused_when_zap_disabled",
+    "outcome": "passed",
+    "duration": 0.23650268302299082
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_create_job_returns_pending",
+    "outcome": "passed",
+    "duration": 0.26775957294739783
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_duplicate_target_job_rejected",
+    "outcome": "passed",
+    "duration": 0.2779450829839334
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_active_scan_requires_editor_and_confirmation",
+    "outcome": "passed",
+    "duration": 1.1514689180767164
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_cancel_pending_job",
+    "outcome": "passed",
+    "duration": 0.26527142501436174
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_query_endpoints_for_a_job",
+    "outcome": "passed",
+    "duration": 0.2838804959319532
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_list_jobs_filters",
+    "outcome": "passed",
+    "duration": 0.2565895630978048
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_cross_project_job_is_404",
+    "outcome": "passed",
+    "duration": 0.7098728171549737
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanJob::test_unauthenticated_gets_401",
+    "outcome": "passed",
+    "duration": 0.2196255848975852
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAlertSeverityFilter::test_severity_filter_looks_through_risk_to_severity_mapping",
+    "outcome": "passed",
+    "duration": 0.05272372905164957
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAlertSeverityFilter::test_filter_result_never_disagrees_with_reported_severity",
+    "outcome": "passed",
+    "duration": 0.03511943598277867
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAlertSeverityFilter::test_http_severity_param_reaches_the_filter",
+    "outcome": "passed",
+    "duration": 0.2652450510067865
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestAlertSeverityFilter::test_alerts_do_not_leak_credential_from_the_link",
+    "outcome": "passed",
+    "duration": 0.24312993802595884
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestZapHealth::test_health_reports_not_available",
+    "outcome": "passed",
+    "duration": 0.21814902813639492
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestZapHealth::test_capabilities_reports_not_available",
+    "outcome": "passed",
+    "duration": 0.22116740699857473
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestZapHealth::test_health_requires_platform_admin",
+    "outcome": "passed",
+    "duration": 0.6676147619727999
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestZapHealth::test_health_does_not_open_connection",
+    "outcome": "passed",
+    "duration": 0.21995971002615988
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_start_is_noop_when_zap_disabled",
+    "outcome": "passed",
+    "duration": 0.0005765368696302176
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_tick_claims_pending_job_and_preserves_terminal_state",
+    "outcome": "passed",
+    "duration": 0.301404878962785
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_tick_marks_cancelled_job_without_claiming",
+    "outcome": "passed",
+    "duration": 0.2556612229673192
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_tick_sweeps_stale_inflight_job_to_timed_out",
+    "outcome": "passed",
+    "duration": 0.2578032889869064
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_tick_ignores_fresh_inflight_job",
+    "outcome": "passed",
+    "duration": 0.24158266198355705
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_tick_claims_at_most_one_job_at_a_time",
+    "outcome": "passed",
+    "duration": 0.3263505670474842
+  },
+  {
+    "nodeid": "tests/test_29_zap_scan.py::TestScanWorker::test_start_spawns_thread_when_enabled",
+    "outcome": "passed",
+    "duration": 0.24503835185896605
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestToolGate::test_create_refused_without_human_approval",
+    "outcome": "passed",
+    "duration": 0.24120431405026466
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestToolGate::test_preview_never_confirms_and_writes_nothing",
+    "outcome": "passed",
+    "duration": 0.23665942007210106
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentApprovalGate::test_llm_intent_only_stops_at_plan_review",
+    "outcome": "passed",
+    "duration": 0.27299858012702316
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentApprovalGate::test_llm_hallucinated_confirmation_is_ignored",
+    "outcome": "passed",
+    "duration": 0.27300227794330567
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentApprovalGate::test_llm_approval_note_never_reaches_prompt_history",
+    "outcome": "passed",
+    "duration": 0.3152473501395434
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentApprovalGate::test_workspace_offers_confirm_security_scan",
+    "outcome": "passed",
+    "duration": 0.3729641269892454
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_passive_confirm_creates_one_job",
+    "outcome": "passed",
+    "duration": 0.39365565893240273
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_active_confirm_without_note_is_refused",
+    "outcome": "passed",
+    "duration": 0.3524832719704136
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_active_confirm_with_note_records_approver",
+    "outcome": "passed",
+    "duration": 0.3671935230959207
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_confirmation_note_from_action_payload_only",
+    "outcome": "passed",
+    "duration": 0.36413782904855907
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_double_confirm_creates_only_one_job",
+    "outcome": "passed",
+    "duration": 0.4075663441326469
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_plan_upgraded_to_active_after_review_is_refused",
+    "outcome": "passed",
+    "duration": 0.30700676795095205
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentHumanConfirm::test_cross_project_target_is_404",
+    "outcome": "passed",
+    "duration": 0.3009553320007399
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentScopeGuard::test_multiple_targets_returns_clarify_not_guess",
+    "outcome": "passed",
+    "duration": 0.3189175820443779
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentScopeGuard::test_explicit_target_id_bypasses_ambiguity",
+    "outcome": "passed",
+    "duration": 0.30190700700040907
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentScopeGuard::test_unique_target_is_auto_selected",
+    "outcome": "passed",
+    "duration": 0.2817202911246568
+  },
+  {
+    "nodeid": "tests/test_32_zap_agent_approval.py::TestAgentScopeGuard::test_missing_profile_is_readable_error",
+    "outcome": "passed",
+    "duration": 1.1014263158431277
+  }
+]

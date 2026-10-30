@@ -2,15 +2,14 @@
 // 与后端 features/reports/schemas.py 字面量严格对齐。
 //
 // 说明（避免继续增长为第三份色板）：
-// - 报告/用例执行/失败分类的状态色已收敛到 @/shared/status（REPORT_STATUS_COLOR、
-//   REPORT_RISK_COLOR、REPORT_FAILURE_TYPE_COLOR、CASE_EXECUTION_STATUS_COLOR / LABEL），
-//   各页面统一从那里取，本文件不再重复定义。
+// - 报告状态、风险与失败分类颜色归 reports/status；用例执行颜色与标签归
+//   test-management/status；各页面从所属领域取用，本文件不再重复定义。
 // - 飞书通知域的 NOTIFY_CONDITION_OPTIONS / NOTIFY_STATUS_OPTIONS / NOTIFY_STATUS_COLOR
-//   被报告页与通知渠道页共同消费，属通知域，已上提到 @/shared/notify。
-// - 时间格式化统一走 @/shared/format（fmtTime / fmtTimeSec / fmtDuration）。
+//   被报告页与通知渠道页共同消费，属通知域，已上提到 @/features/notifications/constants。
+// - 时间格式化统一走 @/shared/lib/format（fmtTime / fmtTimeSec / fmtDuration）。
 // - 本文件只保留报告域专属的「选项列表」，供 ./ReportList 与 ./ReportDetail 共用。
 
-import type { ReportFailureType, ReportRiskLevel, ReportStatus } from '@/types';
+import type { ReportFailureType, ReportRiskLevel, ReportStatus } from '@/features/reports/contracts';
 
 export const REPORT_STATUS_OPTIONS = [
   { value: 'GENERATING' as ReportStatus, label: '生成中 GENERATING' },

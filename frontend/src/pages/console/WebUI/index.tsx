@@ -1,19 +1,20 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // Web UI 自动化控制台：页面对象、结构化用例、加密登录态、调试历史和报告。
 import { useState } from 'react';
 import { Alert, App, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { webUIApi } from '@/api/webUI';
-import { reportsApi } from '@/api/reports';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { webUIApi } from '@/features/web-testing/api/webUI';
+import { reportsApi } from '@/features/reports/api/reports';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
 import { AuthEditor, CaseEditor, PageEditor } from '@/pages/console/WebUI/Editors';
 import { WebArtifacts } from '@/pages/console/WebUI/Artifacts';
-import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
-import type { WebAuthProfile, WebCase, WebExecution, WebPage } from '@/types';
+import { TaskSourceLinks } from '@/features/tasks/components/TaskSourceLinks';
+import type { WebAuthProfile, WebCase, WebExecution, WebPage } from '@/features/web-testing/contracts';
+
 
 /** 作用域变化后重建工作区，防止旧项目弹窗或执行选择残留。 */
 export function ConsoleWebUIPage() {

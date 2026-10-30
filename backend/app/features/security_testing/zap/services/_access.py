@@ -17,9 +17,11 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.identity import User
-from app.models.project import Project
-from app.shared.errors import (
+from app.platform.projects.services.access_service import get_project_or_404
+
+from app.core.models.identity import User
+from app.core.models.project import Project
+from app.core.http.errors import (
     CODE_SECURITY_SCAN_AUTH_PROFILE_NOT_FOUND,
     CODE_SECURITY_SCAN_JOB_NOT_FOUND,
     CODE_SECURITY_SCAN_PROFILE_NOT_FOUND,
@@ -29,7 +31,7 @@ from app.shared.errors import (
     forbidden,
     not_found,
 )
-from app.shared.roles import (
+from app.core.security.roles import (
     PROJECT_ROLE_EDITOR,
     PROJECT_ROLE_MEMBER,
     PROJECT_ROLE_VIEWER,
@@ -39,14 +41,6 @@ from app.shared.roles import (
 )
 
 
-def get_project_or_404(db: Session, project_id: int, user: User) -> Project:
-    """取项目并校验可见性（viewer+）；不可见与不存在共用 404。"""
-    project = db.get(Project, project_id)
-    if project is None:
-        raise not_found("项目不存在")
-    if not has_project_role(project_role_for(db, project, user), PROJECT_ROLE_VIEWER):
-        raise not_found("项目不存在")
-    return project
 
 
 def require_member(db: Session, project: Project, actor: User) -> None:

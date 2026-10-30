@@ -10,7 +10,7 @@ FOR UPDATE SKIP LOCKED`。租约到期由领取时懒更新为 EXPIRED，第一�
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class DataPool(Base):

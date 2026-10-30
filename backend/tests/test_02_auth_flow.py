@@ -10,8 +10,8 @@ import jwt
 import pytest
 from pydantic import ValidationError
 
-from app.shared.auth import ALGORITHM
-from app.shared.config import ACCESS_TOKEN_EXPIRE_MINUTES, Settings, settings
+from app.core.security.auth import ALGORITHM
+from app.core.config import ACCESS_TOKEN_EXPIRE_MINUTES, Settings, settings
 
 from tests.conftest import API, DEFAULT_PASSWORD, unique
 

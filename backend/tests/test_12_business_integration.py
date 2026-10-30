@@ -21,10 +21,11 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.features.business.executors.api_executor import ApiRequestExecutor, _is_private_ip
-from app.features.business.executors.business_flow_executor import (
-    _mask_context_for_storage,
-    _try_parse_json,
+from app.execution.http.executor import ApiRequestExecutor
+from app.execution.http.outbound_policy import is_private_ip as _is_private_ip
+from app.features.business.executors.masking import (
+    mask_context_for_storage,
+    try_parse_json,
 )
 from app.features.business.executors.context import ExecutionContext
 from app.features.business.executors.mapping_resolver import (
@@ -34,7 +35,7 @@ from app.features.business.executors.mapping_resolver import (
 from app.features.business.executors.precondition_evaluator import (
     evaluate_preconditions,
 )
-from app.features.business.executors.sensitive import SensitiveDataMasker, mask_body
+from app.core.security.sensitive import SensitiveDataMasker, mask_body
 
 
 # --------------------------------------------------------------------------- 1. Context 序列化
@@ -100,7 +101,7 @@ class TestSensitiveDataMasking:
             "username": "admin",  # 非敏感字段保持原值
             "project_id": 1001,
         })
-        masked = _mask_context_for_storage(ctx)
+        masked = mask_context_for_storage(ctx)
         assert masked["variables"]["token"] == "******"
         assert masked["variables"]["api_key"] == "******"
         assert masked["variables"]["password"] == "******"
@@ -115,7 +116,7 @@ class TestSensitiveDataMasking:
             "refresh_token": "rt_xyz",
             "user_id": 42,
         })
-        masked = _mask_context_for_storage(ctx)
+        masked = mask_context_for_storage(ctx)
         assert masked["actions"]["LOGIN"]["access_token"] == "******"
         assert masked["actions"]["LOGIN"]["refresh_token"] == "******"
         assert masked["actions"]["LOGIN"]["user_id"] == 42
@@ -208,7 +209,7 @@ class TestErrorCodes:
         """
         from app.features.business.executors.business_flow_executor import execute_flow
         from app.features.business.models.business_flow import BusinessFlow
-        from app.models.configuration import Environment
+        from app.core.models.configuration import Environment
 
         db = MagicMock()
         env = MagicMock(spec=Environment)
@@ -229,7 +230,7 @@ class TestErrorCodes:
     def test_api_not_found_code(self):
         """API 不存在 → API_NOT_FOUND。"""
         # 验证错误代码常量存在。
-        from app.features.business.executors.business_flow_executor import _EXECUTOR
+        from app.features.business.executors.action_executor import _EXECUTOR
         assert hasattr(_EXECUTOR, "execute")
 
     def test_precondition_failed_code(self):
@@ -302,7 +303,7 @@ class TestDefaultBinding:
 
     def test_partial_unique_index_dsl(self):
         """验证部分唯一索引的 DDL 语法正确。"""
-        from app.features.business.executors.business_flow_executor import _EXECUTOR
+        from app.features.business.executors.action_executor import _EXECUTOR
         # 索引由迁移创建，这里仅验证业务逻辑层不违反。
         assert _EXECUTOR is not None
 
@@ -364,16 +365,16 @@ class TestUtils:
 
     def test_try_parse_json_valid(self):
         """验证`try`解析JSON有效场景及其预期结果。"""
-        assert _try_parse_json('{"key": "value"}') == {"key": "value"}
+        assert try_parse_json('{"key": "value"}') == {"key": "value"}
 
     def test_try_parse_json_invalid(self):
         """验证`try`解析JSON无效场景及其预期结果。"""
-        assert _try_parse_json("not json") == "not json"
+        assert try_parse_json("not json") == "not json"
 
     def test_try_parse_json_empty(self):
         """验证`try`解析JSON空值场景及其预期结果。"""
-        assert _try_parse_json("") is None
+        assert try_parse_json("") is None
 
     def test_try_parse_json_none(self):
         """验证`try`解析JSON`none`场景及其预期结果。"""
-        assert _try_parse_json(None) is None
+        assert try_parse_json(None) is None

@@ -6,10 +6,11 @@ import { useMemo } from 'react';
 import { Empty, Spin, Tag, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useQuery } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { ErrorState } from '@/components/PageState';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { ErrorState } from '@/shared/ui/PageState';
 import { FIXTURE_SCOPE_OPTIONS, FIXTURE_STATUS_OPTIONS, labelOf } from './constants';
-import type { FixtureTreeNode } from '@/types';
+import type { FixtureTreeNode } from '@/features/test-data/contracts';
+
 
 /** 把后端树节点转成 antd Tree DataNode；title 用 name + fixture_key + 状态标签。 */
 function toDataNodes(nodes: FixtureTreeNode[]): DataNode[] {

@@ -8,8 +8,8 @@
 // 快照全部来自后端已脱敏 JSON，前端只原样展示，不做还原。
 import { Alert, Collapse, Descriptions, Divider, Drawer, Empty, Space, Spin, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
 import {
   CLEANUP_STATUS_COLOR,
   DATA_EXECUTION_STATUS_COLOR,
@@ -17,7 +17,8 @@ import {
   labelOf,
   DATA_EXECUTION_STATUS_OPTIONS,
 } from './constants';
-import type { DataExecutionDetail, FixtureExecution, ProviderExecution } from '@/types';
+import type { DataExecutionDetail, FixtureExecution, ProviderExecution } from '@/features/test-data/executionContracts';
+
 
 /** JSON 快照只读视图：与执行历史页同一套样式。 */
 function JsonView({ value }: { value: unknown }) {

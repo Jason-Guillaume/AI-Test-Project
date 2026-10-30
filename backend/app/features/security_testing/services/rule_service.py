@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.identity import User
-from app.shared.errors import (
+from app.core.models.identity import User
+from app.core.http.errors import (
     CODE_SECURITY_RULE_NOT_FOUND,
     AppError,
     forbidden,
@@ -26,7 +26,7 @@ from app.features.security_testing.schemas import (
     parse_mutation_config,
     validate_rule_expectation,
 )
-from app.features.security_testing.services._access import (
+from app.features.security_testing.services.access_service import (
     require_manage_project,
     resolve_rule_project_id,
 )

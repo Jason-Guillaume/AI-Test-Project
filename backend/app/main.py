@@ -23,43 +23,47 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
-from app.features.agent.providers.langfuse_tracer import flush_langfuse
-from app.features.agent.router import router as agent_router
-from app.features.agent_governance.router import router as agent_governance_router
+import app.core.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
+from app.llm.tracing import flush_langfuse
+from app.agents.router import router as agent_router
+from app.platform.agent_governance.router import router as agent_governance_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
-from app.features.environment_configuration.router import router as environments_router
-from app.features.mock_management.router import router as mock_management_router
-from app.features.mock_management.runtime_router import router as mock_runtime_router
-from app.features.model_configuration.router import router as model_configs_router
-from app.features.notifications.router import router as notifications_router
-from app.features.notifications.channel_router import router as notification_channel_router
-from app.features.organizations.router import router as organizations_router
-from app.features.projects.router import router as projects_router
+from app.platform.environment_configuration.router import router as environments_router
+from app.features.mocking.router import router as mock_management_router
+from app.features.mocking.runtime_router import router as mock_runtime_router
+from app.platform.model_configuration.router import router as model_configs_router
+from app.platform.notifications.router import router as notifications_router
+from app.platform.notifications.channel_router import router as notification_channel_router
+from app.platform.organizations.router import router as organizations_router
+from app.platform.projects.router import router as projects_router
 from app.features.reports.router import router as reports_router
 from app.features.security_testing.router import router as security_testing_router
+from app.features.security_testing.zap.router import router as zap_router
+from app.features.security_testing.zap.worker import ScanWorker
 from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
-from app.features.tasks.router import router as tasks_router
-from app.features.tasks.runtime.worker import TaskWorker
-from app.features.users.admin import router as users_admin_router
-from app.features.users.auth import router as auth_router
-from app.features.web_ui.router import router as web_ui_router
-from app.shared.config import settings
-from app.shared.database import Base, engine
-from app.shared.errors import register_exception_handlers
-from app.shared.request_context import (
+from app.orchestration.tasks.router import router as tasks_router
+from app.orchestration.tasks.runtime.worker import TaskWorker
+from app.platform.users.admin import router as users_admin_router
+from app.platform.users.auth import router as auth_router
+from app.features.web_testing.router import router as web_ui_router
+from app.core.config import settings
+from app.core.database.base import Base
+from app.core.database.session import engine
+from app.core.http.errors import register_exception_handlers
+from app.core.http.request_context import (
     configure_logging,
     request_id_context,
     resolve_request_id,
 )
 
-# 本模块的日志统一走这里，输出格式与 request_id 注入由 app.shared.request_context 配置。
+# 本模块的日志统一走这里，输出格式与 request_id 注入由 app.core.http.request_context 配置。
 logger = logging.getLogger(__name__)
 task_worker = TaskWorker()
+scan_worker = ScanWorker()
 
 # 业务路由统一挂在 /api/v1 下；新增路由时必须走 include_router(prefix=API_PREFIX)，不要另起前缀。
 API_PREFIX = "/api/v1"
@@ -95,18 +99,38 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             logger.info("AUTO_CREATE_SCHEMA 已开启，create_all 完成（连接探测：%s）", probe)
         finally:
             session.close()
-    # 任务工作项、租约与命令已持久化，应用重启后由同一调度器安全续跑。
-    task_worker.start()
-    yield
-    # 把 Langfuse 队列里未上报的 trace 推送出去（no-throw），
-    # 最后回收连接池，避免 gunicorn worker 反复退出时留下半开连接
-    task_worker.stop()
-    # 本进程拥有的浏览器句柄必须随服务退出释放，重启后不能假称恢复。
-    from app.features.web_ui.runtime.session_manager import registry
-    registry.close_all()
-    flush_langfuse()
-    engine.dispose()
-    logger.info("应用已停止")
+    from app.execution.browser.session_manager import configure_stale_session_callback
+    from app.features.web_testing.services.runtime_lifecycle_service import mark_session_closed_by_runtime
+    configure_stale_session_callback(mark_session_closed_by_runtime)
+    started_workers = []
+    try:
+        # 先登记启动责任，确保 start() 部分启动后抛错时 finally 仍会释放 Worker。
+        started_workers.append(task_worker)
+        task_worker.start()
+        if settings.ZAP_ENABLED:
+            started_workers.append(scan_worker)
+            scan_worker.start()
+        yield
+    finally:
+        # 反向关闭可避免退出阶段仍有任务调度器提交新的扫描任务。
+        for worker in reversed(started_workers):
+            try:
+                worker.stop()
+            except Exception:  # noqa: BLE001 - 一个 Worker 关闭失败不能阻断其余资源释放
+                logger.exception("后台 Worker 关闭失败")
+        # 本进程拥有的浏览器句柄必须随服务退出释放，重启后不能假称恢复。
+        from app.execution.browser.session_manager import registry
+        try:
+            registry.close_all()
+        except Exception:  # noqa: BLE001 - 继续刷新追踪并回收连接池
+            logger.exception("浏览器会话关闭失败")
+        try:
+            flush_langfuse()
+        except Exception:  # noqa: BLE001 - 应用关闭时仍须释放数据库连接池
+            logger.exception("Langfuse 队列刷新失败")
+        finally:
+            engine.dispose()
+            logger.info("应用已停止")
 
 
 def create_app() -> FastAPI:
@@ -205,6 +229,8 @@ def create_app() -> FastAPI:
     application.include_router(web_ui_router, prefix=API_PREFIX)
     # Security Testing：只改请求与解释结果，执行仍走现有 RunService（开发计划 §16.1）。
     application.include_router(security_testing_router, prefix=API_PREFIX)
+    # ZAP 管理面与扫描任务 Worker 分离装配，维持统一 API 前缀和审批入口。
+    application.include_router(zap_router, prefix=API_PREFIX)
     # Mock Management：管理面（需平台 JWT）与执行面（X-Mock-Token）分离（§十四）。
     # 执行面 router 自带 prefix=/mock，catch-all 挂在 /api/v1/mock 下，必须最后装配，
     # 避免其 {path:path} 吞掉其它路由（/mock/ 与 /mock-services/ 不冲突）。

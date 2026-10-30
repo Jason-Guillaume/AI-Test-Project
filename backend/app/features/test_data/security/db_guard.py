@@ -19,8 +19,8 @@ import re
 
 from app.features.test_data.models.connection import DatabaseAccessPolicy
 from app.features.test_data.schemas import DB_OPERATIONS, RISK_LEVELS
-from app.models.configuration import Environment
-from app.shared.errors import (
+from app.core.models.configuration import Environment
+from app.core.http.errors import (
     CODE_DATABASE_ENVIRONMENT_FORBIDDEN,
     CODE_DATABASE_OPERATION_FORBIDDEN,
     CODE_DATABASE_TABLE_NOT_ALLOWED,

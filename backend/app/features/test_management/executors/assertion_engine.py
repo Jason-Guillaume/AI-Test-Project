@@ -9,81 +9,15 @@
 
 operator ∈ {EQ, NE, GT, GE, LT, LE, IN, CONTAINS, EXISTS, NOT_EXISTS}。
 
-JSONPath 提取复用 business.executors.mapping_resolver._jsonpath_extract（§29 复用契约），
-不重新实现 JSONPath 解析。
+JSONPath 提取与 Web 比较使用 core.expressions 公开基础能力；断言类型与通过结论仍归本模块。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from app.features.business.executors.mapping_resolver import _jsonpath_extract as jsonpath_extract
-
-
-def _coerce_num(value: Any) -> float | None:
-    """尝试转为数值；失败返回 None。"""
-    if value is None:
-        return None
-    if isinstance(value, bool):
-        return float(value)
-    if isinstance(value, (int, float)):
-        return float(value)
-    try:
-        return float(str(value).strip())
-    except (ValueError, TypeError):
-        return None
-
-
-def evaluate_operator(actual: Any, expected: Any, operator: str) -> bool:
-    """按操作符比较 actual 与 expected。
-
-    - EQ/NE/IN/CONTAINS：字符串归一比较（与 precondition_evaluator 口径一致）。
-    - GT/GE/LT/LE：数值比较（无法转数值时退化为字符串比较）。
-    - EXISTS/NOT_EXISTS：基于 actual 是否为 None。
-    """
-    op = (operator or "EQ").upper()
-    actual_str = "" if actual is None else str(actual)
-    expected_str = "" if expected is None else str(expected)
-
-    if op == "EXISTS":
-        return actual is not None
-    if op == "NOT_EXISTS":
-        return actual is None
-
-    if op in ("GT", "GE", "LT", "LE"):
-        a_num = _coerce_num(actual)
-        e_num = _coerce_num(expected)
-        if a_num is not None and e_num is not None:
-            if op == "GT":
-                return a_num > e_num
-            if op == "GE":
-                return a_num >= e_num
-            if op == "LT":
-                return a_num < e_num
-            return a_num <= e_num
-        # 退化：字符串比较。
-        if op == "GT":
-            return actual_str > expected_str
-        if op == "GE":
-            return actual_str >= expected_str
-        if op == "LT":
-            return actual_str < expected_str
-        return actual_str <= expected_str
-
-    if op == "EQ":
-        return actual_str == expected_str
-    if op == "NE":
-        return actual_str != expected_str
-    if op == "IN":
-        # 多值用逗号分隔。
-        candidates = [c.strip() for c in expected_str.split(",") if c.strip()]
-        return actual_str in candidates
-    if op == "CONTAINS":
-        return expected_str in actual_str
-    if op == "NOT_EXISTS":
-        return actual is None
-    # 未知操作符默认 EQ。
-    return actual_str == expected_str
+from app.core.expressions.operators import evaluate_operator
+from app.core.expressions.paths import extract_jsonpath
 
 
 def _extract_actual(response: dict[str, Any], assertion: dict[str, Any]) -> Any:
@@ -104,7 +38,7 @@ def _extract_actual(response: dict[str, Any], assertion: dict[str, Any]) -> Any:
         path = assertion.get("path") or ""
         if not path:
             return None
-        return jsonpath_extract(body, path) if body is not None else None
+        return extract_jsonpath(body, path) if body is not None else None
     if atype in ("CONTAINS", "NOT_CONTAINS"):
         return response.get("raw_body") or ""
     return None

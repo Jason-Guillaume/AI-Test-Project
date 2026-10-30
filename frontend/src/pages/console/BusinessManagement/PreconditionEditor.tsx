@@ -4,10 +4,11 @@ import { useState } from 'react';
 import { App, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
 import { PRECONDITION_OPERATOR_OPTIONS, PRECONDITION_TYPE_OPTIONS } from './constants';
-import type { BusinessActionDetail, BusinessPrecondition, BusinessPreconditionCreate, BusinessPreconditionUpdate } from '@/types';
+import type { BusinessActionDetail, BusinessPrecondition, BusinessPreconditionCreate, BusinessPreconditionUpdate } from '@/features/business/contracts';
+
 
 const PRECONDITION_TYPE_LABELS: Record<string, { color: string; text: string }> = {
   VARIABLE: { color: 'blue', text: '变量' },
@@ -167,14 +168,14 @@ function PreconditionFormModal({
   return (
     <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnClose width={540}>
       <Form<BusinessPreconditionCreate> form={form} layout="vertical" initialValues={{ type: 'VARIABLE', operator: 'EQ' }}>
-        <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+        <div className="form-field-row">
           <Form.Item name="type" label="类型" style={{ flex: 1, margin: 0 }}>
             <Select options={PRECONDITION_TYPE_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="operator" label="运算符" style={{ flex: 1, margin: 0 }}>
             <Select options={PRECONDITION_OPERATOR_OPTIONS} style={{ width: '100%' }} />
           </Form.Item>
-        </Space>
+        </div>
         <Form.Item name="target" label="目标（变量名/状态/业务条件）" rules={[{ required: true, message: '请输入目标' }]}>
           <Input maxLength={200} placeholder="如 project_id、task.status" />
         </Form.Item>

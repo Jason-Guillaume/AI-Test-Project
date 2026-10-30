@@ -31,7 +31,7 @@ from app.features.security_testing.zap.contracts import (
 )
 from app.features.security_testing.zap.models.auth_profile import SecurityScanAuthProfile
 from app.features.security_testing.zap.services import auth_profile_service
-from app.shared.config import settings
+from app.core.config import settings
 
 log = logging.getLogger(__name__)
 

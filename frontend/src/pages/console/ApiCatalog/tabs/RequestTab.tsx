@@ -4,18 +4,13 @@ import { useEffect, useState } from 'react';
 import { App, Button, Card, Checkbox, Input, Select, Space, Table, Typography } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { BODY_TYPE_OPTIONS, PARAM_LOCATION_OPTIONS } from '../constants';
 import { JsonView } from '../JsonView';
-import type {
-  ApiBodyIn,
-  ApiInterfaceDetail,
-  ApiParameterIn,
-  BodyType,
-  ParamLocation,
-} from '@/types';
+import type { ApiBodyIn, ApiInterfaceDetail, ApiParameterIn, BodyType, ParamLocation } from '@/features/api-catalog/contracts';
+
 
 // 参数本地编辑态：ApiParameterIn 去掉 schema_json（独立处理）+ schema_text 文本。
 interface ParamRow {

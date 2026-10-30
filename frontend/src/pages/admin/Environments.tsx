@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 环境与目标服务配置：保留项目作用域与目标授权规则（写操作仅平台管理员）。
 import {
   App,
@@ -13,22 +13,21 @@ import {
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { projectsApi } from '@/api/projects';
-import {
-  environmentsApi,
-  type EnvironmentUpdate,
-  type ProjectEnvironmentCreate,
-} from '@/api/environments';
-import type { Environment, Paginated } from '@/types';
+import { projectsApi } from '@/features/projects/api/projects';
+import { environmentsApi } from '@/features/environments/api/environments';
+import type { EnvironmentUpdate, ProjectEnvironmentCreate } from '@/features/environments/contracts';
+import type { Environment } from '@/features/environments/contracts';
+import type { Paginated } from '@/shared/api/contracts';
+
 import {
   EmptyState,
   ErrorState,
   LoadingState,
   PageContainer,
-} from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { getErrorMessage } from '@/api/client';
-import { PageHeader } from '@/components/PageHeader';
+} from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 /**
  * 环境与目标服务配置页。
@@ -184,7 +183,7 @@ export function AdminEnvironmentsPage() {
   return (
     <PageContainer>
       <PageHeader title="环境配置" subtitle="按项目隔离执行环境与目标服务" />
-      <Space
+      <Space wrap className="ui-list-toolbar"
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
         <Select

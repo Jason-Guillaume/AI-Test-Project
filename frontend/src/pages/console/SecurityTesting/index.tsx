@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 安全测试页（用户控制台）。
 //
 // 四个 Tab：概览 / 策略与规则 / 安全用例 / 疑似问题。
@@ -16,10 +16,10 @@ import { collectPages } from '@/api/pagination';
 import { Button, Card, Col, Empty, Row, Spin, Statistic, Tabs, Tag, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { securityApi } from '@/api/securityTesting';
-import { ErrorState, EmptyState, PageContainer } from '@/components/PageState';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { securityApi } from '@/features/security-testing/api/securityTesting';
+import { ErrorState, EmptyState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import {
   COVERAGE_OPTIONS,
   categoryToCoverage,
@@ -152,18 +152,18 @@ function OverviewTab({ projectId }: { projectId: number }) {
 
   return (
     <div>
-      <Row gutter={16}>
-        <Col span={6}>
+      <Row gutter={[16, 16]}>
+        <Col xs={12} lg={6}>
           <Card size="small">
             <Statistic title="安全用例" value={casesQuery.data?.total ?? cases.length} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} lg={6}>
           <Card size="small">
             <Statistic title="覆盖接口" value={coveredApis} suffix={`/ ${apiTotal}`} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} lg={6}>
           <Card size="small">
             <Statistic
               title="待处理疑似问题"
@@ -172,7 +172,7 @@ function OverviewTab({ projectId }: { projectId: number }) {
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={12} lg={6}>
           <Card size="small">
             <Statistic
               title="高危 / 严重"

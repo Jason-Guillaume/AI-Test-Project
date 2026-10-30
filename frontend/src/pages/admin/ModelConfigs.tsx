@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 模型配置：配置维护、启停、默认项、供应商目录。
 // API Key 只写入不回读；编辑时留空表示保留原密钥。
 import {
@@ -22,22 +22,20 @@ import {
 import { DeleteOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import {
-  modelConfigsApi,
-  type ModelConfigurationCreate,
-  type ModelConfigurationListQuery,
-  type ModelConfigurationUpdate,
-} from '@/api/modelConfigs';
-import type { ModelConfiguration, Paginated } from '@/types';
+import { modelConfigsApi } from '@/features/model-configuration/api/modelConfigs';
+import type { ModelConfigurationCreate, ModelConfigurationListQuery, ModelConfigurationUpdate } from '@/features/model-configuration/contracts';
+import type { ModelConfiguration } from '@/features/model-configuration/contracts';
+import type { Paginated } from '@/shared/api/contracts';
+
 import {
   ErrorState,
   EmptyState,
   LoadingState,
   PageContainer,
-} from '@/components/PageState';
-import { type PaginationState } from '@/components/ResourceTable';
-import { getErrorMessage } from '@/api/client';
-import { PageHeader } from '@/components/PageHeader';
+} from '@/shared/ui/PageState';
+import { type PaginationState } from '@/shared/ui/ResourceTable';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 /**
  * 模型配置管理页。

@@ -5,7 +5,8 @@ import { useMemo } from 'react';
 import { Empty, Input, Tree } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { FIXTURE_STATUS_OPTIONS, labelOf } from './constants';
-import type { FixtureBrief, FixtureStatus } from '@/types';
+import type { FixtureBrief, FixtureStatus } from '@/features/test-data/contracts';
+
 
 /** 把列表按 entity_type 分组并转成 antd Tree DataNode。 */
 function buildTreeData(briefs: FixtureBrief[], keyword: string): DataNode[] {

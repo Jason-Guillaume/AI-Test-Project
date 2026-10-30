@@ -290,7 +290,7 @@ class TestConnectorBasics:
             """模拟 ZAP 传输层抛出异常。"""
             raise ZAPTransportError("ZAP 连接失败", path="/JSON/core/about")
 
-        monkeypatch.setattr(connector._transport, "request", boom)
+        monkeypatch.setattr(connector._state.transport, "request", boom)
         with pytest.raises(ZAPConnectorError) as excinfo:
             connector.check_health()
         assert excinfo.value.reason == ZAP_REASON_UNAVAILABLE
@@ -305,7 +305,7 @@ class TestConnectorBasics:
             """模拟 ZAP 传输层抛出异常。"""
             raise RuntimeError("底层崩溃")
 
-        monkeypatch.setattr(connector._transport, "request", boom)
+        monkeypatch.setattr(connector._state.transport, "request", boom)
         with pytest.raises(ZAPConnectorError) as excinfo:
             connector.check_health()
         assert "RuntimeError" in excinfo.value.message
@@ -366,7 +366,7 @@ class TestConnectorBasics:
     def test_capability_probe_never_mutates_state(self):
         """能力探测必须全部只读——探测本身不该启动一次爬取。"""
         connector = make_connector()
-        transport = connector._transport
+        transport = connector._state.transport
         connector.get_capabilities()
         assert transport._alerts == []
         assert transport._requests_made == 0
@@ -394,7 +394,7 @@ class TestScopeAndContext:
             include_paths=["/users"],
             exclude_paths=["/logout", "/delete"],
         )
-        transport = connector._transport
+        transport = connector._state.transport
         assert transport.in_scope == ["test.example.com"]
         assert any("/users" in r for r in transport.in_scope_regex)
         assert len(transport.excluded_regex) == 2
@@ -403,13 +403,13 @@ class TestScopeAndContext:
         """验证应用范围`defaults`到`base``host`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL)
-        assert connector._transport.in_scope == ["test.example.com"]
+        assert connector._state.transport.in_scope == ["test.example.com"]
 
     def test_apply_scope_escapes_regex_metacharacters(self):
         """验证应用范围`escapes``regex``metacharacters`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL, exclude_paths=["/a.b(c)", "/x*"])
-        joined = "|".join(connector._transport.excluded_regex)
+        joined = "|".join(connector._state.transport.excluded_regex)
         # 点号、括号、星号都必须被转义，否则用户输入会被当成正则执行。
         assert r"\." in joined
         assert r"\(" in joined
@@ -425,14 +425,14 @@ class TestScopeAndContext:
         """验证创建扫描上下文`prefix``mode`场景及其预期结果。"""
         connector = make_connector()
         connector.create_scan_context(host_pattern=".example.com")
-        assert connector._transport.in_scope_prefix == [".example.com"]
-        assert connector._transport.in_scope == []
+        assert connector._state.transport.in_scope_prefix == [".example.com"]
+        assert connector._state.transport.in_scope == []
 
     def test_create_scan_context_exact_mode(self):
         """验证创建扫描上下文`exact``mode`场景及其预期结果。"""
         connector = make_connector()
         connector.create_scan_context(host_pattern="test.example.com")
-        assert connector._transport.in_scope == ["test.example.com"]
+        assert connector._state.transport.in_scope == ["test.example.com"]
 
     def test_scope_blocks_out_of_scope_requests(self):
         """范围校验在出站前完成：请求不会到达 ZAP，也不会留下任何扫描产物。"""
@@ -442,8 +442,8 @@ class TestScopeAndContext:
             connector.start_spider("https://other.example/")
         assert excinfo.value.reason == ZAP_REASON_SCOPE_VIOLATION
         # 没有发出任何扫描请求，因此也不会有发现与告警。
-        assert connector._transport.spider_running is False
-        assert connector._transport._spider_pages == []
+        assert connector._state.transport.spider_running is False
+        assert connector._state.transport._spider_pages == []
         assert connector.list_urls() == []
         assert connector.get_alerts() == []
 
@@ -459,7 +459,7 @@ class TestScopeAndContext:
         """验证`excluded``paths`是否为不`scanned`场景及其预期结果。"""
         connector = make_connector()
         connector.apply_scope(base_url=BASE_URL, allowed_hosts=["test.example.com"])
-        world = connector._transport.world
+        world = connector._state.transport.world
         world.endpoints.append(MockEndpoint("/payment", active_rule_ids=[30001]))
         scan_id = connector.start_active_scan(BASE_URL, excluded_paths=["/payment"])
         assert scan_id == "1"
@@ -474,7 +474,7 @@ class TestScopeAndContext:
         connector.start_spider(BASE_URL)
         assert connector.get_alerts()
         connector.clean_scan_context()
-        transport = connector._transport
+        transport = connector._state.transport
         assert connector.get_alerts() == []
         assert connector.list_urls() == []
         assert transport.in_scope == []
@@ -531,9 +531,9 @@ class TestAuthentication:
         connector = make_connector()
         connector.configure_authentication(bear_auth())
         # 连接器只记能力位，不保留值。
-        assert connector._has_session_value is True
+        assert connector._state.has_session_value is True
         assert JWT not in repr(connector)
-        assert JWT not in str(connector._auth_mode)
+        assert JWT not in str(connector._state.auth_mode)
 
     def test_browser_session_established_true_for_cookie_based(self):
         """验证浏览器会话`established``true`用于`cookie``based`场景及其预期结果。"""
@@ -595,7 +595,7 @@ class TestAuthentication:
         connector.clean_scan_context()
         ok, _ = connector.browser_session_established()
         assert ok is False
-        assert connector._has_session_value is False
+        assert connector._state.has_session_value is False
 
 
 # --------------------------------------------------------------------------- 爬虫与被动扫描
@@ -608,7 +608,7 @@ class TestSpidersAndPassive:
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
         connector.wait_passive_scan(5)
-        pages = connector._transport._spider_pages
+        pages = connector._state.transport._spider_pages
         assert pages
         assert not any("/app/" in p for p in pages)
         assert not any("/api/v1/" in p for p in pages)
@@ -626,7 +626,7 @@ class TestSpidersAndPassive:
         })
         connector.start_client_spider(BASE_URL, max_depth=6)
         connector.wait_passive_scan(5)
-        visited = connector._transport.browser_pages_visited
+        visited = connector._state.transport.browser_pages_visited
         assert any("/app/dashboard" in p for p in visited)
         # XHR/Fetch 采集：页面内发起的请求也会被访问到。
         assert any("/api/v1/dashboard" in p for p in visited)
@@ -639,17 +639,17 @@ class TestSpidersAndPassive:
         assert result.status == AUTH_STATUS_LOGGED_IN  # API 侧认证是成功的
         connector.start_client_spider(BASE_URL, max_depth=6)
         connector.wait_passive_scan(5)
-        assert connector._transport.browser_pages_visited == []
+        assert connector._state.transport.browser_pages_visited == []
         assert connector.list_urls() == []
 
     def test_client_spider_with_manual_login_reaches_business_pages(self):
         """§十三：人工扫码后浏览器有会话，业务页面才可达。"""
         connector = make_connector()
         apply_default_scope(connector)
-        connector._transport.set_browser_login(True)
+        connector._state.transport.set_browser_login(True)
         connector.start_client_spider(BASE_URL, max_depth=6)
         connector.wait_passive_scan(5)
-        visited = connector._transport.browser_pages_visited
+        visited = connector._state.transport.browser_pages_visited
         assert any("/app/orders" in p for p in visited)
 
     def test_client_spider_depth_limit(self):
@@ -666,12 +666,12 @@ class TestSpidersAndPassive:
         shallow.apply_scope(base_url=BASE_URL)
         shallow.configure_authentication(cookie_auth)
         shallow.start_client_spider(BASE_URL, max_depth=1)
-        assert shallow._transport.browser_pages_visited == [BASE_URL + "/app/home"]
+        assert shallow._state.transport.browser_pages_visited == [BASE_URL + "/app/home"]
         deep = make_connector(world)
         deep.apply_scope(base_url=BASE_URL)
         deep.configure_authentication(cookie_auth)
         deep.start_client_spider(BASE_URL, max_depth=6)
-        assert any("/api/hidden" in p for p in deep._transport.browser_pages_visited)
+        assert any("/api/hidden" in p for p in deep._state.transport.browser_pages_visited)
 
     def test_client_spider_page_count_limit(self):
         """验证客户端爬虫页面统计上限场景及其预期结果。"""
@@ -682,7 +682,7 @@ class TestSpidersAndPassive:
             "session_header": "Cookie", "session_name": "session", "session_value": "s=1",
         })
         connector.start_client_spider(BASE_URL, max_depth=6, page_count=2)
-        assert len(connector._transport.browser_pages_visited) == 2
+        assert len(connector._state.transport.browser_pages_visited) == 2
 
     def test_client_spider_target_regex_filters(self):
         """验证客户端爬虫目标`regex``filters`场景及其预期结果。"""
@@ -693,7 +693,7 @@ class TestSpidersAndPassive:
             "session_header": "Cookie", "session_name": "session", "session_value": "s=1",
         })
         connector.start_client_spider(BASE_URL, max_depth=6, target_regex=r"/app/dashboard")
-        visited = connector._transport.browser_pages_visited
+        visited = connector._state.transport.browser_pages_visited
         assert visited and all("/app/dashboard" in p for p in visited)
 
     def test_client_spider_missing_component_raises_plugin_missing(self):
@@ -726,9 +726,9 @@ class TestSpidersAndPassive:
         connector = make_connector(MockZAPWorld(base_host=BASE_URL, simulate_hang=True))
         apply_default_scope(connector)
         connector.start_spider(BASE_URL)
-        assert connector._transport.spider_running is True
+        assert connector._state.transport.spider_running is True
         connector.stop_scan([])
-        assert connector._transport.spider_running is False
+        assert connector._state.transport.spider_running is False
 
     def test_spider_rejects_url_outside_scope(self):
         """验证爬虫拒绝URL`outside`范围场景及其预期结果。"""
@@ -768,12 +768,12 @@ class TestActiveScan:
             request_delay_ms=999999,
             max_alerts_per_rule=99999,
         )
-        policy = connector._transport.attack_policy
+        policy = connector._state.transport.attack_policy
         assert policy["maxDurationInMinutes"] == ACTIVE_MAX_DURATION_HARD_CAP
         assert policy["maxRuleDurationInMinutes"] == ACTIVE_MAX_RULE_DURATION_HARD_CAP
         assert policy["concurrency"] == str(ACTIVE_MAX_CONCURRENCY_HARD_CAP)
         assert policy["requestTimingInMs"] == 2000
-        assert connector._transport.scan_policy["maxAlertsPerRule"] == ACTIVE_MAX_ALERTS_PER_RULE_HARD_CAP
+        assert connector._state.transport.scan_policy["maxAlertsPerRule"] == ACTIVE_MAX_ALERTS_PER_RULE_HARD_CAP
 
     def test_only_selected_rules_are_enabled(self):
         """验证仅`selected``rules`是否为启用状态场景及其预期结果。"""
@@ -781,7 +781,7 @@ class TestActiveScan:
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
         connector.start_active_scan(BASE_URL, selected_rule_ids=["30001", "60001"])
-        assert connector._transport.ascan_enabled == {"30001", "60001"}
+        assert connector._state.transport.ascan_enabled == {"30001", "60001"}
 
     def test_all_default_rules_enabled_when_no_selection(self):
         """验证`all`默认`rules`启用状态当无`selection`场景及其预期结果。"""
@@ -789,15 +789,15 @@ class TestActiveScan:
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
         connector.start_active_scan(BASE_URL)
-        assert len(connector._transport.ascan_enabled) > 1
-        assert "30001" in connector._transport.ascan_enabled
+        assert len(connector._state.transport.ascan_enabled) > 1
+        assert "30001" in connector._state.transport.ascan_enabled
 
     def test_excluded_paths_are_not_active_scanned(self):
         """验证`excluded``paths`是否为不启用状态`scanned`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
         connector.configure_authentication(bear_auth())
-        world = connector._transport.world
+        world = connector._state.transport.world
         world.endpoints.append(MockEndpoint("/payment/transfer", active_rule_ids=[60001]))
         connector.start_active_scan(BASE_URL, selected_rule_ids=["60001"], excluded_paths=["/payment"])
         assert not any("/payment" in a.url for a in connector.get_alerts())
@@ -814,7 +814,7 @@ class TestActiveScan:
         """验证启用状态扫描被拒绝当`attack``disabled`场景及其预期结果。"""
         connector = make_connector()
         apply_default_scope(connector)
-        connector._transport.attack_policy["attackEnabled"] = False
+        connector._state.transport.attack_policy["attackEnabled"] = False
         with pytest.raises(ZAPConnectorError) as excinfo:
             connector.start_active_scan(BASE_URL)
         assert excinfo.value.reason == ZAP_REASON_ACTIVE_FAILED
@@ -831,15 +831,15 @@ class TestActiveScan:
         connector = make_connector()
         apply_default_scope(connector)
         connector.start_active_scan(BASE_URL, max_duration=0, max_concurrency=0)
-        assert connector._transport.attack_policy["maxDurationInMinutes"] >= 1
-        assert connector._transport.attack_policy["concurrency"] == "1"
+        assert connector._state.transport.attack_policy["maxDurationInMinutes"] >= 1
+        assert connector._state.transport.attack_policy["concurrency"] == "1"
 
     def test_set_active_scan_limits_also_clamps(self):
         """验证设置启用状态扫描`limits``also``clamps`场景及其预期结果。"""
         connector = make_connector()
         connector.set_active_scan_limits(max_duration=9999, max_rule_duration=0,
                                          max_concurrency=9999, request_delay_ms=-5)
-        policy = connector._transport.attack_policy
+        policy = connector._state.transport.attack_policy
         assert policy["maxDurationInMinutes"] == ACTIVE_MAX_DURATION_HARD_CAP
         assert policy["maxRuleDurationInMinutes"] >= 1
         assert policy["concurrency"] == str(ACTIVE_MAX_CONCURRENCY_HARD_CAP)
@@ -852,7 +852,7 @@ class TestActiveScan:
         connector.configure_authentication(bear_auth())
         scan_id = connector.start_active_scan(BASE_URL, selected_rule_ids=["30001"])
         connector.stop_scan([scan_id])
-        assert connector._scan_ids == []
+        assert connector._state.scan_ids == []
 
     def test_progress_is_not_running_when_scan_finished(self):
         """验证`progress`是否不`running`当扫描`finished`场景及其预期结果。"""
@@ -872,7 +872,7 @@ class TestAlertsAndStatistics:
     def test_alert_fields_are_mapped(self):
         """验证告警`fields`是否为`mapped`场景及其预期结果。"""
         connector = make_connector()
-        connector._transport.seed_raw_alert({
+        connector._state.transport.seed_raw_alert({
             "id": "30001",
             "alert": "Path Traversal",
             "risk": "High",
@@ -905,7 +905,7 @@ class TestAlertsAndStatistics:
     def test_alert_evidence_is_redacted(self):
         """验证告警`evidence`是否`redacted`场景及其预期结果。"""
         connector = make_connector()
-        connector._transport.seed_raw_alert({
+        connector._state.transport.seed_raw_alert({
             "id": "60103",
             "alert": "Reflected XSS",
             "risk": "Medium",
@@ -921,7 +921,7 @@ class TestAlertsAndStatistics:
     def test_alert_url_credentials_are_redacted(self):
         """验证告警URL`credentials`是否为`redacted`场景及其预期结果。"""
         connector = make_connector()
-        connector._transport.seed_raw_alert({
+        connector._state.transport.seed_raw_alert({
             "id": "10021",
             "alert": "Server Version Leak",
             "risk": "Informational",
@@ -937,7 +937,7 @@ class TestAlertsAndStatistics:
     def test_alert_confidence_is_preserved_not_merged(self):
         """Confidence 与 Severity 是两个维度，不能被合并或改写。"""
         connector = make_connector()
-        connector._transport.seed_raw_alert({
+        connector._state.transport.seed_raw_alert({
             "id": "10021", "alert": "Leak", "risk": "High", "confidence": "1",
             "url": BASE_URL + "/", "method": "GET",
         })
@@ -950,7 +950,7 @@ class TestAlertsAndStatistics:
         connector = make_connector()
         for risk, rule in (("High", "60001"), ("Medium", "40015"), ("Low", "10010"),
                            ("Informational", "10021"), ("Bogus", "99999")):
-            connector._transport.seed_raw_alert({
+            connector._state.transport.seed_raw_alert({
                 "id": rule, "alert": "r", "risk": risk, "confidence": "3",
                 "url": BASE_URL + "/", "method": "GET",
             })
@@ -960,9 +960,9 @@ class TestAlertsAndStatistics:
     def test_alert_filter_by_rule_ids(self):
         """验证告警筛选条件按规则`ids`场景及其预期结果。"""
         connector = make_connector()
-        connector._transport.seed_raw_alert({"id": "1", "alert": "A", "risk": "Low", "confidence": "3",
+        connector._state.transport.seed_raw_alert({"id": "1", "alert": "A", "risk": "Low", "confidence": "3",
                                             "url": BASE_URL, "method": "GET"})
-        connector._transport.seed_raw_alert({"id": "2", "alert": "B", "risk": "High", "confidence": "3",
+        connector._state.transport.seed_raw_alert({"id": "2", "alert": "B", "risk": "High", "confidence": "3",
                                             "url": BASE_URL, "method": "GET"})
         only = connector.get_alerts(rule_ids=["2"])
         assert [a.rule_id for a in only] == ["2"]
@@ -1016,7 +1016,7 @@ class TestAlertsAndStatistics:
     def test_list_urls_redacts_credentials(self):
         """验证列出`urls``redacts``credentials`场景及其预期结果。"""
         connector = make_connector()
-        connector._transport._urls.add(f"https://test.example.com/cb?token={JWT}&x=1")
+        connector._state.transport._urls.add(f"https://test.example.com/cb?token={JWT}&x=1")
         urls = connector.list_urls()
         assert JWT not in urls[0]
         assert "token=******" in urls[0]
@@ -1040,7 +1040,7 @@ class TestAlertsAndStatistics:
         connector = make_connector()
         result = connector.import_openapi('{"openapi": "3.0.3"}', file_name="spec.json")
         assert "openapi_id" in result
-        assert connector._transport.openapi_imports[0]["size"] > 0
+        assert connector._state.transport.openapi_imports[0]["size"] > 0
 
     def test_passive_rules_are_listable(self):
         """验证`passive``rules`是否为`listable`场景及其预期结果。"""
@@ -1055,7 +1055,7 @@ class TestAlertsAndStatistics:
         connector.configure_authentication(bear_auth())
         connector.start_active_scan(BASE_URL, selected_rule_ids=["30001"])
         connector.stop_scan([])
-        assert connector._scan_ids == []
+        assert connector._state.scan_ids == []
 
 
 # --------------------------------------------------------------------------- 契约层工具
@@ -1121,7 +1121,7 @@ class TestContracts:
         """告警 URL 里带凭据参数时，ZAP 侧与 Connector 侧都必须抹掉值。"""
         connector = make_connector()
         apply_default_scope(connector)
-        world = connector._transport.world
+        world = connector._state.transport.world
         world.endpoints.append(MockEndpoint("/cb", query_params=["token"],
                                            passive_rule_ids=[10021]))
         connector.start_spider(BASE_URL)
@@ -1156,4 +1156,4 @@ class TestMockWorldConfig:
         connector.stop_scan([])
         connector.clean_scan_context()
         # 没有 httpx 客户端被创建，也就没有出站连接。
-        assert connector._transport.fail_with is None
+        assert connector._state.transport.fail_with is None

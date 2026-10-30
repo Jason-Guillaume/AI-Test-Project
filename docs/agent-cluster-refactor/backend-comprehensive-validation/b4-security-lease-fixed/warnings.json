@@ -1,0 +1,104 @@
+[
+  {
+    "category": "DeprecationWarning",
+    "message": "The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.",
+    "nodeid": "",
+    "when": "config"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_25_security_execution.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_25_security_execution.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestStep' because it has a __init__ constructor (from: tests/test_25_security_execution.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalParameter\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalBody\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiParameterIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiBodyIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiResponseIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiParameterResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiRequestBodyResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiResponseResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema\" in \"ImportPreviewItem\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_26_security_agent_report.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "PytestCollectionWarning",
+    "message": "cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_26_security_agent_report.py)",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "DeprecationWarning",
+    "message": "'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.",
+    "nodeid": "tests/test_25_security_execution.py::TestSecurityApi::test_finding_status_transition_matrix",
+    "when": "runtest"
+  }
+]

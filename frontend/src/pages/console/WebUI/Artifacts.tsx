@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react';
 import { App, Button, Empty, Image, Modal, Space, Table, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { webUIApi } from '@/api/webUI';
-import { getErrorMessage } from '@/api/client';
-import type { WebArtifact } from '@/types';
+import { webUIApi } from '@/features/web-testing/api/webUI';
+import { getErrorMessage } from '@/shared/api/client';
+import type { WebArtifact } from '@/features/web-testing/contracts';
+
 
 /** 展示历史或报告中的截图、Trace 与步骤日志；原始凭据不会进入此组件。 */
 export function WebArtifacts({ snapshot }: { snapshot: unknown }) {

@@ -152,13 +152,13 @@ class StubServer:
 
 def _admin_id(db):
     """查询平台管理员用户标识。"""
-    from app.models.identity import User
+    from app.core.models.identity import User
     return db.query(User).filter(User.username == "platform_admin").first().id
 
 
 def _make_env(db, base_url, admin_id, name=None):
     """构造`env`。"""
-    from app.models.configuration import Environment
+    from app.core.models.configuration import Environment
     env = Environment(
         name=name or unique("env"), display_name="stub env",
         base_url=base_url, gateway_prefix="", default_headers={},
@@ -173,7 +173,7 @@ def _make_env(db, base_url, admin_id, name=None):
 
 def _whitelist(db, project_id, port, admin_id):
     """为项目添加允许访问的测试目标。"""
-    from app.models.project import ProjectOutboundTarget
+    from app.core.models.project import ProjectOutboundTarget
     db.add(ProjectOutboundTarget(
         project_id=project_id, scheme="http", host="127.0.0.1", port=port,
         is_production=False, enabled=True, approved_by=admin_id,
@@ -226,9 +226,9 @@ def _create_case(api, admin, project_id, *, name, target_type="API", api_id=None
 
 def _build_plan_with_cases(api, admin, project_id, case_ids, env_id):
     """构建计划包含`cases`，确保测试环境已绑定到目标项目。"""
-    from app.models.configuration import Environment
-    from app.models.project_environment import ProjectEnvironment
-    from app.shared.database import SessionLocal
+    from app.core.models.configuration import Environment
+    from app.platform.environment_configuration.models import ProjectEnvironment
+    from app.core.database.session import SessionLocal
     with SessionLocal() as session:
         binding = session.query(ProjectEnvironment).filter_by(project_id=project_id, environment_id=env_id).first()
         if binding is None:
@@ -810,7 +810,7 @@ def test_business_flow_api_action_receives_runtime_mock_context(api, admin, db):
     """The runtime context reaches a real HTTP request made by a flow API action."""
     from app.features.business.models.business_domain import BusinessDomain
     from app.features.business.models.business_flow import BusinessFlow
-    from app.models.project_environment import ProjectEnvironment
+    from app.platform.environment_configuration.models import ProjectEnvironment
 
     with StubServer() as stub:
         seen = []
@@ -837,8 +837,8 @@ def test_business_flow_api_action_receives_runtime_mock_context(api, admin, db):
         case_id = _create_case(api, admin, project_id, name="流程上下文", target_type="BUSINESS_FLOW", business_flow_id=flow.id)
         from app.features.test_management.executors.test_case_executor import execute
         from app.features.test_management.models.test_case import TestCase
-        from app.models.configuration import Environment
-        from app.models.identity import User
+        from app.core.models.configuration import Environment
+        from app.core.models.identity import User
         result = execute(db, db.get(TestCase, case_id), environment=db.get(Environment, env_id),
                          actor=db.get(User, admin_id), extra_headers={"X-Mock-Context": "run-context"})
         assert result.status == "PASSED", result.error_message

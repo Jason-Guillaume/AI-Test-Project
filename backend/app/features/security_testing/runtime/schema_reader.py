@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from app.shared.errors import CODE_SECURITY_MUTATION_INVALID
+from app.core.http.errors import CODE_SECURITY_MUTATION_INVALID
 
 from app.features.security_testing.runtime.types import FieldSpec, RuleNotApplicableError
 from app.features.security_testing.schemas import MAX_MUTATION_STRING_LENGTH

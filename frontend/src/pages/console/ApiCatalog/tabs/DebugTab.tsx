@@ -5,13 +5,14 @@ import { Alert, App, Button, Card, Input, InputNumber, Select, Space, Tag, Typog
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { projectsApi } from '@/api/projects';
-import { getErrorMessage } from '@/api/client';
-import { useAuth } from '@/hooks/useAuth';
-import { LoadingState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { projectsApi } from '@/features/projects/api/projects';
+import { getErrorMessage } from '@/shared/api/client';
+import { useAuth } from '@/app/providers/AuthProvider';
+import { LoadingState } from '@/shared/ui/PageState';
 import { JsonView } from '../JsonView';
-import type { ApiDebugRequest, ApiDebugResult, ApiInterfaceDetail } from '@/types';
+import type { ApiDebugRequest, ApiDebugResult, ApiInterfaceDetail } from '@/features/api-catalog/contracts';
+
 
 interface KV {
   key: string;
@@ -80,19 +81,19 @@ export function DebugTab({
     kvs: KV[],
     setKvs: (v: KV[]) => void,
   ) => (
-    <Card size="small" title={label}>
+    <Card className="api-debug-kv-card" size="small" title={label}>
       {kvs.length === 0 ? (
         <Typography.Text type="secondary">（空）</Typography.Text>
       ) : (
         kvs.map((kv, idx) => (
-          <Space key={idx} style={{ display: 'flex', marginBottom: 8 }} align="center">
+          <div key={idx} className="api-debug-kv-row">
             <Input
               value={kv.key}
               onChange={(e) =>
                 setKvs(kvs.map((k, i) => (i === idx ? { ...k, key: e.target.value } : k)))
               }
               placeholder="key"
-              style={{ width: 180 }}
+              aria-label={`${label} key ${idx + 1}`}
             />
             <Input
               value={kv.value}
@@ -100,15 +101,16 @@ export function DebugTab({
                 setKvs(kvs.map((k, i) => (i === idx ? { ...k, value: e.target.value } : k)))
               }
               placeholder="value"
-              style={{ width: 280 }}
+              aria-label={`${label} value ${idx + 1}`}
             />
             <Button
               type="text"
               danger
               icon={<MinusCircleOutlined />}
+              aria-label={`删除${label}第 ${idx + 1} 行`}
               onClick={() => setKvs(kvs.filter((_, i) => i !== idx))}
             />
-          </Space>
+          </div>
         ))
       )}
       <Button

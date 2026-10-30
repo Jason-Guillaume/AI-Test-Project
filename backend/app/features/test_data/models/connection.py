@@ -12,7 +12,7 @@ database_access_policy 的写权限是平台管理员：Environment 本身是平
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TargetDatabaseConnection(Base):

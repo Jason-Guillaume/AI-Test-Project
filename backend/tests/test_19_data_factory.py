@@ -60,7 +60,7 @@ def _create_project(api, admin, name=None):
 
 def _dev_env(db, name="dev", admin_id=None):
     """创建测试用开发环境配置。"""
-    from app.models.configuration import Environment
+    from app.core.models.configuration import Environment
 
     if admin_id is None:
         admin_id = _admin_id(db)
@@ -77,8 +77,8 @@ def _dev_env(db, name="dev", admin_id=None):
 
 
 def _bind_env(db, project_id, environment_id):
-    from app.models.configuration import Environment
-    from app.models.project_environment import ProjectEnvironment
+    from app.core.models.configuration import Environment
+    from app.platform.environment_configuration.models import ProjectEnvironment
     env = db.get(Environment, environment_id)
     binding = db.query(ProjectEnvironment).filter_by(project_id=project_id, environment_id=environment_id).first()
     if binding is None:

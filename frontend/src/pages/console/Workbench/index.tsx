@@ -5,12 +5,12 @@ import { Button, Card, Col, List, Row, Statistic, Typography } from 'antd';
 import { ApiOutlined, ArrowRightOutlined, SafetyOutlined, ScheduleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardApi } from '@/api/dashboard';
-import { notificationsApi } from '@/api/notifications';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { PageHeader } from '@/components/PageHeader';
+import { dashboardApi } from '@/features/dashboard/api/dashboard';
+import { notificationsApi } from '@/features/notifications/api/notifications';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { PageHeader } from '@/shared/ui/PageHeader';
 import { DashboardCharts } from './DashboardCharts';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 
 const QUICK_LINKS = [
   { to: '/console/api-catalog', icon: <ApiOutlined />, title: '管理测试资产', description: '接口、业务流与用例统一维护' },

@@ -22,9 +22,9 @@ from app.features.business.schemas import (
     FlowExecutionRequest,
     FlowExecutionResponse,
 )
-from app.features.business.services._access import get_project_or_404
-from app.models.identity import User
-from app.shared.errors import not_found
+from app.platform.projects.services.access_service import get_project_or_404
+from app.core.models.identity import User
+from app.core.http.errors import not_found
 
 
 def _execution_response(execution: FlowExecution) -> FlowExecutionResponse:

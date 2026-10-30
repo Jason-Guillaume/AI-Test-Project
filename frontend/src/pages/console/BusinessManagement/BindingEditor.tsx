@@ -6,18 +6,12 @@ import { useState } from 'react';
 import { App, Alert, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
+import { businessApi } from '@/features/business/api/business';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
 import { API_LOCATION_INPUT_OPTIONS, API_LOCATION_OUTPUT_OPTIONS } from './constants';
-import type {
-  BusinessActionDetail,
-  BusinessApiMapping,
-  BusinessApiMappingCreate,
-  BusinessApiMappingUpdate,
-  BusinessBindingCreate,
-  BusinessBindingUpdate,
-} from '@/types';
+import type { BusinessActionDetail, BusinessApiMapping, BusinessApiMappingCreate, BusinessApiMappingUpdate, BusinessBindingCreate, BusinessBindingUpdate } from '@/features/business/contracts';
+
 
 export function BindingEditor({
   action,

@@ -49,7 +49,7 @@ def target_server():
 @pytest.fixture()
 def web_setup(api, admin, db, target_server):
     """创建授权项目、环境与出站目标，不修改开发数据库。"""
-    from app.models.configuration import Environment
+    from app.core.models.configuration import Environment
     response = api.post("/projects", username=admin, json={"name": unique("agent")})
     assert response.status_code == 201, response.text
     project_id = response.json()["id"]
@@ -57,7 +57,7 @@ def web_setup(api, admin, db, target_server):
                       base_url=f"http://127.0.0.1:{target_server}", is_active=True)
     db.add(env)
     db.commit()
-    from app.features.environment_configuration.models import ProjectEnvironment
+    from app.platform.environment_configuration.models import ProjectEnvironment
     db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id, base_url=env.base_url, is_active=True))
     db.commit()
     allowed = api.post(f"/projects/{project_id}/targets", username=admin,
@@ -151,7 +151,7 @@ def test_session_observe_with_auth(api, admin, db, web_setup):
 
 def test_session_observe_masks_sensitive_environment_headers(api, admin, db, web_setup):
     """环境默认认证头被页面回显时，不能进入观测语义树。"""
-    from app.models.configuration import Environment
+    from app.core.models.configuration import Environment
 
     project_id, env_id = web_setup
     secret = "Header-Secret-abc123456"

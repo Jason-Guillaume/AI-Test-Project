@@ -10,7 +10,7 @@ feature-local 表，由迁移 0003 显式建立。
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class ApiParameter(Base):

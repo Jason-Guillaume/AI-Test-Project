@@ -1,0 +1,21 @@
+{
+  "all_original_tests_passed": true,
+  "current_app_matches_tested_app_digest": true,
+  "current_python_sources_match_frozen_checkout": true,
+  "f4_mapping_complete": true,
+  "openapi_contract_equal": true,
+  "no_cross_domain_private_imports": true,
+  "canonical_dto_definitions_unique": true,
+  "orm_and_migrations_unchanged": true,
+  "changed_source_trailing_whitespace": [],
+  "inherited_diff_check_paths": [
+    "backend/app/features/business/services/__init__.py",
+    "backend/app/features/mock_management/services/__init__.py",
+    "backend/app/features/security_testing/services/__init__.py",
+    "backend/app/features/test_management/services/__init__.py"
+  ],
+  "warnings_match_baseline_categories": true,
+  "tools_catalog_unchanged": true,
+  "inherited_diff_check_contents_unchanged": true,
+  "wildcard_imports_zero": true
+}

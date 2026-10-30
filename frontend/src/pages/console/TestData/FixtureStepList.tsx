@@ -20,20 +20,15 @@ import {
 } from 'antd';
 import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
 import {
   FIXTURE_ON_FAILURE_OPTIONS,
   FIXTURE_STEP_TYPE_OPTIONS,
   labelOf,
 } from './constants';
-import type {
-  FixtureDetail,
-  FixturePhase,
-  FixtureStepInput,
-  FixtureStepType,
-  FixtureOnFailure,
-} from '@/types';
+import type { FixtureDetail, FixturePhase, FixtureStepInput, FixtureStepType, FixtureOnFailure } from '@/features/test-data/contracts';
+
 
 interface Row {
   key: string;

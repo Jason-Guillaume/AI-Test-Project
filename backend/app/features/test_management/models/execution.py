@@ -15,7 +15,7 @@ CaseExecution.executor_type ∈ {API, BUSINESS_FLOW, BUSINESS_ACTION}
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestRun(Base):

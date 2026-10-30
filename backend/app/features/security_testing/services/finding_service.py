@@ -19,13 +19,11 @@ from app.features.security_testing.schemas import (
     SecurityFindingRead,
     SecurityFindingUpdate,
 )
-from app.features.security_testing.services._access import (
-    get_project_or_404,
-    require_manage_project,
-)
-from app.models.identity import User
-from app.shared.errors import CODE_SECURITY_FINDING_NOT_FOUND, AppError, bad_request, not_found
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.features.security_testing.services.access_service import require_manage_project
+from app.platform.projects.services.access_service import get_project_or_404
+from app.core.models.identity import User
+from app.core.http.errors import CODE_SECURITY_FINDING_NOT_FOUND, AppError, bad_request, not_found
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 __all__ = ["FindingService"]
 

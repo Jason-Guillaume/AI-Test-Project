@@ -4,16 +4,16 @@
 映射解析、ApiRequestExecutor 与输出回写——Data Factory 不复制这些查询。
 
 不要调用 `execute_flow` 来跑单个动作，否则整条流程都会被跑完，且它自己会 commit，
-外层事务边界不可控。
-"""
+外层事务边界不可控。"""
 
 from __future__ import annotations
 
-from app.features.business.executors.business_flow_executor import ActionRunResult, run_action
+from app.features.business.executors.contracts import ActionRunResult
+from app.features.business.executors.action_executor import run_action
 from app.features.business.models.business_action import BusinessAction
 from app.features.business.models.business_flow import BusinessFlow
 from app.features.test_data.providers.base import BaseProvider, ProviderContext, ProviderResult, config_of
-from app.shared.errors import CODE_PROVIDER_NOT_FOUND, AppError
+from app.core.http.errors import CODE_PROVIDER_NOT_FOUND, AppError
 
 
 class BusinessActionProvider(BaseProvider):
@@ -94,4 +94,6 @@ def _to_result(result: ActionRunResult) -> ProviderResult:
     )
 
 
-__all__ = ["BusinessActionProvider"]
+__all__ = [
+    'BusinessActionProvider',
+]

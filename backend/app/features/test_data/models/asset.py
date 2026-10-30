@@ -10,7 +10,7 @@ value_json 入库前可以是明文（项目内配置），读 API 必须脱敏�
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestDataAsset(Base):

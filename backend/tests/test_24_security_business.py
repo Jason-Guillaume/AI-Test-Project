@@ -38,7 +38,7 @@ from app.features.security_testing.runtime.replay import (
     read_replay_params,
     run_replay,
 )
-from app.shared.errors import CODE_SECURITY_MUTATION_INVALID, AppError
+from app.core.http.errors import CODE_SECURITY_MUTATION_INVALID, AppError
 from tests.conftest import BACKEND_DIR
 
 EXECUTOR_PATH = BACKEND_DIR / "app" / "features" / "business" / "executors" / "business_flow_executor.py"

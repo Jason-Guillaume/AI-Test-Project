@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.features.business.executors.sensitive import is_sensitive_key, mask_body, mask_headers, mask_text
+from app.core.security.sensitive import is_sensitive_key, mask_body, mask_headers, mask_text
 
 from app.features.security_testing.runtime.types import (
     BaselineRequest,

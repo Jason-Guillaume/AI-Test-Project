@@ -4,9 +4,10 @@ import { useState } from 'react';
 import { App, Button, Empty, Form, Input, Modal, Popconfirm, Space, Table, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { getErrorMessage } from '@/api/client';
-import type { BusinessActionDetail, BusinessStateCreate, BusinessStateUpdate } from '@/types';
+import { businessApi } from '@/features/business/api/business';
+import { getErrorMessage } from '@/shared/api/client';
+import type { BusinessActionDetail, BusinessStateCreate, BusinessStateUpdate } from '@/features/business/contracts';
+
 
 export function StateEditor({
   action,

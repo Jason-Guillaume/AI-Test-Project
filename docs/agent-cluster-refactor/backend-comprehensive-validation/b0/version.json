@@ -1,0 +1,5 @@
+{
+  "head": "e46cbc9fde7ad387a29f934dbce26f30f37d2b2c",
+  "source_digest": "07cd20ca920f6b72dafeaf127fe78e13b344a8b8986b6f0d51a9e45499dd9993",
+  "snapshot_policy": "Only Python sources and explicit test/dependency configuration; no env, credentials, sessions, data or artifacts"
+}

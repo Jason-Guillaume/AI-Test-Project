@@ -3,12 +3,8 @@ import { useMemo, useState } from 'react';
 import { SearchOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
-import type {
-  ApiImportPreviewItem,
-  ApiImportPreviewResponse,
-  ApiModule,
-  ImportClassification,
-} from '@/types';
+import type { ApiImportPreviewItem, ApiImportPreviewResponse, ApiModule, ImportClassification } from '@/features/api-catalog/contracts';
+
 import { CLASSIFICATION_COLOR, CLASSIFICATION_LABEL, METHOD_COLOR } from './constants';
 import './ImportPreview.css';
 

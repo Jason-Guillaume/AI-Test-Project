@@ -12,7 +12,7 @@ source_type ∈ {MANUAL, AI}，本阶段仅 MANUAL，预留 AI。
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestStrategy(Base):

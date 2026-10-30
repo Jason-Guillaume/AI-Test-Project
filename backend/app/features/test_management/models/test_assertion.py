@@ -16,7 +16,7 @@ required=True 时断言失败即用例失败；False 时仅记录不阻断（软
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class TestAssertion(Base):

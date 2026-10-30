@@ -24,7 +24,7 @@ from ipaddress import ip_address
 from typing import Any, Callable, Iterable
 from urllib.parse import urlsplit, urlunsplit
 
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_SECURITY_SCAN_SCOPE_VIOLATION,
     CODE_SECURITY_SCAN_PRODUCTION_FORBIDDEN,
     AppError,

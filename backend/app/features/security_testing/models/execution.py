@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class SecurityExecution(Base):

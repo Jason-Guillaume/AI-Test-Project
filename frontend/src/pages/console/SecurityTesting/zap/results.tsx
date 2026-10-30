@@ -4,29 +4,17 @@
 // 另加「关联疑似问题」把扫描结果接回 Phase 1 的疑似问题状态流。
 // 所有面板都是纯读取；报告数字来自任务记录本身（§二十五）。
 import { useState } from 'react';
-import {
-  Alert,
-  Card,
-  Col,
-  Row,
-  Select,
-  Space,
-  Statistic,
-  Tabs,
-  Typography,
-} from 'antd';
+import { Alert, Card, Col, Row, Select, Space, Statistic, Tabs, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { securityApi } from '@/api/securityTesting';
-import { EmptyState, ErrorState, LoadingState } from '@/components/PageState';
+import { zapApi } from '@/features/security-testing/zap/api';
+import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { authModeLabel, isRunningJob, jobStatusLabel, scanModeLabel } from './constants';
-import { ScanJobStatusBadge } from './jobPanels';
-import {
-  JobAlertsPanel,
-  JobCoveragePanel,
-  JobEventsPanel,
-  JobFindingsPanel,
-  JobReportPanel,
-} from './jobPanels';
+import { JobAlertsPanel } from './panels/JobAlertsPanel';
+import { JobCoveragePanel } from './panels/JobCoveragePanel';
+import { JobEventsPanel } from './panels/JobEventsPanel';
+import { JobFindingsPanel } from './panels/JobFindingsPanel';
+import { JobReportPanel } from './panels/JobReportPanel';
+import { ScanJobStatusBadge } from './panels/ScanJobStatusBadge';
 
 /** 扫描结果子 Tab。projectId 由父页传入（已确保非空）。 */
 export function ResultsSubTab({ projectId }: { projectId: number }) {
@@ -35,7 +23,7 @@ export function ResultsSubTab({ projectId }: { projectId: number }) {
   // 只拉已产出结果的任务做选择器；进行中也能选，方便边跑边看事件。
   const jobsQuery = useQuery({
     queryKey: ['zap-jobs', projectId, 'results-picker'],
-    queryFn: () => securityApi.listScanJobs(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => zapApi.listScanJobs(projectId, { page: 1, page_size: 100 }),
     // 只有还有任务在跑时轮询选择器，避免列表空转。
     refetchInterval: (query) =>
       query.state.data?.items.some((j) => isRunningJob(j.status)) ? 10000 : false,

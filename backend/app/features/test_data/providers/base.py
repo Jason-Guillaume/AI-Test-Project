@@ -19,16 +19,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from app.shared.errors import AppError
+from app.core.http.errors import AppError
 
 if TYPE_CHECKING:  # 仅类型标注
     from sqlalchemy.orm import Session
 
     from app.features.test_data.models.fixture import FixtureStep
     from app.features.test_data.models.provider import DataProvider
-    from app.features.test_data.runtime.variable_resolver import ResolveScope
-    from app.models.configuration import Environment
-    from app.models.identity import User
+    from app.execution.templates.resolver import ResolveScope
+    from app.core.models.configuration import Environment
+    from app.core.models.identity import User
 
 #: ``output_snapshot`` / ``fixture_cache.output_json`` 的保留键：结构化 cleanup 句柄。
 #: 该键不进入 Fixture 契约输出（§9）。
@@ -173,7 +173,7 @@ class BaseProvider:
         """
         from pydantic import ValidationError
 
-        from app.shared.errors import CODE_FIXTURE_INVALID, AppError
+        from app.core.http.errors import CODE_FIXTURE_INVALID, AppError
 
         try:
             return model_cls.model_validate(config_json or {})
@@ -189,7 +189,7 @@ class BaseProvider:
     @staticmethod
     def resolve_mapping(scope: "ResolveScope", mappings: list[Any]) -> dict[str, Any]:
         """把 ``target/location/expression`` 形式的映射求值成 ``{target: value}``。"""
-        from app.features.test_data.runtime.variable_resolver import resolve_token_str
+        from app.execution.templates.resolver import resolve_token_str
 
         resolved: dict[str, Any] = {}
         for m in mappings or []:
@@ -202,7 +202,7 @@ class BaseProvider:
             except Exception as exc:  # noqa: BLE001 - 需要把错误码原样上抛
                 if isinstance(exc, Exception) and hasattr(exc, "code"):
                     raise
-                from app.shared.errors import CODE_VARIABLE_RESOLVE_FAILED, AppError
+                from app.core.http.errors import CODE_VARIABLE_RESOLVE_FAILED, AppError
 
                 raise AppError(
                     f"映射 {target} 求值失败：{exc}",

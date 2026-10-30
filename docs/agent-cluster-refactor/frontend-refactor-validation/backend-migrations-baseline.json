@@ -1,0 +1,125 @@
+{
+  "files": [
+    {
+      "path": "alembic/versions/0001_initial_schema.py",
+      "sha256": "2239dbcc2e4b3cd1e983e8899c1503b6ddaca8c37fcaf4f2aeb9392181b08241"
+    },
+    {
+      "path": "alembic/versions/0002_add_bug_table.py",
+      "sha256": "93b7ccc8ffdce4fad20599d4febeb02fad9f56c222482e0a3731cdc683a24526"
+    },
+    {
+      "path": "alembic/versions/0003_create_api_catalog_tables.py",
+      "sha256": "760a0794f2199e698c5cff5e2b9fd8a423a5e3e888a3d998e6b95f69b7b20ae3"
+    },
+    {
+      "path": "alembic/versions/0004_create_business_tables.py",
+      "sha256": "5141b2c8f806619a35dcb961bb2c31634e9a372ca1a0b777dd381c6b5923b99d"
+    },
+    {
+      "path": "alembic/versions/0005_business_phase2.py",
+      "sha256": "290abd34b10346384a0150033841e7ebcc1271a8012e335e3e11e825558d0562"
+    },
+    {
+      "path": "alembic/versions/0006_create_test_tables.py",
+      "sha256": "8f3dba7c093682e901c935c2991ddcd7f187e81b63dec1572c0062afe5249b1b"
+    },
+    {
+      "path": "alembic/versions/0007_agent_tables.py",
+      "sha256": "f3fba688a2ca4edf561211d74cd75ca0f7592b7b7ae59b9cf1308d08f5b58838"
+    },
+    {
+      "path": "alembic/versions/0008_report_notification.py",
+      "sha256": "bba397010c9d9a1c17050f097d8067bf79b769a710173bc8190574771f23cfa5"
+    },
+    {
+      "path": "alembic/versions/0009_test_data_center.py",
+      "sha256": "252819b28952d3500c433dc03448a00097a3fe28b1483b42b9ff34cd2428b0be"
+    },
+    {
+      "path": "alembic/versions/0010_mock_management.py",
+      "sha256": "6feb3e373200e1f2e7b70a06c47d5967ff9a463616c618ff9d554f5ebac0c2d6"
+    },
+    {
+      "path": "alembic/versions/0011_security_testing.py",
+      "sha256": "9aec29cc31b2969a9930ea9a5b9c7838deac805e52aec7e4e23cdf1793e468df"
+    },
+    {
+      "path": "alembic/versions/0012_web_ui.py",
+      "sha256": "ab2bc261678e3a30dfb7dbb0c6da4fc5cdf5502cc7cf6e94bb2fbd52e13ef279"
+    },
+    {
+      "path": "alembic/versions/0013_zap_security_scan.py",
+      "sha256": "93bb6eba89b9d5fc78546b6e03b2030038cf910fcba71282e153800bac77f5a8"
+    },
+    {
+      "path": "alembic/versions/0014_web_agent.py",
+      "sha256": "21e3b1b52a18de50152929130cd0ac69eb046c69d6d73eb4ce12c6781a197ea6"
+    },
+    {
+      "path": "alembic/versions/0015_unified_tasks.py",
+      "sha256": "d554f1606c3bc9e792dc81cd2a94e3753407901a8d668db70648e681b3c1c0b0"
+    },
+    {
+      "path": "alembic/versions/0016_task_security_polling.py",
+      "sha256": "3384ef89d482ad10e4121c48e6ac9e19c5e2f8b4a2af9030574fa65b32128541"
+    },
+    {
+      "path": "alembic/versions/0017_model_fallback_routes.py",
+      "sha256": "1e65666d28861025e7538b75e1719f078c0d7e9d7d9dfc98b6b7c1d517a8d5f3"
+    },
+    {
+      "path": "alembic/versions/0018_project_environment_bindings.py",
+      "sha256": "34a84901ca343620b0e2b312a8484c3fc9ff4d9917b96bb8a7f7bc998c54b441"
+    },
+    {
+      "path": "alembic/versions/0019_agent_governance.py",
+      "sha256": "8ecfa73cddc44a9aa42b551438832bca3e31946013905c01c17e95fb2c7853bc"
+    },
+    {
+      "path": "alembic/versions/0020_task_agent_binding.py",
+      "sha256": "55ea4d0461d0c611ba91f212473dc0d1f8958dac4fc14d6d900a1f811ce4217b"
+    },
+    {
+      "path": "alembic/versions/0021_agent_composition.py",
+      "sha256": "eb36f2a1d28013b01713ee0fce8b69d071a1bccf25b4a1dae63b61bc9715e560"
+    },
+    {
+      "path": "alembic/versions/0022_task_security_assessment.py",
+      "sha256": "36ecf917cb5c3b495e65fc3a03242bdef48fbf95c352074119ac3c2a366e92b7"
+    },
+    {
+      "path": "alembic/versions/0023_builtin_security_skills.py",
+      "sha256": "40ba6299e893220d0e9a48a0c74af6c39202299e36657362ce83191bfb3cfffd"
+    },
+    {
+      "path": "alembic/versions/0024_builtin_qa_skills.py",
+      "sha256": "84e73c2b11e9161785046f1f7d3323c227df56187d04a464b44846740802c8a3"
+    },
+    {
+      "path": "alembic/versions/0025_expanded_qa_skills.py",
+      "sha256": "5b53bd159fe82032589710d75e2c0a34d62ef5970f0bbbd005f7cbff7e89d7bb"
+    },
+    {
+      "path": "alembic/versions/0026_platform_and_security_skills.py",
+      "sha256": "fc1cb1da20141b2596b8f45999ab85a5f7ec761c6c1048595e4b5e817ffe9cec"
+    },
+    {
+      "path": "alembic/versions/0027_defect_source_links.py",
+      "sha256": "c3d8902d74b5f87fd6581157a8efdc861362d1783f928b35837a3d3259002fd0"
+    },
+    {
+      "path": "alembic/versions/0028_task_web_authoring.py",
+      "sha256": "3e349606c1c8361ea4765970093ee40bdac068919bf1d822722d27cc4a490a66"
+    },
+    {
+      "path": "alembic/versions/0029_agent_tool_overrides.py",
+      "sha256": "8846bfe0ec1b133ba8f10ad3738332c2320988f1a883d148fd88ec4c29ba327d"
+    },
+    {
+      "path": "alembic/versions/__init__.py",
+      "sha256": "b7a154e8a5c532e3210c13b0f5227f6c6864d262c0417de8ae4092df68b84087"
+    }
+  ],
+  "count": 30
+}

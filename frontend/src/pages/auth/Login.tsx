@@ -4,8 +4,8 @@ import { App, Button, Form, Input, Typography } from 'antd';
 import { LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { safeInternalPath } from '@/utils/safeRedirect';
+import { useAuth } from '@/app/providers/AuthProvider';
+import { safeInternalPath } from '@/shared/lib/safeRedirect';
 import { AuthFrame } from './AuthFrame';
 
 /**

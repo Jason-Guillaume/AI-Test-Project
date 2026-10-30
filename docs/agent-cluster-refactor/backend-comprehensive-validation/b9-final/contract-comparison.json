@@ -1,0 +1,40 @@
+{
+  "paths_before": 269,
+  "paths_after": 269,
+  "operations_before": 418,
+  "operations_after": 418,
+  "schemas_before": 368,
+  "schemas_after": 368,
+  "normalized_equal": true,
+  "only_ignored_fields": [
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "delete"
+    ],
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "get"
+    ],
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "head"
+    ],
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "options"
+    ],
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "patch"
+    ],
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "post"
+    ],
+    [
+      "/api/v1/mock/{project_id}/{service_key}/{path}",
+      "put"
+    ]
+  ],
+  "ignore_reason": "Unchanged existing Mock catch-all route uses an unordered HTTP-method set to generate its duplicate operationId; only that known process-random suffix is excluded."
+}

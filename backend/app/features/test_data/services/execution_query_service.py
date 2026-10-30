@@ -9,7 +9,7 @@ from __future__ import annotations
 from sqlalchemy import func as sa_func, or_
 from sqlalchemy.orm import Session
 
-from app.features.business.executors.sensitive import SensitiveDataMasker
+from app.core.security.sensitive import SensitiveDataMasker
 from app.features.test_data.models.execution import (
     DataExecution,
     FixtureExecution,
@@ -23,10 +23,11 @@ from app.features.test_data.schemas import (
     DataExecutionListResponse,
     DataExecutionResponse,
 )
-from app.features.test_data.services._access import get_project_or_404, resolve_execution_project_id
-from app.models.identity import User
-from app.shared.errors import bad_request, not_found
-from app.shared.pagination import DEFAULT_PAGE_SIZE
+from app.features.test_data.services.access_service import resolve_execution_project_id
+from app.platform.projects.services.access_service import get_project_or_404
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, not_found
+from app.core.http.pagination import DEFAULT_PAGE_SIZE
 
 
 def _mask(value: object) -> object:

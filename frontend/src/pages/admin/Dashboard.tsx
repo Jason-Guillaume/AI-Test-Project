@@ -10,9 +10,9 @@ import {
 } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardApi } from '@/api/dashboard';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { PageHeader } from '@/components/PageHeader';
+import { dashboardApi } from '@/features/dashboard/api/dashboard';
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 const PRIMARY_STAT_KEYS = new Set(['users', 'active_users', 'organizations', 'projects']);
 

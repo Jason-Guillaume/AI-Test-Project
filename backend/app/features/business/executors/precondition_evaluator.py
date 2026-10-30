@@ -9,6 +9,8 @@ BUSINESS / TEXT 类型标记为 MANUAL / NOT_EXECUTABLE（第一阶段不自动�
 
 from __future__ import annotations
 
+from app.core.expressions.operators import comparison_text, split_csv_values
+
 
 class PreconditionResult:
     """前置条件评估结果。"""
@@ -100,12 +102,12 @@ def evaluate_preconditions(
 def _compare(actual: object, operator: str, expected: object) -> bool:
     """比较实际值与期望值。"""
     if operator == "EQ":
-        return str(actual) == str(expected)
+        return comparison_text(actual) == comparison_text(expected)
     if operator == "NE":
-        return str(actual) != str(expected)
+        return comparison_text(actual) != comparison_text(expected)
     if operator == "IN":
-        expected_list = str(expected).split(",") if isinstance(expected, str) else [str(expected)]
-        return str(actual) in [v.strip() for v in expected_list]
+        expected_list = split_csv_values(expected) if isinstance(expected, str) else [comparison_text(expected)]
+        return comparison_text(actual) in expected_list
     if operator == "CONTAINS":
-        return str(expected) in str(actual)
+        return comparison_text(expected) in comparison_text(actual)
     return False

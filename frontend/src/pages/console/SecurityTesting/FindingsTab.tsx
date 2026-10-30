@@ -1,4 +1,4 @@
-import { collectPages } from '@/api/pagination';
+import { collectPages } from '@/shared/api/pagination';
 // 安全测试 · 疑似问题（Finding）Tab。
 //
 // 状态变更与人工确认的缺陷关联相互独立，关联不会自动确认安全问题。
@@ -9,7 +9,7 @@ import { collectPages } from '@/api/pagination';
 // 等策展文本，避免在管理面二次扩散敏感字段。
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { TaskSourceLinks } from '@/components/tasks/TaskSourceLinks';
+import { TaskSourceLinks } from '@/features/tasks/components/TaskSourceLinks';
 import {
   App,
   Button,
@@ -24,10 +24,10 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { securityApi } from '@/api/securityTesting';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, LoadingState } from '@/components/PageState';
-import { DefectSourceLinks } from '@/components/exec/DefectSourceLinks';
+import { securityApi } from '@/features/security-testing/api/securityTesting';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { DefectSourceLinks } from '@/widgets/execution-detail/DefectSourceLinks';
 import {
   FINDING_STATUS_OPTIONS,
   FINDING_STATUS_TRANSITIONS,
@@ -36,7 +36,8 @@ import {
   severityColor,
   severityLabel,
 } from './constants';
-import type { SecurityFinding, SecurityFindingStatus } from '@/types';
+import type { SecurityFinding, SecurityFindingStatus } from '@/features/security-testing/contracts';
+
 
 /** 疑似问题 Tab。projectId 由父页传入（已确保非空）。 */
 export function FindingsTab({ projectId }: { projectId: number }) {
@@ -132,7 +133,7 @@ export function FindingsTab({ projectId }: { projectId: number }) {
     <div>
       {requestedFindingId > 0 && (requestedFinding.isError || (requestedFinding.data && requestedFinding.data.project_id !== projectId)) && <Typography.Text type="danger">疑似问题不存在、无访问权限或不属于当前项目。</Typography.Text>}
       <Card size="small" style={{ marginBottom: 12 }}>
-        <Space>
+        <Space wrap className="ui-list-toolbar">
           <Select
             allowClear
             placeholder="严重级别"
@@ -155,7 +156,7 @@ export function FindingsTab({ projectId }: { projectId: number }) {
         </Space>
       </Card>
 
-      <Table<SecurityFinding>
+      <Table<SecurityFinding> scroll={{ x: 'max-content' }}
         rowKey="id"
         size="small"
         columns={columns}

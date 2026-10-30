@@ -1,4 +1,4 @@
-import { collectArrayPages } from '@/api/pagination';
+import { collectArrayPages } from '@/shared/api/pagination';
 // 执行中心页（用户视角）。
 // 列出项目内测试计划，逐行「执行」触发同步执行（POST /test-plans/{id}/runs），
 // 返回完成的 TestRun，弹窗展示结果汇总并支持跳转执行历史。
@@ -23,16 +23,18 @@ import {
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
-import { testManagementApi } from '@/api/testManagement';
-import { projectsApi } from '@/api/projects';
-import { getErrorMessage } from '@/api/client';
-import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { StatusBadge } from '@/components/StatusBadge';
-import { fmtTimeSec } from '@/shared/format';
-import { TEST_RUN_STATUS_COLOR } from '@/shared/status';
+import { testManagementApi } from '@/features/test-management/api/testManagement';
+import { projectsApi } from '@/features/projects/api/projects';
+import { getErrorMessage } from '@/shared/api/client';
+import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { fmtTimeSec } from '@/shared/lib/format';
+import { TEST_RUN_STATUS_COLOR } from '@/features/test-management/status';
 import { TEST_RUN_STATUS_OPTIONS } from './constants';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
-import type { Environment, TestPlan, TestRun } from '@/types';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import type { Environment } from '@/features/environments/contracts';
+import type { TestPlan, TestRun } from '@/features/test-management/contracts';
+
 
 interface RunFormValues {
   environment_id?: number | null;

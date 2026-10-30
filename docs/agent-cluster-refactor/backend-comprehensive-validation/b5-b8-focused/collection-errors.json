@@ -1,0 +1,6 @@
+[
+  {
+    "nodeid": "tests/test_12_business_integration.py",
+    "detail": "ImportError while importing test module '/private/tmp/backend-comprehensive-b5-b8-focused/backend/tests/test_12_business_integration.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/importlib/__init__.py:88: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\ntests/test_12_business_integration.py:26: in <module>\n    from app.features.business.executors.business_flow_executor import (\nE   ImportError: cannot import name '_mask_context_for_storage' from 'app.features.business.executors.business_flow_executor' (/private/tmp/backend-comprehensive-b5-b8-focused/backend/app/features/business/executors/business_flow_executor.py)"
+  }
+]

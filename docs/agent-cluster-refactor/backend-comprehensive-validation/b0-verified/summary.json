@@ -1,0 +1,20 @@
+{
+  "exit_code": 0,
+  "collected": 1042,
+  "passed": 1042,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "duration_seconds": 302.783,
+  "warnings": 47,
+  "warning_categories": {
+    "DeprecationWarning": 24,
+    "InsecureKeyLengthWarning": 1,
+    "PytestCollectionWarning": 10,
+    "SAWarning": 1,
+    "UserWarning": 11
+  },
+  "source_digest": "5a103f2b05c740be944c32da4308d4f2d8984111133a2923be016678b7b9b699",
+  "command": "env -u TEST_DATABASE_NAME TEST_POSTGRES_USER=root TEST_POSTGRES_PASSWORD=<runtime secret> TEST_POSTGRES_HOST=127.0.0.1 TEST_POSTGRES_PORT=5432 .venv/bin/python -m pytest -q --tb=no -ra -p comprehensive_pytest_plugin",
+  "database_policy": "Only testplatform_test-p<PID>, never testplatform_dev"
+}

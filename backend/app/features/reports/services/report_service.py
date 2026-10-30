@@ -24,8 +24,8 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.features.agent.providers.sanitizer import sanitize_context, sanitize_text
-from app.features.mock_management.models import MockExecution, MockScenario, MockService
+from app.core.security.sanitizer import sanitize_context, sanitize_text
+from app.features.mocking.models import MockExecution, MockScenario, MockService
 from app.features.security_testing.models import SecurityExecution, SecurityFinding
 from app.features.security_testing.schemas import (
     FINDING_OPEN_STATUSES,
@@ -44,18 +44,15 @@ from app.features.reports.schemas import (
 from app.features.reports.services.ai_summary import generate_summary as generate_ai_summary
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_case import TestCase
-from app.features.test_management.services._access import (
-    get_project_or_404,
-    require_writable_project,
-)
-from app.models.identity import User
-from app.shared.errors import (
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import (
     AppError,
     CODE_REPORT_GENERATION_FAILED,
     not_found,
 )
-from app.shared.notify import notify
-from app.shared.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.core.notifications.notify import notify
+from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 
 # 失败分类启发式关键词（小写子串匹配 error_message）。环境类：超时/连接/5xx/网络；
 # 数据类：参数/变量/数据缺失或无效。用于 EXECUTION_ERROR/ENVIRONMENT_ERROR/TEST_DATA_ISSUE 判定。
@@ -596,7 +593,7 @@ class ReportService:
         try:
             if provider is None:
                 # 懒构造生产 Provider：无默认模型时 generate_summary 内部会捕获并返回 None。
-                from app.features.agent.providers.llm_provider import ProductionLLMProvider
+                from app.llm.providers import ProductionLLMProvider
                 provider = ProductionLLMProvider(db)
             payload = self._build_ai_payload(report, rows)
             result = generate_ai_summary(provider, payload, additional_instructions=additional_instructions)

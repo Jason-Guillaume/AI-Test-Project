@@ -1,0 +1,490 @@
+[
+  {
+    "category": "接口测试",
+    "description": "按项目检索接口定义与请求结构。",
+    "key": "api_catalog.search_api",
+    "name": "查询接口目录",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "受任务运行与 Planner 工具白名单控制；接口来源记录在本次方案快照中。",
+      "constraints": [
+        "仅访问当前项目接口目录。",
+        "停用或不属于当前项目的接口不会进入方案上下文。"
+      ],
+      "input_context": [
+        {
+          "description": "由当前任务项目自动注入。",
+          "name": "project_id",
+          "required": true,
+          "source": "任务上下文",
+          "type": "integer"
+        },
+        {
+          "description": "从当前任务选择的用例关联接口中提取。",
+          "name": "api_ids",
+          "required": true,
+          "source": "已选测试资产",
+          "type": "integer[]"
+        }
+      ],
+      "output": "项目内接口名称、方法、路径及已登记请求结构，作为方案规划上下文。",
+      "runtime_name": "api-catalog.search",
+      "runtime_role": "Planner",
+      "status": "active",
+      "status_label": "已接入任务 Planner"
+    }
+  },
+  {
+    "category": "业务管理",
+    "description": "读取项目内业务流程、规则与接口绑定。",
+    "key": "business.list_flows",
+    "name": "查询业务流程",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "当前没有对应的任务工具调用记录。",
+      "constraints": [
+        "当前固定任务 Worker 没有对应的业务流程调用节点。",
+        "Agent 绑定不会使此工具自动执行。"
+      ],
+      "input_context": [],
+      "output": "登记描述为项目业务流程、规则与接口绑定。",
+      "runtime_name": null,
+      "runtime_role": "未绑定固定工作流节点",
+      "status": "catalog_only",
+      "status_label": "当前执行器未接入"
+    }
+  },
+  {
+    "category": "测试资产",
+    "description": "读取项目已有测试点、用例及策略。",
+    "key": "test_asset.get_existing_cases",
+    "name": "读取测试资产",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "读取范围随任务方案快照保留。",
+      "constraints": [
+        "只读取本次任务选择的资产。",
+        "不会跨项目搜索或修改用例。"
+      ],
+      "input_context": [
+        {
+          "description": "由当前任务项目自动注入。",
+          "name": "project_id",
+          "required": true,
+          "source": "任务上下文",
+          "type": "integer"
+        },
+        {
+          "description": "只读取当前任务已选择且仍属于本项目的用例。",
+          "name": "case_ids",
+          "required": true,
+          "source": "任务选择",
+          "type": "integer[]"
+        }
+      ],
+      "output": "所选测试用例名称、说明、目标类型和关联接口摘要。",
+      "runtime_name": "test-asset.read",
+      "runtime_role": "Planner",
+      "status": "active",
+      "status_label": "已接入任务 Planner"
+    }
+  },
+  {
+    "category": "测试资产",
+    "description": "将经校验的生成结果写入项目测试资产。",
+    "key": "test_asset.save_cases",
+    "name": "保存测试用例",
+    "risk": "写入",
+    "runtime_details": {
+      "audit": "当前没有对应的任务工具调用记录。",
+      "constraints": [
+        "当前固定任务 Worker 没有对应的用例写入节点。",
+        "Agent 绑定不会触发资产写入。"
+      ],
+      "input_context": [],
+      "output": "登记描述为经校验后保存测试资产。",
+      "runtime_name": null,
+      "runtime_role": "未绑定固定工作流节点",
+      "status": "catalog_only",
+      "status_label": "当前执行器未接入"
+    }
+  },
+  {
+    "category": "测试执行",
+    "description": "按项目权限创建并执行已确认的测试用例。",
+    "key": "execution.create_test_run",
+    "name": "创建用例执行",
+    "risk": "执行",
+    "runtime_details": {
+      "audit": "写入 TaskToolInvocation，并关联 TestRun 与当前 TaskRun。",
+      "constraints": [
+        "只执行已批准、仍启用且属于当前项目的用例。",
+        "写操作前再次检查项目权限、环境关联和任务状态。"
+      ],
+      "input_context": [
+        {
+          "description": "执行范围必须来自当前版本已批准方案。",
+          "name": "case_ids",
+          "required": true,
+          "source": "人工批准的方案",
+          "type": "integer[]"
+        },
+        {
+          "description": "由方案选择并重新校验项目环境。",
+          "name": "environment_id",
+          "required": true,
+          "source": "项目环境绑定",
+          "type": "integer"
+        }
+      ],
+      "output": "真实 TestRun 标识、执行状态、断言结果与可回链的执行记录。",
+      "runtime_name": "test-run.create / web-test-run.create",
+      "runtime_role": "执行 Worker",
+      "status": "active",
+      "status_label": "已接入 API / Web 执行 Worker"
+    }
+  },
+  {
+    "category": "测试执行",
+    "description": "读取用例执行状态与断言结果。",
+    "key": "execution.get_test_run",
+    "name": "查询执行结果",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "在任务审阅和报告流程中留有 TaskRun 与 TestRun 关联记录。",
+      "constraints": [
+        "只读取当前任务关联的执行记录。",
+        "不会修改 TestRun 或断言结果。"
+      ],
+      "input_context": [
+        {
+          "description": "由依赖的执行 Worker 结果自动传入。",
+          "name": "test_run_id",
+          "required": true,
+          "source": "当前任务执行结果",
+          "type": "integer"
+        }
+      ],
+      "output": "TestRun 状态、统计、断言结果及其与批准范围的对应信息。",
+      "runtime_name": "test-run.read",
+      "runtime_role": "报告 Agent / Reviewer",
+      "status": "active",
+      "status_label": "已接入报告与审阅节点"
+    }
+  },
+  {
+    "category": "测试报告",
+    "description": "基于真实 TestRun 统计并生成正式报告。",
+    "key": "report.generate",
+    "name": "生成测试报告",
+    "risk": "写入",
+    "runtime_details": {
+      "audit": "创建 TaskToolInvocation，并写入 business.report.created 任务事件。",
+      "constraints": [
+        "必须存在当前任务关联的 TestRun。",
+        "报告统计由平台服务计算，模型仅补充摘要。"
+      ],
+      "input_context": [
+        {
+          "description": "由已成功完成的执行 Worker 传入。",
+          "name": "test_run_id",
+          "required": true,
+          "source": "当前任务执行结果",
+          "type": "integer"
+        }
+      ],
+      "output": "基于真实 TestRun 统计创建的正式报告及其报告标识。",
+      "runtime_name": "report.generate",
+      "runtime_role": "REPORT_AGENT",
+      "status": "active",
+      "status_label": "已接入报告 Agent"
+    }
+  },
+  {
+    "category": "测试报告",
+    "description": "核验执行覆盖、报告统计与验收条件。",
+    "key": "report.review",
+    "name": "审阅测试结果",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "审阅结论写入 TaskRun 消息和事件记录。",
+      "constraints": [
+        "结论必须由正式执行与报告记录支撑。",
+        "Reviewer 不会补造测试结果或修改报告。"
+      ],
+      "input_context": [
+        {
+          "description": "由依赖的报告流程传入。",
+          "name": "test_run_id",
+          "required": true,
+          "source": "当前任务执行结果",
+          "type": "integer"
+        },
+        {
+          "description": "用于核对报告统计是否超出批准范围。",
+          "name": "approved_case_ids",
+          "required": true,
+          "source": "已批准方案",
+          "type": "integer[]"
+        }
+      ],
+      "output": "报告统计、执行范围、验收条件与正式 TestRun 事实之间的核验结论。",
+      "runtime_name": "report.review",
+      "runtime_role": "REVIEWER",
+      "status": "active",
+      "status_label": "已接入 Reviewer"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "生成待人工确认的结构化安全计划快照，不发出测试请求。",
+    "key": "security.preview_plan",
+    "name": "预览安全计划",
+    "risk": "写入",
+    "runtime_details": {
+      "audit": "创建 TaskToolInvocation，记录预览输入、结果及计划版本。",
+      "constraints": [
+        "预览阶段不发出测试请求。",
+        "执行前必须由用户确认计划和风险。"
+      ],
+      "input_context": [
+        {
+          "description": "最多 10 个仍启用且属于当前项目的 API。",
+          "name": "api_ids",
+          "required": true,
+          "source": "用户创建任务时选择",
+          "type": "integer[]"
+        },
+        {
+          "description": "必须是当前项目启用的安全策略。",
+          "name": "strategy_ids",
+          "required": true,
+          "source": "用户创建任务时选择",
+          "type": "integer[]"
+        }
+      ],
+      "output": "结构化安全计划快照、风险提示和待人工确认的计划版本。",
+      "runtime_name": "security-plan.preview",
+      "runtime_role": "安全 Planner",
+      "status": "active",
+      "status_label": "已接入安全 Planner / Worker"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "读取当前项目已启用的策略和规则摘要，不暴露变异配置。",
+    "key": "security.list_strategies",
+    "name": "读取安全策略目录",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "通过安全只读工具写入 TaskToolInvocation。",
+      "constraints": [
+        "只读当前项目已启用策略。",
+        "不暴露可执行载荷或变异配置。"
+      ],
+      "input_context": [
+        {
+          "description": "只读取当前项目启用策略。",
+          "name": "project_id",
+          "required": true,
+          "source": "任务上下文",
+          "type": "integer"
+        },
+        {
+          "description": "结果进一步按本次任务所选策略过滤。",
+          "name": "strategy_ids",
+          "required": true,
+          "source": "用户创建任务时选择",
+          "type": "integer[]"
+        }
+      ],
+      "output": "策略名称和规则摘要，不包含变异配置。",
+      "runtime_name": "security-strategy.read",
+      "runtime_role": "安全 Planner",
+      "status": "active",
+      "status_label": "已接入安全 Planner"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "读取登记 API 的方法、路径、认证类型和功能基线数量，不读取请求值或响应正文。",
+    "key": "security.read_api_context",
+    "name": "读取 API 安全上下文",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "通过安全只读工具写入 TaskToolInvocation。",
+      "constraints": [
+        "不读取请求值、响应正文或凭据。",
+        "API 必须仍启用并属于当前项目。"
+      ],
+      "input_context": [
+        {
+          "description": "只包含本次任务选定的项目内 API。",
+          "name": "api_ids",
+          "required": true,
+          "source": "安全评估选择",
+          "type": "integer[]"
+        }
+      ],
+      "output": "API 方法、路径、认证类型和功能基线数量。",
+      "runtime_name": "security-context.read",
+      "runtime_role": "安全 Planner",
+      "status": "active",
+      "status_label": "已接入安全 Planner"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "读取所选 API 未关闭 Finding 的脱敏摘要，不读取证据或响应正文。",
+    "key": "security.read_findings",
+    "name": "读取历史疑似问题",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "通过安全只读工具写入 TaskToolInvocation。",
+      "constraints": [
+        "不读取证据正文、响应正文或敏感请求数据。",
+        "查询结果限制为本项目和所选 API。"
+      ],
+      "input_context": [
+        {
+          "description": "只查询所选 API 的历史问题。",
+          "name": "api_ids",
+          "required": true,
+          "source": "安全评估选择",
+          "type": "integer[]"
+        },
+        {
+          "description": "最多读取 20 条脱敏摘要。",
+          "name": "limit",
+          "required": true,
+          "source": "平台固定值",
+          "type": "integer"
+        }
+      ],
+      "output": "所选 API 未关闭 Finding 的脱敏摘要。",
+      "runtime_name": "security-findings.read",
+      "runtime_role": "安全 Planner",
+      "status": "active",
+      "status_label": "已接入安全 Planner"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "只检查用户已打开的项目受控浏览器当前页面的响应头与有限 DOM 信号，不导航或点击。",
+    "key": "security.inspect_web_session",
+    "name": "检查受控 Web 页面",
+    "risk": "只读",
+    "runtime_details": {
+      "audit": "通过安全只读工具写入 TaskToolInvocation。",
+      "constraints": [
+        "不导航、不点击、不提交表单。",
+        "只检查用户已打开的受控页面。"
+      ],
+      "input_context": [
+        {
+          "description": "必须属于当前项目和安全评估环境。",
+          "name": "web_session_id",
+          "required": true,
+          "source": "用户当前打开的受控会话",
+          "type": "integer"
+        }
+      ],
+      "output": "当前页面有限 DOM 信号和响应头观察结果。",
+      "runtime_name": "security-web.inspect",
+      "runtime_role": "安全 Planner",
+      "status": "active",
+      "status_label": "已接入安全 Planner"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "仅在显式风险确认后创建安全测试任务。",
+    "key": "security.confirm_plan",
+    "name": "确认安全计划",
+    "risk": "高风险",
+    "runtime_details": {
+      "audit": "记录确认人、计划版本、接受的用例索引和安全用例 ID。",
+      "constraints": [
+        "需要显式人工确认。",
+        "模型不能代替用户确认风险。"
+      ],
+      "input_context": [
+        {
+          "description": "必须是用户明确确认的当前计划版本。",
+          "name": "plan_version",
+          "required": true,
+          "source": "当前任务方案",
+          "type": "integer"
+        },
+        {
+          "description": "由服务端从授权会话识别，不接受模型伪造。",
+          "name": "confirmed_by",
+          "required": true,
+          "source": "当前登录用户",
+          "type": "user id"
+        }
+      ],
+      "output": "确认后的安全用例范围和执行工作项。",
+      "runtime_name": "security-plan.confirm",
+      "runtime_role": "安全执行 Worker",
+      "status": "active",
+      "status_label": "受人工确认门控"
+    }
+  },
+  {
+    "category": "安全测试",
+    "description": "仅执行已登记接口、已确认策略和用户批准的安全变异用例。",
+    "key": "security.execute_cases",
+    "name": "执行安全用例",
+    "risk": "执行",
+    "runtime_details": {
+      "audit": "创建 TaskToolInvocation 并关联本次安全用例执行。",
+      "constraints": [
+        "必须在用户确认后执行。",
+        "限定登记 API、已确认策略和项目授权范围。"
+      ],
+      "input_context": [
+        {
+          "description": "只执行确认后生成且仍有效的安全用例。",
+          "name": "security_case_ids",
+          "required": true,
+          "source": "人工确认后的安全计划",
+          "type": "integer[]"
+        }
+      ],
+      "output": "已批准安全用例的执行状态、Finding 与证据关联信息。",
+      "runtime_name": "security-case.run",
+      "runtime_role": "SECURITY_WORKER",
+      "status": "active",
+      "status_label": "受人工确认门控"
+    }
+  },
+  {
+    "category": "Web UI",
+    "description": "生成需用户确认的页面用例草稿。",
+    "key": "web_ui.generate_draft",
+    "name": "生成 Web 用例草稿",
+    "risk": "写入",
+    "runtime_details": {
+      "audit": "Web Authoring 操作使用其独立的会话、步骤和草稿审计记录。",
+      "constraints": [
+        "当前 Agent 白名单没有把此工具键映射到 web-case.draft。",
+        "绑定此工具键不会触发草稿生成。"
+      ],
+      "input_context": [
+        {
+          "description": "由独立 Web Authoring 流程管理。",
+          "name": "web_session_id",
+          "required": true,
+          "source": "受控浏览器会话",
+          "type": "integer"
+        }
+      ],
+      "output": "Web Authoring 流程可生成待确认草稿，但当前不是此工具键的调用实现。",
+      "runtime_name": null,
+      "runtime_role": "Web 用例草稿由独立 Web Authoring 流程处理",
+      "status": "catalog_only",
+      "status_label": "当前执行器未接入此工具键"
+    }
+  }
+]

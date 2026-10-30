@@ -10,7 +10,7 @@ feature-local 表，由迁移 0004 建立。
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class BusinessRule(Base):

@@ -7,10 +7,10 @@
 import { useState } from 'react';
 import { App, Button, Input, Popconfirm, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import {
   ASSET_SOURCE_OPTIONS,
   ASSET_STATUS_COLOR,
@@ -19,7 +19,8 @@ import {
   labelOf,
 } from './constants';
 import { TestDataModal } from './TestDataModal';
-import type { AssetSource, AssetStatus, FixtureScope, TestDataAsset } from '@/types';
+import type { AssetSource, AssetStatus, FixtureScope, TestDataAsset } from '@/features/test-data/contracts';
+
 
 /**
  * 测试数据资产列表。

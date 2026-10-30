@@ -5,7 +5,7 @@
 2. SensitiveDataMasker 脱敏
 3. PreconditionEvaluator 前置条件评估
 4. MappingResolver INPUT/OUTPUT 映射解析
-5. ApiRequestExecutor.build_url / get_environment_headers
+5. 共享 request_builder 的 URL 拼接 / 环境请求头
 6. ApiRequestExecutor.execute（出站白名单拒绝）
 7. BusinessFlowExecutor 顺序执行与失败停止
 """
@@ -23,10 +23,11 @@ from app.features.business.executors.mapping_resolver import (
     resolve_output_mappings,
 )
 from app.features.business.executors.precondition_evaluator import evaluate_preconditions
-from app.features.business.executors.sensitive import SensitiveDataMasker, mask_body, mask_headers
-from app.features.business.executors.api_executor import ApiRequestExecutor, ApiRequestResult
+from app.core.security.sensitive import SensitiveDataMasker, mask_body, mask_headers
+from app.execution.http.executor import ApiRequestExecutor, ApiRequestResult
+from app.execution.http.request_builder import build_environment_url, get_environment_headers
 from app.features.business.models.execution import ActionExecution, FlowExecution
-from app.models.configuration import Environment
+from app.core.models.configuration import Environment
 
 
 # --------------------------------------------------------------------------- 执行上下文 ExecutionContext
@@ -295,31 +296,31 @@ class TestApiRequestExecutorBuildUrl:
     def test_build_url_basic(self):
         """验证构建URL基础场景及其预期结果。"""
         env = Environment(base_url="https://api.example.com", gateway_prefix="/v2", default_headers={})
-        url = ApiRequestExecutor.build_url(env, "/projects")
+        url = build_environment_url(env, "/projects")
         assert url == "https://api.example.com/v2/projects"
 
     def test_build_url_with_path_params(self):
         """验证构建URL包含路径`params`场景及其预期结果。"""
         env = Environment(base_url="https://api.example.com", gateway_prefix="", default_headers={})
-        url = ApiRequestExecutor.build_url(env, "/projects/{id}", {"id": "42"})
+        url = build_environment_url(env, "/projects/{id}", {"id": "42"})
         assert url == "https://api.example.com/projects/42"
 
     def test_build_url_no_gateway(self):
         """验证构建URL无`gateway`场景及其预期结果。"""
         env = Environment(base_url="https://api.example.com", gateway_prefix="", default_headers={})
-        url = ApiRequestExecutor.build_url(env, "/health")
+        url = build_environment_url(env, "/health")
         assert url == "https://api.example.com/health"
 
     def test_get_environment_headers(self):
         """验证获取环境请求头场景及其预期结果。"""
         env = Environment(default_headers={"X-Custom": "value", "Authorization": "Bearer test"})
-        headers = ApiRequestExecutor.get_environment_headers(env)
+        headers = get_environment_headers(env)
         assert headers == {"X-Custom": "value", "Authorization": "Bearer test"}
 
     def test_get_environment_headers_empty(self):
         """验证获取环境请求头空值场景及其预期结果。"""
         env = Environment(default_headers={})
-        headers = ApiRequestExecutor.get_environment_headers(env)
+        headers = get_environment_headers(env)
         assert headers == {}
 
     def test_api_request_result_success(self):

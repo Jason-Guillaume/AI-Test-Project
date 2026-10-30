@@ -6,9 +6,9 @@
 import { useState } from 'react';
 import { Button, Tag } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { ErrorState, LoadingState } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import {
   CLEANUP_STATUS_COLOR,
   DATA_EXECUTION_STATUS_COLOR,
@@ -16,7 +16,8 @@ import {
   DATA_EXECUTION_STATUS_OPTIONS,
 } from './constants';
 import { ExecutionDetailDrawer } from './ExecutionDetailDrawer';
-import type { DataExecution } from '@/types';
+import type { DataExecution } from '@/features/test-data/executionContracts';
+
 
 /**
  * 执行记录列表。手工试跑 / Provider 试跑 / 用例造数都会在这里留痕。

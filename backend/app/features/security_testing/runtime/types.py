@@ -18,7 +18,7 @@ import copy
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from app.shared.errors import (
+from app.core.http.errors import (
     CODE_SECURITY_CONFIRMATION_REQUIRED,
     CODE_SECURITY_MUTATION_INVALID,
     AppError,

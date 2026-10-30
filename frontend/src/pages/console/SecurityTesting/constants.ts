@@ -1,12 +1,7 @@
 // 安全测试页面的选项与标签常量。
 // 取值与后端 features/security_testing/schemas.py 的 Literal 严格对齐。
-import type {
-  CoverageCategory,
-  SecurityExpectation,
-  SecurityFindingStatus,
-  SecurityResult,
-  SecuritySeverity,
-} from '@/types';
+import type { CoverageCategory, SecurityExpectation, SecurityFindingStatus, SecurityResult, SecuritySeverity } from '@/features/security-testing/contracts';
+
 
 /** 严重级别 / 风险级别：颜色按级别递进。 */
 export const SEVERITY_OPTIONS: { value: SecuritySeverity; label: string; color: string }[] = [

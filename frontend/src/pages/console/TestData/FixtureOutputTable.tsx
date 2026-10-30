@@ -5,10 +5,11 @@
 import { useEffect, useState } from 'react';
 import { App, Button, Input, Popconfirm, Select, Space, Table } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { testDataApi } from '@/api/testData';
-import { getErrorMessage } from '@/api/client';
+import { testDataApi } from '@/features/test-data/api/testData';
+import { getErrorMessage } from '@/shared/api/client';
 import { VALUE_TYPE_OPTIONS } from './constants';
-import type { FixtureDetail, FixtureOutputInput, ValueType } from '@/types';
+import type { FixtureDetail, FixtureOutputInput, ValueType } from '@/features/test-data/contracts';
+
 
 interface Row {
   key: string;
