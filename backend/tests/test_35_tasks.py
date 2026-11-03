@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timedelta
 
 import pytest
 from sqlalchemy import inspect, text
@@ -113,6 +114,384 @@ def test_p4_migration_adds_scan_polling_and_idempotency_contract(db):
     assert "task_mode" in {item["name"] for item in inspector.get_columns("task")}
     assert "task_run_id" in {item["name"] for item in inspector.get_columns("agent_session")}
     assert "agent_session_id" in {item["name"] for item in inspector.get_columns("web_agent_session")}
+    assert "request_digest" in {item["name"] for item in inspector.get_columns("task")}
+
+
+def test_task_templates_are_versioned_and_drop_temporary_browser_auth(api, admin, db):
+    """项目模板递增版本，且不持久化临时 Web 登录态引用。"""
+    project_id = _create_project(api, admin)
+    body = {
+        "name": "登录页探索",
+        "description": "检查登录流程并维护 Web 用例",
+        "is_active": False,
+        "config": {
+            "goal": "检查登录页面并整理可复用的登录 Web 用例",
+            "task_mode": "WEB_AUTHORING",
+            "target_type": "WEB_AUTHORING",
+            "case_ids": [],
+            "web_authoring": {"auth_profile_id": 481516, "target_page_path": "/login", "step_budget": 8},
+        },
+    }
+    created = api.post(f"/projects/{project_id}/task-templates", username=admin, json=body)
+    assert created.status_code == 201, created.text
+    template = created.json()
+    assert template["version"] == 1
+    assert template["is_active"] is False
+    assert template["config"]["environment_id"] is None
+    assert "auth_profile_id" not in template["config"]["web_authoring"]
+
+    updated = api.put(
+        f"/task-templates/{template['id']}", username=admin,
+        json={**body, "expected_version": template["version"], "name": "登录页回归探索"},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["version"] == 2
+    disabled = api.patch(
+        f"/task-templates/{template['id']}/status", username=admin,
+        json={"expected_version": 2, "is_active": False},
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["version"] == 3 and disabled.json()["is_active"] is False
+    assert api.get(f"/task-templates/{template['id']}", username=admin).json()["is_active"] is False
+    active_templates = api.get(f"/projects/{project_id}/task-templates", username=admin).json()
+    assert all(item["id"] != template["id"] for item in active_templates)
+    edited_inactive = api.put(
+        f"/task-templates/{template['id']}", username=admin,
+        json={
+            "expected_version": 3,
+            "name": "停用模板改名",
+            "description": "可在没有固定环境时继续编辑",
+            "config": body["config"],
+        },
+    )
+    assert edited_inactive.status_code == 200, edited_inactive.text
+    assert edited_inactive.json()["version"] == 4
+    assert edited_inactive.json()["is_active"] is False
+    assert edited_inactive.json()["name"] == "停用模板改名"
+    assert edited_inactive.json()["config"]["environment_id"] is None
+    stale = api.put(
+        f"/task-templates/{template['id']}", username=admin,
+        json={**body, "expected_version": 3, "name": "过期草稿"},
+    )
+    assert stale.status_code == 409
+    reactivated = api.patch(
+        f"/task-templates/{template['id']}/status", username=admin,
+        json={"expected_version": 4, "is_active": True},
+    )
+    assert reactivated.status_code == 200 and reactivated.json()["version"] == 5
+
+    strategies = api.get(
+        f"/projects/{project_id}/security-strategies", username=admin,
+        params={"enabled": "true", "page": 1, "page_size": 100},
+    )
+    assert strategies.status_code == 200, strategies.text
+    strategy = strategies.json()["items"][0]
+    searched_strategy = api.get(
+        f"/projects/{project_id}/security-strategies", username=admin,
+        params={"enabled": "true", "keyword": strategy["name"], "page": 1, "page_size": 100},
+    )
+    assert searched_strategy.status_code == 200, searched_strategy.text
+    assert any(item["id"] == strategy["id"] for item in searched_strategy.json()["items"])
+
+    outsider = unique("template-outsider")
+    assert api.register(outsider).status_code == 201
+    api.login(outsider)
+    assert api.get(
+        f"/projects/{project_id}/task-templates", username=outsider,
+    ).status_code == 404
+
+
+def test_task_template_concurrent_edits_use_independent_versioned_sessions(api, admin, db):
+    """两个会话同时提交版本 N，只允许一次写入且冲突方不覆盖胜者。"""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from fastapi import HTTPException
+    from app.core.database.session import SessionLocal
+    from app.core.models.identity import User
+    from app.orchestration.tasks.models import TaskTemplate
+    from app.orchestration.tasks.schemas import TaskTemplateConfig, TaskTemplateUpdate
+    from app.orchestration.tasks.services.template_service import TaskTemplateService
+
+    project_id = _create_project(api, admin)
+    body = {"name": "并发模板", "description": "原说明", "config": {"goal": "并发更新测试目标"}}
+    created = api.post(f"/projects/{project_id}/task-templates", username=admin, json=body)
+    assert created.status_code == 201, created.text
+    template_id = created.json()["id"]
+    expected_version = created.json()["version"]
+    barrier = Barrier(2)
+
+    def save(name: str):
+        with SessionLocal() as session:
+            actor = session.query(User).filter_by(username=admin).one()
+            loaded = TaskTemplateService.get(session, template_id, actor, write=True)
+            assert loaded.version == expected_version
+            barrier.wait(timeout=10)
+            update_body = TaskTemplateUpdate(
+                expected_version=expected_version,
+                name=name,
+                description=f"由{name}提交",
+                config=TaskTemplateConfig(goal=f"{name}的目标"),
+            )
+            try:
+                saved = TaskTemplateService.update(session, template_id, update_body, actor)
+                return ("saved", saved["name"])
+            except HTTPException as error:
+                assert error.status_code == 409
+                return ("conflict", name)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(save, ("成员甲", "成员乙")))
+    assert sorted(result[0] for result in results) == ["conflict", "saved"]
+    db.expire_all()
+    final = db.get(TaskTemplate, template_id)
+    assert final.version == expected_version + 1
+    winner = next(name for outcome, name in results if outcome == "saved")
+    assert final.name == winner
+    assert final.config_json["goal"] == f"{winner}的目标"
+
+
+def test_task_create_replays_same_request_after_lost_response(api, admin, db):
+    """服务端已提交但响应未被客户端使用时，同意图重试读回原任务。"""
+    from app.orchestration.tasks.models import Task, TaskRun
+
+    admin_id = _admin_id(db)
+    _seed_default_model(db, admin_id)
+    project_id = _create_project(api, admin)
+    environment_id = _make_env(db, "http://127.0.0.1:18082", admin_id)
+    _bind_environment(db, project_id, environment_id, admin_id)
+    api_id = _make_iface(db, project_id, "GET", "/idempotent", "幂等任务接口")
+    case_id = _create_case(api, admin, project_id, name=unique("idempotent-case"), api_id=api_id)
+    case = db.get(CaseEntity, case_id)
+    case.status = "ACTIVE"
+    case.enabled = True
+    db.commit()
+    body = {
+        "goal": "验证客户端响应丢失后的相同任务安全重试",
+        "environment_id": environment_id,
+        "case_ids": [case_id],
+        "target_type": "API",
+        "request_key": unique("task-lost-response"),
+    }
+
+    first = api.post(f"/projects/{project_id}/tasks", username=admin, json=body)
+    assert first.status_code == 201, first.text
+    first_id = first.json()["id"]
+    # 忽略第一次响应正文，模拟客户端超时后按原提交意图自动/手动重放。
+    replay = api.post(f"/projects/{project_id}/tasks", username=admin, json=body)
+    assert replay.status_code == 201, replay.text
+    assert replay.json()["id"] == first_id
+    changed = api.post(
+        f"/projects/{project_id}/tasks", username=admin,
+        json={**body, "goal": "相同键不能提交不同目标"},
+    )
+    assert changed.status_code == 409
+    db.expire_all()
+    assert db.query(Task).filter(Task.created_by == admin_id, Task.request_key == body["request_key"]).count() == 1
+    assert db.query(TaskRun).filter(TaskRun.task_id == first_id).count() == 1
+
+    next_intent = api.post(
+        f"/projects/{project_id}/tasks", username=admin,
+        json={**body, "request_key": unique("task-next-intent")},
+    )
+    assert next_intent.status_code == 201, next_intent.text
+    assert next_intent.json()["id"] != first_id
+
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from app.core.database.session import SessionLocal
+    from app.core.models.identity import User
+    from app.orchestration.tasks.schemas import TaskCreate
+    from app.orchestration.tasks.services.task_service import TaskService
+
+    concurrent_body = {**body, "goal": "验证同一请求键并发任务创建", "request_key": unique("task-concurrent")}
+    barrier = Barrier(2)
+
+    def create_concurrently():
+        with SessionLocal() as session:
+            actor = session.query(User).filter_by(username=admin).one()
+            barrier.wait(timeout=10)
+            return TaskService().create_task(session, project_id, TaskCreate(**concurrent_body), actor=actor)["id"]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        concurrent_ids = list(executor.map(lambda _: create_concurrently(), range(2)))
+    assert concurrent_ids[0] == concurrent_ids[1]
+    assert db.query(Task).filter(Task.created_by == admin_id, Task.request_key == concurrent_body["request_key"]).count() == 1
+
+
+def test_task_inbox_uses_latest_runs_and_exact_server_counts(api, admin, db):
+    """待处理中心只统计最新运行，并按服务端完整结果分类。"""
+    from app.orchestration.tasks.models import Task, TaskRun
+
+    admin_id = _admin_id(db)
+    project_id = _create_project(api, admin)
+    run_states = (
+        ("WAITING_CONFIRMATION", "PLAN_REVIEW"),
+        ("PAUSED", "WAITING_MODEL"),
+        ("FAILED", "PLAN_REVIEW"),
+        ("RECONCILIATION_REQUIRED", "RECONCILIATION_REQUIRED"),
+        ("PAUSED", "EXECUTING"),
+        ("WAITING_MODEL", "PLAN_REVIEW"),
+    )
+    for index, (status, stage) in enumerate(run_states, 1):
+        task = Task(
+            project_id=project_id, created_by=admin_id, title=f"待处理 {index}", goal="测试任务待处理聚合",
+            input_case_ids=[], status=status, task_mode="TEST_EXECUTION",
+        )
+        db.add(task)
+        db.flush()
+        db.add(TaskRun(
+            task_id=task.id, run_number=1, created_by=admin_id, status=status,
+            stage=stage, goal_snapshot=task.goal, input_snapshot={},
+        ))
+    for index in range(105):
+        task = Task(
+            project_id=project_id, created_by=admin_id, title=f"运行任务 {index}", goal="验证全量任务计数",
+            input_case_ids=[], status="RUNNING", task_mode="TEST_EXECUTION",
+        )
+        db.add(task)
+        db.flush()
+        db.add(TaskRun(
+            task_id=task.id, run_number=1, created_by=admin_id, status="RUNNING",
+            stage="EXECUTING", goal_snapshot=task.goal, input_snapshot={},
+        ))
+    db.commit()
+
+    response = api.get("/tasks/inbox", username=admin, params={"page": 1, "page_size": 2})
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 4
+    assert len(payload["items"]) == 2
+    assert payload["counts"] == {"approval": 1, "model_blocked": 1, "failed": 1, "reconcile": 1}
+    assert all(item["project_id"] == project_id and item["run_id"] for item in payload["items"])
+    summary = api.get("/tasks/summary", username=admin)
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["by_status"]["RUNNING"] >= 105
+    assert summary.json()["needs_attention_count"] >= 4
+
+
+def test_test_run_compare_aligns_by_case_id_and_keeps_skips_unresolved(api, admin, db):
+    """运行差异按稳定用例 ID 关联；跳过状态不计为恢复或通过。"""
+    from app.features.test_management.models.execution import CaseExecution, TestRun
+
+    project_id = _create_project(api, admin)
+    case_ids = [
+        _create_case(api, admin, project_id, name=unique("compare-restored"), api_id=_make_iface(db, project_id, "GET", "/restored", "对比恢复用例")),
+        _create_case(api, admin, project_id, name=unique("compare-new-fail"), api_id=_make_iface(db, project_id, "GET", "/new-fail", "对比新增失败用例")),
+        _create_case(api, admin, project_id, name=unique("compare-skip"), api_id=_make_iface(db, project_id, "GET", "/skip", "对比跳过用例")),
+    ]
+    for case_id in case_ids:
+        db.get(CaseEntity, case_id).status = "ACTIVE"
+    before = TestRun(project_id=project_id, status="FAILED", total=3, failed=2, skipped=1)
+    after = TestRun(project_id=project_id, status="FAILED", total=3, passed=2, failed=1)
+    db.add_all([before, after])
+    db.flush()
+    db.add_all([
+        CaseExecution(test_run_id=before.id, test_case_id=case_ids[0], status="FAILED", executor_type="API", duration_ms=90),
+        CaseExecution(test_run_id=after.id, test_case_id=case_ids[0], status="PASSED", executor_type="API", duration_ms=45),
+        CaseExecution(test_run_id=before.id, test_case_id=case_ids[1], status="PASSED", executor_type="API", duration_ms=30),
+        CaseExecution(test_run_id=after.id, test_case_id=case_ids[1], status="ERROR", executor_type="API", duration_ms=40),
+        CaseExecution(test_run_id=before.id, test_case_id=case_ids[2], status="SKIPPED", executor_type="API"),
+        CaseExecution(test_run_id=after.id, test_case_id=case_ids[2], status="PASSED", executor_type="API"),
+    ])
+    db.commit()
+
+    response = api.get(
+        "/test-runs/compare", username=admin,
+        params={"baseline_run_id": before.id, "candidate_run_id": after.id},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["counts"]["restored"] == 1
+    assert payload["counts"]["new_failures"] == 1
+    assert payload["counts"]["unresolved"] == 1
+    by_case = {item["test_case_id"]: item["state"] for item in payload["items"]}
+    assert by_case == {case_ids[0]: "restored", case_ids[1]: "new_failure", case_ids[2]: "unresolved"}
+
+    other_project_id = _create_project(api, admin)
+    other = TestRun(project_id=other_project_id, status="SUCCESS")
+    db.add(other)
+    db.commit()
+    cross_project = api.get(
+        "/test-runs/compare", username=admin,
+        params={"baseline_run_id": before.id, "candidate_run_id": other.id},
+    )
+    assert cross_project.status_code == 400, cross_project.text
+
+
+def test_bug_verification_reuses_safe_task_flow_and_links_source_atomically(api, admin, db, monkeypatch):
+    """缺陷验证拒绝部分依赖执行，成功后原子回链且同一键只创建一次任务。"""
+    from app.features.defects.models import Bug, DefectSourceLink
+    from app.features.test_management.models.execution import CaseExecution, TestRun
+    from app.features.test_management.models.test_case_precondition import TestCasePrecondition
+    from app.orchestration.tasks.runtime import worker as task_worker_module
+    from app.orchestration.tasks.models import Task, TaskResourceRef
+
+    monkeypatch.setattr(task_worker_module, "ProductionLLMProvider", DeterministicTaskLLM)
+    admin_id = _admin_id(db)
+    _seed_default_model(db, admin_id)
+    project_id = _create_project(api, admin)
+    environment_id = _make_env(db, "http://127.0.0.1:18081", admin_id)
+    _bind_environment(db, project_id, environment_id, admin_id)
+    api_id = _make_iface(db, project_id, "GET", "/verify", "缺陷验证接口")
+    case_id = _create_case(api, admin, project_id, name=unique("verify-case"), api_id=api_id)
+    case = db.get(CaseEntity, case_id)
+    case.status = "ACTIVE"
+    case.enabled = True
+    run = TestRun(project_id=project_id, status="FAILED", total=1, failed=1)
+    bug = Bug(project_id=project_id, title="需要验证的修复", description="验证修复后结果", status="已修复", reporter_id=admin_id)
+    db.add_all([run, bug])
+    db.flush()
+    execution = CaseExecution(
+        test_run_id=run.id, test_case_id=case_id, status="FAILED", executor_type="API",
+        error_message="脱敏失败摘要",
+    )
+    db.add(execution)
+    db.flush()
+    db.add(DefectSourceLink(
+        project_id=project_id, bug_id=bug.id, case_execution_id=execution.id,
+        request_key=unique("verify-source"), created_by=admin_id,
+    ))
+    dependency = TestCasePrecondition(test_case_id=case_id, type="API", target="先创建依赖数据")
+    db.add(dependency)
+    db.commit()
+
+    body = {
+        "source_case_execution_id": execution.id,
+        "environment_id": environment_id,
+        "request_key": unique("verify-task"),
+    }
+    blocked = api.post(f"/bugs/{bug.id}/verification-tasks", username=admin, json=body)
+    assert blocked.status_code == 400, blocked.text
+    assert "前置条件" in blocked.text
+    db.delete(dependency)
+    db.commit()
+
+    created = api.post(f"/bugs/{bug.id}/verification-tasks", username=admin, json=body)
+    assert created.status_code == 201, created.text
+    task_id = created.json()["id"]
+    run_id = created.json()["latest_run"]["id"]
+    duplicate = api.post(f"/bugs/{bug.id}/verification-tasks", username=admin, json=body)
+    assert duplicate.status_code == 201, duplicate.text
+    assert duplicate.json()["id"] == task_id
+    environment_b = _make_env(db, "http://127.0.0.1:18083", admin_id)
+    _bind_environment(db, project_id, environment_b, admin_id)
+    changed_environment = api.post(
+        f"/bugs/{bug.id}/verification-tasks", username=admin,
+        json={**body, "environment_id": environment_b},
+    )
+    assert changed_environment.status_code == 409, changed_environment.text
+    new_environment_intent = api.post(
+        f"/bugs/{bug.id}/verification-tasks", username=admin,
+        json={**body, "environment_id": environment_b, "request_key": unique("verify-task-environment-b")},
+    )
+    assert new_environment_intent.status_code == 201, new_environment_intent.text
+    assert new_environment_intent.json()["id"] != task_id
+    assert db.get(Task, new_environment_intent.json()["id"]).environment_id == environment_b
+    snapshot = db.query(TaskResourceRef).filter(TaskResourceRef.task_run_id == run_id).all()
+    assert {(row.resource_type, row.resource_id) for row in snapshot} >= {
+        ("BUG", str(bug.id)), ("CASE_EXECUTION", str(execution.id)),
+    }
+    assert db.get(Bug, bug.id).status == "已修复"
 
 
 def test_production_provider_falls_back_after_primary_http_error(db, monkeypatch):
@@ -147,11 +526,12 @@ def test_production_provider_falls_back_after_primary_http_error(db, monkeypatch
             "usage": {"prompt_tokens": 8, "completion_tokens": 5},
         })
 
-    monkeypatch.setattr(llm_provider.httpx, "post", post)
     events: list[dict] = []
     provider = llm_provider.ProductionLLMProvider(
         db, model_config_ids=[primary.id, backup.id], attempt_callback=events.append,
     )
+    # 只替换本 Provider 实例的传输，避免干扰后台 Worker 并发请求。
+    monkeypatch.setattr(provider, "_post", post)
     result = provider.generate_structured(
         "系统", "目标", schema=TaskPlanOutput.model_json_schema(),
         kind="task_planner", validator=TaskPlanOutput.model_validate,
@@ -177,11 +557,11 @@ def test_production_provider_exhaustion_is_retryable_and_redacts_response(db, mo
     )
     db.add(primary)
     db.commit()
+    provider = ProductionLLMProvider(db, model_config_ids=[primary.id])
     monkeypatch.setattr(
-        "app.llm.providers.openai_compatible.httpx.post",
+        provider, "_post",
         lambda *args, **kwargs: httpx.Response(503, text="sensitive upstream body"),
     )
-    provider = ProductionLLMProvider(db, model_config_ids=[primary.id])
 
     with pytest.raises(LLMError) as raised:
         provider.chat("系统", "问题")
@@ -249,6 +629,43 @@ def test_retryable_llm_failure_requeues_task_instead_of_failing(api, admin, db, 
     assert plan_work["error_code"] == "LLM_FALLBACK_EXHAUSTED"
     events = api.get(f"/task-runs/{run_id}/events", username=admin).json()
     assert any(event["event_type"] == "llm.retry_scheduled" for event in events)
+
+    # 通过同一生产 fail_work 状态转换再耗尽有限重试预算，验证真实 PAUSED/WAITING_MODEL。
+    from app.core.database.session import SessionLocal
+    from app.orchestration.tasks.models import TaskAttempt, TaskRun, TaskWorkItem
+    from app.orchestration.tasks.runtime.completion_service import fail_work
+    from app.orchestration.tasks.runtime.contracts import ClaimedWork
+
+    work = db.query(TaskWorkItem).filter(TaskWorkItem.task_run_id == run_id, TaskWorkItem.kind == "PLAN").one()
+    attempt = db.query(TaskAttempt).filter(TaskAttempt.work_item_id == work.id).order_by(TaskAttempt.attempt_number.desc()).first()
+    run = db.get(TaskRun, run_id)
+    assert attempt is not None and run is not None
+    work.max_attempts = work.attempt_count
+    work.available_at = None
+    run.lease_owner = attempt.owner
+    run.lease_expires_at = datetime.now() + timedelta(minutes=2)
+    db.commit()
+    fail_work(
+        ClaimedWork(work_item_id=work.id, run_id=run.id, attempt_id=attempt.id, owner=attempt.owner),
+        LLMError("LLM_FALLBACK_EXHAUSTED", "模型路由仍不可用", retryable=True),
+        db_factory=SessionLocal,
+    )
+    db.expire_all()
+    detail = api.get(f"/task-runs/{run_id}", username=admin).json()
+    assert detail["run"]["status"] == "PAUSED"
+    assert detail["run"]["stage"] == "WAITING_MODEL"
+    inbox = api.get("/tasks/inbox", username=admin, params={"project_id": project_id, "category": "model_blocked"})
+    assert inbox.status_code == 200, inbox.text
+    assert inbox.json()["total"] == 1
+    assert inbox.json()["counts"]["model_blocked"] == 1
+    assert inbox.json()["items"][0]["run_id"] == run_id
+    resumed = api.post(
+        f"/task-runs/{run_id}/commands", username=admin,
+        json={"command_type": "RESUME", "idempotency_key": unique("resume-model")},
+    )
+    assert resumed.status_code == 200, resumed.text
+    inbox_after_resume = api.get("/tasks/inbox", username=admin, params={"project_id": project_id, "category": "model_blocked"})
+    assert inbox_after_resume.json()["total"] == 0
 
 
 def test_task_web_authoring_creates_isolated_worker_plan(api, admin, db, monkeypatch):

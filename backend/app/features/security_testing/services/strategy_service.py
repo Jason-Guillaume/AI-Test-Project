@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.models.identity import User
@@ -63,6 +64,7 @@ class SecurityStrategyService:
         actor: User,
         category: str | None = None,
         enabled: bool | None = None,
+        keyword: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> SecurityStrategyListResponse:
@@ -76,6 +78,14 @@ class SecurityStrategyService:
             query = query.filter(SecurityStrategy.category == category)
         if enabled is not None:
             query = query.filter(SecurityStrategy.enabled.is_(enabled))
+        term = (keyword or "").strip()
+        if term:
+            pattern = f"%{term}%"
+            query = query.filter(or_(
+                SecurityStrategy.name.ilike(pattern),
+                SecurityStrategy.strategy_key.ilike(pattern),
+                SecurityStrategy.description.ilike(pattern),
+            ))
         query = query.order_by(
             SecurityStrategy.project_id.is_(None).desc(),
             SecurityStrategy.category,

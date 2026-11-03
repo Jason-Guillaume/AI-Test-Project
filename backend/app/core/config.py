@@ -166,6 +166,14 @@ class Settings(BaseSettings):
     ZAP_PASSIVE_WAIT_SECONDS: int = 300
     ZAP_REQUEST_BUDGET: int = 5000
 
+    # 独立 ASR Worker 运行参数。Compose 可覆写；本机脚本从同一 .env 读取。
+    ASR_WORKER_ID: str = "asr-worker"
+    ASR_WORKER_POLL_SECONDS: float = 1.0
+    ASR_WORKER_CONCURRENCY: int = 2
+    ASR_DIARIZATION_CONCURRENCY: int = 1
+    ASR_WORKER_LEASE_SECONDS: int = 90
+    ASR_WORKER_HEARTBEAT_TIMEOUT_SECONDS: int = 90
+
     # 大小写敏感：环境变量名必须与字段名完全一致，避免 DATABASE_URL / database_url 双写歧义；
     # extra="ignore" 让 .env 里的历史遗留变量不报错，便于从旧项目平滑迁移。
     model_config = SettingsConfigDict(

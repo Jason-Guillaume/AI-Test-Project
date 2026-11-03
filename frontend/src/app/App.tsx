@@ -11,6 +11,7 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { Spin } from 'antd';
+import { Result, Button } from 'antd';
 import { AuthProvider, useAuth } from '@/app/providers/AuthProvider';
 import { ConsoleScopeProvider } from '@/app/providers/ConsoleScopeProvider';
 import { GuestOnly, RequireAdmin, RequireAuth } from '@/app/router/RouteGuards';
@@ -24,8 +25,41 @@ import { ForbiddenPage, NotFoundPage } from '@/pages/errors/ResultPages';
  */
 function lazyNamedPage<M, K extends keyof M>(loader: () => Promise<M>, exportName: K) {
   return lazy(async () => ({
-    default: (await loader())[exportName] as ComponentType,
+    default: (await loadPageModule(loader))[exportName] as ComponentType,
   }));
+}
+
+/** Stale deployment chunks get one bounded refresh; repeated failure is reported by the route boundary. */
+async function loadPageModule<M>(loader: () => Promise<M>): Promise<M> {
+  try {
+    const module = await loader();
+    try { sessionStorage.removeItem(`page-chunk-refresh:${window.location.pathname}`); } catch { /* storage may be blocked */ }
+    return module;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/dynamically imported module|loading chunk|chunkloaderror|importing a module script failed/i.test(message)) {
+      const key = `page-chunk-refresh:${window.location.pathname}`;
+      try {
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, '1');
+          window.location.reload();
+        }
+      } catch { /* the route boundary remains the fallback when storage is unavailable */ }
+    }
+    throw error;
+  }
+}
+
+/** Compatibility path for retired model pages; authorization still comes from the existing admin guard. */
+function LegacyModelEntry() {
+  const { user } = useAuth();
+  if (user?.role === 'admin') return <Navigate to="/admin/model-configs?category=ASR" replace />;
+  return <Result
+    status="info"
+    title="模型配置由平台管理员维护"
+    subTitle="此旧入口不提供模型管理权限。你仍可在 ASR 评测页查看任务和可用模型；如需新增或授权模型，请联系平台管理员。"
+    extra={<Button type="primary" href="/console/asr/jobs">返回 ASR 评测任务</Button>}
+  />;
 }
 
 const AdminLayout = lazyNamedPage(() => import('@/app/layouts/AdminLayout'), 'AdminLayout');
@@ -66,6 +100,15 @@ const ConsoleWebUIAgentPage = lazyNamedPage(() => import('@/pages/console/WebUIA
 const ConsoleSecurityTestingPage = lazyNamedPage(() => import('@/pages/console/SecurityTesting'), 'ConsoleSecurityTestingPage');
 const ConsoleTasksPage = lazyNamedPage(() => import('@/pages/console/Tasks/TaskListPage'), 'ConsoleTasksPage');
 const ConsoleTaskDetailPage = lazyNamedPage(() => import('@/pages/console/Tasks/TaskDetailPage'), 'ConsoleTaskDetailPage');
+const ConsoleTaskInboxPage = lazyNamedPage(() => import('@/pages/console/Tasks/TaskInboxPage'), 'ConsoleTaskInboxPage');
+const ConsoleTaskTemplatesPage = lazyNamedPage(() => import('@/pages/console/Tasks/TaskTemplatesPage'), 'ConsoleTaskTemplatesPage');
+const AsrAudioPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/AudioPage'), 'AudioPage');
+const AsrJobsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/JobsPage'), 'JobsPage');
+const AsrJobDetailPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/JobsPage'), 'JobDetailPage');
+const AsrComparisonsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ComparisonsPage'), 'ComparisonsPage');
+const AsrComparisonDetailPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ComparisonsPage'), 'ComparisonDetailPage');
+const AsrExperimentsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ExperimentsPage'), 'ExperimentsPage');
+const AsrRunWorkbenchPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/RunWorkbenchPage'), 'RunWorkbenchPage');
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -209,7 +252,19 @@ function AppRoutes() {
           <Route path="web-ui" element={<ConsoleWebUIPage />} />
           <Route path="web-ui-agent" element={<ConsoleWebUIAgentPage />} />
           <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
+          <Route path="asr/audio" element={<AsrAudioPage />} />
+          {/* 兼容旧书签；模型中心现在仅由管理后台提供。 */}
+          <Route path="model-center" element={<LegacyModelEntry />} />
+          <Route path="asr/connections" element={<LegacyModelEntry />} />
+          <Route path="asr/jobs" element={<AsrJobsPage />} />
+          <Route path="asr/jobs/:jobId" element={<AsrJobDetailPage />} />
+          <Route path="asr/runs/:runId" element={<AsrRunWorkbenchPage />} />
+          <Route path="asr/comparisons" element={<AsrComparisonsPage />} />
+          <Route path="asr/comparisons/:comparisonId" element={<AsrComparisonDetailPage />} />
+          <Route path="asr/experiments" element={<AsrExperimentsPage />} />
           <Route path="tasks" element={<ConsoleTasksPage />} />
+          <Route path="tasks/inbox" element={<ConsoleTaskInboxPage />} />
+          <Route path="tasks/templates" element={<ConsoleTaskTemplatesPage />} />
           <Route path="tasks/:taskId" element={<ConsoleTaskDetailPage />} />
           <Route path="agent" element={<ConsoleAgentPage />} />
           <Route path="notifications" element={<ConsoleNotificationsPage />} />

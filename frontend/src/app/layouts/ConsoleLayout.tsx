@@ -24,6 +24,7 @@ import {
   FileSearchOutlined,
   FileTextOutlined,
   HistoryOutlined,
+  AudioOutlined,
   LogoutOutlined,
   PartitionOutlined,
   PlayCircleOutlined,
@@ -34,11 +35,12 @@ import {
   SendOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
 import { projectsApi } from '@/features/projects/api/projects';
 import { collectPages } from '@/shared/api/pagination';
 import { TaskSchedulerDrawer } from '@/widgets/task-assistant/TaskSchedulerDrawer';
@@ -56,75 +58,65 @@ interface MenuLeaf {
   label: string;
 }
 interface MenuSection {
-  type: 'group';
+  type: 'submenu';
+  key: string;
   label: string;
+  icon: ReactNode;
   children: MenuLeaf[];
 }
-type MenuItem = MenuLeaf | MenuSection;
 
-// 菜单分组只作为视觉层级标题，不折叠导航项，和工作台设计样图保持一致。
-const MENU_ITEMS: MenuItem[] = [
+// 六组导航保留所有既有专业页面地址；消息和个人中心位于顶栏菜单。
+const BASE_MENU_ITEMS: MenuSection[] = [
   {
-    type: 'group',
-    label: '工作空间',
+    type: 'submenu', key: 'workbench', label: '工作台', icon: <AppstoreOutlined />,
+    children: [{ key: '/console', icon: <AppstoreOutlined />, label: '工作台首页' }],
+  },
+  {
+    type: 'submenu', key: 'tasks', label: '任务', icon: <ScheduleOutlined />,
     children: [
-      { key: '/console', icon: <AppstoreOutlined />, label: '工作台' },
-      { key: '/console/projects', icon: <ProjectOutlined />, label: '项目管理' },
+      { key: '/console/tasks', icon: <ScheduleOutlined />, label: '统一任务' },
+      { key: '/console/tasks/inbox', icon: <BellOutlined />, label: '待我处理' },
+      { key: '/console/tasks/templates', icon: <FileTextOutlined />, label: '任务模板' },
+      { key: '/console/agent', icon: <RobotOutlined />, label: 'AI 助手' },
     ],
   },
   {
-    type: 'group',
-    label: '测试设计',
+    type: 'submenu', key: 'assets', label: '资产', icon: <BlockOutlined />,
     children: [
       { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' },
       { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' },
       { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
+      { key: '/console/asr/audio', icon: <AudioOutlined />, label: 'ASR 评测' },
       { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
+      { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
       { key: '/console/web-ui', icon: <ChromeOutlined />, label: 'Web UI 工作区' },
       { key: '/console/security-testing', icon: <SafetyOutlined />, label: '安全测试工作区' },
-    ],
-  },
-  {
-    type: 'group',
-    label: '测试准备',
-    children: [
       { key: '/console/test-data', icon: <DatabaseOutlined />, label: '测试数据' },
       { key: '/console/mock-management', icon: <CloudServerOutlined />, label: '接口 Mock' },
     ],
   },
   {
-    type: 'group',
-    label: '测试执行',
+    type: 'submenu', key: 'results', label: '结果', icon: <HistoryOutlined />,
     children: [
-      { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
       { key: '/console/execution-center', icon: <PlayCircleOutlined />, label: '执行中心' },
       { key: '/console/execution-history', icon: <HistoryOutlined />, label: '执行历史' },
       { key: '/console/test-reports', icon: <FileSearchOutlined />, label: '测试报告' },
-    ],
-  },
-  {
-    type: 'group',
-    label: '任务与协作',
-    children: [
-      { key: '/console/tasks', icon: <ScheduleOutlined />, label: '统一任务' },
-      { key: '/console/agent', icon: <RobotOutlined />, label: 'AI 助手' },
       { key: '/console/defects', icon: <BugOutlined />, label: '缺陷管理' },
-      { key: '/console/notifications', icon: <BellOutlined />, label: '消息中心' },
     ],
   },
   {
-    type: 'group',
-    label: '项目配置',
+    type: 'submenu', key: 'project-settings', label: '项目设置', icon: <ProjectOutlined />,
     children: [
+      { key: '/console/projects', icon: <ProjectOutlined />, label: '项目管理' },
       { key: '/console/notification-channels', icon: <SendOutlined />, label: '通知渠道' },
     ],
   },
 ];
 
-// 菜单叶子 key 用于 selectedKeys 与路由前缀匹配。
-const ALL_MENU_KEYS: string[] = MENU_ITEMS.flatMap((item) =>
-  item.type === 'group' ? item.children.map((child) => child.key) : [item.key],
-);
+const ADMIN_MENU_ITEM: MenuSection = {
+  type: 'submenu', key: 'management', label: '管理', icon: <AppstoreOutlined />,
+  children: [{ key: '/admin/dashboard', icon: <AppstoreOutlined />, label: '管理后台' }],
+};
 
 // 面包屑用的路由标题映射；带 :param 的 key 是动态路由占位符，
 // 由 matchRouteTitle 按路径段数匹配，不用于精确查找。
@@ -132,6 +124,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console': '工作台', // 工作台
   '/console/projects': '项目管理', // 项目管理
   '/console/projects/:id': '项目详情', // 项目详情（动态）
+  '/admin/dashboard': '管理后台',
   '/console/defects': '缺陷管理', // 缺陷管理
   '/console/api-catalog': '接口管理', // 接口管理
   '/console/business-management': '业务管理', // 业务管理
@@ -149,9 +142,18 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/web-ui': 'Web UI 工作区',
   '/console/web-ui-agent': '浏览器智能编写',
   '/console/security-testing': '安全测试工作区',
+  '/console/asr/audio': '音频列表',
+  '/console/asr/connections': '接口配置',
+  '/console/asr/jobs': '评测任务',
+  '/console/asr/jobs/:jobId': '评测任务详情',
+  '/console/asr/comparisons': '识别结果对比',
+  '/console/asr/comparisons/:comparisonId': '识别结果对比',
+  '/console/asr/experiments': '参数对比',
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI 助手',
   '/console/tasks': '统一任务', // 全局任务列表
+  '/console/tasks/inbox': '待我处理',
+  '/console/tasks/templates': '任务模板',
   '/console/tasks/:taskId': '任务执行台', // 任务详情
   '/console/notifications': '消息中心',
   '/console/notification-channels': '通知渠道', // 通知渠道
@@ -192,6 +194,17 @@ export function ConsoleLayout() {
   const { user, logout } = useAuth(); // 当前用户与登出操作
   const { currentOrgId, setOrgId, currentProjectId, setProjectId } =
     useConsoleScope(); // 当前项目与其组织作用域
+  const menuItems = useMemo(
+    () => user?.role === 'admin' ? [...BASE_MENU_ITEMS, ADMIN_MENU_ITEM] : BASE_MENU_ITEMS,
+    [user?.role],
+  );
+  const allMenuKeys = useMemo(
+    () => menuItems.flatMap((section) => section.children.map((child) => child.key)),
+    [menuItems],
+  );
+  const menuStorageKey = user?.id == null ? null : `console.menu-open-sections:${user.id}`;
+  const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+  const initializedMenuForRef = useRef<string | null>(null);
 
   // 分页读取当前用户可见项目并限制收集规模；超限或请求失败时显示重试入口。
   const projectsQuery = useQuery({
@@ -202,6 +215,38 @@ export function ConsoleLayout() {
     ),
   });
   const projectsData = projectsQuery.data;
+
+  const selectedMenuKey = useMemo(() => {
+    if (location.pathname === '/console/web-ui-agent') return '/console/web-ui';
+    if (location.pathname.startsWith('/console/asr/')) return '/console/asr/audio';
+    if (allMenuKeys.includes(location.pathname)) return location.pathname;
+    const prefixes = allMenuKeys.filter((key) => location.pathname.startsWith(`${key}/`));
+    if (prefixes.length > 0) return prefixes.reduce((a, b) => b.length > a.length ? b : a);
+    return '/console';
+  }, [allMenuKeys, location.pathname]);
+  const activeSectionKey = menuItems.find((section) =>
+    section.children.some((child) => child.key === selectedMenuKey),
+  )?.key ?? 'workbench';
+
+  // 每个用户的分组展开状态独立记忆；首次进入时只展开当前路由所在组。
+  useEffect(() => {
+    if (!menuStorageKey || initializedMenuForRef.current === menuStorageKey) return;
+    initializedMenuForRef.current = menuStorageKey;
+    try {
+      const raw = localStorage.getItem(menuStorageKey);
+      const stored = raw == null ? [activeSectionKey] : JSON.parse(raw) as string[];
+      setOpenMenuKeys(stored.filter((key) => menuItems.some((section) => section.key === key)));
+    } catch {
+      setOpenMenuKeys([activeSectionKey]);
+    }
+  }, [activeSectionKey, menuItems, menuStorageKey]);
+
+  const handleMenuOpenChange = (keys: string[]) => {
+    const valid = keys.filter((key) => menuItems.some((section) => section.key === key));
+    setOpenMenuKeys(valid);
+    if (!menuStorageKey) return;
+    try { localStorage.setItem(menuStorageKey, JSON.stringify(valid)); } catch { /* storage may be disabled */ }
+  };
 
   const projects = useMemo(() => projectsData?.items ?? [], [projectsData?.items]); // 项目候选项，未加载完或为空组织时为 []
 
@@ -243,34 +288,16 @@ export function ConsoleLayout() {
     if (currentOrgId !== null) setOrgId(null);
   }, [projectsData, projects, currentOrgId, currentProjectId, setOrgId, setProjectId]);
 
-  // 高亮当前菜单：先在全部叶子 key 中精确匹配，
-  // 再退化为最长前缀匹配（最长前缀优先，避免 '/console' 抢占 '/console/projects/123'）。
-  const selectedMenuKey = useMemo(() => {
-    if (location.pathname === '/console/web-ui-agent') return '/console/web-ui';
-    if (ALL_MENU_KEYS.includes(location.pathname)) return location.pathname;
-    const prefixes = ALL_MENU_KEYS.filter((k) =>
-      location.pathname.startsWith(k + '/'),
-    );
-    if (prefixes.length > 0) {
-      return prefixes.reduce((a, b) => (b.length > a.length ? b : a));
-    }
-    // 都不是时默认高亮工作台，避免菜单全灰。
-    return '/console';
-  }, [location.pathname]);
-
   // 面包屑：命中分组子项时展示「控制台 / 分组名 / 页面名」三级，其余两段。
   // 页面名走 matchRouteTitle，动态子路由（报告详情等）与列表页标题可区分。
   const breadcrumbItems = useMemo(() => {
     const items: { title: string }[] = [{ title: '控制台' }];
     const currentTitle = matchRouteTitle(location.pathname) ?? '工作台';
-    const group = MENU_ITEMS.find(
-      (i): i is MenuSection =>
-        i.type === 'group' && i.children.some((c) => c.key === selectedMenuKey),
-    );
+    const group = menuItems.find((section) => section.children.some((child) => child.key === selectedMenuKey));
     if (group) items.push({ title: group.label });
     items.push({ title: currentTitle });
     return items;
-  }, [location.pathname, selectedMenuKey]);
+  }, [location.pathname, menuItems, selectedMenuKey]);
 
   // 顶部用户菜单：个人中心与退出登录两个可操作项。
   const userMenu = {
@@ -314,24 +341,19 @@ export function ConsoleLayout() {
           className="app-sidebar-menu"
           theme="light"
           mode="inline"
+          openKeys={openMenuKeys}
+          onOpenChange={handleMenuOpenChange}
           selectedKeys={[selectedMenuKey]}
-          items={MENU_ITEMS.map((item) => {
-            if (item.type === 'group') {
-              // 分组标签只提供视觉层级；各链接项仍对应现有路由。
-              return {
-                type: 'group' as const,
-                label: item.label,
-                children: item.children.map((c) => ({
-                  key: c.key,
-                  icon: c.icon,
-                  label: <Link to={c.key}>{c.label}</Link>,
-                })),
-              };
-            }
+          items={menuItems.map((item) => {
             return {
               key: item.key,
+              label: item.label,
               icon: item.icon,
-              label: <Link to={item.key}>{item.label}</Link>,
+              children: item.children.map((child) => ({
+                key: child.key,
+                icon: child.icon,
+                label: <Link to={child.key}>{child.label}</Link>,
+              })),
             };
           })}
         />
@@ -401,7 +423,7 @@ export function ConsoleLayout() {
           <div className="app-breadcrumb-wrap">
             <Breadcrumb className="app-breadcrumb" items={breadcrumbItems} />
           </div>
-          <Outlet />
+          <RouteErrorBoundary><Outlet /></RouteErrorBoundary>
         </Content>
       </Layout>
     </Layout>

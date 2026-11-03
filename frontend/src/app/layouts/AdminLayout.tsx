@@ -18,6 +18,7 @@ import { useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { PlatformRoleTag } from '@/features/identity/components/RoleTag';
+import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
 
 // antd Layout 的子部件解构，用于组合侧边栏/头部/内容区。
 const { Header, Sider, Content } = Layout;
@@ -31,7 +32,7 @@ const MENU_ITEMS = [
   { key: '/admin/users', icon: <TeamOutlined />, label: '用户管理' }, // 用户管理
   { key: '/admin/organizations', icon: <AppstoreOutlined />, label: '组织管理' }, // 组织管理
   { key: '/admin/projects', icon: <ProjectOutlined />, label: '项目管理' }, // 项目管理
-  { key: '/admin/model-configs', icon: <ApiOutlined />, label: '模型配置' }, // 模型配置
+  { key: '/admin/model-configs', icon: <ApiOutlined />, label: '模型中心' }, // 统一模型中心
   { key: '/admin/environments', icon: <CloudOutlined />, label: '环境配置' }, // 环境配置
   { key: '/admin/agents', icon: <RobotOutlined />, label: 'Agent' },
   { key: '/admin/mcp', icon: <ApiOutlined />, label: 'MCP' },
@@ -134,7 +135,7 @@ export function AdminLayout() {
           </Space>
         </Header>
         <Content className="app-content">
-          <Outlet />
+          <RouteErrorBoundary><Outlet /></RouteErrorBoundary>
         </Content>
       </Layout>
     </Layout>

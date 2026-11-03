@@ -1,8 +1,8 @@
 # 本地项目启动指南
 
-更新日期：2026-10-26。
+更新日期：2026-11-03。
 
-本文说明如何在本机启动 PostgreSQL、FastAPI 后端和 React 前端。仓库的 `compose.yaml` 只启动 PostgreSQL；应用服务分别在终端运行。首次初始化后，日常开发只需启动数据库和前后端。
+本文说明如何在本机启动 PostgreSQL、FastAPI 后端、独立 ASR Worker 和 React 前端。应用可分别在终端运行；`compose.yaml` 也提供含 Worker 自动重启与心跳健康检查的部署配置。
 
 ## 环境要求
 
@@ -101,7 +101,16 @@ cd backend
 .venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-**终端三：前端**：
+**终端三：ASR Worker**（负责 ASR、媒体分析、说话人处理、夜间计划和调参建议队列）：
+
+```bash
+cd backend
+.venv/bin/python scripts/run_asr_worker.py
+```
+
+Worker 可通过 `ASR_WORKER_ID`、`ASR_WORKER_POLL_SECONDS`、`ASR_WORKER_CONCURRENCY`、`ASR_DIARIZATION_CONCURRENCY` 和 `ASR_WORKER_LEASE_SECONDS` 配置。多实例需使用不同 Worker ID。Ctrl+C/SIGTERM 会停止领取新任务并等待当前请求收尾。
+
+**终端四：前端**：
 
 ```bash
 cd frontend
@@ -112,14 +121,14 @@ npm run dev
 
 ## 本地 Docker 全栈部署
 
-完成后端 `.env` 配置和数据库初始化后，可在仓库根目录用 Docker 启动 PostgreSQL、后端和生产构建的前端：
+完成后端 `.env` 配置后，可在仓库根目录用 Docker 启动 PostgreSQL、后端、ASR Worker 和生产构建的前端：
 
 ```bash
 python3 scripts/docker_compose.py up -d --build
 python3 scripts/docker_compose.py ps
 ```
 
-浏览器访问 [http://127.0.0.1:8080](http://127.0.0.1:8080)。前端容器通过 Nginx 将 `/api` 和健康检查请求转发给后端；后端启动时自动执行 `alembic upgrade head`。Compose 辅助脚本从 `backend/.env` 的 `DATABASE_URL` 读取 PostgreSQL 初始化变量，不会打印凭据。停止服务但保留数据库数据：
+浏览器访问 [http://127.0.0.1:8080](http://127.0.0.1:8080)。前端容器通过 Nginx 将 `/api` 和健康检查请求转发给后端；后端启动时自动执行 `alembic upgrade head`。Compose 中 `asr-worker` 等待后端健康后启动，使用独立进程身份、心跳健康检查与 `restart: unless-stopped`。`/healthz` 检查 Web 进程；ASR Worker 健康检查还要求心跳新鲜且 `business_ready=true`。Compose 会自动重启异常退出的 Worker；本地终端模式需手动重启脚本。Compose 辅助脚本从 `backend/.env` 的 `DATABASE_URL` 读取 PostgreSQL 初始化变量，不会打印凭据。停止服务但保留数据库数据：
 
 ```bash
 python3 scripts/docker_compose.py down
@@ -135,7 +144,9 @@ python3 scripts/docker_compose.py down
 curl http://127.0.0.1:8001/healthz
 ```
 
-健康检查应返回 `{"status":"ok"}`；它只确认进程存活，不检查数据库依赖。Swagger 文档位于 [http://127.0.0.1:8001/docs](http://127.0.0.1:8001/docs)，不带 `/api/v1` 前缀。
+健康检查应返回 `{"status":"ok"}`；`/healthz` 只表示 Web 进程存活，不代表后台任务就绪。登录后在 ASR 任务页查看 Worker 状态：`process_alive` 表示 90 秒内收到心跳；`business_ready` 还要求数据库和所需队列表可用。心跳读取失败、Worker 离线和进程存活但业务未就绪会分别显示。
+
+ASR 任务会先持久化入队。Worker 停止后，页面提示队列等待恢复；重启后继续处理待执行项及带远端任务 ID 的轮询。Worker 在外部提交窗口退出、但尚未保存远端 ID 时，运行转为“提交状态待核实”，不会自动重发，以免重复请求。部署日志可用 `docker compose logs -f asr-worker` 查看。Swagger 文档位于 [http://127.0.0.1:8001/docs](http://127.0.0.1:8001/docs)，不带 `/api/v1` 前缀。
 
 可选验证命令：
 

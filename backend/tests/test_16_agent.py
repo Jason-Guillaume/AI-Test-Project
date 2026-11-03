@@ -11,9 +11,13 @@ Result Analyzer、敏感数据过滤、Prompt injection 隔离、项目隔离、
 
 from __future__ import annotations
 
+import pytest
+from fastapi import HTTPException
+from pydantic import ValidationError
 from tests.conftest import unique
 
-from app.agents.workflows.legacy.graph import run_agent
+from app.agents.workflows.legacy.graph import _validate_explicit_ids, run_agent
+from app.agents.session_schemas import SendMessageRequest
 from app.llm.providers import FakeLLMProvider
 from app.core.security.sanitizer import (
     assert_no_real_secret,
@@ -173,6 +177,19 @@ class TestAgentState:
         assert s["project_id"] == 1
         assert s["generated_test_points"] == []
         assert s["messages"] == []
+
+    def test_explicit_empty_review_selection_is_rejected(self):
+        with pytest.raises(ValidationError):
+            SendMessageRequest(action="confirm_cases", case_ids=[])
+        with pytest.raises(ValidationError):
+            SendMessageRequest(action="confirm_points", point_ids=[])
+
+    def test_explicit_review_selection_must_belong_to_current_snapshot(self):
+        assert _validate_explicit_ids([11, 11], [{"id": 11}, {"id": 12}], "测试用例") == [11]
+        assert _validate_explicit_ids(None, [{"id": 11}], "测试用例") is None
+        with pytest.raises(HTTPException) as exc:
+            _validate_explicit_ids([99], [{"id": 11}], "测试用例")
+        assert exc.value.status_code == 422
 
     def test_set_error_returns_partial(self):
         """验证设置错误`returns``partial`场景及其预期结果。"""

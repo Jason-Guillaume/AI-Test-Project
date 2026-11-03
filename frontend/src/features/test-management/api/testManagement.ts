@@ -13,7 +13,7 @@
 // 不带分页信封；仅 list_runs / list_case_executions 返回 {items,total,page,page_size} 信封。
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
-import type { CaseExecutionListResponse, TestCase, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
+import type { CaseExecutionListResponse, RunCompareResponse, TestCase, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
 
@@ -193,4 +193,6 @@ export const testManagementApi = {
     api.get<TestRunListResponse>(`/projects/${projectId}/test-runs`, {
       params: { page: 1, page_size: 20, ...params },
     }),
+  compareRuns: (baseline_run_id: number, candidate_run_id: number, params: { page?: number; page_size?: number } = {}) =>
+    api.get<RunCompareResponse>('/test-runs/compare', { params: { baseline_run_id, candidate_run_id, ...params } }),
 };

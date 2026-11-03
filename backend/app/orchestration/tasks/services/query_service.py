@@ -82,6 +82,37 @@ class TaskQueryService:
         return {"items": items, "total": total, "page": page, "page_size": page_size}
 
     @staticmethod
+    def task_summary(db: Session, user: User) -> dict[str, Any]:
+        """从所有可见任务的最新运行统计状态，避免用第一页估算全局数量。"""
+        visible_ids = accessible_project_ids(db, user)
+        latest = db.query(TaskRun.task_id, func.max(TaskRun.run_number).label("run_number")).group_by(TaskRun.task_id).subquery()
+        query = db.query(TaskRun.status, func.count(Task.id)).select_from(TaskRun).join(
+            Task, Task.id == TaskRun.task_id,
+        ).join(
+            latest, and_(latest.c.task_id == Task.id, latest.c.run_number == TaskRun.run_number),
+        )
+        if visible_ids is not None:
+            query = query.filter(Task.project_id.in_(visible_ids or [-1]))
+        counts = {status: int(count) for status, count in query.group_by(TaskRun.status).all()}
+        active_statuses = {"QUEUED", "RUNNING", "WAITING_CONFIRMATION", "PAUSED", "PAUSE_REQUESTED", "CANCEL_REQUESTED", "RECONCILIATION_REQUIRED"}
+        active_count = sum(count for status, count in counts.items() if status in active_statuses)
+        inbox = db.query(TaskRun.status, func.count(Task.id)).select_from(TaskRun).join(
+            Task, Task.id == TaskRun.task_id,
+        ).join(
+            latest, and_(latest.c.task_id == Task.id, latest.c.run_number == TaskRun.run_number),
+        ).filter(
+            Task.created_by == user.id,
+            Task.archived.is_(False),
+            (TaskRun.status == "WAITING_CONFIRMATION")
+            | ((TaskRun.status == "PAUSED") & (TaskRun.stage == "WAITING_MODEL"))
+            | TaskRun.status.in_(("FAILED", "SUCCEEDED_WITH_ISSUES", "RECONCILIATION_REQUIRED")),
+        )
+        if visible_ids is not None:
+            inbox = inbox.filter(Task.project_id.in_(visible_ids or [-1]))
+        attention_count = int(sum(count for _, count in inbox.group_by(TaskRun.status).all()))
+        return {"active_count": active_count, "needs_attention_count": attention_count, "by_status": counts}
+
+    @staticmethod
     def get_task(db: Session, task_id: int, user: User) -> dict[str, Any]:
         """读取任务与最新运行；跨项目不可见统一返回 404。"""
         task = TaskAccessService.get_task_for_read(db, task_id, user)
@@ -100,11 +131,22 @@ class TaskQueryService:
         # 多次只读查询可能跨过 Planner 提交；刷新权威状态以避免混合视图。
         plans = db.query(TaskPlan).filter(TaskPlan.task_run_id == run.id).order_by(TaskPlan.version.asc()).all()
         agents = db.query(TaskAgentInstance).filter(TaskAgentInstance.task_run_id == run.id).order_by(TaskAgentInstance.id.asc()).all()
-        work_items = db.query(TaskWorkItem).filter(TaskWorkItem.task_run_id == run.id).order_by(TaskWorkItem.sequence.asc(), TaskWorkItem.id.asc()).all()
         tool_invocations = db.query(TaskToolInvocation).filter(
             TaskToolInvocation.task_run_id == run.id,
         ).order_by(TaskToolInvocation.created_at.asc(), TaskToolInvocation.id.asc()).all()
-        db.refresh(run)
+        # A worker may commit between the preceding related-record reads. Load the
+        # run and its work items in one statement so status/stage and item status
+        # come from the same database snapshot.
+        run_and_work = (
+            db.query(TaskRun, TaskWorkItem)
+            .outerjoin(TaskWorkItem, TaskWorkItem.task_run_id == TaskRun.id)
+            .filter(TaskRun.id == run.id)
+            .order_by(TaskWorkItem.sequence.asc(), TaskWorkItem.id.asc())
+            .populate_existing()
+            .all()
+        )
+        run = run_and_work[0][0] if run_and_work else run
+        work_items = [item for _, item in run_and_work if item is not None]
         invocations_by_work_item: dict[int, list[TaskToolInvocation]] = {}
         for invocation in tool_invocations:
             invocations_by_work_item.setdefault(invocation.work_item_id, []).append(invocation)

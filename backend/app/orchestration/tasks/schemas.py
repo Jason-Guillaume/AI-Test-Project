@@ -49,6 +49,80 @@ class TaskCreate(BaseModel):
     task_mode: Literal["TEST_EXECUTION", "WEB_AUTHORING"] = "TEST_EXECUTION"
     web_authoring: TaskWebAuthoringSelection | None = None
     request_key: str | None = Field(None, max_length=100)
+    template_id: int | None = Field(default=None, gt=0)
+    template_version: int | None = Field(default=None, ge=1)
+    target_type: Literal["API", "WEB", "SECURITY", "WEB_AUTHORING"] | None = None
+
+
+class TaskTemplateConfig(TaskCreate):
+    """模板可不固定环境；创建真实任务时仍必须由用户选定环境。"""
+
+    environment_id: int | None = Field(default=None, gt=0)
+
+
+class TaskTemplateCreate(BaseModel):
+    """新建或更新项目共享模板。"""
+
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    config: TaskTemplateConfig
+    is_active: bool = True
+
+
+class TaskTemplateUpdate(BaseModel):
+    """带读取版本的模板配置更新；省略状态时保持当前启停状态。"""
+
+    expected_version: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    config: TaskTemplateConfig
+    is_active: bool | None = None
+
+
+class TaskTemplateStatusUpdate(BaseModel):
+    """只变更启停状态，同时使旧编辑表单版本失效。"""
+
+    expected_version: int = Field(ge=1)
+    is_active: bool
+
+
+class TaskTemplateResponse(BaseModel):
+    id: int
+    project_id: int
+    created_by: int | None = None
+    updated_by: int | None = None
+    name: str
+    description: str
+    config: dict[str, Any]
+    version: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskInboxItem(BaseModel):
+    task_id: int
+    project_id: int
+    project_name: str
+    task_title: str
+    run_id: int
+    run_number: int
+    run_status: str
+    stage: str
+    category: Literal["approval", "model_blocked", "failed", "reconcile"]
+    reason: str
+    next_action: str
+    updated_at: datetime
+
+
+class TaskInboxResponse(BaseModel):
+    items: list[TaskInboxItem]
+    counts: dict[str, int]
+    total: int
+    page: int
+    page_size: int
 
 
 class AvailableTaskAgentResponse(BaseModel):
@@ -109,6 +183,18 @@ class TaskListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class TaskSummaryResponse(BaseModel):
+    active_count: int
+    needs_attention_count: int
+    by_status: dict[str, int]
+
+
+class VerificationTaskRequest(BaseModel):
+    source_case_execution_id: int = Field(gt=0)
+    environment_id: int = Field(gt=0)
+    request_key: str = Field(min_length=1, max_length=100)
 
 
 class TaskPlanResponse(BaseModel):

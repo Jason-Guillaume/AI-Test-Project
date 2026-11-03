@@ -3,10 +3,12 @@
 // 按任务看四类结果：事件时间线 / 告警（severity 筛选）/ 覆盖率 / 报告，
 // 另加「关联疑似问题」把扫描结果接回 Phase 1 的疑似问题状态流。
 // 所有面板都是纯读取；报告数字来自任务记录本身（§二十五）。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Card, Col, Row, Select, Space, Statistic, Tabs, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { zapApi } from '@/features/security-testing/zap/api';
+import { collectPages } from '@/shared/api/pagination';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { authModeLabel, isRunningJob, jobStatusLabel, scanModeLabel } from './constants';
 import { JobAlertsPanel } from './panels/JobAlertsPanel';
@@ -17,24 +19,46 @@ import { JobReportPanel } from './panels/JobReportPanel';
 import { ScanJobStatusBadge } from './panels/ScanJobStatusBadge';
 
 /** 扫描结果子 Tab。projectId 由父页传入（已确保非空）。 */
-export function ResultsSubTab({ projectId }: { projectId: number }) {
-  const [jobId, setJobId] = useState<number | undefined>(undefined);
+export function ResultsSubTab({ projectId, initialJobId }: { projectId: number; initialJobId?: number }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [jobId, setJobId] = useState<number | undefined>(initialJobId);
+  useEffect(() => setJobId(initialJobId), [initialJobId]);
 
   // 只拉已产出结果的任务做选择器；进行中也能选，方便边跑边看事件。
   const jobsQuery = useQuery({
     queryKey: ['zap-jobs', projectId, 'results-picker'],
-    queryFn: () => zapApi.listScanJobs(projectId, { page: 1, page_size: 100 }),
+    queryFn: () => collectPages((page) => zapApi.listScanJobs(projectId, { page, page_size: 100 })),
     // 只有还有任务在跑时轮询选择器，避免列表空转。
     refetchInterval: (query) =>
       query.state.data?.items.some((j) => isRunningJob(j.status)) ? 10000 : false,
   });
 
-  const jobs = jobsQuery.data?.items ?? [];
+  const listedJobs = jobsQuery.data?.items ?? [];
+  const directJobQuery = useQuery({
+    queryKey: ['zap-job-result-link', projectId, initialJobId],
+    queryFn: () => zapApi.getScanJob(projectId, initialJobId!),
+    enabled: initialJobId != null && (jobsQuery.isError || !listedJobs.some((job) => job.id === initialJobId)),
+    retry: false,
+  });
+  const jobs = directJobQuery.data && !listedJobs.some((job) => job.id === directJobQuery.data!.id)
+    ? [...listedJobs, directJobQuery.data]
+    : listedJobs;
   const selected = jobs.find((j) => j.id === jobId);
   const running = selected != null && isRunningJob(selected.status);
 
-  if (jobsQuery.isLoading) return <LoadingState />;
-  if (jobsQuery.isError) return <ErrorState error={jobsQuery.error} onRetry={jobsQuery.refetch} />;
+  if (jobsQuery.isLoading && !directJobQuery.data) return <LoadingState />;
+  if (jobsQuery.isError && !directJobQuery.data) {
+    return initialJobId != null && directJobQuery.isPending
+      ? <LoadingState />
+      : <ErrorState error={jobsQuery.error} onRetry={() => { void jobsQuery.refetch(); void directJobQuery.refetch(); }} />;
+  }
+
+  const selectJob = (value: number) => {
+    setJobId(value);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'zap'); next.set('zapTab', 'results'); next.set('projectId', String(projectId)); next.set('jobId', String(value));
+    setSearchParams(next, { replace: true });
+  };
 
   if (jobs.length === 0) {
     return (
@@ -44,13 +68,14 @@ export function ResultsSubTab({ projectId }: { projectId: number }) {
 
   return (
     <div>
+      {jobsQuery.isError && directJobQuery.data && <Alert type="warning" showIcon style={{ marginBottom: 12 }} message="扫描任务列表暂不可用，已通过深链接读取当前任务。" />}
       <Card size="small" style={{ marginBottom: 12 }}>
         <Space wrap>
           <Select
             style={{ width: 360 }}
             placeholder="选择扫描任务"
             value={jobId}
-            onChange={setJobId}
+            onChange={selectJob}
             options={jobs.map((j) => ({
               value: j.id,
               label: `#${j.id} · ${j.target_name ?? `目标 #${j.target_id}`} · ${jobStatusLabel(j.status)}`,
@@ -59,6 +84,8 @@ export function ResultsSubTab({ projectId }: { projectId: number }) {
           <Typography.Text type="secondary">选中后可看事件时间线、告警、覆盖率与报告</Typography.Text>
         </Space>
       </Card>
+
+      {directJobQuery.isError && <Alert type="error" showIcon message={`无法读取扫描任务 #${initialJobId}`} description="请确认项目范围和当前用户权限。" />}
 
       {selected && (
         <div style={{ marginBottom: 12 }}>

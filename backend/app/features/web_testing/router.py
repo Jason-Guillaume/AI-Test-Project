@@ -38,9 +38,20 @@ def delete_page(page_id: int, db: Session = Depends(get_db), user: User = Depend
 
 
 @router.get("/projects/{project_id}/web-cases")
-def cases(project_id: int, page: int = Query(1, ge=1), page_size: int = Query(200, ge=1, le=200), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def cases(
+    project_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(200, ge=1, le=200),
+    keyword: str | None = Query(None, max_length=200),
+    confirmed_only: bool = Query(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """列出 Web 用例。"""
-    return service.list_cases(db, project_id, user, page=page, page_size=page_size)
+    return service.list_cases(
+        db, project_id, user, page=page, page_size=page_size,
+        keyword=keyword, confirmed_only=confirmed_only,
+    )
 
 
 @router.get("/web-cases/{case_id}", response_model=CaseResponse)

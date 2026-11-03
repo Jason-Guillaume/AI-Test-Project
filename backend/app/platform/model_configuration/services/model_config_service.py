@@ -24,6 +24,10 @@ from app.platform.model_configuration.schemas import (
     ModelConfigurationUpdate,
     normalize_provider,
 )
+from app.platform.model_configuration.models import ModelResource
+from app.platform.model_configuration.services.model_center_service import (
+    sync_legacy_text_configuration, sync_legacy_text_default,
+)
 from app.core.models.identity import User
 
 _MAX_API_KEY_LENGTH = 1000
@@ -284,6 +288,8 @@ def create_configuration(db: Session, body: ModelConfigurationCreate, *, actor: 
         has_api_key=bool(api_key),
     )
     _normalize_defaults(db, row if body.is_default else None)
+    sync_legacy_text_configuration(db, row)
+    sync_legacy_text_default(db, actor.id)
     db.commit()
     db.refresh(row)
     return row
@@ -336,6 +342,8 @@ def update_configuration(
         row.api_key_encrypted = encrypt_api_key(next_api_key)
 
     _normalize_defaults(db, row if row.is_default else None)
+    sync_legacy_text_configuration(db, row)
+    sync_legacy_text_default(db, actor.id)
     db.commit()
     db.refresh(row)
     return row
@@ -347,9 +355,14 @@ def delete_configuration(db: Session, config_id: int, *, actor: User) -> None:
     row = get_or_404(db, config_id)
     if row.is_default:
         raise bad_request("默认模型不能删除，请先指定新的默认模型")
+    resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).first()
+    if resource is not None:
+        resource.legacy_model_id = None
+        resource.status = "ARCHIVED"
     db.delete(row)
     # 删除后重新分配默认位，保证未显式指定模型的调用总有兜底。
     _normalize_defaults(db, None)
+    sync_legacy_text_default(db, actor.id)
     db.commit()
 
 
@@ -360,6 +373,8 @@ def set_default(db: Session, config_id: int, *, actor: User) -> ModelConfigurati
     if not row.is_enabled:
         raise bad_request("停用的模型不能设为默认模型")
     _normalize_defaults(db, row)
+    sync_legacy_text_configuration(db, row)
+    sync_legacy_text_default(db, actor.id)
     db.commit()
     db.refresh(row)
     return row

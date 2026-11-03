@@ -3,6 +3,10 @@ import { api } from '@/shared/api/client';
 import type { ZapHealth, ZapCapabilities, ScanTarget, ScanTargetCreate, ScanTargetUpdate, ScanTargetListResponse, ScanAuthProfile, ScanAuthProfileCreate, ScanAuthProfileUpdate, ScanAuthProfileListResponse, ScanProfile, ScanProfileCreate, ScanProfileUpdate, ScanProfileListResponse, ScanJobCreate, ScanJob, ScanJobListResponse, ScanJobProgress, ScanEventListResponse, ScanAlertListResponse, ScanCoverage, ScanFindingListResponse, ScanPlan, ScanReport } from './contracts';
 
 export const zapApi = {
+getProjectZapStatus: (projectId: number) =>
+  api.get<{ enabled: boolean; reachable: boolean; available: boolean; message: string }>(
+    `/projects/${projectId}/security/zap/status`,
+  ),
 // =================================================================== ZAP 安全扫描（Phase 2）
 // 路由形态（挂载 /api/v1 下）：
 //   GET /security/zap/health、GET /security/zap/capabilities（平台管理员，基础设施可观测性）

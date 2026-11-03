@@ -22,10 +22,19 @@ from app.orchestration.tasks.schemas import (
     TaskResponse,
     TaskRunDetailResponse,
     TaskWebAuthoringTurn,
+    TaskTemplateCreate,
+    TaskTemplateResponse,
+    TaskTemplateStatusUpdate,
+    TaskTemplateUpdate,
+    TaskInboxResponse,
+    TaskSummaryResponse,
+    VerificationTaskRequest,
 )
 from app.orchestration.tasks.services.web_authoring_service import TaskWebAuthoringService
 from app.features.web_testing.schemas import PromoteInput
 from app.orchestration.tasks.services.task_service import TaskService
+from app.orchestration.tasks.services.template_service import TaskTemplateService
+from app.orchestration.tasks.services.inbox_service import TaskInboxService
 from app.core.models.identity import User
 from app.core.security.auth import get_current_user
 from app.core.database.session import get_db
@@ -33,6 +42,7 @@ from app.core.database.session import get_db
 router = APIRouter(tags=["统一任务"])
 service = TaskService()
 web_authoring_service = TaskWebAuthoringService()
+template_service = TaskTemplateService()
 
 
 @router.post(
@@ -49,6 +59,82 @@ def create_task(
 ) -> dict:
     """登记任务和首个持久化运行，长执行由数据库调度器继续处理。"""
     return service.create_task(db, project_id, body, actor=user)
+
+
+@router.get("/projects/{project_id}/task-templates", response_model=list[TaskTemplateResponse], summary="项目任务模板")
+def list_task_templates(
+    project_id: int,
+    keyword: str = Query("", max_length=120),
+    include_inactive: bool = False,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    return template_service.list_templates(db, project_id, user, keyword=keyword, include_inactive=include_inactive)
+
+
+@router.get("/task-templates/{template_id}", response_model=TaskTemplateResponse, summary="按 ID 读取任务模板")
+def get_task_template(
+    template_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return template_service.get_response(db, template_id, user)
+
+
+@router.post("/projects/{project_id}/task-templates", response_model=TaskTemplateResponse, status_code=status.HTTP_201_CREATED, summary="创建项目任务模板")
+def create_task_template(
+    project_id: int,
+    body: TaskTemplateCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return template_service.create(db, project_id, body, user)
+
+
+@router.put("/task-templates/{template_id}", response_model=TaskTemplateResponse, summary="按版本更新任务模板")
+def update_task_template(
+    template_id: int,
+    body: TaskTemplateUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return template_service.update(db, template_id, body, user)
+
+
+@router.patch("/task-templates/{template_id}/status", response_model=TaskTemplateResponse, summary="按版本启用或停用任务模板")
+def set_task_template_status(
+    template_id: int,
+    body: TaskTemplateStatusUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return template_service.set_active(db, template_id, body, user)
+
+
+@router.delete("/task-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT, summary="按版本停用任务模板")
+def deactivate_task_template(
+    template_id: int,
+    expected_version: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> None:
+    template_service.set_active(
+        db, template_id, TaskTemplateStatusUpdate(expected_version=expected_version, is_active=False), user,
+    )
+
+
+@router.get("/tasks/inbox", response_model=TaskInboxResponse, summary="当前用户待处理任务")
+def task_inbox(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    project_id: int | None = Query(None, gt=0),
+    category: str | None = Query(None, pattern="^(approval|model_blocked|failed|reconcile)$"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return TaskInboxService.list_for_user(
+        db, user, page=page, page_size=page_size, project_id=project_id, category=category,
+    )
 
 
 @router.get("/task-runs/{run_id}/web-authoring", summary="读取任务内 Web 编写工作区")
@@ -126,6 +212,21 @@ def list_tasks(
 ) -> dict:
     """按项目权限分页列出任务及其最新运行。"""
     return service.list_tasks(db, user, page=page, page_size=page_size, project_id=project_id, status=task_status)
+
+
+@router.get("/tasks/summary", response_model=TaskSummaryResponse, summary="可见任务状态汇总")
+def task_summary(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict:
+    return service.task_summary(db, user)
+
+
+@router.post("/bugs/{bug_id}/verification-tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED, summary="为已修复缺陷创建验证任务")
+def create_bug_verification_task(
+    bug_id: int,
+    body: VerificationTaskRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    return service.create_verification_task(db, bug_id, body, actor=user)
 
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse, summary="任务详情")

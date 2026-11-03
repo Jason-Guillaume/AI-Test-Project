@@ -13,6 +13,7 @@
 | 了解编码规范 / 红线 | [coding-conventions.md](coding-conventions.md) |
 | 了解项目当前阶段与历史决策 | [development.md](development.md)（开发日志索引） |
 | 查看某模块的交付结论 | 见下方「交付报告」 |
+| ASR 夜间对照评测与说话人工作台 | [夜间评测进度](asr-evaluation-progress.md)、[说话人工作台进度](asr-speaker-audio-workbench-progress.md)、[交付与启动说明](asr-speaker-audio-workbench-delivery.md)、[验证资产](asr-evaluation-validation/) |
 
 ## 架构与迁移（历史分析）
 
@@ -36,6 +37,11 @@
 
 | 文档 | 模块 |
 |---|---|
+| [2026-11-02-unified-model-center-optimization-plan.md](2026-11-02-unified-model-center-optimization-plan.md) | 统一模型中心：文本推理、ASR、说话人模型分类配置，参数方案、任务角色、授权与兼容迁移 |
+| [2026-11-02-asr-speaker-audio-workbench-optimization-plan.md](2026-11-02-asr-speaker-audio-workbench-optimization-plan.md) | 当前平台说话人模型接入、音频工作台、音频信息右侧抽屉及长音频处理优化方案 |
+| [2026-11-02-asr-evaluation-development-plan.md](2026-11-02-asr-evaluation-development-plan.md) | ASR 夜间三方对照评测：页面文案、接口、调度、对齐、人工确认及参数复跑开发方案 |
+| [2026-11-02-asr-evaluation-verification-report.md](2026-11-02-asr-evaluation-verification-report.md) | ASR 开发后独立验证：实跑结果、缺陷复现、浏览器截图与验收结论 |
+| [2026-11-02-asr-evaluation-development-prompt.md](2026-11-02-asr-evaluation-development-prompt.md) | ASR 评测可复制开发需求提示词，含方案和原型路径 |
 | [security-testing-phase1-dev-plan.md](security-testing-phase1-dev-plan.md) | 安全测试 Phase 1 开发计划 |
 | [security-testing-phase1-requirements.md](security-testing-phase1-requirements.md) | 安全测试 Phase 1 需求说明 |
 | [test-data-center-dev-plan.md](test-data-center-dev-plan.md) | 测试数据中心 + Data Factory 开发计划 |
@@ -77,5 +83,6 @@
 |---|---|
 | [zap/README.md](zap/README.md) | ZAP 部署与验证指南（含冒烟脚本 `zap_smoke_check.sh`） |
 | [web-ui-phase1/](web-ui-phase1/) | Web UI Phase 1 验收记录（pytest 摘要、浏览器验证截图） |
+| [asr-evaluation-validation/](asr-evaluation-validation/) | ASR 评测 Console 页面空态截图；不包含模拟识别结果 |
 
 - [后端综合职责拆分交付（B0–B9）](agent-cluster-refactor/backend-comprehensive-delivery.md)：执行器、任务服务/运行时、安全/ZAP、API 目录、Fixture、业务/Web/Agent 及 Schema/路由；[进度与检查点](agent-cluster-refactor/backend-comprehensive-progress.md)。

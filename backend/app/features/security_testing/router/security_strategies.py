@@ -31,6 +31,7 @@ def list_security_strategies(
     project_id: int,
     category: str | None = Query(None),
     enabled: bool | None = Query(None),
+    keyword: str | None = Query(None, max_length=200),
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -38,7 +39,7 @@ def list_security_strategies(
 ) -> SecurityStrategyListResponse:
     """列出安全`strategies`。"""
     return _STRATEGY.list_strategies(
-        db, project_id, actor=user, category=category, enabled=enabled,
+        db, project_id, actor=user, category=category, enabled=enabled, keyword=keyword,
         page=page, page_size=page_size,
     )
 

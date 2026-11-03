@@ -1,7 +1,7 @@
 // 用户工作台总览：核心指标、统计图表、项目与通知动态。
 // 指标与趋势均来自当前用户可见范围内的真实业务数据。
 // 本模块导出 ConsoleWorkbenchPage，由路由 /console 挂载，是控制台默认落地页。
-import { Button, Card, Col, List, Row, Statistic, Typography } from 'antd';
+import { Button, Card, Col, List, Row, Space, Statistic, Typography } from 'antd';
 import { ApiOutlined, ArrowRightOutlined, SafetyOutlined, ScheduleOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { DashboardCharts } from './DashboardCharts';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { tasksApi } from '@/features/tasks/api/tasks';
 
 const QUICK_LINKS = [
   { to: '/console/api-catalog', icon: <ApiOutlined />, title: '管理测试资产', description: '接口、业务流与用例统一维护' },
@@ -54,6 +55,11 @@ export function ConsoleWorkbenchPage() {
     queryFn: () =>
       notificationsApi.list({ page: 1, page_size: 3 }),
   });
+  const inboxQuery = useQuery({
+    queryKey: ['tasks', 'inbox', currentProjectId, 1],
+    queryFn: () => tasksApi.inbox({ project_id: currentProjectId ?? undefined, page: 1, page_size: 5 }),
+    refetchInterval: 15000,
+  });
 
   // 概览是主数据源：未就绪就整页转圈，避免半渲染的布局跳动
   if (overviewQuery.isPending) return <LoadingState />;
@@ -78,11 +84,10 @@ export function ConsoleWorkbenchPage() {
       <PageHeader
         title="工作台"
         subtitle="聚焦当前团队的测试资产、执行动态与待处理事项"
-        extra={
-          <Link to="/console/tasks">
-            <Button type="primary">任务中心</Button>
-          </Link>
-        }
+        extra={<Space wrap>
+          <Link to="/console/tasks/inbox"><Button>待我处理{inboxQuery.data?.total ? ` · ${inboxQuery.data.total}` : ''}</Button></Link>
+          <Link to="/console/tasks?create=1"><Button type="primary">创建任务</Button></Link>
+        </Space>}
       />
       <Row gutter={[16, 16]}>
         {primaryStats.map((card) => (
@@ -96,6 +101,23 @@ export function ConsoleWorkbenchPage() {
       </Row>
 
       <DashboardCharts organizationId={currentOrgId} projectId={currentProjectId} />
+
+      <Card
+        style={{ marginTop: 16 }}
+        title="待我处理"
+        extra={<Link to="/console/tasks/inbox">查看全部</Link>}
+      >
+        {inboxQuery.isPending ? <Typography.Text type="secondary">正在读取任务状态…</Typography.Text> : inboxQuery.isError ? (
+          <Space><Typography.Text type="danger">待办加载失败，未显示局部统计。</Typography.Text><Button size="small" onClick={() => void inboxQuery.refetch()}>重试</Button></Space>
+        ) : inboxQuery.data.items.length === 0 ? <Typography.Text type="secondary">当前没有待处理任务</Typography.Text> : (
+          <List
+            dataSource={inboxQuery.data.items}
+            renderItem={(item) => <List.Item actions={[<Link key="open" to={`/console/tasks/${item.task_id}?runId=${item.run_id}`}>打开</Link>]}>
+              <List.Item.Meta title={item.task_title} description={`${item.project_name} · ${item.next_action}`} />
+            </List.Item>}
+          />
+        )}
+      </Card>
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} md={15}>

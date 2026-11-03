@@ -42,10 +42,33 @@ class Task(Base):
     security_scan_json = Column(JSON, nullable=True, comment="历史 ZAP 扫描配置；新任务不再创建该流程")
     security_assessment_json = Column(JSON, nullable=True, comment="自研安全评估范围：登记 API 与安全策略快照")
     request_key = Column(String(100), nullable=True)
+    request_digest = Column(String(64), nullable=True, comment="规范化创建请求摘要，用于幂等键内容校验")
     status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
     task_mode = Column(String(32), nullable=False, default="TEST_EXECUTION", server_default=text("'TEST_EXECUTION'"))
     web_authoring_json = Column(JSON, nullable=True, comment="交互式 Web 编写的环境、认证引用与目标范围")
     archived = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TaskTemplate(Base):
+    """项目共享的可复用任务配置；只保存可重新校验的业务引用。"""
+
+    __tablename__ = "task_template"
+    __table_args__ = (
+        Index("ix_task_template_project_active_updated", "project_id", "is_active", "updated_at"),
+        {"comment": "项目共享任务模板，不保存运行状态、消息或临时会话"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    name = Column(String(120), nullable=False)
+    description = Column(String(500), nullable=False, default="", server_default=text("''"))
+    config_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 

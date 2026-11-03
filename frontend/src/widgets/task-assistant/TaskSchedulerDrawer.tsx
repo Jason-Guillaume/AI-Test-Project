@@ -19,11 +19,16 @@ export function TaskSchedulerDrawer() {
   const navigate = useNavigate();
   const tasksQuery = useQuery({
     queryKey: ['tasks', 'global-drawer'],
-    queryFn: () => tasksApi.list({ page: 1, page_size: 100 }),
+    queryFn: () => tasksApi.list({ page: 1, page_size: 20 }),
+    refetchInterval: open ? 4000 : false,
+  });
+  const summaryQuery = useQuery({
+    queryKey: ['tasks', 'global-summary'],
+    queryFn: () => tasksApi.summary(),
     refetchInterval: open ? 4000 : false,
   });
   const rows = tasksQuery.data?.items ?? [];
-  const activeCount = rows.filter((task) => ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED'].includes(task.status)).length;
+  const activeCount = summaryQuery.data?.active_count ?? 0;
   const openTask = (task: Task) => {
     setOpen(false);
     navigate(`/console/tasks/${task.id}`);
@@ -46,7 +51,12 @@ export function TaskSchedulerDrawer() {
         onClose={() => setOpen(false)}
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建任务</Button>}
       >
-        {rows.length === 0 ? (
+        {tasksQuery.isError || summaryQuery.isError ? (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Typography.Text type="danger">任务状态读取失败，未使用当前页数据估算全局数量。</Typography.Text>
+            <Button onClick={() => { void tasksQuery.refetch(); void summaryQuery.refetch(); }}>重试</Button>
+          </Space>
+        ) : rows.length === 0 ? (
           <Empty description={tasksQuery.isLoading ? '正在读取任务' : '暂无任务'} />
         ) : (
           <List

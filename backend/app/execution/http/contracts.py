@@ -11,7 +11,7 @@ class HttpExecutionResult:
 
     __slots__ = (
         "status_code", "response_body", "response_headers", "response_time_ms",
-        "request_url", "error_message", "transport_error_kind", "transport_error_detail",
+        "request_url", "error_message", "transport_error_kind", "transport_error_detail", "response_truncated",
     )
 
     def __init__(self) -> None:
@@ -24,6 +24,7 @@ class HttpExecutionResult:
         self.error_message: str | None = None
         self.transport_error_kind: str | None = None
         self.transport_error_detail: str | None = None
+        self.response_truncated: bool = False
 
     @property
     def success(self) -> bool:

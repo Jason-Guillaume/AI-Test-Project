@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Collapse,
   Empty,
   Flex,
   Space,
@@ -50,7 +51,7 @@ export function ConsoleTaskDetailPage() {
     queryKey: ['tasks', taskId],
     queryFn: () => tasksApi.get(taskId!),
     enabled: taskId != null,
-    refetchInterval: 5000,
+    refetchInterval: (query) => STOP_POLLING.has(query.state.data?.latest_run?.status ?? '') ? false : 5000,
   });
   const runId = invalidRunId ? null : requestedRunId ?? taskQuery.data?.latest_run?.id ?? null;
   const runQuery = useQuery({
@@ -162,6 +163,18 @@ export function ConsoleTaskDetailPage() {
   const canMessageWorker = selectedAgent != null && ['API_WORKER', 'UI_WORKER'].includes(selectedAgent.role) && workItems.some(
     (item) => item.agent_instance_id === selectedAgent.id && ['PENDING', 'FAILED'].includes(item.status),
   );
+  const nextStep = run.status === 'WAITING_CONFIRMATION'
+    ? '审阅并确认方案后，任务才会启动。'
+    : run.status === 'PAUSED' && run.stage === 'WAITING_MODEL'
+      ? '检查模型配置与备用路由，然后继续运行。'
+      : run.status === 'PAUSED'
+        ? '任务已暂停，可继续运行或取消。'
+        : run.status === 'FAILED' || run.status === 'RECONCILIATION_REQUIRED'
+          ? '检查失败原因和执行回执，再决定是否安全重试。'
+          : TERMINAL.has(run.status)
+            ? '本次运行已结束，可查看结果或从当前配置再次创建任务。'
+            : '任务正在后台运行；状态与事件会自动更新。';
+  const environmentId = run.input_snapshot.environment_id;
 
   const requestCommand = (type: 'APPROVE_PLAN' | 'PAUSE' | 'RESUME' | 'CANCEL') => {
     if (type === 'APPROVE_PLAN' && securityAssessmentSelection) {
@@ -216,6 +229,7 @@ export function ConsoleTaskDetailPage() {
           </Space>
         </div>
         <Space wrap>
+          {TERMINAL.has(run.status) && !historicalRun && <Button onClick={() => navigate(`/console/tasks?again=${task.id}`)}>再次执行</Button>}
           {!historicalRun && webAuthoringMode && run.stage !== 'PLAN_REVIEW' && <Button type="primary" onClick={() => navigate(`/console/web-ui-agent?taskId=${task.id}&runId=${run.id}&projectId=${task.project_id}`)}>打开任务 Web 工作区</Button>}
           {!historicalRun && run.status === 'WAITING_CONFIRMATION' && <Button type="primary" icon={<CheckOutlined />} onClick={() => requestCommand('APPROVE_PLAN')}>{securityAssessmentSelection ? '确认安全计划并执行' : webAuthoringMode ? '批准方案并启动 UI Worker' : '确认方案并执行'}</Button>}
           {canPause && <Button icon={<PauseOutlined />} onClick={() => requestCommand('PAUSE')}>暂停</Button>}
@@ -226,7 +240,7 @@ export function ConsoleTaskDetailPage() {
 
       {historicalRun && <Alert style={{ marginTop: 16 }} type="info" showIcon message="当前查看的是历史运行" description={<Link to={`/console/tasks/${task.id}`}>查看最新运行</Link>} />}
 
-      {run.stage === 'WAITING_MODEL' && run.error_message && (
+      {run.status === 'PAUSED' && run.stage === 'WAITING_MODEL' && run.error_message && (
         <Alert
           style={{ marginTop: 16 }}
           type="warning"
@@ -236,15 +250,32 @@ export function ConsoleTaskDetailPage() {
         />
       )}
 
-      {taskQuery.isError && <Alert type="error" message="刷新任务失败" />}
-      <Flex gap={12} style={{ margin: '18px 0' }} wrap="wrap">
-        <Card size="small"><Statistic title="团队成员" value={agents.length} /></Card>
-        <Card size="small"><Statistic title="任务 Agent" value={selectedProfile?.name ? `${selectedProfile.name} v${selectedProfile.version ?? 1}` : '平台默认'} /></Card>
-        {selectedProfile?.child_agents?.length ? <Card size="small"><Statistic title="子 Agent 节点" value={selectedProfile.child_agents.length} /></Card> : null}
-        <Card size="small"><Statistic title="待处理工作" value={activeWork} /></Card>
-        <Card size="small"><Statistic title="方案版本" value={run.current_plan_version} /></Card>
-        <Card size="small"><Statistic title="事件序号" value={run.event_seq} /></Card>
-      </Flex>
+      <Card size="small" style={{ marginTop: 16 }} title="任务摘要">
+        <Flex gap={20} wrap="wrap" align="start">
+          <div><Typography.Text type="secondary">执行环境</Typography.Text><br /><Typography.Text>{environmentId ? `环境 #${String(environmentId)}` : '未绑定环境'}</Typography.Text></div>
+          <div><Typography.Text type="secondary">当前下一步</Typography.Text><br /><Typography.Text>{nextStep}</Typography.Text></div>
+          {run.error_message && <div style={{ minWidth: 240, flex: 1 }}><Typography.Text type="secondary">阻塞或失败原因</Typography.Text><br /><Typography.Text type="danger">{run.error_message}</Typography.Text></div>}
+        </Flex>
+      </Card>
+
+      <Collapse
+        size="small"
+        style={{ marginTop: 12 }}
+        items={[{
+          key: 'metrics',
+          label: '运行详情',
+          children: (
+            <Flex gap={12} wrap="wrap">
+              <Card size="small"><Statistic title="进行中的工作" value={activeWork} /></Card>
+              <Card size="small"><Statistic title="方案版本" value={run.current_plan_version} /></Card>
+              <Card size="small"><Statistic title="系统事件" value={run.event_seq} /></Card>
+              <Card size="small"><Statistic title="参与者" value={agents.length} /></Card>
+              <Card size="small"><Statistic title="任务 Agent" value={selectedProfile?.name ? `${selectedProfile.name} v${selectedProfile.version ?? 1}` : '平台默认'} /></Card>
+              {selectedProfile?.child_agents?.length ? <Card size="small"><Statistic title="子 Agent 节点" value={selectedProfile.child_agents.length} /></Card> : null}
+            </Flex>
+          ),
+        }]}
+      />
 
       <TaskRunPanels
         task={task}

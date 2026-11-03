@@ -178,8 +178,9 @@ class SendMessageRequest(BaseModel):
 
     content: str | None = Field(None, description="用户自然语言消息")
     action: AgentAction | None = Field(None, description="review 暂停点快捷操作")
-    point_ids: list[int] | None = Field(None, description="确认/执行选中的测试点ID子集")
-    case_ids: list[int] | None = Field(None, description="确认/执行选中的用例ID子集")
+    # None 仅保留旧客户端“全部”兼容；显式 [] 不代表全部，必须拒绝。
+    point_ids: list[int] | None = Field(None, min_length=1, description="确认/执行选中的测试点ID子集；缺省仅兼容旧客户端")
+    case_ids: list[int] | None = Field(None, min_length=1, description="确认/执行选中的用例ID子集；缺省仅兼容旧客户端")
     environment_id: int | None = Field(None, gt=0, description="执行环境ID（execute 时必填）")
     channel_id: int | None = Field(None, gt=0, description="飞书通知渠道ID（confirm_report 时可选，缺省取项目首个启用渠道）")
     security_item_indexes: list[int] | None = Field(
@@ -209,6 +210,8 @@ class AgentWorkspace(BaseModel):
     test_plan: dict[str, Any] | None = None
     test_points: list[dict[str, Any]] = []
     test_cases: list[dict[str, Any]] = []
+    confirmed_point_ids: list[int] = Field(default_factory=list)
+    confirmed_case_ids: list[int] = Field(default_factory=list)
     test_run_id: int | None = None
     execution_result: dict[str, Any] | None = None
     analysis: dict[str, Any] | None = None

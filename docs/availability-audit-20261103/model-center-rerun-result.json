@@ -1,0 +1,9 @@
+{
+  "result": "reproduced",
+  "baseline_job_status": "COMPLETED",
+  "comparison_created": true,
+  "experiment_created": true,
+  "rerun_http_status": 400,
+  "rerun_error": "计划必须包含一个待测连接和两个参考连接",
+  "experiment_status_after_failure": "FAILED"
+}

@@ -17,6 +17,7 @@ from app.execution.http.contracts import ApiRequestResult, HttpExecutionResult
 from app.execution.http.outbound_policy import resolve_project_outbound_target
 
 _MAX_RESPONSE_BODY = 200_000
+_DEFAULT_RESPONSE_BYTES = 1_000_000
 
 
 def send_http_request(
@@ -29,12 +30,15 @@ def send_http_request(
     json_body: Any = None,
     json_body_present: bool = False,
     form_body: dict[str, str] | None = None,
-    files: list[tuple[str, str]] | None = None,
+    files: list[tuple[str, Any]] | None = None,
     raw_body: str | bytes | None = None,
     timeout: float = 30,
+    max_response_bytes: int | None = None,
 ) -> HttpExecutionResult:
-    """使用统一的安全 httpx 配置流式发送一次请求并返回有界响应。"""
+    """使用统一的安全 httpx 配置流式发送请求，并按调用方上限读取完整响应。"""
     result = HttpExecutionResult()
+    legacy_character_cap = max_response_bytes is None
+    response_byte_limit = _DEFAULT_RESPONSE_BYTES if max_response_bytes is None else max_response_bytes
     send_kwargs: dict[str, Any] = {}
     request_headers = headers
     if json_body_present and json_body is None:
@@ -69,6 +73,8 @@ def send_http_request(
             send_kwargs=send_kwargs,
             timeout_config=timeout_config,
             chunks=chunks,
+            max_response_bytes=max(1, response_byte_limit),
+            legacy_character_cap=legacy_character_cap,
         ), timeout=timeout)
     except httpx.ConnectError as exc:
         result.transport_error_kind = "connect"
@@ -101,6 +107,8 @@ async def _send_streamed_request(
     send_kwargs: dict[str, Any],
     timeout_config: httpx.Timeout,
     chunks: list[bytes],
+    max_response_bytes: int,
+    legacy_character_cap: bool,
 ) -> None:
     """发送并读取一次响应；总时限由同步入口统一管理。"""
     # 环境代理关闭且不跟随重定向，避免请求离开已授权目标或跟随未校验的新主机。
@@ -123,13 +131,21 @@ async def _send_streamed_request(
             size = 0
             # aiter_bytes 可切开 UTF-8 多字节字符；先收集原始字节，再整体解码。
             async for chunk in response.aiter_bytes(chunk_size=65_536):
-                chunks.append(chunk)
-                size += len(chunk)
-                if size > _MAX_RESPONSE_BODY:
+                remaining = max_response_bytes - size
+                if len(chunk) > remaining:
+                    # 只保留配置上限内的完整字节前缀，ASR 调用方可依标记拒绝半截 JSON。
+                    chunks.append(chunk[:remaining])
+                    result.response_truncated = True
                     result.response_body = _decode_chunks(chunks, truncated=True)
                     break
+                chunks.append(chunk)
+                size += len(chunk)
             else:
-                result.response_body = _decode_chunks(chunks, truncated=False)
+                body = _decode_chunks(chunks, truncated=False)
+                if legacy_character_cap and len(body) > _MAX_RESPONSE_BODY:
+                    result.response_truncated = True
+                    body = body[:_MAX_RESPONSE_BODY] + "\n...[已截断]"
+                result.response_body = body
 
 
 def _run_coroutine_sync(coroutine, *, timeout: float) -> None:
@@ -171,8 +187,10 @@ class ApiRequestExecutor:
         cookies: dict[str, str] | None = None,
         json_body: dict | None = None,
         form_body: dict[str, str] | None = None,
+        files: list[tuple[str, Any]] | None = None,
         raw_body: str | None = None,
         timeout: int = 30,
+        max_response_bytes: int | None = None,
     ) -> ApiRequestResult:
         """校验项目出站授权后发送请求；传输错误沿用业务执行器的结果字段。"""
         try:
@@ -193,8 +211,10 @@ class ApiRequestExecutor:
             cookies=cookies,
             json_body=json_body,
             form_body=form_body,
+            files=files,
             raw_body=raw_body,
             timeout=timeout,
+            max_response_bytes=max_response_bytes,
         )
         if result.transport_error_kind == "connect":
             result.error_message = f"连接失败：{result.transport_error_detail}"

@@ -1,0 +1,356 @@
+/* ASR 评测工作区的浅色蓝色调，与对比页原型保持一致；不绘制示意波形。 */
+.asr-page {
+  min-width: 0;
+  padding: 4px 0 24px;
+}
+
+.asr-page-heading {
+  margin: 4px 0 18px;
+}
+
+.asr-page-heading .ant-typography {
+  margin: 0;
+}
+
+.asr-page-heading h2.ant-typography {
+  margin-top: 4px;
+  color: #172b4d;
+}
+
+.asr-eyebrow {
+  color: #4773a8;
+  font-size: 13px;
+}
+
+.asr-tabs {
+  margin: 0 0 16px;
+}
+
+.asr-content-card {
+  border: 1px solid #e5edf6;
+  background: #fff;
+  box-shadow: 0 4px 18px rgb(36 75 118 / 5%);
+}
+
+.asr-scope-alert {
+  margin-bottom: 16px;
+}
+
+.asr-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.asr-review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 16px;
+  align-items: start;
+}
+
+.asr-results-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 330px);
+  gap: 16px;
+  align-items: start;
+}
+
+.asr-results-main,
+.asr-suggestion-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.asr-triplet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.asr-selected-diff {
+  border-color: #d5e5f8;
+  background: #f7fbff;
+}
+
+.asr-diff-row {
+  width: 100%;
+  height: auto;
+  min-height: 42px;
+  text-align: left;
+  white-space: normal;
+  border-color: #e5edf6;
+}
+
+.asr-diff-row.is-selected {
+  border-color: #7aa8dd;
+  background: #edf5ff;
+}
+
+.asr-reference-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+  color: #526780;
+}
+
+.asr-suggestion-card {
+  margin-top: 10px;
+  background: #f8fbff;
+}
+
+.asr-transcript-cell {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.asr-audio {
+  width: 100%;
+  min-height: 42px;
+}
+
+.asr-model-card {
+  min-width: 220px;
+  flex: 1;
+  border-color: #dce8f6;
+  background: #f8fbff;
+}
+
+.asr-model-card .ant-card-head {
+  min-height: 44px;
+  color: #1d3555;
+  background: #eef5ff;
+}
+
+.asr-muted-note {
+  color: #66788f;
+  font-size: 12px;
+}
+
+.asr-player-shell {
+  display: grid;
+  gap: 8px;
+}
+
+.asr-player-shell audio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.asr-player-controls {
+  width: 100%;
+}
+
+.asr-player-time {
+  min-width: 112px;
+  font-variant-numeric: tabular-nums;
+}
+
+.asr-player-progress {
+  flex: 1;
+  min-width: 140px;
+  margin: 0 12px;
+}
+
+.asr-player-volume {
+  width: 84px;
+  margin: 0 8px;
+}
+
+.asr-waveform {
+  display: grid;
+  grid-template-columns: repeat(420, minmax(1px, 1fr));
+  gap: 1px;
+  align-items: center;
+  height: 68px;
+  min-height: 68px;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 1px solid #deebf7;
+  border-radius: 7px;
+  background: #f4f8fd;
+  cursor: pointer;
+}
+
+.asr-waveform span {
+  min-height: 0;
+  border-radius: 2px;
+  background: #8aadd1;
+}
+
+.asr-waveform span.is-played {
+  background: #2879c7;
+}
+
+.asr-waveform.is-empty {
+  display: flex;
+  justify-content: center;
+  cursor: default;
+}
+
+.asr-player-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.asr-workbench-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr) minmax(220px, 260px);
+  gap: 12px;
+  align-items: start;
+}
+
+.asr-workbench-layout > .ant-card,
+.asr-execution-summary {
+  min-width: 0;
+}
+
+.asr-execution-summary-compact {
+  display: none;
+}
+
+.asr-execution-summary-content {
+  line-height: 1.65;
+}
+
+.asr-workbench-transcript {
+  min-height: 240px;
+  max-height: 62vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #fbfdff;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+
+.asr-workbench-transcript mark {
+  padding: 1px 0;
+  border-radius: 2px;
+  background: #ffe58f;
+}
+
+.asr-workbench-list {
+  display: grid;
+  gap: 8px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.asr-workbench-segment,
+.asr-speaker-summary {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.asr-workbench-segment.is-active,
+.asr-turn-row.is-active {
+  border-color: #7ba8d8;
+  background: #edf5ff;
+}
+
+.asr-turn-row {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.asr-turn-row:hover {
+  border-color: #9bbde0;
+}
+
+.asr-speaker-summary {
+  background: #f9fbfe;
+}
+
+.asr-diarization-parameters {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+}
+
+.asr-json-snapshot {
+  max-height: 70vh;
+  margin-top: 16px;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid #e6edf5;
+  border-radius: 6px;
+  background: #f7f9fc;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .asr-review-layout,
+  .asr-results-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .asr-triplet-grid {
+    grid-template-columns: repeat(3, minmax(240px, 1fr));
+    overflow-x: auto;
+  }
+  .asr-summary-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 1300px) {
+  .asr-review-layout,
+  .asr-results-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .asr-triplet-grid {
+    grid-template-columns: repeat(3, minmax(240px, 1fr));
+    overflow-x: auto;
+  }
+  .asr-workbench-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .asr-execution-summary-desktop {
+    display: none;
+  }
+  .asr-execution-summary-compact {
+    display: block;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .asr-summary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .asr-workbench-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .asr-execution-summary-compact {
+    grid-column: auto;
+  }
+  .asr-player-time {
+    min-width: auto;
+  }
+  .asr-player-progress {
+    flex-basis: 100%;
+    margin: 0 8px;
+  }
+}

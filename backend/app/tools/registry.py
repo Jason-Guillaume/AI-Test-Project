@@ -143,3 +143,22 @@ def registered_keys() -> tuple[str, ...]:
     """返回已经注册的工具键，便于治理页面与运行时校验使用。"""
     load_builtin_handlers()
     return tuple(sorted(_BINDINGS))
+
+
+def runtime_capability(key: str) -> dict[str, Any]:
+    """Return executor capability separately from a legacy handler registration.
+
+    A handler can remain registered for a compatibility workflow while its catalog
+    entry is intentionally ``catalog_only``. Such a handler is not a runnable tool
+    in the unified executor and must not be presented as one in governance UI.
+    """
+    load_builtin_handlers()
+    binding = _BINDINGS.get(key)
+    catalog_status = (TOOL_BY_KEY.get(key, {}).get("runtime_details") or {}).get("status")
+    executor_registered = binding is not None and catalog_status == "active"
+    return {
+        "executor_registered": executor_registered,
+        "handler_registered": binding is not None,
+        "catalog_status": catalog_status,
+        "allowed_channels": sorted(binding.allowed_channels) if executor_registered else [],
+    }

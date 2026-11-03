@@ -483,3 +483,32 @@ export interface CaseExecution {
 
 // list_case_executions 返回分页信封（后端 CaseExecutionListResponse）。
 export type CaseExecutionListResponse = Paginated<CaseExecution>;
+
+export type RunCompareState = 'new_failure' | 'restored' | 'persistent_failure' | 'passed' | 'added' | 'removed' | 'unresolved' | 'unalignable';
+
+export interface RunCompareItem {
+  test_case_id: number | null;
+  case_name: string;
+  state: RunCompareState;
+  baseline_execution_id: number | null;
+  baseline_status: string | null;
+  baseline_duration_ms: number | null;
+  candidate_execution_id: number | null;
+  candidate_status: string | null;
+  candidate_duration_ms: number | null;
+  duration_delta_ms: number | null;
+  note: string | null;
+}
+
+export interface RunCompareResponse {
+  project_id: number;
+  baseline: TestRun;
+  candidate: TestRun;
+  executor_types: string[];
+  environment_changed: boolean;
+  counts: Record<string, number>;
+  items: RunCompareItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}

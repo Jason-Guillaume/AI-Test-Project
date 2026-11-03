@@ -1,6 +1,8 @@
 """验证缺陷来源的原子创建、权限边界、幂等和删除行为。"""
 from app.features.security_testing.models.finding import SecurityFinding
 from app.features.test_management.models.execution import CaseExecution, TestRun as RunEntity
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from tests.conftest import DEFAULT_PASSWORD, unique
 from tests.test_15_test_executor import _create_project
 
@@ -54,3 +56,42 @@ def test_security_finding_source_is_manual_and_private(api, admin, db):
     db.delete(finding)
     db.commit()
     assert api.get(f"/bugs/{response.json()['bug_id']}/sources", username=admin).json() == []
+
+
+def test_concurrent_defect_creation_replays_same_request_key_once(api, admin, db):
+    """两个数据库会话并发提交同一缺陷意图，只返回一个持久化来源与缺陷。"""
+    from app.core.database.session import SessionLocal
+    from app.core.models.identity import User
+    from app.features.defects.models.bug import Bug
+    from app.features.defects.models.source_link import DefectSourceLink
+    from app.features.defects.schemas import DefectSourceRequest
+    from app.features.defects.services.source_service import DefectSourceService
+
+    project_id = _create_project(api, admin)
+    run = RunEntity(project_id=project_id, status="FAILED")
+    db.add(run)
+    db.flush()
+    execution = CaseExecution(test_run_id=run.id, status="FAILED")
+    db.add(execution)
+    db.commit()
+    request_key = unique("concurrent-defect")
+    body = DefectSourceRequest(
+        source_type="CASE_EXECUTION",
+        source_id=execution.id,
+        request_key=request_key,
+        bug={"project_id": project_id, "title": "并发只创建一次"},
+    )
+    barrier = Barrier(2)
+
+    def link_once():
+        with SessionLocal() as session:
+            actor = session.query(User).filter_by(username=admin).one()
+            barrier.wait(timeout=10)
+            link = DefectSourceService().link(session, body, actor)
+            return link.id, link.bug_id
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: link_once(), range(2)))
+    assert results[0] == results[1]
+    assert db.query(DefectSourceLink).filter_by(project_id=project_id, request_key=request_key).count() == 1
+    assert db.query(Bug).filter_by(project_id=project_id, title="并发只创建一次").count() == 1

@@ -12,6 +12,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from app.core.config import settings
 from app.core.database.base import Base
 
 # 确保所有 ORM 模型被导入并注册进 Base.metadata。
@@ -23,6 +24,7 @@ from app.skills import models as skill_models  # noqa: F401
 from app.tools import models as tool_models  # noqa: F401
 from app.platform.environment_configuration import models as environment_models  # noqa: F401
 from app.platform.notifications import models as notification_models  # noqa: F401
+from app.platform.model_configuration import models as model_center_models  # noqa: F401
 from app.features.api_catalog import models as api_catalog_models  # noqa: F401
 from app.features.business import models as business_models  # noqa: F401
 from app.features.business.models.execution import ActionExecution, FlowExecution  # noqa: F401
@@ -35,6 +37,7 @@ from app.orchestration.tasks import models as task_models  # noqa: F401
 from app.features.test_data import models as test_data_models  # noqa: F401
 from app.features.test_management import models as test_management_models  # noqa: F401
 from app.features.web_testing import models as web_ui_models  # noqa: F401
+from app.features.asr_evaluation import models as asr_evaluation_models  # noqa: F401
 
 # Alembic 传入的运行时配置对象，后面会覆盖其中的数据库 URL。
 config = context.config
@@ -46,10 +49,12 @@ if config.config_file_name is not None:
 # 迁移内容应始终由模型推导，而不是手写 SQL。
 target_metadata = Base.metadata
 
-# 环境变量优先于 alembic.ini 中的占位符。
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+# 与应用保持同一配置来源：进程环境变量优先，其次读取 backend/.env。
+database_url = os.getenv("DATABASE_URL") or settings.DATABASE_URL
+if not database_url:
+    raise RuntimeError("运行 Alembic 前必须配置 DATABASE_URL")
+# ConfigParser 将百分号视作插值标记；密码包含百分号时要先转义。
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

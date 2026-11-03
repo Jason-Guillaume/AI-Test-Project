@@ -84,19 +84,25 @@ npm install    # 用 npm（有 package-lock.json），不要换 pnpm
 
 ## 2. 日常启动 / 停止
 
-两个终端各跑一个：
+四个终端分别运行：
 
 ```bash
 # 终端 A：后端（--reload 代码改动自动重启）
 cd backend
 .venv/bin/uvicorn app.main:app --reload --port 8001
 
-# 终端 B：前端
+# 终端 B：独立 ASR Worker
+cd backend
+.venv/bin/python scripts/run_asr_worker.py
+
+# 终端 C：前端
 cd frontend
 npm run dev
 ```
 
-停止：两个终端各自 `Ctrl+C`。后端停止时会自动 flush Langfuse 队列并回收数据库连接池。
+Worker 使用 SIGINT/SIGTERM 停止领取新任务并让当前请求收尾；持久队列会保留。重启后继续处理待执行项和带远端任务 ID 的轮询。Worker 在外部提交窗口退出、但未保存远端任务 ID 时，会标记为“提交状态待核实”，不会自动重复调用。
+
+停止：后端、Worker 和前端终端各自 `Ctrl+C`。后端停止时会自动 flush Langfuse 队列并回收数据库连接池。
 
 后端联调别的端口时，前端代理目标可用环境变量覆盖：
 
@@ -109,6 +115,8 @@ VITE_API_PROXY_TARGET=http://127.0.0.1:8002 npm run dev
 ```bash
 curl http://localhost:8001/healthz        # → {"status":"ok"}（根路径，不带 /api/v1）
 ```
+
+`/healthz` 只代表 HTTP 进程存活。ASR 业务就绪需单独查看登录后的 ASR 任务页或 Swagger `GET /api/v1/asr/runtime-status`：`process_alive` 按最近 90 秒心跳计算；`business_ready` 还会检查数据库连接和 ASR 队列表结构。心跳缺失、进程存活但业务未就绪、状态接口读取失败会分别呈现。
 
 浏览器：
 
@@ -138,6 +146,13 @@ curl http://localhost:8001/healthz        # → {"status":"ok"}（根路径，�
 | `AUTO_CREATE_SCHEMA` | | 保持 `false`；表结构一律走 Alembic |
 | `INIT_ADMIN_USERNAME` / `INIT_ADMIN_PASSWORD` | | 仅 `seed_admin.py` 读取，运行期无作用 |
 | `LANGFUSE_ENABLED` 等 5 项 | | Agent LLM 可观测埋点，默认关闭；三环境各用独立 project 的 key，详见下方 |
+| `ASR_WORKER_ID` | | 本地 Worker 心跳 ID；Compose 默认 `asr-worker`，多实例须唯一 |
+| `ASR_WORKER_POLL_SECONDS` | | Worker 队列轮询间隔，默认 1 秒 |
+| `ASR_WORKER_CONCURRENCY` | | ASR 并发上限，默认 2 |
+| `ASR_DIARIZATION_CONCURRENCY` | | 独立说话人处理并发，默认 1 |
+| `ASR_WORKER_LEASE_SECONDS` | | ASR 工作项租约，默认 90 秒 |
+| `ASR_WORKER_HEARTBEAT_TIMEOUT_SECONDS` | | Compose 健康检查心跳时限，默认 90 秒 |
+| `ZAP_ENABLED`、`ZAP_BASE_URL`、`ZAP_API_KEY_ENCRYPTED` | | ZAP 默认为关闭；只在获授权的专用验收环境配置，密钥加密方法见 `docs/zap/README.md`。扫描页面只做只读健康/能力探测，不会自动执行扫描 |
 
 ### Langfuse（Agent LLM 可观测，默认关闭）
 

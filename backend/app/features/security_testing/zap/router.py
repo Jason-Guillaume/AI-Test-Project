@@ -82,6 +82,23 @@ def get_zap_capabilities(user: User = Depends(require_platform_admin)) -> dict:
     return _JOBS.capabilities()
 
 
+@router.get("/projects/{project_id}/security/zap/status")
+def get_project_zap_status(
+    project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+) -> dict:
+    """Project-scoped read-only readiness probe for the scan UI; it never starts a scan."""
+    get_project_or_404(db, project_id, user)
+    configured = _JOBS.health()
+    if not configured.enabled or not configured.available:
+        return {"enabled": configured.enabled, "reachable": False, "available": False, "message": configured.message}
+    capabilities = _JOBS.capabilities()
+    available = bool(capabilities.get("available"))
+    return {
+        "enabled": True, "reachable": available, "available": available,
+        "message": "ZAP 服务可访问" if available else "ZAP 服务已启用但不可访问，请联系平台管理员检查服务地址和网络。",
+    }
+
+
 # --------------------------------------------------------------------------- 扫描目标
 
 

@@ -3,7 +3,7 @@
  * 导出 ConsoleTasksPage，由任务路由加载；依赖任务 API、控制台作用域和创建弹窗，不承载详情页运行状态。
  */
 import { useEffect, useState } from 'react';
-import { Button, Flex, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Flex, Space, Table, Tag, Typography } from 'antd';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
@@ -14,23 +14,28 @@ import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui
 import { fmtTime } from '@/shared/lib/format';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { STATUS_LABEL } from './taskLabels';
+import { clearTaskCreateUncertainty, readTaskCreateUncertainty, type TaskCreateUncertainty } from '@/features/tasks/createUncertainty';
 
 /** 展示当前项目范围内的任务，并保留 URL 预填创建语义。 */
 export function ConsoleTasksPage() {
-  const { currentProjectId } = useConsoleScope();
+  const { currentProjectId, setProjectId } = useConsoleScope();
   const [createOpen, setCreateOpen] = useState(false);
   const [taskPage, setTaskPage] = useState(1);
   const [taskPageSize, setTaskPageSize] = useState(20);
+  const [uncertainCreate, setUncertainCreate] = useState<TaskCreateUncertainty | null>(() => readTaskCreateUncertainty());
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const initialProjectId = Number(searchParams.get('projectId')) || undefined;
   const initialCaseId = Number(searchParams.get('caseId')) || undefined;
+  const initialTemplateId = Number(searchParams.get('templateId')) || undefined;
+  const initialTemplateMode = searchParams.get('templateMode') === 'edit' ? 'edit' : 'apply';
+  const initialReplayTaskId = Number(searchParams.get('again')) || undefined;
   const requestedType = searchParams.get('type');
   const initialTargetType = requestedType === 'WEB' || requestedType === 'SECURITY' || requestedType === 'WEB_AUTHORING' ? requestedType : 'API';
 
   useEffect(() => {
-    if (searchParams.get('create') === '1') setCreateOpen(true);
-  }, [searchParams]);
+    if (searchParams.get('create') === '1' || initialTemplateId || initialReplayTaskId) setCreateOpen(true);
+  }, [initialReplayTaskId, initialTemplateId, searchParams]);
   useEffect(() => { setTaskPage(1); }, [currentProjectId]);
 
   const tasksQuery = useQuery({
@@ -50,6 +55,25 @@ export function ConsoleTasksPage() {
 
   return (
     <PageContainer>
+      {uncertainCreate && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={uncertainCreate.kind === 'defect' ? '上一条缺陷来源关联请求结果未知' : '上一条任务创建请求结果未知'}
+          description={uncertainCreate.kind === 'defect'
+            ? `请检查项目 #${uncertainCreate.project_id} 的缺陷及来源记录；确认后再决定是否重新关联。`
+            : `请先检查项目 #${uncertainCreate.project_id} 的任务记录；确认后再决定是否重新创建。表单内容不会持久化。`}
+          action={<Space>
+            <Button size="small" onClick={() => {
+              setProjectId(uncertainCreate.project_id);
+              setTaskPage(1);
+              if (uncertainCreate.kind === 'defect') navigate('/console/defects');
+            }}>{uncertainCreate.kind === 'defect' ? '查看缺陷来源' : '切换到项目并核对'}</Button>
+            <Button size="small" onClick={() => { clearTaskCreateUncertainty(uncertainCreate.request_key); setUncertainCreate(null); }}>已核对</Button>
+          </Space>}
+        />
+      )}
       <Flex justify="space-between" align="start" wrap="wrap" gap={12}>
         <div>
           <Typography.Title level={4} style={{ marginTop: 0 }}>统一任务</Typography.Title>
@@ -78,6 +102,9 @@ export function ConsoleTasksPage() {
         initialProjectId={initialProjectId}
         initialCaseIds={initialCaseId ? [initialCaseId] : []}
         initialTargetType={initialTargetType}
+        initialTemplateId={initialTemplateId}
+        initialTemplateMode={initialTemplateMode}
+        initialReplayTaskId={initialReplayTaskId}
       />
     </PageContainer>
   );

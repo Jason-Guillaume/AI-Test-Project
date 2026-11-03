@@ -29,6 +29,7 @@ import {
 import { StrategyTab } from './StrategyTab';
 import { CasesTab } from './CasesTab';
 import { FindingsTab } from './FindingsTab';
+import { ZapScanTab } from './ZapScanTab';
 
 /**
  * 安全测试页：项目作用域下的四个 Tab。
@@ -41,9 +42,11 @@ export function ConsoleSecurityTestingPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
   const requestedProjectId = Number(searchParams.get('projectId'));
-  const activeTab = ['overview', 'strategies', 'cases', 'findings'].includes(requestedTab ?? '')
+  const activeTab = ['overview', 'strategies', 'cases', 'findings', 'zap'].includes(requestedTab ?? '')
     ? requestedTab!
     : 'overview';
+  const initialJobIdValue = Number(searchParams.get('jobId'));
+  const initialJobId = Number.isSafeInteger(initialJobIdValue) && initialJobIdValue > 0 ? initialJobIdValue : undefined;
 
   if (currentProjectId == null) {
     return (
@@ -77,6 +80,7 @@ export function ConsoleSecurityTestingPage() {
             label: '疑似问题',
             children: <FindingsTab projectId={currentProjectId} />,
           },
+          { key: 'zap', label: '安全扫描（ZAP）', children: <ZapScanTab projectId={currentProjectId} initialJobId={initialJobId} /> },
         ]}
       />
     </PageContainer>

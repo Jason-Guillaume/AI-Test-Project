@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -71,3 +71,30 @@ class CaseExecutionListResponse(BaseModel):
     total: int
     page: int = 1
     page_size: int = 100
+
+
+class RunCompareItem(BaseModel):
+    test_case_id: int | None = None
+    case_name: str
+    state: Literal["new_failure", "restored", "persistent_failure", "passed", "added", "removed", "unresolved", "unalignable"]
+    baseline_execution_id: int | None = None
+    baseline_status: str | None = None
+    baseline_duration_ms: int | None = None
+    candidate_execution_id: int | None = None
+    candidate_status: str | None = None
+    candidate_duration_ms: int | None = None
+    duration_delta_ms: int | None = None
+    note: str | None = None
+
+
+class RunCompareResponse(BaseModel):
+    project_id: int
+    baseline: TestRunResponse
+    candidate: TestRunResponse
+    executor_types: list[str]
+    environment_changed: bool
+    counts: dict[str, int]
+    items: list[RunCompareItem]
+    total: int
+    page: int
+    page_size: int

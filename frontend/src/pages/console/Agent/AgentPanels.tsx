@@ -2,6 +2,13 @@ import { Alert, Button, Empty, Flex, Tag, Typography } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { AgentMessage } from '@/features/agent/contracts';
+import { AgentRawDetails, AgentStructuredSummary } from './AgentSummaries';
+
+function records(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+    : [];
+}
 
 // ---- 阶段 → 快捷操作按钮映射（与后端 _STAGE_ACTIONS 对齐）----
 export const STAGE_ACTION_LABELS: Record<string, string> = {
@@ -67,51 +74,55 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
         body = (
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>
             <b>测试计划</b>
-            {meta.plan != null && (
-              <pre style={{ margin: '4px 0 0', padding: 8, background: '#fafafa', borderRadius: 4, fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                {JSON.stringify(meta.plan, null, 2)}
-              </pre>
-            )}
+            <AgentStructuredSummary kind="plan" value={meta} />
           </div>
         );
         break;
       case 'TEST_POINTS':
+        {
+        const points = records(meta.points);
         body = (
           <div style={{ fontSize: 13 }}>
             <b>测试点</b>
             <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
-              {(meta.points as Array<Record<string, unknown>> | undefined)?.map((p, i) => (
+              {points.map((p, i) => (
                 <li key={i}>
-                  {p.name as string}
-                  {p.priority != null && <Tag style={{ marginLeft: 6 }} color="blue">{p.priority as string}</Tag>}
+                  {String(p.name ?? '未提供名称')}
+                  {p.priority != null && <Tag style={{ marginLeft: 6 }} color="blue">{String(p.priority)}</Tag>}
                 </li>
               ))}
             </ul>
+            {!points.length && <Typography.Text type="secondary">未提供可识别的测试点。</Typography.Text>}
+            <AgentRawDetails value={meta} />
           </div>
         );
         break;
+        }
       case 'TEST_CASES':
+        {
+        const cases = records(meta.cases);
         body = (
           <div style={{ fontSize: 13 }}>
             <b>测试用例</b>
             <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>
-              {(meta.cases as Array<Record<string, unknown>> | undefined)?.map((c, i) => (
+              {cases.map((c, i) => (
                 <li key={i}>
-                  {c.name as string}
-                  {c.priority != null && <Tag style={{ marginLeft: 6 }}>{c.priority as string}</Tag>}
+                  {String(c.name ?? '未提供名称')}
+                  {c.priority != null && <Tag style={{ marginLeft: 6 }}>{String(c.priority)}</Tag>}
                 </li>
               ))}
             </ul>
+            {!cases.length && <Typography.Text type="secondary">未提供可识别的用例。</Typography.Text>}
+            <AgentRawDetails value={meta} />
           </div>
         );
         break;
+        }
       case 'EXECUTION':
         body = (
           <div style={{ fontSize: 13 }}>
             <b>执行结果</b>
-            <pre style={{ margin: '4px 0 0', padding: 8, background: '#fafafa', borderRadius: 4, fontSize: 12, whiteSpace: 'pre-wrap' }}>
-              {JSON.stringify(meta.run ?? meta, null, 2)}
-            </pre>
+            <AgentStructuredSummary kind="execution" value={meta} />
           </div>
         );
         break;
@@ -119,9 +130,7 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
         body = (
           <div style={{ fontSize: 13 }}>
             <b>分析结果</b>
-            <pre style={{ margin: '4px 0 0', padding: 8, background: '#fafafa', borderRadius: 4, fontSize: 12, whiteSpace: 'pre-wrap' }}>
-              {JSON.stringify(meta.analysis ?? meta, null, 2)}
-            </pre>
+            <AgentStructuredSummary kind="analysis" value={meta} />
           </div>
         );
         break;
@@ -198,7 +207,10 @@ export function MessageBubble({ message }: { message: AgentMessage }) {
         body = <div style={{ fontSize: 13 }}><b>需要澄清</b><p style={{ margin: '4px 0 0' }}>{message.content}</p></div>;
         break;
       default:
-        body = <pre style={{ fontSize: 12 }}>{JSON.stringify(meta, null, 2)}</pre>;
+        body = <div style={{ fontSize: 13 }}>
+          {message.content && <p style={{ whiteSpace: 'pre-wrap' }}>{message.content}</p>}
+          <AgentRawDetails value={meta} />
+        </div>;
     }
     return (
       <div style={{ marginBottom: 12 }}>

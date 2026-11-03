@@ -126,6 +126,10 @@ export interface GovernanceToolRuntimeDetails {
   output: string;
   constraints: string[];
   audit: string;
+  executor_registered?: boolean;
+  handler_registered?: boolean;
+  catalog_status?: string | null;
+  allowed_channels?: string[];
 }
 
 export interface GovernanceToolParameter {

@@ -8,7 +8,10 @@
 //
 // 安全红线：主动扫描必须由人在「计划预览」之后显式勾选确认（confirmed + approval_note），
 // 后端仍会独立校验批准行为；生产环境目标由后端 gate 直接拒绝。
-import { Tabs } from 'antd';
+import { Alert, Tabs } from 'antd';
+import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { zapApi } from '@/features/security-testing/zap/api';
 import { JobsSubTab } from './zap/jobs';
 import { PoliciesSubTab } from './zap/policies';
 import { ResultsSubTab } from './zap/results';
@@ -16,11 +19,32 @@ import { TargetsSubTab } from './zap/targets';
 
 /** 安全扫描 Tab。projectId 由父页传入（已确保非空）。 */
 export function ZapScanTab({ projectId, initialJobId }: { projectId: number; initialJobId?: number }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedSubTab = searchParams.get('zapTab');
+  const activeKey = ['targets', 'policies', 'jobs', 'results'].includes(requestedSubTab ?? '')
+    ? requestedSubTab! : initialJobId ? 'jobs' : 'targets';
+  const statusQuery = useQuery({
+    queryKey: ['zap-status', projectId],
+    queryFn: () => zapApi.getProjectZapStatus(projectId),
+    retry: false,
+    refetchInterval: 30000,
+  });
+  const scanAvailable = statusQuery.data?.available === true;
   return (
+    <>
+    {statusQuery.isPending && <Alert type="info" showIcon message="正在检查 ZAP 服务状态；扫描任务入口暂不可用。" />}
+    {statusQuery.isError && <Alert type="warning" showIcon message="无法确认 ZAP 服务状态，已停用发起扫描入口。请重试状态检查或联系平台管理员。" action={<a onClick={() => void statusQuery.refetch()}>重试</a>} />}
+    {!statusQuery.isPending && !statusQuery.isError && !scanAvailable && <Alert type="warning" showIcon message={statusQuery.data?.message ?? 'ZAP 服务未启用。可浏览已有扫描记录；启动扫描前请管理员配置 ZAP 服务。'} />}
     <Tabs
       type="card"
       size="small"
-      defaultActiveKey={initialJobId ? 'jobs' : 'targets'}
+      activeKey={activeKey}
+      onChange={(key) => {
+        const next = new URLSearchParams(searchParams);
+        next.set('tab', 'zap'); next.set('zapTab', key);
+        if (initialJobId) next.set('jobId', String(initialJobId));
+        setSearchParams(next, { replace: true });
+      }}
       items={[
         {
           key: 'targets',
@@ -35,14 +59,15 @@ export function ZapScanTab({ projectId, initialJobId }: { projectId: number; ini
         {
           key: 'jobs',
           label: '扫描任务',
-          children: <JobsSubTab projectId={projectId} initialJobId={initialJobId} />,
+          children: <JobsSubTab projectId={projectId} initialJobId={initialJobId} scanAvailable={scanAvailable} />,
         },
         {
           key: 'results',
           label: '扫描结果',
-          children: <ResultsSubTab projectId={projectId} />,
+          children: <ResultsSubTab projectId={projectId} initialJobId={initialJobId} />,
         },
       ]}
     />
+    </>
   );
 }

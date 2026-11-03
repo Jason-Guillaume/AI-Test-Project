@@ -3,7 +3,7 @@
  * 接收详情页已校验归属的数据与显式操作回调；不发请求、不决定权限，也不持有运行状态。
  */
 import type { Dispatch, SetStateAction } from 'react';
-import { Alert, Button, Card, Empty, Flex, Input, List, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
+import { Alert, Button, Card, Collapse, Empty, Flex, Input, List, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd';
 import { PlayCircleOutlined, SendOutlined } from '@ant-design/icons';
 import type { Task, TaskAgentInstance, TaskEvent, TaskMessage, TaskPlan, TaskResourceRef, TaskRun, TaskRunDetail, TaskToolInvocation, TaskWorkItem } from '@/features/tasks/contracts';
 import { fmtTime } from '@/shared/lib/format';
@@ -77,34 +77,42 @@ export function TaskRunPanels(props: TaskRunPanelsProps) {
 
   return (
     <>
-      <div className="task-workspace">
-        <Card title="任务参与者" size="small" styles={{ body: { padding: 8 } }}>
-          <List
-            size="small"
-            dataSource={roleItems}
-            renderItem={(item) => {
-              const agent = item.agent as TaskAgentInstance | null;
-              const selected = String(selectedId ?? agents.find((entry) => entry.role === 'MAIN')?.id) === item.key;
-              const state = agent ? agent.status : 'READ_ONLY';
-              const stateLabel = agent ? (STATUS_LABEL[state] ?? state) : '只读';
-              return (
-                <List.Item
-                  onClick={() => onSelectAgent(item.key === 'events' ? 'events' : Number(item.key))}
-                  style={{ cursor: 'pointer', background: selected ? 'rgba(22, 119, 255, .08)' : undefined, paddingInline: 10 }}
-                >
-                  <List.Item.Meta
-                    title={item.label}
-                    description={agent ? `#${agent.id} · ${stateLabel}` : '持久化时间线'}
-                  />
-                </List.Item>
-              );
-            }}
-          />
-        </Card>
-
+      <div className="task-workspace task-workspace--focused">
+        <Collapse
+          size="small"
+          items={[{
+            key: 'advanced',
+            label: `高级详情 · ${agents.length} 位参与者与完整调度`,
+            children: (
+              <Card title="任务参与者" size="small" styles={{ body: { padding: 8 } }}>
+                <List
+                  size="small"
+                  dataSource={roleItems}
+                  renderItem={(item) => {
+                    const agent = item.agent as TaskAgentInstance | null;
+                    const selected = String(selectedId ?? agents.find((entry) => entry.role === 'MAIN')?.id) === item.key;
+                    const state = agent ? agent.status : 'READ_ONLY';
+                    const stateLabel = agent ? (STATUS_LABEL[state] ?? state) : '只读';
+                    return (
+                      <List.Item
+                        onClick={() => onSelectAgent(item.key === 'events' ? 'events' : Number(item.key))}
+                        style={{ cursor: 'pointer', background: selected ? 'rgba(22, 119, 255, .08)' : undefined, paddingInline: 10 }}
+                      >
+                        <List.Item.Meta
+                          title={item.label}
+                          description={agent ? `#${agent.id} · ${stateLabel}` : '持久化时间线'}
+                        />
+                      </List.Item>
+                    );
+                  }}
+                />
+              </Card>
+            ),
+          }]}
+        />
         <Card
           size="small"
-          title={selectedAgent ? `${selectedAgent.display_name} · ${ROLE_LABEL[selectedAgent.role] ?? selectedAgent.role}` : '系统事件'}
+          title={selectedAgent ? `任务对话 · ${selectedAgent.display_name}` : '系统事件'}
           extra={selectedAgent && <Tag>{STATUS_LABEL[selectedAgent.status] ?? selectedAgent.status}</Tag>}
         >
           <Tabs

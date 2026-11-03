@@ -43,7 +43,7 @@ export const securityApi = {
   // ------------------------------------------------------------------ 策略
   listStrategies(
     projectId: number,
-    params: { category?: string; enabled?: boolean; page?: number; page_size?: number } = {},
+    params: { category?: string; enabled?: boolean; keyword?: string; page?: number; page_size?: number } = {},
   ) {
     return api.get<SecurityStrategyListResponse>(`/projects/${projectId}/security-strategies`, {
       params,

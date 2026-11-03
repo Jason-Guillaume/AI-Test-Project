@@ -35,6 +35,8 @@ def validate_agent_links(
     unknown_tools = set()
     for key in set(tool_keys):
         if key in TOOL_BY_KEY:
+            if TOOL_BY_KEY[key].get("runtime_details", {}).get("status") != "active":
+                raise bad_request(f"工具「{TOOL_BY_KEY[key]['name']}」尚未接入可调用的任务执行器，不能授权给 Agent")
             override = db.get(ToolDefinitionOverride, key)
             if override is not None and not override.is_enabled:
                 raise bad_request(f"工具「{TOOL_BY_KEY[key]['name']}」已停用")

@@ -15,6 +15,7 @@ from app.orchestration.tasks.models.task import (
     TaskRun,
     TaskSchedulerControl,
     TaskToolInvocation,
+    TaskTemplate,
     TaskWorkItem,
     TaskWorkItemDependency,
 )
@@ -22,5 +23,5 @@ from app.orchestration.tasks.models.task import (
 __all__ = [
     "Task", "TaskRun", "TaskPlan", "TaskAgentInstance", "TaskWorkItem",
     "TaskWorkItemDependency", "TaskAttempt", "TaskMessage", "TaskCommand",
-    "TaskEvent", "TaskResourceRef", "TaskToolInvocation", "TaskSchedulerControl",
+    "TaskEvent", "TaskResourceRef", "TaskToolInvocation", "TaskSchedulerControl", "TaskTemplate",
 ]

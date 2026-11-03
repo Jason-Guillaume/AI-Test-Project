@@ -21,8 +21,8 @@ export const webUIApi = {
     : api.post<WebPage>(`/projects/${id}/web-pages`, body),
   /** 删除页面对象。 */
   deletePage: (id: number) => api.delete<void>(`/web-pages/${id}`),
-  /** 读取项目内 Web 用例；pageSize 可供批量选择器按受控页大小收集。 */
-  cases: (id: number, page = 1, pageSize = 20) => api.get<Paginated<WebCase>>(`/projects/${id}/web-cases`, { params: { page, page_size: pageSize } }),
+  /** 读取项目内 Web 用例；支持服务端搜索、确认过滤和分页。 */
+  cases: (id: number, page = 1, pageSize = 20, params: { keyword?: string; confirmed_only?: boolean } = {}) => api.get<Paginated<WebCase>>(`/projects/${id}/web-cases`, { params: { page, page_size: pageSize, ...params } }),
   /** 按用例编号读取项目授权后的结构化 Web 资产。 */
   case: (id: number) => api.get<WebCase>(`/web-cases/${id}`),
   /** 保存结构化步骤，旧确认自动失效。 */

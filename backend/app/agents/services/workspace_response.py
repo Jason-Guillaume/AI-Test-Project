@@ -57,6 +57,8 @@ def build_workspace(state: AgentState, session) -> AgentWorkspace:
         test_plan=state.get("test_plan"),
         test_points=state.get("generated_test_points", []),
         test_cases=state.get("generated_test_cases", []),
+        confirmed_point_ids=state.get("confirmed_point_ids", []),
+        confirmed_case_ids=state.get("confirmed_case_ids", []),
         test_run_id=state.get("test_run_id"),
         execution_result=state.get("execution_result"),
         analysis=state.get("analysis"),

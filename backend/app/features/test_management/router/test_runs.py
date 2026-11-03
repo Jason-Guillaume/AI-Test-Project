@@ -9,6 +9,8 @@ from app.features.test_management.schemas import (
     TestRunListResponse,
     TestRunResponse,
 )
+from app.features.test_management.schemas.executions import RunCompareResponse
+from app.features.test_management.services.compare_service import compare_runs
 from app.core.models.identity import User
 from app.core.security.auth import get_current_user
 from app.core.database.session import get_db
@@ -17,6 +19,18 @@ from app.features.test_management.router.dependencies import _RUN
 
 
 router = APIRouter()
+
+
+@router.get("/test-runs/compare", response_model=RunCompareResponse, summary="比较同项目测试运行")
+def compare_test_runs(
+    baseline_run_id: int = Query(gt=0),
+    candidate_run_id: int = Query(gt=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return compare_runs(db, baseline_run_id, candidate_run_id, user, page=page, page_size=page_size)
 
 
 @router.get("/test-runs/{run_id}", response_model=TestRunResponse, summary="测试执行记录详情")

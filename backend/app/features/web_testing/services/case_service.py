@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from app.features.web_testing.models import WebAuthProfile, WebCase
 from app.features.web_testing.schemas import CaseInput
@@ -19,10 +20,16 @@ from app.features.web_testing.services.response_mapper import list_result
 from app.features.web_testing.services.case_inputs import load_steps
 
 
-def list_cases(db, project_id, actor, *, page=1, page_size=20):
+def list_cases(db, project_id, actor, *, page=1, page_size=20, keyword=None, confirmed_only=False):
     """复用 TestCase 资产，仅返回有 Web 扩展的项目内用例。"""
     get_project_or_404(db, project_id, actor)
-    query = db.query(TestCase).join(WebCase, WebCase.test_case_id == TestCase.id).filter(TestCase.project_id == project_id).order_by(TestCase.id.desc())
+    query = db.query(TestCase).join(WebCase, WebCase.test_case_id == TestCase.id).filter(TestCase.project_id == project_id)
+    search = (keyword or "").strip()
+    if search:
+        query = query.filter(or_(TestCase.name.ilike(f"%{search}%"), TestCase.description.ilike(f"%{search}%")))
+    if confirmed_only:
+        query = query.filter(WebCase.confirmed_digest.is_not(None))
+    query = query.order_by(TestCase.id.desc())
     return list_result(query, lambda row: case_response(db, row), page, page_size)
 
 

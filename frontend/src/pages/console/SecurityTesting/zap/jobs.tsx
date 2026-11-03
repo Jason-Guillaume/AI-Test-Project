@@ -4,6 +4,7 @@
 // 有运行中任务时 10 秒轮询一次列表；全部结束后停止轮询，避免空转。
 // 取消只置持久化取消位，由 Worker 在下一个检查点真正停止（不是立即中断）。
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   App,
@@ -36,9 +37,10 @@ import { ScanWizardModal } from './wizard';
 const PAGE_SIZE = 10;
 
 /** 扫描任务子 Tab。projectId 由父页传入（已确保非空）。 */
-export function JobsSubTab({ projectId, initialJobId }: { projectId: number; initialJobId?: number }) {
+export function JobsSubTab({ projectId, initialJobId, scanAvailable = false }: { projectId: number; initialJobId?: number; scanAvailable?: boolean }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
@@ -52,6 +54,17 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
   useEffect(() => {
     if (initialJobQuery.data) setDetailJob(initialJobQuery.data);
   }, [initialJobQuery.data]);
+  const openJob = (job: ScanJob) => {
+    setDetailJob(job);
+    const next = new URLSearchParams(searchParams);
+    next.set('tab', 'zap'); next.set('zapTab', 'jobs'); next.set('projectId', String(projectId)); next.set('jobId', String(job.id));
+    setSearchParams(next, { replace: true });
+  };
+  const closeJob = () => {
+    setDetailJob(null);
+    const next = new URLSearchParams(searchParams); next.delete('jobId');
+    setSearchParams(next, { replace: true });
+  };
 
   const listQuery = useQuery({
     queryKey: ['zap-jobs', projectId, { status: statusFilter, page }],
@@ -87,7 +100,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
       title: '任务',
       width: 90,
       render: (_, r) => (
-        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => setDetailJob(r)}>
+        <Button type="link" style={{ padding: 0, height: 'auto' }} onClick={() => openJob(r)}>
           <Typography.Text strong>#{r.id}</Typography.Text>
         </Button>
       ),
@@ -191,7 +204,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
       width: 150,
       render: (_, r) => (
         <Space size="small">
-          <Button size="small" onClick={() => setDetailJob(r)}>
+          <Button size="small" onClick={() => openJob(r)}>
             详情
           </Button>
           {isRunningJob(r.status) ? (
@@ -232,7 +245,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
             }}
             options={JOB_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
-          <Button type="primary" danger onClick={() => setWizardOpen(true)}>
+          <Button type="primary" danger disabled={!scanAvailable} title={!scanAvailable ? 'ZAP 服务未启用、不可达或状态未知' : undefined} onClick={() => setWizardOpen(true)}>
             发起扫描
           </Button>
         </Space>
@@ -247,6 +260,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
           description="列表每 10 秒自动刷新一次；取消只置取消标记，Worker 会在下一个检查点真正停止。"
         />
       )}
+      {initialJobId != null && initialJobQuery.isError && <Alert type="error" showIcon message={`无法打开扫描任务 #${initialJobId}`} description="请确认所选项目正确、你有访问权限，且该任务仍存在。" />}
 
       <Table<ScanJob> scroll={{ x: 'max-content' }}
         rowKey="id"
@@ -278,7 +292,7 @@ export function JobsSubTab({ projectId, initialJobId }: { projectId: number; ini
         <ScanJobDetailDrawer
           projectId={projectId}
           job={detailJob}
-          onClose={() => setDetailJob(null)}
+          onClose={closeJob}
         />
       )}
     </div>

@@ -39,6 +39,27 @@ services:
       retries: 5
       start_period: 30s
 
+  asr-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./backend/.env
+    environment:
+      RUN_MIGRATIONS: "false"
+      ASR_WORKER_ID: asr-worker
+    command: ["python", "scripts/run_asr_worker.py"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "scripts/check_asr_worker.py"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   frontend:
     build:
       context: .

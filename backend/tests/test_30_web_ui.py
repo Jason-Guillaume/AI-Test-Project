@@ -118,6 +118,24 @@ def test_migration_and_web_asset_storage(api, admin, db, web_setup):
     assert response.status_code == 422
 
 
+def test_web_case_listing_supports_server_search_and_confirmed_filter(api, admin, web_setup):
+    """任务创建选择器可按服务端关键词分页，并只读取已确认 Web 用例。"""
+    project, _ = web_setup
+    prefix = unique("selector")
+    draft = create_case(api, admin, project, name=f"{prefix}-draft")
+    confirmed_case = create_case(api, admin, project, name=f"{prefix}-confirmed")
+    confirm(api, admin, confirmed_case)
+
+    response = api.get(
+        f"/projects/{project}/web-cases",
+        username=admin,
+        params={"keyword": prefix, "confirmed_only": "true", "page": 1, "page_size": 1},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["total"] == 1
+    assert [item["id"] for item in payload["items"]] == [confirmed_case["id"]]
+    assert draft["id"] not in [item["id"] for item in payload["items"]]
 def test_confirmation_revision_and_page_change(api, admin, web_setup):
     """未确认不能调试，页面元素变更使旧指纹失效，过期 revision 返回 409。"""
     project, env = web_setup

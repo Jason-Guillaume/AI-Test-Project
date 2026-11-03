@@ -72,7 +72,8 @@ export function ToolsPane() {
                 <Space size={4} style={{ marginTop: 4 }}>
                   <Tag>{tool.category}</Tag>
                   <Tag color={riskColor(tool.risk)}>{tool.risk}</Tag>
-                  <Tag color={tool.runtime_details.status === 'active' ? 'green' : 'orange'}>{tool.runtime_details.status_label}</Tag>
+                  <Tag color={tool.runtime_details.status === 'active' && tool.runtime_details.executor_registered !== false ? 'green' : 'orange'}>{tool.runtime_details.status_label}</Tag>
+                  <Tag>执行器 {tool.runtime_details.executor_registered ? `可运行 · ${(tool.runtime_details.allowed_channels ?? []).join('、') || '已接入'}` : '未接入'}</Tag>
                 </Space>
               </div>
               <Tag>系统</Tag>

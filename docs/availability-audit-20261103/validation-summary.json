@@ -1,0 +1,95 @@
+{
+  "date": "2026-11-03",
+  "timezone": "Asia/Shanghai",
+  "business_implementation_changed": false,
+  "browser": {
+    "identity": "existing administrator session",
+    "entry_visits": [
+      "/console",
+      "/console/projects",
+      "/console/api-catalog",
+      "/console/business-management",
+      "/console/test-asset",
+      "/console/test-suites",
+      "/console/test-plans",
+      "/console/web-ui",
+      "/console/tasks",
+      "/console/tasks/inbox",
+      "/console/tasks/templates",
+      "/console/agent",
+      "/console/web-ui-agent",
+      "/console/security-testing",
+      "/console/test-data",
+      "/console/mock-management",
+      "/console/execution-center",
+      "/console/execution-history",
+      "/console/test-reports",
+      "/console/defects",
+      "/console/notification-channels",
+      "/console/notifications",
+      "/console/profile",
+      "/console/asr/audio",
+      "/console/asr/jobs",
+      "/console/asr/comparisons",
+      "/console/asr/experiments",
+      "/console/asr/connections",
+      "/admin/dashboard",
+      "/admin/users",
+      "/admin/organizations",
+      "/admin/projects",
+      "/admin/model-configs",
+      "/admin/environments",
+      "/admin/agents",
+      "/admin/mcp",
+      "/admin/skills",
+      "/admin/tools"
+    ],
+    "detail_visits": [
+      "/console/asr/jobs/37",
+      "/console/asr/runs/37"
+    ],
+    "internal_tabs": {
+      "/console/security-testing": [
+        "策略与规则",
+        "安全用例",
+        "疑似问题"
+      ],
+      "/console/web-ui": [
+        "页面对象",
+        "登录态与测试账号",
+        "执行历史与报告"
+      ],
+      "/console/test-data": [
+        "Fixture",
+        "数据工厂",
+        "执行记录"
+      ]
+    },
+    "observed_full_page_crashes": 0,
+    "screenshot_original_exception": "not captured; not reproduced during this review",
+    "original_chrome_tab_access": "native computer-use permission unavailable; in-app browser used",
+    "mutations": "No actual business submissions; project scope selected; synthetic writes confined to in-memory SQLite"
+  },
+  "checks": {
+    "frontend_tests": {
+      "passed": 14
+    },
+    "frontend_lint": "passed",
+    "frontend_typecheck": "passed",
+    "frontend_production_build": "passed",
+    "backend_asr_model_center_tests": {
+      "passed": 41
+    },
+    "business_request_path_method_matches": 465,
+    "shared_transport_wrappers_excluded": 5,
+    "ssr_initial_modules": 48,
+    "ssr_initial_renders": 96,
+    "unreachable_zap_page_files": 15
+  },
+  "limitations": [
+    "Browser coverage is administrator-only with mostly empty non-ASR modules",
+    "No real model calls, real scan execution, message delivery, or complete long-audio playback tested",
+    "Read-only ASGI route probes override current-user dependency with an existing admin and do not prove real browser authentication",
+    "No full PostgreSQL regression suite run"
+  ]
+}

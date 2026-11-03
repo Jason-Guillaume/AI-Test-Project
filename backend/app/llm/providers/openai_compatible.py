@@ -93,7 +93,7 @@ class ProductionLLMProvider:
                             "tool_choice": "auto",
                         }
                         try:
-                            response = httpx.post(
+                            response = self._post(
                                 f"{cfg.api_base.rstrip('/')}/chat/completions",
                                 json=body,
                                 headers=headers,
@@ -203,7 +203,7 @@ class ProductionLLMProvider:
                     model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
                 ) as gen:
                     try:
-                        resp = httpx.post(
+                        resp = self._post(
                             f"{cfg.api_base.rstrip('/')}/chat/completions", json=body, headers=headers,
                             timeout=float(cfg.timeout or 60),
                         )
@@ -260,6 +260,10 @@ class ProductionLLMProvider:
         if self.model_config_ids:
             return list(self.model_config_ids)
         return [self.model_config_id]
+
+    def _post(self, url: str, *, json: dict[str, Any], headers: dict[str, str], timeout: float) -> Any:
+        """执行单次 HTTP 请求；封装边界便于为单个 Provider 实例注入隔离传输。"""
+        return httpx.post(url, json=json, headers=headers, timeout=timeout)
 
     def _load_config(self, model_config_id: int | None) -> Any:
         """解析单个已启用候选；任务层会在进入 Provider 前完成逐模型授权。"""

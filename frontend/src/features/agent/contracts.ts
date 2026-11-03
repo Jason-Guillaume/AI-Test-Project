@@ -101,6 +101,8 @@ export interface AgentWorkspace {
   test_plan: Record<string, unknown> | null;
   test_points: Array<Record<string, unknown>>;
   test_cases: Array<Record<string, unknown>>;
+  confirmed_point_ids: number[];
+  confirmed_case_ids: number[];
   test_run_id: number | null;
   execution_result: Record<string, unknown> | null;
   analysis: Record<string, unknown> | null;

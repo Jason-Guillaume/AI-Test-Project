@@ -12,6 +12,7 @@ from app.tools.schemas import ToolDefinitionUpdate
 from app.tools.services.tool_service import apply_tool_override, restore_tool_override
 from app.agents.services.definition_service import agent_snapshot
 from app.agents.services.link_validation import validate_agent_links
+from app.tools.registry import runtime_capability
 
 
 def list_builtin_tools(db: Session) -> list[dict[str, Any]]:
@@ -27,6 +28,12 @@ def list_builtin_tools(db: Session) -> list[dict[str, Any]]:
         override = overrides.get(tool["key"])
         parameter_overrides = (override.parameter_overrides_json or {}) if override else {}
         runtime_details = tool.get("runtime_details", {})
+        capability = runtime_capability(tool["key"])
+        runtime_details = {**runtime_details, **capability}
+        if runtime_details.get("status") == "active" and not capability["executor_registered"]:
+            runtime_details["status"] = "catalog_only"
+            runtime_details["status_label"] = "目录登记但运行时未注册执行器"
+            runtime_details["runtime_role"] = "未绑定固定工作流节点"
         parameters = [
             {
                 **parameter,

@@ -19,6 +19,7 @@ from __future__ import annotations
 from functools import partial
 from typing import Any
 
+from fastapi import HTTPException
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
@@ -297,6 +298,23 @@ def _ids_of(items: list[dict[str, Any]] | None) -> list[int]:
     return [it["id"] for it in (items or []) if it.get("id")]
 
 
+def _validate_explicit_ids(
+    ids: list[int] | None,
+    items: list[dict[str, Any]] | None,
+    label: str,
+) -> list[int] | None:
+    """显式选择必须非空且是当前会话生成资产的子集；None 仅用于旧客户端兼容。"""
+    if ids is None:
+        return None
+    if not ids:
+        raise HTTPException(status_code=422, detail=f"请至少选择一条{label}")
+    allowed = set(_ids_of(items))
+    selected = list(dict.fromkeys(ids))
+    if any(item_id not in allowed for item_id in selected):
+        raise HTTPException(status_code=422, detail=f"所选{label}不属于当前会话可操作范围")
+    return selected
+
+
 def run_agent(
     db: Session,
     session: AgentSession,
@@ -323,6 +341,20 @@ def run_agent(
     emitted_messages 是本轮新增的 ASSISTANT/SYSTEM 消息。
     """
     initial: AgentState = session_service.load_state(db, session)
+
+    # 只允许在本会话当前快照内确认/执行资产。执行已确认阶段时还要限制在此前
+    # 确认过的范围内；缺省 None 留给旧客户端兼容，新的 UI 始终发送显式非空 ID。
+    if action == "confirm_points":
+        point_ids = _validate_explicit_ids(point_ids, initial.get("generated_test_points"), "测试点")
+    if action == "confirm_cases":
+        case_ids = _validate_explicit_ids(case_ids, initial.get("generated_test_cases"), "测试用例")
+    if action == "execute" and case_ids is not None:
+        allowed_cases = (
+            initial.get("confirmed_case_ids") or []
+            if initial.get("current_stage") == "READY_TO_EXECUTE"
+            else _ids_of(initial.get("generated_test_cases"))
+        )
+        case_ids = _validate_explicit_ids(case_ids, [{"id": item_id} for item_id in allowed_cases], "测试用例")
 
     if content:
         # 新消息代表新的人工意图；清除未确认提案，避免旧页面动作跨目标继续执行。
@@ -384,11 +416,11 @@ def run_agent(
             db, session.id, role="USER", message_type="TEXT",
             content=_ACTION_LABELS.get(action, action),
         )
-        # confirm / execute 的选中集合直接写入 state（缺省 = 全选已生成资产）。
+        # confirm / execute 的选中集合直接写入 state（缺省 None 仅兼容旧客户端）。
         if action == "confirm_points":
-            initial["confirmed_point_ids"] = point_ids or _ids_of(initial.get("generated_test_points"))
+            initial["confirmed_point_ids"] = point_ids if point_ids is not None else _ids_of(initial.get("generated_test_points"))
         if action in ("confirm_cases", "execute"):
-            initial["confirmed_case_ids"] = case_ids or _ids_of(initial.get("generated_test_cases"))
+            initial["confirmed_case_ids"] = case_ids if case_ids is not None else _ids_of(initial.get("generated_test_cases"))
             if environment_id:
                 initial["environment_id"] = environment_id
 

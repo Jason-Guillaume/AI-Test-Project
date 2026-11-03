@@ -48,9 +48,12 @@ class WebUIService:
         """委托规范职责入口，保留调用契约。"""
         return delete_page(db, page_id, actor)
 
-    def list_cases(self, db, project_id, actor, *, page=1, page_size=20):
+    def list_cases(self, db, project_id, actor, *, page=1, page_size=20, keyword=None, confirmed_only=False):
         """委托规范职责入口，保留调用契约。"""
-        return list_cases(db, project_id, actor, page=page, page_size=page_size)
+        return list_cases(
+            db, project_id, actor, page=page, page_size=page_size,
+            keyword=keyword, confirmed_only=confirmed_only,
+        )
 
     def get_case(self, db, case_id, actor):
         """委托规范职责入口，保留调用契约。"""

@@ -17,6 +17,7 @@ import { collectPages } from '@/shared/api/pagination';
 // 未接入（明确标记，不虚报）：回归关联、趋势看板、修复时长统计。
 import {
   App,
+  Alert,
   Button,
   Form,
   Input,
@@ -28,8 +29,8 @@ import {
 } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { bugsApi } from '@/features/defects/api/defects';
 import type { BugCreate, BugUpdate } from '@/features/defects/contracts';
 import { projectsApi } from '@/features/projects/api/projects';
@@ -37,6 +38,9 @@ import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { getErrorMessage } from '@/shared/api/client';
 import { DefectOrigins } from '@/widgets/execution-detail/DefectOrigins';
+import { tasksApi } from '@/features/tasks/api/tasks';
+import { clearTaskCreateUncertainty, readTaskCreateUncertainty, rememberTaskCreateUncertainty, type TaskCreateUncertainty } from '@/features/tasks/createUncertainty';
+import { isAxiosError } from 'axios';
 import type { Bug, BugSeverity, BugStatus } from '@/features/defects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
@@ -356,6 +360,7 @@ export function ConsoleDefectsPage() {
           <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
           <Typography.Text strong>关联来源</Typography.Text>
           <DefectOrigins bugId={bugDetail.data.id} />
+          <BugVerificationPanel bug={bugDetail.data} />
         </Space>}
       </Modal>
 
@@ -478,6 +483,119 @@ export function ConsoleDefectsPage() {
         </Form>
       </Modal>
     </PageContainer>
+  );
+}
+
+function BugVerificationPanel({ bug }: { bug: Bug }) {
+  const { message } = App.useApp();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [environmentId, setEnvironmentId] = useState<number>();
+  const [sourceExecutionId, setSourceExecutionId] = useState<number>();
+  const intent = useRef<{ fingerprint: string; requestKey: string } | null>(null);
+  const currentBugId = useRef(bug.id);
+  const currentFingerprint = JSON.stringify({ bug_id: bug.id, sourceExecutionId, environmentId });
+  currentBugId.current = bug.id;
+  const currentFingerprintRef = useRef(currentFingerprint);
+  currentFingerprintRef.current = currentFingerprint;
+  const [unknownCreate, setUnknownCreate] = useState<TaskCreateUncertainty | null>(null);
+  useEffect(() => {
+    intent.current = null;
+    setSourceExecutionId(undefined);
+    setEnvironmentId(undefined);
+    setUnknownCreate(null);
+  }, [bug.id]);
+  const sourcesQuery = useQuery({
+    queryKey: ['bug-sources', bug.id],
+    queryFn: () => bugsApi.bugSources(bug.id),
+  });
+  const environmentsQuery = useQuery({
+    queryKey: ['project-environments', bug.project_id],
+    queryFn: () => projectsApi.listEnvironments(bug.project_id),
+  });
+  const taskRefsQuery = useQuery({
+    queryKey: ['task-resource-sources', 'BUG', bug.id, bug.project_id],
+    queryFn: () => tasksApi.sources('BUG', String(bug.id), bug.project_id),
+  });
+  const verifyMutation = useMutation({
+    mutationFn: (submission: { bugId: number; sourceExecutionId: number; environmentId: number; requestKey: string; fingerprint: string }) => tasksApi.verifyBug(submission.bugId, {
+      source_case_execution_id: submission.sourceExecutionId,
+      environment_id: submission.environmentId,
+      request_key: submission.requestKey,
+    }),
+    onSuccess: async (task, submission) => {
+      clearTaskCreateUncertainty(submission.requestKey);
+      if (intent.current?.requestKey === submission.requestKey) intent.current = null;
+      setUnknownCreate((previous) => previous?.request_key === submission.requestKey ? null : previous);
+      message.success('验证任务已创建；任务结果不会自动关闭缺陷');
+      await queryClient.invalidateQueries({ queryKey: ['task-resource-sources', 'BUG', submission.bugId] });
+      if (currentBugId.current === submission.bugId && currentFingerprintRef.current === submission.fingerprint) {
+        navigate(`/console/tasks/${task.id}`);
+      }
+    },
+    onError: (error, submission) => {
+      message.error(getErrorMessage(error, '验证任务创建失败'));
+      if (!isAxiosError(error) || !error.response || error.response.status >= 500) {
+        const marker = { kind: 'verification' as const, project_id: bug.project_id, request_key: submission.requestKey, recorded_at: Date.now() };
+        rememberTaskCreateUncertainty(marker);
+        setUnknownCreate(marker);
+      } else clearTaskCreateUncertainty(submission.requestKey);
+    },
+  });
+  const failedSources = (sourcesQuery.data ?? []).filter((source) => source.case_execution_id != null);
+  const environments = (environmentsQuery.data?.items ?? []).filter((environment) => environment.is_active && environment.id != null);
+
+  return (
+    <div>
+      <Typography.Text strong>修复验证</Typography.Text>
+      {bug.status !== '已修复' ? <Typography.Paragraph type="secondary">将缺陷状态改为“已修复”后，可以选择原失败用例创建新的验证任务。</Typography.Paragraph> : (
+        <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
+          {sourcesQuery.isError || environmentsQuery.isError ? <Typography.Text type="danger">来源或执行环境读取失败，无法创建验证任务。</Typography.Text> : null}
+          <Select
+            aria-label="原失败执行"
+            value={sourceExecutionId}
+            onChange={(value) => { setSourceExecutionId(value); setUnknownCreate(null); }}
+            loading={sourcesQuery.isLoading}
+            options={failedSources.map((source) => ({ value: source.case_execution_id!, label: `原失败用例执行 #${source.case_execution_id}` }))}
+            placeholder={failedSources.length ? '选择关联的原失败执行' : '缺陷没有可用的用例失败来源'}
+          />
+          <Select
+            aria-label="验证环境"
+            value={environmentId}
+            onChange={(value) => { setEnvironmentId(value); setUnknownCreate(null); }}
+            loading={environmentsQuery.isLoading}
+            options={environments.map((environment) => ({ value: environment.id!, label: environment.display_name || environment.name }))}
+            placeholder={environments.length ? '重新确认验证环境' : '当前项目没有可用环境'}
+          />
+          <Button
+            type="primary"
+            loading={verifyMutation.isPending}
+            disabled={sourceExecutionId == null || environmentId == null || sourcesQuery.isError || environmentsQuery.isError}
+            onClick={() => {
+              if (verifyMutation.isPending) return;
+              if (sourceExecutionId == null || environmentId == null) return;
+              const fingerprint = JSON.stringify({ bug_id: bug.id, sourceExecutionId, environmentId });
+              const retryingIntent = intent.current?.fingerprint === fingerprint ? intent.current : null;
+              const previousUnknown = readTaskCreateUncertainty();
+              if (previousUnknown && retryingIntent?.requestKey !== previousUnknown.request_key) {
+                message.warning('请先到任务列表核对上一条结果未知的请求，再提交新的验证配置');
+                return;
+              }
+              const submissionIntent = retryingIntent ?? { fingerprint, requestKey: `bug-verify-${crypto.randomUUID()}` };
+              intent.current = submissionIntent;
+              rememberTaskCreateUncertainty({ kind: 'verification', project_id: bug.project_id, request_key: submissionIntent.requestKey, recorded_at: Date.now() });
+              verifyMutation.mutate({ bugId: bug.id, sourceExecutionId, environmentId, ...submissionIntent });
+            }}
+          >创建新的验证任务</Button>
+          {unknownCreate && <Alert type="warning" showIcon message="验证任务创建结果未知" description="请检查关联任务记录后再决定是否重试；切换环境或来源会建立新的提交意图。" action={<Button size="small" onClick={() => navigate('/console/tasks')}>查看任务列表</Button>} />}
+          {taskRefsQuery.isError ? <Typography.Text type="secondary">无法读取相关任务结果。</Typography.Text> : taskRefsQuery.data?.map((ref) => (
+            <Typography.Link key={`${ref.task_run_id}-${ref.id}`} onClick={() => navigate(`/console/tasks/${ref.task_id}?runId=${ref.task_run_id}`)}>
+              {ref.task_title ?? `验证任务 #${ref.task_id}`} · 运行 #{ref.run_number}
+            </Typography.Link>
+          ))}
+        </Space>
+      )}
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@
 import { api } from '@/shared/api/client';
 import type { AgentTurnResponse } from '@/features/agent/contracts';
 
-import type { Task, TaskRunDetail, TaskMessage, TaskEvent, TaskResourceRef, TaskCreateRequest, AvailableTaskAgent, TaskMessageRequest, TaskCommandRequest, TaskWebAuthoringWorkspace } from '../contracts';
+import type { Task, TaskRunDetail, TaskMessage, TaskEvent, TaskResourceRef, TaskCreateRequest, AvailableTaskAgent, TaskMessageRequest, TaskCommandRequest, TaskWebAuthoringWorkspace, TaskTemplate, TaskInboxResponse, TaskSummary } from '../contracts';
 
 
 
@@ -14,6 +14,20 @@ export const tasksApi = {
     api.get<{ items: Task[]; total: number; page: number; page_size: number }>('/tasks', { params }),
   create: (projectId: number, body: TaskCreateRequest) =>
     api.post<Task>(`/projects/${projectId}/tasks`, body),
+  verifyBug: (bugId: number, body: { source_case_execution_id: number; environment_id: number; request_key: string }) =>
+    api.post<Task>(`/bugs/${bugId}/verification-tasks`, body),
+  inbox: (params: { page?: number; page_size?: number; project_id?: number; category?: string } = {}) =>
+    api.get<TaskInboxResponse>('/tasks/inbox', { params }),
+  summary: () => api.get<TaskSummary>('/tasks/summary'),
+  templates: (projectId: number, params: { keyword?: string; include_inactive?: boolean } = {}) =>
+    api.get<TaskTemplate[]>(`/projects/${projectId}/task-templates`, { params }),
+  getTemplate: (id: number) => api.get<TaskTemplate>(`/task-templates/${id}`),
+  createTemplate: (projectId: number, body: { name: string; description: string; config: TaskTemplate['config']; is_active?: boolean }) =>
+    api.post<TaskTemplate>(`/projects/${projectId}/task-templates`, body),
+  updateTemplate: (id: number, body: { expected_version: number; name: string; description: string; config: TaskTemplate['config']; is_active?: boolean }) =>
+    api.put<TaskTemplate>(`/task-templates/${id}`, body),
+  setTemplateActive: (id: number, expected_version: number, is_active: boolean) =>
+    api.patch<TaskTemplate>(`/task-templates/${id}/status`, { expected_version, is_active }),
   availableAgents: (projectId: number, params: { target_type: 'API' | 'WEB' | 'SECURITY' }) =>
     api.get<AvailableTaskAgent[]>(`/projects/${projectId}/available-agents`, { params }),
   get: (taskId: number) => api.get<Task>(`/tasks/${taskId}`),
@@ -33,6 +47,6 @@ export const tasksApi = {
     api.post<AgentTurnResponse>(`/task-runs/${runId}/web-authoring/messages`, body, { timeout: 120000 }),
   promoteWebAuthoring: (runId: number, body: { name?: string; description?: string }) =>
     api.post<{ id: number; name: string; project_id: number; confirmed: boolean }>(`/task-runs/${runId}/web-authoring/draft`, body),
-  sources: (resourceType: string, resourceId: string) =>
-    api.get<TaskResourceRef[]>('/task-resources', { params: { resource_type: resourceType, resource_id: resourceId } }),
+  sources: (resourceType: string, resourceId: string, projectId?: number) =>
+    api.get<TaskResourceRef[]>('/task-resources', { params: { resource_type: resourceType, resource_id: resourceId, project_id: projectId } }),
 };

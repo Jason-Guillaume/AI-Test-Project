@@ -150,6 +150,54 @@ export interface TaskCreateRequest {
   web_authoring?: { auth_profile_id?: number; target_page_path?: string; step_budget?: number };
   security_assessment?: { api_ids?: number[]; api_id?: number; web_session_id?: number; strategy_ids: number[] };
   request_key?: string;
+  template_id?: number;
+  template_version?: number;
+  target_type?: 'API' | 'WEB' | 'SECURITY' | 'WEB_AUTHORING';
+}
+
+export interface TaskTemplate {
+  id: number;
+  project_id: number;
+  created_by: number | null;
+  updated_by: number | null;
+  name: string;
+  description: string;
+  config: Omit<TaskCreateRequest, 'request_key' | 'template_id' | 'template_version' | 'environment_id'> & { environment_id?: number };
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TaskInboxCategory = 'approval' | 'model_blocked' | 'failed' | 'reconcile';
+
+export interface TaskInboxItem {
+  task_id: number;
+  project_id: number;
+  project_name: string;
+  task_title: string;
+  run_id: number;
+  run_number: number;
+  run_status: string;
+  stage: string;
+  category: TaskInboxCategory;
+  reason: string;
+  next_action: string;
+  updated_at: string;
+}
+
+export interface TaskInboxResponse {
+  items: TaskInboxItem[];
+  counts: Record<TaskInboxCategory, number>;
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface TaskSummary {
+  active_count: number;
+  needs_attention_count: number;
+  by_status: Record<string, number>;
 }
 
 export interface AvailableTaskAgent {

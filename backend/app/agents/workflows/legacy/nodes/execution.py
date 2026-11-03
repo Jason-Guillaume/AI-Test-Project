@@ -24,10 +24,12 @@ def execution_node(ctx: NodeContext, state: AgentState) -> dict:
     session_id = state["session_id"]
     payload = state.get("action_payload") or {}
 
-    # 用例：优先用本次 action 的 case_ids，否则用已保存用例的全部 id。
-    case_ids = payload.get("case_ids") or state.get("confirmed_case_ids") or [
-        c["id"] for c in (state.get("generated_test_cases") or []) if c.get("id")
-    ]
+    # 显式 [] 绝不能扩成全部；新 UI 已在入口校验非空，None 仅兼容旧调用。
+    case_ids = payload.get("case_ids")
+    if case_ids is None:
+        case_ids = state.get("confirmed_case_ids")
+    if case_ids is None:
+        case_ids = [c["id"] for c in (state.get("generated_test_cases") or []) if c.get("id")]
     env_id = payload.get("environment_id") or state.get("environment_id")
 
     if not case_ids:

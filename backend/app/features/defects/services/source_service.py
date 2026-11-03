@@ -87,8 +87,15 @@ class DefectSourceService:
         try:
             db.commit()
         except IntegrityError:
-            # 不同来源同时复用请求标识时，唯一约束负责最终仲裁。
+            # 同一意图并发重放时读回胜出的关联；不同内容复用键明确冲突。
             db.rollback()
-            raise conflict("关联或请求标识已存在，请刷新后重试")
+            winner = db.query(DefectSourceLink).filter_by(
+                project_id=project.id, request_key=body.request_key,
+            ).first()
+            if winner is not None:
+                if winner.request_digest == request_digest:
+                    return winner
+                raise conflict("请求标识已用于其他关联")
+            raise conflict("该来源已被其他请求关联，请刷新后重试")
         db.refresh(link)
         return link

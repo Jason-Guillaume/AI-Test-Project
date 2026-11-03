@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
 from typing import Any
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from app.orchestration.tasks.models import Task, TaskCommand, TaskEvent, TaskMessage, TaskRun
+from app.orchestration.tasks.models import Task, TaskCommand, TaskEvent, TaskMessage, TaskRun, TaskTemplate
 from app.orchestration.tasks.schemas import TaskCommandCreate, TaskCreate, TaskMessageCreate
 from app.features.test_management.models.test_case import TestCase
 from app.core.models.configuration import ModelConfiguration
@@ -26,17 +28,91 @@ from app.orchestration.tasks.services.run_service import create_run
 from app.orchestration.tasks.services.state_service import enqueue_work
 from app.orchestration.tasks.services.assembly_service import list_available_agents
 from app.orchestration.tasks.services.assembly_service import resolve_agent_profile
+from app.orchestration.tasks.schemas import VerificationTaskRequest
 
 
 class TaskService:
     """稳定领域门面；各资源由唯一实现持有。"""
 
-    def create_task(self, db: Session, project_id: int, body: TaskCreate, *, actor: User) -> dict[str, Any]:
+    def create_task(
+        self, db: Session, project_id: int, body: TaskCreate, *, actor: User,
+        _verification_source: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
         """校验已确认的测试资产或安全评估范围，创建首个运行与对应 Worker。"""
         project = TaskAccessService.get_project_for_write(db, project_id, actor)
         case_ids = list(dict.fromkeys(body.case_ids))
         security_assessment = body.security_assessment.model_dump() if body.security_assessment else None
+        if security_assessment is not None:
+            security_assessment["api_ids"] = list(dict.fromkeys(security_assessment.get("api_ids") or []))
+            security_assessment["strategy_ids"] = list(dict.fromkeys(security_assessment.get("strategy_ids") or []))
         web_authoring = body.web_authoring.model_dump() if body.web_authoring else None
+        goal = sanitize_text(body.goal).strip()
+        title = sanitize_text(body.title or "").strip() or goal[:80]
+        if (body.template_id is None) != (body.template_version is None):
+            raise bad_request("任务模板 ID 与版本必须同时提供")
+        submitted = body.model_dump(exclude={"request_key"})
+        submitted.update({
+            "title": title[:200],
+            "goal": goal,
+            "case_ids": case_ids,
+            "security_assessment": security_assessment,
+            "web_authoring": web_authoring,
+        })
+        request_digest = hashlib.sha256(json.dumps(
+            {"project_id": project.id, "input": submitted, "verification_source": _verification_source},
+            ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
+
+        def replay_concurrent_request() -> dict[str, Any] | None:
+            """Recover the winning row after a concurrent insert hits the unique key."""
+            db.rollback()
+            if not body.request_key:
+                return None
+            winner = db.query(Task).filter(
+                Task.created_by == actor.id, Task.request_key == body.request_key,
+            ).first()
+            if winner is not None and winner.request_digest == request_digest:
+                return TaskQueryService.task_detail(db, winner)
+            return None
+
+        if body.request_key:
+            existing = db.query(Task).filter(
+                Task.created_by == actor.id, Task.request_key == body.request_key,
+            ).first()
+            if existing is not None:
+                if existing.request_digest is not None:
+                    if existing.request_digest != request_digest:
+                        raise conflict("相同 request_key 已用于不同任务内容")
+                else:
+                    latest = db.query(TaskRun).filter(TaskRun.task_id == existing.id).order_by(
+                        TaskRun.run_number.desc(),
+                    ).first()
+                    snapshot = latest.input_snapshot or {} if latest else {}
+                    template = snapshot.get("template") or {}
+                    if (
+                        existing.project_id != project.id or existing.goal != goal
+                        or existing.title != title[:200] or existing.environment_id != body.environment_id
+                        or existing.input_case_ids != case_ids
+                        or (existing.security_assessment_json or None) != security_assessment
+                        or existing.agent_definition_id != body.agent_definition_id
+                        or existing.task_mode != body.task_mode
+                        or (existing.web_authoring_json or None) != web_authoring
+                        or (template.get("id"), template.get("version")) != (body.template_id, body.template_version)
+                        or (snapshot.get("verification_source") or None) != _verification_source
+                    ):
+                        raise conflict("相同 request_key 已用于不同任务内容")
+                return TaskQueryService.task_detail(db, existing)
+
+        template_snapshot = None
+        if body.template_id is not None or body.template_version is not None:
+            from app.orchestration.tasks.services.template_service import TaskTemplateService
+
+            template = TaskTemplateService.get(db, body.template_id, actor)
+            if template.project_id != project.id:
+                raise not_found("任务模板不存在")
+            if not template.is_active or template.version != body.template_version:
+                raise conflict("任务模板已停用或版本已更新，请重新选择模板")
+            template_snapshot = {"id": template.id, "version": template.version, "name": template.name}
         if body.task_mode == "WEB_AUTHORING":
             if case_ids or security_assessment or web_authoring is None:
                 raise bad_request("交互式 Web 编写需提供会话范围，且不能绑定用例或安全评估")
@@ -134,34 +210,15 @@ class TaskService:
             if len(target_types) != 1:
                 raise bad_request("一个任务运行需选择同一执行器类型的用例；API 与 Web 请分别创建任务")
             target_type = next(iter(target_types))
+        requested_target = "WEB_AUTHORING" if body.task_mode == "WEB_AUTHORING" else (
+            "SECURITY" if security_assessment else (body.target_type if body.target_type in {"API", "WEB"} else None)
+        )
+        if requested_target is not None and requested_target != target_type:
+            raise bad_request("所选执行类型与任务范围不匹配")
         environment = resolve_project_environment(db, project.id, body.environment_id)
         if security_assessment and security_assessment.get("web_session_id"):
             if web_session.environment_id != environment.id:
                 raise bad_request("Web 页面检查会话与安全评估执行环境必须一致")
-
-        goal = sanitize_text(body.goal).strip()
-        title = sanitize_text(body.title or "").strip() or goal[:80]
-
-        if body.request_key:
-            existing = (
-                db.query(Task)
-                .filter(Task.created_by == actor.id, Task.request_key == body.request_key)
-                .first()
-            )
-            if existing is not None:
-                if (
-                    existing.project_id != project.id
-                    or existing.goal != goal
-                    or existing.title != title[:200]
-                    or existing.environment_id != environment.id
-                    or existing.input_case_ids != case_ids
-                    or (existing.security_assessment_json or None) != security_assessment
-                    or existing.agent_definition_id != body.agent_definition_id
-                    or existing.task_mode != body.task_mode
-                    or (existing.web_authoring_json or None) != web_authoring
-                ):
-                    raise conflict("相同 request_key 已用于不同任务内容")
-                return TaskQueryService.task_detail(db, existing)
 
         agent_bundle = resolve_agent_profile(
             db,
@@ -186,35 +243,103 @@ class TaskService:
             web_authoring_json=web_authoring,
             security_assessment_json=security_assessment,
             request_key=body.request_key,
+            request_digest=request_digest if body.request_key else None,
         )
         db.add(task)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            replayed = replay_concurrent_request()
+            if replayed is not None:
+                return replayed
+            raise
         run = create_run(db, task, actor, run_number=1, target_type=target_type, agent_bundle=agent_bundle)
+        if template_snapshot or _verification_source:
+            snapshot = dict(run.input_snapshot or {})
+            if template_snapshot:
+                snapshot.update({
+                    "template": template_snapshot,
+                    "submitted_input": body.model_dump(exclude={"request_key"}),
+                })
+            if _verification_source:
+                snapshot["verification_source"] = _verification_source
+                TaskResourceService.add_resource_ref(
+                    db, run, "INPUT", "BUG", str(_verification_source["bug_id"]),
+                    metadata={"purpose": "defect_verification"},
+                )
+                TaskResourceService.add_resource_ref(
+                    db, run, "INPUT", "CASE_EXECUTION", str(_verification_source["case_execution_id"]),
+                    metadata={"purpose": "original_failure"},
+                )
+            run.input_snapshot = snapshot
         task.status = run.status
         try:
             db.commit()
         except IntegrityError:
             # 同一用户并发重放相同 request_key 时由唯一约束裁决，回读胜出的任务而不重复排程。
-            db.rollback()
-            if body.request_key:
-                existing = db.query(Task).filter(
-                    Task.created_by == actor.id, Task.request_key == body.request_key,
-                ).first()
-                if existing is not None and (
-                    existing.project_id == project.id
-                    and existing.goal == goal
-                    and existing.title == title[:200]
-                    and existing.environment_id == environment.id
-                    and existing.input_case_ids == case_ids
-                    and (existing.security_assessment_json or None) == security_assessment
-                    and existing.agent_definition_id == body.agent_definition_id
-                    and existing.task_mode == body.task_mode
-                    and (existing.web_authoring_json or None) == web_authoring
-                ):
-                    return TaskQueryService.task_detail(db, existing)
+            replayed = replay_concurrent_request()
+            if replayed is not None:
+                return replayed
             raise
         db.refresh(task)
         return TaskQueryService.task_detail(db, task)
+
+    def create_verification_task(
+        self, db: Session, bug_id: int, body: VerificationTaskRequest, *, actor: User,
+    ) -> dict[str, Any]:
+        """从已修复缺陷创建标准任务；校验来源与单用例前置条件，再复用现有执行流。"""
+        from app.features.defects.models import Bug, DefectSourceLink
+        from app.features.test_management.models.execution import CaseExecution, TestRun
+        from app.features.test_management.models.test_case import TestCase
+        from app.features.test_management.models.test_case_precondition import TestCasePrecondition
+
+        bug = db.get(Bug, bug_id)
+        if bug is None:
+            raise not_found("缺陷不存在")
+        project = TaskAccessService.get_project_for_write(db, bug.project_id, actor)
+        if bug.status != "已修复":
+            raise bad_request("只有标记为已修复的缺陷可以发起验证")
+        execution = db.get(CaseExecution, body.source_case_execution_id)
+        source_link = db.query(DefectSourceLink).filter_by(
+            bug_id=bug.id, case_execution_id=body.source_case_execution_id, project_id=project.id,
+        ).first()
+        if execution is None or source_link is None or execution.status not in {"FAILED", "ERROR"}:
+            raise not_found("缺陷关联的失败执行不存在")
+        original_run = db.get(TestRun, execution.test_run_id)
+        if original_run is None or original_run.project_id != project.id or execution.test_case_id is None:
+            raise not_found("来源执行不属于当前项目或用例已失效")
+        case = db.get(TestCase, execution.test_case_id)
+        if case is None or case.project_id != project.id:
+            raise not_found("来源用例不存在")
+        if not case.enabled or case.status != "ACTIVE" or case.target_type not in {"API", "WEB"}:
+            raise bad_request("用例已停用或不支持任务验证，请先恢复有效资产")
+        preconditions = db.query(TestCasePrecondition).filter(TestCasePrecondition.test_case_id == case.id).all()
+        if any(row.type != "VARIABLE" for row in preconditions):
+            raise bad_request("此用例包含尚不能自动解析的前置条件；请先补齐依赖或选用自包含用例，禁止只执行部分链路")
+
+        existing = db.query(Task).filter(Task.created_by == actor.id, Task.request_key == body.request_key).first()
+        expected_source = {"bug_id": bug.id, "case_execution_id": execution.id}
+        selected_environment = resolve_project_environment(db, project.id, body.environment_id)
+        if existing is not None:
+            latest = db.query(TaskRun).filter(TaskRun.task_id == existing.id).order_by(TaskRun.run_number.desc()).first()
+            actual_source = (latest.input_snapshot or {}).get("verification_source") if latest else None
+            if (
+                existing.project_id != project.id
+                or existing.environment_id != selected_environment.id
+                or actual_source != expected_source
+            ):
+                raise conflict("请求标识已用于其他任务、环境或来源")
+            return TaskQueryService.task_detail(db, existing)
+
+        result = self.create_task(db, project.id, TaskCreate(
+            title=f"验证缺陷 #{bug.id}：{case.name}"[:200],
+            goal=f"验证已修复缺陷 #{bug.id}（{bug.title}）。重新执行用例 #{case.id}：{case.name}。请依据最新执行证据判断修复是否生效，不自动关闭缺陷。",
+            environment_id=body.environment_id,
+            case_ids=[case.id],
+            target_type=case.target_type,
+            request_key=body.request_key,
+        ), actor=actor, _verification_source=expected_source)
+        return TaskQueryService.task_detail(db, db.get(Task, result["id"]))
 
     def list_available_agents(self, db: Session, project_id: int, *, actor: User, target_type: str) -> list[dict[str, Any]]:
         """委托规范职责入口，保留调用契约。"""
@@ -227,6 +352,9 @@ class TaskService:
     ) -> dict[str, Any]:
         """兼容入口：委托只读查询服务列出可见任务。"""
         return TaskQueryService.list_tasks(db, user, page=page, page_size=page_size, project_id=project_id, status=status)
+
+    def task_summary(self, db: Session, user: User) -> dict[str, Any]:
+        return TaskQueryService.task_summary(db, user)
 
     def get_task(self, db: Session, task_id: int, user: User) -> dict[str, Any]:
         """兼容入口：委托只读查询服务读取任务详情。"""

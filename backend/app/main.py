@@ -28,6 +28,7 @@ from app.llm.tracing import flush_langfuse
 from app.agents.router import router as agent_router
 from app.platform.agent_governance.router import router as agent_governance_router
 from app.features.api_catalog.router import router as api_catalog_router
+from app.features.asr_evaluation.router import router as asr_evaluation_router
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
@@ -35,6 +36,7 @@ from app.platform.environment_configuration.router import router as environments
 from app.features.mocking.router import router as mock_management_router
 from app.features.mocking.runtime_router import router as mock_runtime_router
 from app.platform.model_configuration.router import router as model_configs_router
+from app.platform.model_configuration.center_router import router as model_center_router
 from app.platform.notifications.router import router as notifications_router
 from app.platform.notifications.channel_router import router as notification_channel_router
 from app.platform.organizations.router import router as organizations_router
@@ -212,6 +214,7 @@ def create_app() -> FastAPI:
     application.include_router(projects_router, prefix=API_PREFIX)
     application.include_router(defects_router, prefix=API_PREFIX)
     application.include_router(api_catalog_router, prefix=API_PREFIX)
+    application.include_router(asr_evaluation_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)
     application.include_router(test_management_router, prefix=API_PREFIX)
     application.include_router(tasks_router, prefix=API_PREFIX)
@@ -223,6 +226,7 @@ def create_app() -> FastAPI:
     # 通知渠道（飞书 Webhook 配置/测试/触发/审计），挂在通知之后便于故障隔离。
     application.include_router(notification_channel_router, prefix=API_PREFIX)
     application.include_router(model_configs_router, prefix=API_PREFIX)
+    application.include_router(model_center_router, prefix=API_PREFIX)
     application.include_router(environments_router, prefix=API_PREFIX)
     application.include_router(dashboard_router, prefix=API_PREFIX)
     application.include_router(test_data_router, prefix=API_PREFIX)

@@ -100,6 +100,16 @@ class TaskResourceService:
         if ids := ids_by_type.get("TEST_CASE"):
             rows = db.query(TestCase.id, TestCase.name).filter(TestCase.id.in_(ids)).all()
             names.update({("TEST_CASE", str(row.id)): row.name for row in rows})
+        if ids := ids_by_type.get("BUG"):
+            from app.features.defects.models import Bug
+
+            rows = db.query(Bug.id, Bug.title).filter(Bug.id.in_(ids)).all()
+            names.update({("BUG", str(row.id)): f"缺陷 #{row.id} · {row.title}" for row in rows})
+        if ids := ids_by_type.get("CASE_EXECUTION"):
+            from app.features.test_management.models.execution import CaseExecution
+
+            rows = db.query(CaseExecution.id, CaseExecution.status).filter(CaseExecution.id.in_(ids)).all()
+            names.update({("CASE_EXECUTION", str(row.id)): f"用例执行 #{row.id} · {row.status}" for row in rows})
         if ids := ids_by_type.get("TEST_RUN"):
             from app.features.test_management.models.execution import TestRun
 
