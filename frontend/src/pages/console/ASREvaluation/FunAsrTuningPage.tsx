@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, App, Button, Card, Checkbox, Collapse, Descriptions, Divider, Flex, Input,
-  InputNumber, Select, Space, Table, Tag, Typography,
+  InputNumber, Select, Space, Table, Tag, Typography, Upload,
 } from 'antd';
 import type { TableColumnsType } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
 import { AsrFrame } from './AsrFrame';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { funasrTuningApi } from '@/features/asr-evaluation/api/funasrTuning';
@@ -228,14 +229,15 @@ export function FunAsrTuningPage() {
 
   const audioColumns: TableColumnsType<AsrAudio> = [
     { title: '录音', dataIndex: 'name', key: 'name', render: (_value, row) => <Space direction="vertical" size={0}><Text strong>{row.name}</Text><Text type="secondary">音频版本 {row.content_version}</Text></Space> },
-    { title: '答案', key: 'answer', width: 220, render: (_value, row) => {
+    { title: '标准答案 JSON', key: 'answer', width: 220, render: (_value, row) => {
       const answer = answerByAudioId.get(row.id);
       return <Space direction="vertical" size="small">{answer ? <Tag color="green">答案 v{answer.version} 已冻结</Tag> : <Tag color="orange">待上传</Tag>}
-        <label style={{ cursor: 'pointer', color: '#1677ff' }}>
-          上传 JSON
-          <input type="file" accept=".json,application/json" disabled={busy} style={{ display: 'none' }}
-            onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAnswer(row.id, file); event.currentTarget.value = ''; }} />
-        </label>
+        <Upload accept=".json,application/json" showUploadList={false} disabled={busy}
+          beforeUpload={(file) => { void uploadAnswer(row.id, file); return false; }}>
+          <Button size="small" icon={<UploadOutlined />} disabled={busy}>
+            {answer ? '更换答案 JSON' : '绑定样例 JSON'}
+          </Button>
+        </Upload>
       </Space>;
     } },
     { title: '时长', dataIndex: 'duration_seconds', key: 'duration', width: 90, render: (value) => value == null ? '—' : `${value} 秒` },
@@ -304,8 +306,8 @@ export function FunAsrTuningPage() {
           placeholder="粘贴用于映射预览的真实响应 JSON。缺少真实响应时可先继续配置标准答案，但不能启动真实任务。" style={{ marginTop: 10 }} spellCheck={false} />
       </Card>
 
-      <Card title="2. 给录音上传标准答案 JSON">
-        <Paragraph type="secondary">答案会保存为不可变版本并绑定当前音频版本。只配置你实际 JSON 中存在的字段；全文或分段映射必须显式选择，缺失的时间和说话人不会补造。</Paragraph>
+      <Card title="2. 给录音绑定标准答案 JSON">
+        <Paragraph type="secondary">先在 ASR 音频页导入录音，再在下方对应录音行的“标准答案 JSON”列点击“绑定样例 JSON”选择文件。答案会保存为不可变版本并绑定当前音频版本；只配置样例中实际存在的字段，缺失的时间和说话人不会补造。</Paragraph>
         <Text strong>标准答案映射 JSON</Text>
         <Input.TextArea rows={4} value={groundTruthMappingText} onChange={(event) => setGroundTruthMappingText(event.target.value)} spellCheck={false} />
         <Flex gap="small" wrap="wrap" style={{ marginTop: 8 }}>

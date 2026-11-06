@@ -1,12 +1,15 @@
 // 音频列表：管理授权 URL、版本和可达性；原始签名查询串不会在页面回显。
 import { App, Button, Empty, Form, Input, Modal, Space, Table, Tag, Typography } from 'antd';
-import { EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { EditOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
+import { Upload } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
 import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/asrEvaluation';
-import type { AsrAudio } from '@/features/asr-evaluation/contracts';
+import { funasrTuningApi } from '@/features/asr-evaluation/api/funasrTuning';
+import type { AsrAudio, JsonValue } from '@/features/asr-evaluation/contracts';
+import type { FunAsrGroundTruth } from '@/features/asr-evaluation/api/funasrTuning';
 import { AsrFrame } from './AsrFrame';
 import { LoadingState, ErrorState } from '@/shared/ui/PageState';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +21,33 @@ interface AudioFormValues {
 }
 
 type AudioFormMode = 'CREATE' | 'IMPORT' | 'EDIT';
+
+const SAMPLE_JSON_MAPPING: Record<string, unknown> = {
+  text_source: 'segments',
+  segments_pointer: '',
+  segment_text_pointer: '/text',
+  start_pointer: '/start',
+  end_pointer: '/end',
+  speaker_pointer: '/spk',
+  time_unit: 'ms',
+};
+
+function validateSampleJson(document: JsonValue): asserts document is JsonValue[] {
+  if (!Array.isArray(document) || document.length === 0) {
+    throw new Error('样例 JSON 须为非空数组，每段包含 start、end、spk、text 字段');
+  }
+  const invalidIndex = document.findIndex((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+    const row = item as Record<string, JsonValue>;
+    return typeof row.text !== 'string'
+      || typeof row.start !== 'number' || !Number.isFinite(row.start) || row.start < 0
+      || typeof row.end !== 'number' || !Number.isFinite(row.end) || row.end <= row.start
+      || (typeof row.spk !== 'number' && typeof row.spk !== 'string' && row.spk !== null);
+  });
+  if (invalidIndex >= 0) {
+    throw new Error(`第 ${invalidIndex + 1} 段格式无效；需要有效的 start/end、spk 和 text 字段`);
+  }
+}
 
 /**
  * 解析用户从音频清单复制的名称与 URL 交替文本。
@@ -108,6 +138,12 @@ export function AudioPage() {
     queryFn: ({ signal }) => asrEvaluationApi.getRecentAudioRuns(currentProjectId!, audioIds, signal),
   });
   const recentRuns = new Map((recentRunsQuery.data?.items ?? []).map((item) => [item.audio_id, item]));
+  const groundTruthQuery = useQuery({
+    queryKey: currentProjectId ? asrQueryKeys.project(currentProjectId, 'funasr-ground-truth') : ['asr', 'funasr-ground-truth', null],
+    enabled: Boolean(currentProjectId),
+    queryFn: () => funasrTuningApi.groundTruth(currentProjectId!),
+  });
+  const groundTruthByAudioId = new Map((groundTruthQuery.data?.items ?? []).map((item: FunAsrGroundTruth) => [item.audio_id, item]));
   const importMutation = useMutation({
     mutationFn: async (values: AudioFormValues) => {
       if (formMode === 'EDIT' && editingAudio) {
@@ -141,10 +177,47 @@ export function AudioPage() {
     },
     onError: (error) => message.error(getErrorMessage(error, '检查音频链接失败')),
   });
+  const uploadGroundTruthMutation = useMutation({
+    mutationFn: async ({ audioId, file }: { audioId: number; file: File }) => {
+      if (file.size > 5_000_000) throw new Error('样例 JSON 不能超过 5 MB');
+      let document: JsonValue;
+      try { document = JSON.parse(await file.text()) as JsonValue; }
+      catch { throw new Error('文件不是有效 JSON'); }
+      validateSampleJson(document);
+      return funasrTuningApi.createGroundTruth(audioId, document, SAMPLE_JSON_MAPPING);
+    },
+    onSuccess: (_result, { audioId }) => {
+      message.success(`已为音频 #${audioId} 绑定样例 JSON`);
+      if (currentProjectId) {
+        void queryClient.invalidateQueries({ queryKey: asrQueryKeys.project(currentProjectId, 'funasr-ground-truth') });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '绑定样例 JSON 失败')),
+  });
 
   /** 音频表格列展示脱敏 URL、版本和真实可达性状态。 */
   const columns = [
     { title: '音频名称', dataIndex: 'name', key: 'name', width: 220 },
+    {
+      title: '对应样例 JSON', key: 'ground_truth', width: 200,
+      render: (_: unknown, row: AsrAudio) => {
+        const answer = groundTruthByAudioId.get(row.id);
+        const uploading = uploadGroundTruthMutation.isPending && uploadGroundTruthMutation.variables?.audioId === row.id;
+        return <Space direction="vertical" size={4}>
+          {answer ? <Tag color="green">已绑定 v{answer.version}</Tag> : <Tag color="orange">未绑定</Tag>}
+          <Upload accept=".json,application/json" maxCount={1} showUploadList={false}
+            disabled={uploadGroundTruthMutation.isPending}
+            beforeUpload={(file) => {
+              uploadGroundTruthMutation.mutate({ audioId: row.id, file });
+              return false;
+            }}>
+            <Button size="small" icon={<UploadOutlined />} loading={uploading} disabled={uploadGroundTruthMutation.isPending}>
+              {answer ? '更换 JSON' : '上传 JSON'}
+            </Button>
+          </Upload>
+        </Space>;
+      },
+    },
     {
       title: '音频 URL', dataIndex: 'url_display', key: 'url_display',
       render: (value: string) => <Typography.Text copyable={{ text: value }} ellipsis style={{ maxWidth: 420 }}>{value}</Typography.Text>,
@@ -190,7 +263,7 @@ export function AudioPage() {
           <Button icon={<ReloadOutlined />} onClick={() => void audioQuery.refetch()}>刷新</Button>
           <Input.Search aria-label="按名称筛选音频" allowClear placeholder="按音频名称筛选" value={keyword}
             onChange={(event) => { setKeyword(event.target.value); setPage(1); }} style={{ width: 260 }} />
-          <Typography.Text type="secondary">只保存链接与版本信息；平台播放权限和云端可达性分开检查。</Typography.Text>
+          <Typography.Text type="secondary">每行“对应样例 JSON”列可上传该音频的 JSON；自动映射 text/start/end/spk，时间单位为毫秒。音频本身只保存链接与版本信息。</Typography.Text>
         </Space>
         {recentRunsQuery.isError && <Typography.Text type="warning">最近任务链接读取失败；可从评测任务列表查找。</Typography.Text>}
         <Table<AsrAudio>
