@@ -1,7 +1,6 @@
 // 音频列表：管理授权 URL、版本和可达性；原始签名查询串不会在页面回显。
-import { App, Button, Empty, Form, Input, Modal, Space, Table, Tag, Typography } from 'antd';
-import { EditOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
-import { Upload } from 'antd';
+import { App, Button, Empty, Form, Input, Modal, Space, Table, Tag, Typography, Upload } from 'antd';
+import { EditOutlined, InboxOutlined, PlusOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
@@ -97,6 +96,7 @@ export function AudioPage() {
   const [formMode, setFormMode] = useState<AudioFormMode>('CREATE');
   const [batchInput, setBatchInput] = useState('');
   const [editingAudio, setEditingAudio] = useState<AsrAudio | null>(null);
+  const [groundTruthAudio, setGroundTruthAudio] = useState<AsrAudio | null>(null);
   const batchPreview = useMemo(() => {
     if (!batchInput.trim()) return { count: 0, error: '' };
     try { return { count: parsePastedAudioRecords(batchInput).length, error: '' }; }
@@ -105,6 +105,7 @@ export function AudioPage() {
   const closeForm = () => {
     setOpen(false);
     setEditingAudio(null);
+    setGroundTruthAudio(null);
     setBatchInput('');
     form.resetFields();
   };
@@ -188,6 +189,7 @@ export function AudioPage() {
     },
     onSuccess: (_result, { audioId }) => {
       message.success(`已为音频 #${audioId} 绑定样例 JSON`);
+      setGroundTruthAudio((current) => current?.id === audioId ? null : current);
       if (currentProjectId) {
         void queryClient.invalidateQueries({ queryKey: asrQueryKeys.project(currentProjectId, 'funasr-ground-truth') });
       }
@@ -205,16 +207,10 @@ export function AudioPage() {
         const uploading = uploadGroundTruthMutation.isPending && uploadGroundTruthMutation.variables?.audioId === row.id;
         return <Space direction="vertical" size={4}>
           {answer ? <Tag color="green">已绑定 v{answer.version}</Tag> : <Tag color="orange">未绑定</Tag>}
-          <Upload accept=".json,application/json" maxCount={1} showUploadList={false}
-            disabled={uploadGroundTruthMutation.isPending}
-            beforeUpload={(file) => {
-              uploadGroundTruthMutation.mutate({ audioId: row.id, file });
-              return false;
-            }}>
-            <Button size="small" icon={<UploadOutlined />} loading={uploading} disabled={uploadGroundTruthMutation.isPending}>
-              {answer ? '更换 JSON' : '上传 JSON'}
-            </Button>
-          </Upload>
+          <Button size="small" icon={<UploadOutlined />} loading={uploading} disabled={uploadGroundTruthMutation.isPending}
+            onClick={() => setGroundTruthAudio(row)}>
+            {answer ? '更换 JSON' : '上传 JSON'}
+          </Button>
         </Space>;
       },
     },
@@ -307,6 +303,33 @@ export function AudioPage() {
             URL 和查询参数加密保存；列表只显示不含签名查询串的地址。播放和 ASR 请求都会重新检查项目出站策略。
           </Typography.Paragraph>
         </Form>
+      </Modal>
+      <Modal
+        title={groundTruthAudio ? `为「${groundTruthAudio.name}」上传对应样例 JSON` : '上传对应样例 JSON'}
+        open={Boolean(groundTruthAudio)} onCancel={() => setGroundTruthAudio(null)} footer={null}
+        destroyOnClose maskClosable={!uploadGroundTruthMutation.isPending} closable={!uploadGroundTruthMutation.isPending}
+      >
+        <Typography.Paragraph>
+          点击下方区域选择 JSON 文件，或将文件拖入区域。文件会绑定到当前音频，上传后可在列表查看答案版本。
+        </Typography.Paragraph>
+        <Upload.Dragger
+          key={groundTruthAudio?.id ?? 'ground-truth-uploader'}
+          accept=".json,application/json" maxCount={1} multiple={false} showUploadList={false}
+          disabled={uploadGroundTruthMutation.isPending}
+          beforeUpload={(file) => {
+            if (!groundTruthAudio) return Upload.LIST_IGNORE;
+            uploadGroundTruthMutation.mutate({ audioId: groundTruthAudio.id, file });
+            return false;
+          }}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击选择 JSON 文件，或将文件拖到此处</p>
+          <p className="ant-upload-hint">支持 .json 文件，大小不超过 5 MB</p>
+          {uploadGroundTruthMutation.isPending && <p className="ant-upload-hint">正在校验并绑定文件，请稍候…</p>}
+        </Upload.Dragger>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+          已按你提供的样例结构自动映射：text 为文本，start/end 为毫秒时间，spk 为说话人编号。
+        </Typography.Paragraph>
       </Modal>
     </AsrFrame>
   );
