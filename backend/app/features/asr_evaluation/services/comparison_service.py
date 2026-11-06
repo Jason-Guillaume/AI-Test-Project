@@ -199,7 +199,7 @@ def _refresh_job_status(db: Session, job: AsrJob) -> None:
 def record_run_result(
     db: Session, run_id: int, *, status: str, transcript: str | None = None,
     segments: list[dict] | None = None, error_message: str | None = None, duration_ms: int | None = None,
-    commit: bool = True,
+    finished_at: datetime | None = None, commit: bool = True,
 ) -> None:
     """由 Worker 的短事务记录单次结果，并在音频三方终态后生成比较版本。"""
     run = db.get(AsrModelRun, run_id)
@@ -210,9 +210,9 @@ def record_run_result(
     run.segments = segments or []
     run.error_message = error_message
     run.duration_ms = duration_ms
-    run.finished_at = datetime.now(timezone.utc) if status in {
+    run.finished_at = finished_at or (datetime.now(timezone.utc) if status in {
         "SUCCEEDED", "FAILED", "CANCELLED", "RECONCILIATION_REQUIRED",
-    } else None
+    } else None)
     job = db.get(AsrJob, run.job_id)
     if job is not None:
         db.flush()
@@ -845,14 +845,39 @@ def list_experiments(db: Session, project_id: int, actor: User) -> list[dict]:
     result = []
     for row in rows:
         item = _dump_experiment(row)
+        baseline = db.get(AsrParameterSet, row.baseline_parameter_set_id)
+        baseline_comparison = db.get(AsrComparison, row.comparison_id)
+        baseline_audio_version = db.get(AsrAudioVersion, baseline_comparison.audio_version_id) if baseline_comparison and baseline_comparison.audio_version_id else None
+        baseline_audio = db.get(AsrAudio, baseline_comparison.audio_id) if baseline_comparison else None
+        item.update({
+            "baseline_parameter_name": baseline.name if baseline else None,
+            "baseline_parameter_version": baseline.version if baseline else None,
+            "baseline_parameters": baseline.parameters if baseline else None,
+            "baseline_audio_version_id": baseline_audio_version.id if baseline_audio_version else None,
+            "baseline_audio_content_version": baseline_audio_version.version if baseline_audio_version else None,
+            "audio_name": baseline_audio_version.name if baseline_audio_version else baseline_audio.name if baseline_audio else None,
+        })
         candidate_job = db.get(AsrJob, row.candidate_job_id) if row.candidate_job_id else None
         if candidate_job is not None:
             item["candidate_job_status"] = candidate_job.status
+            candidate_versions = (candidate_job.config_snapshot or {}).get("audio_versions") or {}
+            baseline_audio_id = str(baseline_comparison.audio_id) if baseline_comparison else ""
+            item["candidate_audio_content_version"] = candidate_versions.get(baseline_audio_id)
             if candidate_job.status in {"COMPLETED", "PARTIAL_FAILED"}:
                 item["status"] = "COMPLETED" if candidate_job.status == "COMPLETED" else "FAILED"
             elif candidate_job.status in {"FAILED", "CANCELLED"}:
                 item["status"] = "FAILED"
                 item["failure_reason"] = item["failure_reason"] or f"候选任务状态：{candidate_job.status}"
+            elif candidate_job.status == "RECONCILIATION_REQUIRED":
+                item["status"] = "RECONCILIATION_REQUIRED"
+                uncertain_runs = db.query(AsrModelRun).filter_by(
+                    job_id=candidate_job.id, status="RECONCILIATION_REQUIRED",
+                ).order_by(AsrModelRun.id).all()
+                item["reconciliation_reason"] = next(
+                    (run.error_message for run in uncertain_runs if run.error_message),
+                    "远端提交结果尚未核实；为避免重复调用，系统已暂停候选复跑。",
+                )
+                item["reconciliation_action"] = "打开候选任务并按幂等键核对远端状态；确认远端无任务后再人工决定后续操作。"
         result.append(item)
     return result
 

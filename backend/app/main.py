@@ -29,6 +29,7 @@ from app.agents.router import router as agent_router
 from app.platform.agent_governance.router import router as agent_governance_router
 from app.features.api_catalog.router import router as api_catalog_router
 from app.features.asr_evaluation.router import router as asr_evaluation_router
+from app.features.asr_evaluation.runtime.funasr_worker import FunAsrTuningWorker
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
@@ -66,6 +67,7 @@ from app.core.http.request_context import (
 logger = logging.getLogger(__name__)
 task_worker = TaskWorker()
 scan_worker = ScanWorker()
+funasr_tuning_worker = FunAsrTuningWorker()
 
 # 业务路由统一挂在 /api/v1 下；新增路由时必须走 include_router(prefix=API_PREFIX)，不要另起前缀。
 API_PREFIX = "/api/v1"
@@ -109,6 +111,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # 先登记启动责任，确保 start() 部分启动后抛错时 finally 仍会释放 Worker。
         started_workers.append(task_worker)
         task_worker.start()
+        started_workers.append(funasr_tuning_worker)
+        funasr_tuning_worker.start()
         if settings.ZAP_ENABLED:
             started_workers.append(scan_worker)
             scan_worker.start()

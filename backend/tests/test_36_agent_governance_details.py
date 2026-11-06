@@ -379,8 +379,9 @@ def test_skill_usage_read_model_counts_distinct_runs_and_limits_recent_tasks(api
     assert data["task_count"] == 11
     assert data["agents"] == [{"id": agent["id"], "name": agent["name"], "loads": 12}]
     assert len(data["recent_tasks"]) == 10
-    assert data["recent_tasks"][0]["title"] == "usage task 10"
-    assert data["recent_tasks"][-1]["title"] == "usage task 1"
+    # 按加载时间倒序：编号越小的事件越新，重复运行的额外记录在最末尾范围之外。
+    assert data["recent_tasks"][0]["title"] == "usage task 0"
+    assert data["recent_tasks"][-1]["title"] == "usage task 9"
     assert data["last_used_at"] is not None
 
     missing = api.get("/agent-governance/skills/2147483647/usage", username=admin)

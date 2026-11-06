@@ -9,7 +9,7 @@ const routeCount = [...app.matchAll(/<Route\b/g)].length;
 const currentPaths = new Set([...app.matchAll(/\bpath=\"([^\"]+)\"/g)].map((match) => match[1]));
 
 test('all original route declarations remain registered after relocation and new task, ASR and model-center pages are additive', () => {
-  assert.equal(routeCount, routes.length + 11);
+  assert.equal(routeCount, routes.length + 13);
   for (const item of routes) {
     if (!item.route.path) continue;
     const path = JSON.parse(item.route.path);
@@ -25,5 +25,7 @@ test('all original route declarations remain registered after relocation and new
   assert.ok(currentPaths.has('asr/comparisons/:comparisonId'));
   assert.ok(currentPaths.has('asr/experiments'));
   assert.ok(currentPaths.has('asr/runs/:runId'));
+  assert.ok(currentPaths.has('asr/runs/:runId/listen'));
+  assert.ok(currentPaths.has('asr/funasr'));
   assert.ok(currentPaths.has('model-center'));
 });

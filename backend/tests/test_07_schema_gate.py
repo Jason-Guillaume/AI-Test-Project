@@ -11,17 +11,19 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
 
 from tests.conftest import ADMIN_DSN, BACKEND_DIR, EXPECTED_TABLES, psycopg
 
-# 两个独立的探测库名：分别验证「默认不建表」与「开关打开才建表」，互不干扰。
-GATE_DB = "testplatform_gate"
-CREATE_DB = "testplatform_gate_create"
 TEST_DSN = os.environ["DATABASE_URL"]
 TEST_DATABASE_NAME = os.environ.get("TEST_DATABASE_NAME", "testplatform_test")
+# 基于当前测试会话的唯一库名派生，避免并发任务误删对方或用户已有数据库。
+_TEST_SUFFIX = hashlib.sha256(TEST_DATABASE_NAME.encode()).hexdigest()[:16]
+GATE_DB = f"testplatform_gate_{_TEST_SUFFIX}"
+CREATE_DB = f"testplatform_gate_create_{_TEST_SUFFIX}"
 
 # 子进程里跑的探测脚本：启动应用、请求健康检查，再反射表结构。
 # 必须走独立进程，因为 Settings 在导入时即固化环境变量，同一解释器内改

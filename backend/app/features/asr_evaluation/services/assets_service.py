@@ -188,11 +188,22 @@ def _validate_parameters(parameters: dict, definitions: list[dict]) -> None:
 
     validate_keys(parameters)
 
+    import math
+
+    missing = object()
     for definition in definitions:
         path = definition["path"]
-        value = read_json_pointer(parameters, path)
+        value = read_json_pointer(parameters, path, missing=missing)
+        if value is missing:
+            if definition.get("required", True):
+                raise bad_request(f"参数缺少已定义字段：{path}")
+            continue
         if value is None:
-            raise bad_request(f"参数缺少已定义字段：{path}")
+            if not definition.get("nullable", False):
+                raise bad_request(f"参数不允许为空：{path}")
+            if definition.get("choices") is not None and value not in definition["choices"]:
+                raise bad_request(f"参数不在允许选项中：{path}")
+            continue
         expected = definition["value_type"]
         valid = {
             "string": isinstance(value, str), "integer": isinstance(value, int) and not isinstance(value, bool),
@@ -202,6 +213,10 @@ def _validate_parameters(parameters: dict, definitions: list[dict]) -> None:
         if not valid:
             raise bad_request(f"参数类型与定义不符：{path}")
         if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if isinstance(value, float) and not math.isfinite(value):
+                raise bad_request(f"参数必须为有限数值：{path}")
+            if definition.get("exclusive_minimum") is not None and value <= definition["exclusive_minimum"]:
+                raise bad_request(f"参数低于允许范围：{path}")
             if definition.get("minimum") is not None and value < definition["minimum"]:
                 raise bad_request(f"参数低于允许范围：{path}")
             if definition.get("maximum") is not None and value > definition["maximum"]:
@@ -373,7 +388,8 @@ def create_parameter_set(db: Session, body: ParameterSetCreate, actor: User) -> 
     connection = db.get(AsrConnection, body.connection_id)
     if connection is None or connection.project_id != body.project_id or connection.task_type != "TRANSCRIPTION":
         raise not_found("转写模型连接不存在")
-    definitions = [item.model_dump() for item in body.definitions]
+    definitions = [item.model_dump(exclude={"default"} if "default" not in item.model_fields_set else set())
+                   for item in body.definitions]
     try:
         _validate_parameters(body.parameters, definitions)
     except ValueError as exc:

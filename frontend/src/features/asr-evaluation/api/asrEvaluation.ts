@@ -1,5 +1,6 @@
 // ASR 评测 HTTP 客户端：仅复用 shared api 实例；凭据只在创建连接时短暂提交。
 import { api } from '@/shared/api/client';
+import type { AsrContentReview, AsrJobAudioGroup } from '../contracts';
 import type { AxiosRequestConfig } from 'axios';
 import type {
   AsrAudio, AsrComparison, AsrComparisonListItem, AsrConnection, AsrDiffBlock, AsrExperiment, AsrJob,
@@ -20,6 +21,11 @@ export const asrEvaluationApi = {
     api.get<AsrPage<AsrAudio>>('/asr/audio', {
       signal, params: { project_id: projectId, page, page_size: pageSize, keyword: keyword?.trim() || undefined },
     }),
+  /** 查询当前音频页的最近运行链接，不加载转写正文。 */
+  getRecentAudioRuns: (projectId: number, audioIds: number[], signal?: AbortSignal) =>
+    api.get<{ items: Array<{ audio_id: number; run_id: number; job_id: number; audio_version_id: number | null; status: string; created_at: string }> }>(
+      '/asr/audio/recent-runs', { signal, params: { project_id: projectId, audio_ids: audioIds.join(',') } },
+    ),
   /** 批量导入已有音频 URL。 */
   importAudios: (projectId: number, items: Array<{ name: string; url: string; duration_seconds?: number | null; tags?: string[] }>) =>
     api.post<{ items: AsrAudio[] }>('/asr/audio/import', { project_id: projectId, items }),
@@ -49,10 +55,18 @@ export const asrEvaluationApi = {
     api.get<AsrPage<AsrJob>>('/asr/jobs', { signal, params: { project_id: projectId, page, page_size: 20 } }),
   /** 读取任务状态、三方结果和比较入口。 */
   getJob: (jobId: number, config?: AxiosRequestConfig) => api.get<AsrJob>('/asr/jobs/' + jobId, config),
+  /** 按固定音频版本分页读取摘要，不传输批次全文。 */
+  listJobAudioRuns: (jobId: number, page: number, keyword: string, status: string, signal?: AbortSignal) =>
+    api.get<AsrPage<AsrJobAudioGroup>>(`/asr/jobs/${jobId}/audio-runs`, { signal,
+      params: { page, page_size: 10, keyword: keyword || undefined, status: status === 'ALL' ? undefined : status } }),
   /** 停止新提交或本地轮询跟踪。 */
   cancelJob: (jobId: number) => api.post<AsrJob>('/asr/jobs/' + jobId + '/cancel'),
   /** 按原配置创建新的完整三方批次；失败批次保持只读。 */
-  retryJob: (jobId: number) => api.post<AsrJob>('/asr/jobs/' + jobId + '/retry'),
+  retryJob: (jobId: number, requestKey: string) =>
+    api.post<AsrJob>('/asr/jobs/' + jobId + '/retry', undefined, { headers: { 'Idempotency-Key': requestKey } }),
+  /** 基于原版本约束创建新批次并重新执行全部运行。 */
+  rerunJob: (jobId: number, requestKey: string) =>
+    api.post<AsrJob>('/asr/jobs/' + jobId + '/rerun', undefined, { headers: { 'Idempotency-Key': requestKey } }),
   /** 创建固定配置的一次性或每日夜间计划。 */
   createSchedule: (body: Record<string, unknown>) => api.post<AsrSchedule>('/asr/schedules', body),
   /** 列出项目夜间计划。 */
@@ -118,10 +132,54 @@ export const asrEvaluationApi = {
   /** 按时间与稳定段 ID 分页读取转写片段，支持说话人与未知/混合筛选。 */
   listRunSegments: (
     runId: number, page = 1, signal?: AbortSignal,
-    filters: { speaker_id?: number; unknown_only?: boolean; mixed_only?: boolean; search?: string } = {},
+    filters: { speaker_id?: number; native_speaker_id?: string; unknown_only?: boolean; mixed_only?: boolean;
+      search?: string; at_ms?: number; start_ms?: number; end_ms?: number; locate_segment_id?: string; page_size?: number } = {},
   ) => api.get<AsrPage<AsrTranscriptSegment>>('/asr/runs/' + runId + '/segments', {
-    signal, params: { page, page_size: 100, ...filters },
+    signal, params: { page, page_size: filters.page_size ?? 100, ...filters },
   }),
+  locateRunSegmentPage: (runId: number, segmentId: string, signal?: AbortSignal) =>
+    api.get<AsrPage<AsrTranscriptSegment> & { located_page: number | null }>(`/asr/runs/${runId}/segments`, {
+      signal, params: { page: 1, page_size: 100, locate_segment_id: segmentId },
+    }),
+  /** 读取全量原生标签统计，独立于分段分页。 */
+  getRunStatistics: (runId: number, signal?: AbortSignal) => api.get<{
+    source: 'NATIVE'; segment_count: number; character_count: number; speaker_count: number;
+    unknown_segment_count: number; speakers: Array<{ native_speaker_id: string; speech_duration_ms: number; timed_intervals: number; share: number | null }>;
+    fusion_summary: { fusion_version: number; assignment_count: number; manual_confirmed: number; automatic: number;
+      unknown: number; mixed: number; overlap: number; review_version_sum: number } | null;
+  }>('/asr/runs/' + runId + '/statistics', { signal }),
+  /** 读取单运行、三方对比或候选实验的独立内容评审。 */
+  listReviewModels: (projectId: number, signal?: AbortSignal) => api.get<{
+    items: Array<{ id: number; label: string; model_name: string }>; total: number;
+  }>('/asr/content-review-models', { signal, params: { project_id: projectId } }),
+  /** 读取单运行、三方对比或候选实验的独立内容评审。 */
+  listContentReviews: (kind: 'runs' | 'comparisons' | 'experiments', id: number, signal?: AbortSignal, page = 1) =>
+    api.get<AsrPage<AsrContentReview>>(`/asr/${kind}/${id}/content-review-jobs`, { signal, params: { page, page_size: 20 } }),
+  /** 按需读取一条评审的完整证据和未覆盖范围。 */
+  getContentReview: (id: number, signal?: AbortSignal) => api.get<AsrContentReview>(`/asr/content-review-jobs/${id}`, { signal }),
+  /** 将冻结证据加入内容评审队列，不修改人工确认或转写。 */
+  createContentReview: (kind: 'runs' | 'comparisons' | 'experiments', id: number, modelConfigId: number) =>
+    api.post<AsrContentReview>(`/asr/${kind}/${id}/content-review-jobs`, null, { params: { model_config_id: modelConfigId } }),
+  /** 仅重试状态明确失败的评审分块。 */
+  retryContentReview: (id: number, chunkId?: number) => api.post<AsrContentReview>(`/asr/content-review-jobs/${id}/retry`, null, { params: { chunk_id: chunkId } }),
+  /** 停止未发出的评审块；不能中止已发送的远端请求。 */
+  cancelContentReview: (id: number) => api.post<AsrContentReview>(`/asr/content-review-jobs/${id}/cancel`),
+  /** 返回批次音频与评审覆盖的分子和分母。 */
+  getContentReviewSummary: (jobId: number, signal?: AbortSignal) => api.get<{
+    planned_audio: number; asr_success_audio: number; asr_failed_audio: number; valid_pairs: number;
+    review_complete: number; review_partial: number; review_failed_or_uncertain: number;
+    review_denominator: number; review_active: number; ab_active: number; coverage_numerator: number; coverage_denominator: number;
+    ab_verdicts: { candidate_better: number; baseline_better: number; tie: number; inconclusive: number }; ab_denominator: number;
+  }>(`/asr/jobs/${jobId}/content-review-summary`, { signal }),
+  /** 查询产物索引；完整文本仅在鉴权下载时读取。 */
+  listEvaluationArtifacts: (runId: number, signal?: AbortSignal) => api.get<{
+    raw_response_available: boolean;
+    items: Array<{ id: number; kind: string; status: string; source: string; sha256: string; byte_size: number; schema_version: string; redaction_version: string | null; redacted: boolean }>;
+  }>('/asr/runs/' + runId + '/evaluation-artifacts', { signal }),
+  /** 从已有运行重新生成快照和 Markdown，不调用识别接口。 */
+  createEvaluationArtifacts: (runId: number) => api.post('/asr/runs/' + runId + '/evaluation-artifacts'),
+  /** 通过共享客户端下载经过权限和完整性校验的资料。 */
+  downloadEvaluationArtifact: (id: number) => api.get<Blob>('/asr/evaluation-artifacts/' + id, { responseType: 'blob' }),
   /** 独立排队固定音频版本的说话人处理，重复请求由服务端去重。 */
   createDiarizationRun: (audioId: number, audioVersionId: number, body: {
     resource_id?: number; revision_id?: number; profile_id?: number;
@@ -143,7 +201,9 @@ export const asrEvaluationApi = {
     }),
   /** 读取结果范围内全量人数、未知、重叠和发言时长汇总。 */
   listSpeakers: (resultId: number, signal?: AbortSignal) =>
-    api.get<{ items: AsrSpeaker[]; summary: Record<string, JsonValue> }>(
+    api.get<{ items: AsrSpeaker[]; summary: {
+      speaker_count: number | null; turn_count: number | null; unknown_turn_count: number | null; overlap_turn_count: number | null;
+    } }>(
       '/asr/diarization-results/' + resultId + '/speakers', { signal },
     ),
   /** 分页读取说话人区间，支持按区间而非全量转写过滤。 */

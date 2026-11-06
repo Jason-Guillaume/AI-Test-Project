@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 from dataclasses import dataclass
 from uuid import uuid4
 
@@ -71,6 +72,16 @@ class ModelProviderConfiguration:
     max_tokens: int | None
     timeout: float | None
     api_key: str
+    revision: str | None = None
+
+
+def model_configuration_revision(row: ModelConfiguration) -> str:
+    """对实际调用配置和密文版本生成摘要，不暴露密钥或仅依赖时间戳精度。"""
+    fields = {"id": row.id, "api_base": row.api_base, "model_name": row.model_name,
+        "temperature": row.temperature, "max_tokens": row.max_tokens, "timeout": row.timeout,
+        "api_key_encrypted": row.api_key_encrypted, "is_enabled": row.is_enabled}
+    encoded = json.dumps(fields, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def load_model_for_provider(
@@ -93,6 +104,7 @@ def load_model_for_provider(
         max_tokens=row.max_tokens,
         timeout=row.timeout,
         api_key=decrypt_api_key(row.api_key_encrypted),
+        revision=model_configuration_revision(row),
     )
 
 

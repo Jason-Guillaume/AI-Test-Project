@@ -21,9 +21,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.http.errors import bad_request, not_found
 from app.core.models.identity import User
 from app.core.security.crypto import decrypt_secret
@@ -33,6 +34,20 @@ from app.features.asr_evaluation.models import AsrAudio, AsrAudioVersion, AsrPro
 
 _RANGE = re.compile(r"^bytes=(\d*)-(\d*)$")
 _CONTENT_RANGE = re.compile(r"^bytes (\d+)-(\d+)/(\d+|\*)$")
+
+
+def _managed_audio_path(version: AsrAudioVersion | None) -> Path | None:
+    """只读取已登记版本在持久卷内的媒体文件，不接受任意文件路径。"""
+    key = (version.source_info or {}).get("local_media_key") if version is not None else None
+    if key is None:
+        return None
+    if not isinstance(key, str) or re.fullmatch(r"[0-9a-f]{64}\.m4a", key) is None:
+        raise not_found("平台音频文件登记无效")
+    directory = (Path(settings.ASR_ARTIFACT_DIR) / "media").resolve()
+    path = (directory / key).resolve()
+    if path.parent != directory or not path.is_file():
+        raise not_found("平台音频文件不存在")
+    return path
 
 
 def _iter_media(response: httpx.Response, client: httpx.Client, max_bytes: int) -> Iterator[bytes]:
@@ -55,7 +70,7 @@ def _iter_media(response: httpx.Response, client: httpx.Client, max_bytes: int) 
 
 def stream_audio(
     db: Session, audio_id: int, actor: User, range_header: str | None, *, audio_version_id: int | None = None,
-) -> StreamingResponse:
+) -> Response:
     """授权后代理指定不可变音频版本；未指定时兼容旧客户端读取当前版本。"""
     row = db.get(AsrAudio, audio_id)
     if row is None:
@@ -69,6 +84,13 @@ def stream_audio(
         version = db.query(AsrAudioVersion).filter(
             AsrAudioVersion.audio_id == row.id, AsrAudioVersion.version == row.content_version,
         ).one_or_none()
+    if range_header and _RANGE.fullmatch(range_header.strip()) is None:
+        raise bad_request("仅支持单段 HTTP Range 请求")
+    local_path = _managed_audio_path(version)
+    if local_path is not None:
+        return FileResponse(local_path, media_type="audio/mp4", headers={
+            "Cache-Control": "private, no-store", "X-ASR-Range-Supported": "true",
+        })
     source_url = decrypt_secret(version.url_ciphertext if version is not None else row.url_ciphertext)
     decision = resolve_project_outbound_target(db, source_url, row.project_id)
     if decision.rejection_message:
@@ -165,6 +187,15 @@ def analyze_audio_version(db: Session, processing_run: AsrProcessingRun) -> dict
     audio = db.get(AsrAudio, processing_run.audio_id)
     if version is None or audio is None or version.audio_id != audio.id:
         return _analysis_unavailable("固定音频版本不存在")
+    local_path = _managed_audio_path(version)
+    if local_path is not None:
+        source_info = {
+            "name": version.name, "audio_version": version.version, "url_display": version.url_display,
+            "playback_url": f"/api/v1/asr/audio/{audio.id}/versions/{version.id}/media",
+            "source_size_bytes": local_path.stat().st_size, "source_label": "平台保存的音频文件",
+        }
+        db.rollback()
+        return _analyze_with_ffmpeg(local_path, source_info)
     source_url = decrypt_secret(version.url_ciphertext)
     project_id = processing_run.project_id
     audio_id = audio.id

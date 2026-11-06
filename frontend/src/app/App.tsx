@@ -17,6 +17,7 @@ import { ConsoleScopeProvider } from '@/app/providers/ConsoleScopeProvider';
 import { GuestOnly, RequireAdmin, RequireAuth } from '@/app/router/RouteGuards';
 import { AppErrorBoundary } from '@/app/router/AppErrorBoundary';
 import { ForbiddenPage, NotFoundPage } from '@/pages/errors/ResultPages';
+import { initializeDraftNavigationGuard } from '@/features/asr-evaluation/useDraftNavigationGuard';
 
 // 页面模块延迟到路由命中时再下载，减小应用启动时的代码体积。
 /**
@@ -108,7 +109,9 @@ const AsrJobDetailPage = lazyNamedPage(() => import('@/pages/console/ASREvaluati
 const AsrComparisonsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ComparisonsPage'), 'ComparisonsPage');
 const AsrComparisonDetailPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ComparisonsPage'), 'ComparisonDetailPage');
 const AsrExperimentsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ExperimentsPage'), 'ExperimentsPage');
+const FunAsrTuningPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/FunAsrTuningPage'), 'FunAsrTuningPage');
 const AsrRunWorkbenchPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/RunWorkbenchPage'), 'RunWorkbenchPage');
+const AsrRunListenPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/RunWorkbenchPage'), 'RunListenPage');
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -259,9 +262,11 @@ function AppRoutes() {
           <Route path="asr/jobs" element={<AsrJobsPage />} />
           <Route path="asr/jobs/:jobId" element={<AsrJobDetailPage />} />
           <Route path="asr/runs/:runId" element={<AsrRunWorkbenchPage />} />
+          <Route path="asr/runs/:runId/listen" element={<AsrRunListenPage />} />
           <Route path="asr/comparisons" element={<AsrComparisonsPage />} />
           <Route path="asr/comparisons/:comparisonId" element={<AsrComparisonDetailPage />} />
           <Route path="asr/experiments" element={<AsrExperimentsPage />} />
+          <Route path="asr/funasr" element={<FunAsrTuningPage />} />
           <Route path="tasks" element={<ConsoleTasksPage />} />
           <Route path="tasks/inbox" element={<ConsoleTaskInboxPage />} />
           <Route path="tasks/templates" element={<ConsoleTaskTemplatesPage />} />
@@ -286,6 +291,7 @@ function AppRoutes() {
  * Provider 层级由 AuthShell / AppProviders 负责。
  */
 export function App() {
+  initializeDraftNavigationGuard();
   return (
     <BrowserRouter>
       <AuthShell />

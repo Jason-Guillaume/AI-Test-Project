@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -145,7 +146,8 @@ def test_seed_admin_does_not_print_credentials(db):
 
 
 TARGET_ADMIN = "seed-target-admin"
-TARGET_DATABASE = "testplatform_seedtarget"
+# 以本次唯一测试库名派生，避免并发测试或其他用户的同名库被删除。
+TARGET_DATABASE = f"testplatform_seedtarget_{hashlib.sha256(TEST_DATABASE_NAME.encode()).hexdigest()[:16]}"
 
 
 def _seed_into_target_database() -> str:

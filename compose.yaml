@@ -26,9 +26,15 @@ services:
       - ./backend/.env
     environment:
       RUN_MIGRATIONS: "true"
+      ASR_ARTIFACT_DIR: /var/lib/testplatform/asr-artifacts
+      DATABASE_URL: ${DATABASE_URL}
+    volumes:
+      - asr-artifacts:/var/lib/testplatform/asr-artifacts
     depends_on:
       postgres:
         condition: service_healthy
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8001"
     expose:
       - "8001"
     restart: unless-stopped
@@ -48,13 +54,17 @@ services:
     environment:
       RUN_MIGRATIONS: "false"
       ASR_WORKER_ID: asr-worker
-    command: ["python", "scripts/run_asr_worker.py"]
+      ASR_ARTIFACT_DIR: /var/lib/testplatform/asr-artifacts
+      DATABASE_URL: ${DATABASE_URL}
+    volumes:
+      - asr-artifacts:/var/lib/testplatform/asr-artifacts
+    command: ["python", "-m", "scripts.run_asr_worker"]
     depends_on:
       backend:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "scripts/check_asr_worker.py"]
+      test: ["CMD", "/usr/local/bin/testplatform-entrypoint", "python", "-m", "scripts.check_asr_worker"]
       interval: 20s
       timeout: 5s
       retries: 3
@@ -68,8 +78,9 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "127.0.0.1:${APP_PORT:-8080}:80"
+      - "127.0.0.1:${APP_PORT:-5173}:80"
     restart: unless-stopped
 
 volumes:
   postgres-data:
+  asr-artifacts:

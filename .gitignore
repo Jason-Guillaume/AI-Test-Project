@@ -18,3 +18,6 @@ node_modules/
 .claude/settings.local.json
 # 临时草稿文件
 tmp*.txt
+# ASR 评测正文保存在受控卷，不应进入版本库。
+backend/var/asr-artifacts/
+var/asr-artifacts/

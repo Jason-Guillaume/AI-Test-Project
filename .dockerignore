@@ -12,6 +12,8 @@ backend/venv
 backend/.pytest_cache
 backend/tests
 backend/__pycache__
+backend/var/asr-artifacts
+var/asr-artifacts
 frontend/node_modules
 frontend/dist
 frontend/.vite

@@ -3,6 +3,23 @@ export type JsonValue = null | boolean | number | string | JsonValue[] | { [key:
 export type AsrRole = 'TEST' | 'REFERENCE';
 export type AsrTaskType = 'TRANSCRIPTION' | 'DIARIZATION';
 
+export interface AsrContentReview {
+  id: number; project_id: number; job_id: number; review_type: 'SINGLE' | 'TRIPLET' | 'AB';
+  run_ids: number[]; source_artifact_ids: number[]; report_artifact_id: number | null; status: string; coverage_status: string; completed_chunks: number; total_chunks: number;
+  attempts: number; error_message: string | null;
+  cancel_requested: boolean;
+  covered_evidence: number | null; total_evidence: number | null; failed_chunks: number;
+  model_config_id: number; model_revision: string | null; prompt_version: string;
+  chunks: Array<{ id: number; ordinal: number; scope: { kind: string; window_start_ms: number | null; window_end_ms: number | null };
+    status: string; attempts: number; error_message: string | null; input_artifact_id: number | null; response_artifact_id: number | null;
+    uncovered_evidence: Array<{ id: string; run_id: number; piece_offset: number; character_count: number; start_ms: number | null; end_ms: number | null }>;
+    result: { verdict?: string; limitations?: string[]; input_bytes?: number;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      speaker_mapping?: { status: string; reason: string; pairs: Array<{ left_run: number; left_label: string; right_run: number; right_label: string; overlap_score: number }> };
+      findings?: Array<{ dimension: string; description: string;
+      evidence: Array<{ id: string; run_id: number; quote: string; start_ms: number | null; end_ms: number | null; start_offset: number | null; end_offset: number | null }> }> } }>;
+}
+
 export interface AsrAudio {
   id: number; project_id: number; name: string; url_display: string;
   duration_seconds: number | null; content_version: number; availability: string; tags: string[];
@@ -21,7 +38,9 @@ export interface AsrConnection {
 export interface AsrParameterDefinition {
   path: string; display_name: string;
   value_type: 'string' | 'integer' | 'number' | 'boolean' | 'object' | 'array';
-  minimum?: number | null; maximum?: number | null; choices?: JsonValue[] | null;
+  minimum?: number | null; maximum?: number | null; exclusive_minimum?: number | null; choices?: JsonValue[] | null;
+  required?: boolean; nullable?: boolean; default?: JsonValue; unit?: string | null; tunable?: boolean;
+  active_when?: Record<string, JsonValue> | null;
   description: string; source: string;
 }
 
@@ -40,6 +59,7 @@ export interface AsrSchedule {
 export interface AsrModelRun {
   id: number; audio_id: number; connection_id: number; role: AsrRole; status: string;
   audio_version_id?: number | null; segments?: AsrTranscriptSegment[];
+  audio_name?: string | null; audio_duration_seconds?: number | null; audio_content_version?: number | null;
   remote_task_id: string | null; request_snapshot: Record<string, JsonValue>;
   transcript: string | null; error_message: string | null; duration_ms: number | null;
   parameter_set_id?: number | null; connection_name?: string; model_id?: string;
@@ -55,8 +75,17 @@ export interface AsrComparisonSummary {
 export interface AsrJob {
   id: number; project_id: number; status: string; cancel_requested: boolean;
   config_snapshot: Record<string, JsonValue>; created_at: string;
+  error_message?: string | null;
+  can_full_rerun?: boolean;
   runs?: AsrModelRun[];
   comparisons?: Array<{ id: number; audio_id: number; status: string }>;
+}
+
+export interface AsrJobAudioGroup {
+  key: string; audio_id: number; audio_version_id: number | null; audio_name: string | null;
+  audio_content_version: number | null; audio_duration_seconds: number | null;
+  comparison_id: number | null; runs: AsrModelRun[];
+  diarization_status: string | null; content_review_status: string | null; test_segment_count: number | null;
 }
 
 export interface AsrDiffBlock {
@@ -158,9 +187,13 @@ export interface AsrExperiment {
   candidate_parameters: Record<string, JsonValue>; change_summary: string;
   reuse_reference_results: boolean; reference_source_comparison_id: number | null;
   status: string; candidate_job_id: number | null; candidate_job_status?: string | null; failure_reason?: string | null;
+  reconciliation_reason?: string | null; reconciliation_action?: string | null;
+  baseline_parameter_name?: string | null; baseline_parameter_version?: number | null;
+  baseline_parameters?: Record<string, JsonValue> | null; baseline_audio_version_id?: number | null;
+  baseline_audio_content_version?: number | null; candidate_audio_content_version?: number | null; audio_name?: string | null;
 }
 
-export interface AsrPage<T> { items: T[]; total: number; page: number; page_size: number }
+export interface AsrPage<T> { items: T[]; total: number; page: number; page_size: number; timed_segment_count?: number; located_page?: number | null }
 
 export interface AsrComparisonListItem {
   id: number; project_id: number; job_id: number; audio_id: number; audio_name: string;

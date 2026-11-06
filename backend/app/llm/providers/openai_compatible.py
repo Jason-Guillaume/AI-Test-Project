@@ -30,6 +30,9 @@ class ProductionLLMProvider:
         self, db: Session, model_config_id: int | None = None, *,
         model_config_ids: list[int] | None = None,
         attempt_callback: Callable[[dict[str, Any]], None] | None = None,
+        before_request: Callable[[], None] | None = None,
+        max_response_bytes: int | None = None,
+        expected_revision: str | None = None,
     ) -> None:
         """保存数据库会话、授权后的候选模型和审计回调；不复制或输出加密凭据。"""
         self.db = db
@@ -37,6 +40,10 @@ class ProductionLLMProvider:
         self.explicit_route = model_config_ids is not None
         self.model_config_ids = list(dict.fromkeys(model_config_ids or []))
         self.attempt_callback = attempt_callback
+        self.before_request = before_request
+        self.max_response_bytes = max_response_bytes
+        self.expected_revision = expected_revision
+        self.last_usage: dict[str, Any] | None = None
         self.last_attempts: list[dict[str, Any]] = []
         self.last_model_config_id: int | None = None
 
@@ -70,6 +77,8 @@ class ProductionLLMProvider:
             messages: list[dict[str, Any]] = [dict(item) for item in base_messages]
             try:
                 cfg = self._load_config(model_id)
+                if self.expected_revision is not None and cfg.revision != self.expected_revision:
+                    raise LLMError("MODEL_REVISION_CHANGED", "模型配置已变化，请重新创建任务")
                 api_key = cfg.api_key
                 headers = {"Content-Type": "application/json"}
                 if api_key:
@@ -185,6 +194,8 @@ class ProductionLLMProvider:
             cfg = None
             try:
                 cfg = self._load_config(model_id)
+                if self.expected_revision is not None and cfg.revision != self.expected_revision:
+                    raise LLMError("MODEL_REVISION_CHANGED", "模型配置已变化，请重新创建任务")
                 api_key = cfg.api_key
                 body: dict[str, Any] = {
                     "model": cfg.model_name,
@@ -203,6 +214,9 @@ class ProductionLLMProvider:
                     model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
                 ) as gen:
                     try:
+                        # 可选调用方在真实网络请求前结束只读事务，避免长模型调用占用数据库连接事务。
+                        if self.before_request is not None:
+                            self.before_request()
                         resp = self._post(
                             f"{cfg.api_base.rstrip('/')}/chat/completions", json=body, headers=headers,
                             timeout=float(cfg.timeout or 60),
@@ -215,11 +229,14 @@ class ProductionLLMProvider:
                             "LLM_RATE_LIMITED" if resp.status_code == 429 else "LLM_PROVIDER_ERROR",
                             f"模型服务返回 HTTP {resp.status_code}", retryable=retryable,
                         )
+                    if self.max_response_bytes is not None and len(resp.content) > self.max_response_bytes:
+                        raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应超过配置上限", retryable=False)
                     try:
                         data = resp.json()
                         content = data["choices"][0]["message"]["content"]
                     except (ValueError, KeyError, IndexError, TypeError) as exc:
                         raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应格式无法解析", retryable=True) from exc
+                    self.last_usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
                     output = self._parse_json_content(content) if structured else content
                     if structured and validator is not None:
                         try:

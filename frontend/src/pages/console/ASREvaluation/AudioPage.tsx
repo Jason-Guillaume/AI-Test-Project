@@ -9,12 +9,15 @@ import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/as
 import type { AsrAudio } from '@/features/asr-evaluation/contracts';
 import { AsrFrame } from './AsrFrame';
 import { LoadingState, ErrorState } from '@/shared/ui/PageState';
+import { useNavigate } from 'react-router-dom';
 
 interface AudioFormValues {
   name: string;
   url: string;
   batch_text?: string;
 }
+
+type AudioFormMode = 'CREATE' | 'IMPORT' | 'EDIT';
 
 /**
  * 解析用户从音频清单复制的名称与 URL 交替文本。
@@ -54,13 +57,14 @@ function parsePastedAudioRecords(value: string): Array<{ name: string; url: stri
 export function AudioPage() {
   const { message } = App.useApp();
   const { currentProjectId } = useConsoleScope();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AudioFormValues>();
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [keyword, setKeyword] = useState('');
-  const [batchMode, setBatchMode] = useState(false);
+  const [formMode, setFormMode] = useState<AudioFormMode>('CREATE');
   const [batchInput, setBatchInput] = useState('');
   const [editingAudio, setEditingAudio] = useState<AsrAudio | null>(null);
   const batchPreview = useMemo(() => {
@@ -68,7 +72,28 @@ export function AudioPage() {
     try { return { count: parsePastedAudioRecords(batchInput).length, error: '' }; }
     catch (error) { return { count: 0, error: error instanceof Error ? error.message : '粘贴内容格式无效' }; }
   }, [batchInput]);
-  useEffect(() => { setPage(1); setKeyword(''); }, [currentProjectId]);
+  const closeForm = () => {
+    setOpen(false);
+    setEditingAudio(null);
+    setBatchInput('');
+    form.resetFields();
+  };
+  const openForm = (mode: AudioFormMode, audio?: AsrAudio) => {
+    setFormMode(mode);
+    setEditingAudio(audio ?? null);
+    setBatchInput('');
+    form.resetFields();
+    if (audio) form.setFieldsValue({ name: audio.name, url: '' });
+    setOpen(true);
+  };
+  useEffect(() => {
+    setPage(1);
+    setKeyword('');
+    setOpen(false);
+    setEditingAudio(null);
+    setBatchInput('');
+    form.resetFields();
+  }, [currentProjectId, form]);
   const key = currentProjectId ? asrQueryKeys.project(currentProjectId, 'audio', page, pageSize, keyword) : ['asr', 'audio', null, page, pageSize, keyword];
   const audioQuery = useQuery({
     queryKey: key,
@@ -76,13 +101,20 @@ export function AudioPage() {
     queryFn: async ({ signal }) =>
       (await asrEvaluationApi.listAudios(currentProjectId!, page, pageSize, signal, keyword)),
   });
+  const audioIds = audioQuery.data?.items.map((item) => item.id) ?? [];
+  const recentRunsQuery = useQuery({
+    queryKey: currentProjectId ? asrQueryKeys.project(currentProjectId, 'audio-recent-runs', audioIds) : ['asr', 'audio-recent-runs', null],
+    enabled: Boolean(currentProjectId && audioIds.length),
+    queryFn: ({ signal }) => asrEvaluationApi.getRecentAudioRuns(currentProjectId!, audioIds, signal),
+  });
+  const recentRuns = new Map((recentRunsQuery.data?.items ?? []).map((item) => [item.audio_id, item]));
   const importMutation = useMutation({
     mutationFn: async (values: AudioFormValues) => {
-      if (editingAudio) {
+      if (formMode === 'EDIT' && editingAudio) {
         await asrEvaluationApi.updateAudio(editingAudio.id, {
           name: values.name, url: values.url?.trim() || undefined,
         });
-      } else if (values.batch_text?.trim()) {
+      } else if (formMode === 'IMPORT' && values.batch_text?.trim()) {
         const items = parsePastedAudioRecords(values.batch_text);
         await asrEvaluationApi.importAudios(currentProjectId!, items);
       } else {
@@ -92,10 +124,8 @@ export function AudioPage() {
       }
     },
     onSuccess: () => {
-      message.success(editingAudio ? '音频资源已更新' : '音频链接已加入项目');
-      setOpen(false);
-      setEditingAudio(null);
-      form.resetFields();
+      message.success(formMode === 'EDIT' ? '音频资源已更新' : formMode === 'IMPORT' ? '音频链接已加入项目' : '音频已加入项目');
+      closeForm();
       void queryClient.invalidateQueries({ queryKey: key });
     },
     onError: (error) => message.error(error instanceof Error ? error.message : getErrorMessage(error, '导入音频失败')),
@@ -121,7 +151,7 @@ export function AudioPage() {
     },
     {
       title: '时长', dataIndex: 'duration_seconds', key: 'duration_seconds', width: 110,
-      render: (value: number | null) => value ? Math.floor(value / 60) + ' 分 ' + (value % 60) + ' 秒' : '未填写',
+      render: (value: number | null) => value ? Math.floor(value / 60) + ' 分 ' + (value % 60) + ' 秒' : '尚未解析',
     },
     {
       title: '状态', dataIndex: 'availability', key: 'availability', width: 140,
@@ -131,13 +161,14 @@ export function AudioPage() {
     },
     { title: '内容版本', dataIndex: 'content_version', key: 'content_version', width: 100, render: (value: number) => 'v' + value },
     {
-      title: '操作', key: 'action', width: 190,
-      render: (_: unknown, row: AsrAudio) => <Space>
-        <Button size="small" icon={<EditOutlined />} onClick={() => {
-          setEditingAudio(row);
-          form.setFieldsValue({ name: row.name, url: '' });
-          setOpen(true);
-        }}>编辑</Button>
+      title: '操作', key: 'action', width: 340,
+      render: (_: unknown, row: AsrAudio) => <Space wrap>
+        <Button size="small" type="primary" onClick={() => navigate(`/console/asr/jobs?audio_id=${row.id}`)}>开始评测</Button>
+        {recentRuns.get(row.id) && <Space size={4}>
+          <Button size="small" onClick={() => navigate(`/console/asr/runs/${recentRuns.get(row.id)!.run_id}`)}>查看最近结果</Button>
+          <Button size="small" onClick={() => navigate(`/console/asr/jobs/${recentRuns.get(row.id)!.job_id}`)}>最近任务</Button>
+        </Space>}
+        <Button size="small" icon={<EditOutlined />} onClick={() => openForm('EDIT', row)}>编辑</Button>
         <Button
           size="small" icon={<ReloadOutlined />} loading={checkMutation.isPending && checkMutation.variables === row.id}
           onClick={() => checkMutation.mutate(row.id)}
@@ -154,13 +185,14 @@ export function AudioPage() {
     <AsrFrame title="音频列表">
       <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
         <Space wrap>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditingAudio(null); setBatchMode(false); setBatchInput(''); form.resetFields(); setOpen(true); }}>添加音频</Button>
-          <Button icon={<PlusOutlined />} onClick={() => { setEditingAudio(null); setBatchMode(true); setBatchInput(''); form.resetFields(); setOpen(true); }}>批量导入</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm('CREATE')}>添加音频</Button>
+          <Button icon={<PlusOutlined />} onClick={() => openForm('IMPORT')}>批量导入</Button>
           <Button icon={<ReloadOutlined />} onClick={() => void audioQuery.refetch()}>刷新</Button>
           <Input.Search aria-label="按名称筛选音频" allowClear placeholder="按音频名称筛选" value={keyword}
             onChange={(event) => { setKeyword(event.target.value); setPage(1); }} style={{ width: 260 }} />
           <Typography.Text type="secondary">只保存链接与版本信息；平台播放权限和云端可达性分开检查。</Typography.Text>
         </Space>
+        {recentRunsQuery.isError && <Typography.Text type="warning">最近任务链接读取失败；可从评测任务列表查找。</Typography.Text>}
         <Table<AsrAudio>
           rowKey="id" columns={columns} dataSource={audioQuery.data?.items ?? []}
           locale={{ emptyText: <Empty description="还没有音频链接，导入后即可创建夜间评测任务" /> }}
@@ -169,7 +201,7 @@ export function AudioPage() {
         />
       </Space>
       <Modal
-        title={editingAudio ? '编辑音频资源' : batchMode ? '批量导入音频' : '添加音频'} open={open} onCancel={() => { setOpen(false); setEditingAudio(null); setBatchInput(''); form.resetFields(); }}
+        title={formMode === 'EDIT' ? '编辑音频资源' : formMode === 'IMPORT' ? '批量导入音频' : '添加音频'} open={open} onCancel={closeForm}
         confirmLoading={importMutation.isPending}
         onOk={() => form.submit()}
       >
@@ -179,23 +211,23 @@ export function AudioPage() {
           onValuesChange={(changed) => { if (typeof changed.batch_text === 'string') setBatchInput(changed.batch_text); }}
           onFinish={(values) => importMutation.mutate(values)}
         >
-          {!batchMode && <Form.Item name="name" label="音频名称" rules={[{ required: !editingAudio, whitespace: true, message: '请输入音频名称' }]}>
+          {formMode !== 'IMPORT' && <Form.Item name="name" label="音频名称" rules={[{ required: formMode === 'CREATE', whitespace: true, message: '请输入音频名称' }]}>
             <Input maxLength={200} placeholder="例如：会议录音 2026-11-02" />
           </Form.Item>}
-          {!batchMode && <Form.Item name="url" label={editingAudio ? '替换音频 URL（留空保留现有链接）' : '音频 URL'} rules={[{ required: !editingAudio, type: 'url', message: '请输入有效的 HTTP 或 HTTPS 地址' }]}>
-            <Input placeholder={editingAudio ? '留空不更换 URL' : 'https://音频服务/文件.mp3?临时签名'} />
+          {formMode !== 'IMPORT' && <Form.Item name="url" label={formMode === 'EDIT' ? '替换音频 URL（留空保留现有链接）' : '音频 URL'} rules={[{ required: formMode === 'CREATE', type: 'url', message: '请输入有效的 HTTP 或 HTTPS 地址' }]}>
+            <Input placeholder={formMode === 'EDIT' ? '留空不更换 URL' : 'https://音频服务/文件.mp3?临时签名'} />
           </Form.Item>}
-          {batchMode && <Form.Item name="batch_text" label="粘贴音频名称和 URL" rules={[{ required: true, whitespace: true, message: '请粘贴音频名称和 URL' }]}>
+          {formMode === 'IMPORT' && <Form.Item name="batch_text" label="粘贴音频名称和 URL" rules={[{ required: true, whitespace: true, message: '请粘贴音频名称和 URL' }]}>
             <Input.TextArea
               rows={10}
               spellCheck={false}
               placeholder={'每条音频两行：名称在前，URL 在后；名称末尾冒号可保留。\n\n声音小，噪音大：\nhttps://音频服务/文件1.m4a\n技师顾客全为女：\nhttps://音频服务/文件2.m4a'}
             />
           </Form.Item>}
-          {batchMode && batchInput.trim() && <Typography.Text type={batchPreview.error ? 'danger' : 'secondary'}>
+          {formMode === 'IMPORT' && batchInput.trim() && <Typography.Text type={batchPreview.error ? 'danger' : 'secondary'}>
             {batchPreview.error || `已识别 ${batchPreview.count} 条音频（最多 200 条）`}
           </Typography.Text>}
-          {!batchMode && <Typography.Text type="secondary">
+          {formMode !== 'IMPORT' && <Typography.Text type="secondary">
             只需填写音频名称和 HTTP(S) URL，时长等信息由平台按需解析。
           </Typography.Text>}
           <Typography.Paragraph className="asr-muted-note">

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database.session import get_db
-from app.core.http.errors import not_found
+from app.core.http.errors import bad_request, not_found
 from app.core.models.identity import User
 from app.core.security.auth import get_current_user
 from app.features.asr_evaluation.models import AsrAudio, AsrConnection, AsrDiffBlock
@@ -19,12 +19,17 @@ from app.features.asr_evaluation.schemas import (
     ExperimentCreate, JobCreate, ParameterSetCreate, ReviewInput, ScheduleCreate, ScheduleUpdate,
     SpeakerFusionCreate, SpeakerNameUpdate, SpeakerReviewInput,
 )
+from app.features.asr_evaluation.funasr_schemas import (
+    FunAsrBindingCreate, FunAsrBindingUpdate, FunAsrGroundTruthCreate,
+    FunAsrNormalizePreview, FunAsrTuningCreate,
+)
 from app.features.asr_evaluation.services.assets_service import (
     check_audio, create_audio, create_connections, create_parameter_set, create_schedule,
     import_audios, list_audios, list_connections, list_parameter_sets, list_schedules, update_audio, update_schedule,
 )
 from app.features.asr_evaluation.services.job_service import (
-    cancel_job, create_connection_check, create_job, get_job, list_jobs, retry_job, runtime_status,
+    cancel_job, create_connection_check, create_job, get_job, list_audio_recent_runs, list_job_audio_runs,
+    list_jobs, rerun_job, retry_job, runtime_status,
 )
 from app.features.asr_evaluation.services.comparison_service import (
     create_experiment, create_suggestions, export_comparison, get_comparison, list_review_history,
@@ -38,12 +43,114 @@ from app.features.asr_evaluation.services.diarization_service import (
     create_diarization_run, create_run_fusion_by_id, export_run_workbench, get_processing_run,
     list_speaker_turns, list_speakers, rename_speaker, retry_processing_run, review_speaker_assignment,
 )
-from app.features.asr_evaluation.services.segments_service import get_run_workbench, list_transcript_segments
+from app.features.asr_evaluation.services.segments_service import get_native_statistics, get_run_workbench, list_transcript_segments
+from app.features.asr_evaluation.services.evaluation_artifact_service import (
+    create_evaluation_artifacts, list_evaluation_artifacts, read_evaluation_artifact,
+)
+from app.features.asr_evaluation.services.content_review_service import cancel_review, create_review, get_review, list_review_models, list_reviews, retry_review, review_summary
 from app.features.asr_evaluation.services.suggestion_job_service import (
     create_suggestion_job, list_suggestion_jobs, retry_suggestion_job,
 )
+from app.features.asr_evaluation.services import funasr_tuning_service as funasr_service
 
 router = APIRouter(prefix="/asr", tags=["ASR 评测"])
+
+
+@router.get("/funasr/definitions")
+def funasr_parameter_definitions():
+    """返回经用户参数说明确认的字段约束；文档默认值不代表已选择的任务基线。"""
+    return {"items": funasr_service.FUNASR_DEFINITIONS, "source": "Paraformer V2 参数说明归档",
+            "source_version": "2026-11-06", "response_mapping_configured": False}
+
+
+@router.get("/funasr/interfaces")
+def funasr_interfaces(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """从当前项目接口管理列出可绑定接口。"""
+    return funasr_service.list_fun_asr_interfaces(db, project_id, actor)
+
+
+@router.get("/funasr/environments")
+def funasr_environments(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """列出当前项目已关联的安全环境选项，不返回默认鉴权头。"""
+    return funasr_service.list_fun_asr_environments(db, project_id, actor)
+
+
+@router.get("/funasr/bindings")
+def funasr_binding_list(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.list_fun_asr_bindings(db, project_id, actor)
+
+
+@router.post("/funasr/bindings", status_code=status.HTTP_201_CREATED)
+def funasr_binding_create(body: FunAsrBindingCreate, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.create_fun_asr_binding(db, body, actor)
+
+
+@router.patch("/funasr/bindings/{binding_id}")
+def funasr_binding_update(binding_id: int, body: FunAsrBindingUpdate, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.update_fun_asr_binding(db, binding_id, body, actor)
+
+
+@router.post("/funasr/mapping-preview")
+def funasr_mapping_preview(body: FunAsrNormalizePreview):
+    """使用显式字段路径预览 JSON 规范化；没有映射配置时不猜响应结构。"""
+    return funasr_service.preview_fun_asr_mapping(body.document, body.mapping, body.source, body.audio_version_id)
+
+
+@router.get("/funasr/ground-truth")
+def funasr_ground_truth_list(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.list_ground_truth(db, project_id, actor)
+
+
+@router.post("/funasr/audio/{audio_id}/ground-truth", status_code=status.HTTP_201_CREATED)
+def funasr_ground_truth_create(audio_id: int, body: FunAsrGroundTruthCreate, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """保存不可变答案版本；重传会新增版本并固定映射与音频版本。"""
+    return funasr_service.create_ground_truth(db, audio_id, body, actor)
+
+
+@router.get("/funasr/models")
+def funasr_model_list(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.get_models_for_project(db, project_id, actor)
+
+
+@router.get("/funasr/sessions")
+def funasr_session_list(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.list_tuning_sessions(db, project_id, actor)
+
+
+@router.post("/funasr/sessions", status_code=status.HTTP_202_ACCEPTED)
+def funasr_session_create(body: FunAsrTuningCreate, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.create_tuning_session(db, body, actor)
+
+
+@router.get("/funasr/sessions/{session_id}")
+def funasr_session_detail(session_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.get_tuning_session(db, session_id, actor)
+
+
+@router.post("/funasr/sessions/{session_id}/pause")
+def funasr_session_pause(session_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.pause_tuning_session(db, session_id, actor)
+
+
+@router.post("/funasr/sessions/{session_id}/resume")
+def funasr_session_resume(session_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.resume_tuning_session(db, session_id, actor)
+
+
+@router.post("/funasr/sessions/{session_id}/stop")
+def funasr_session_stop(session_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.stop_tuning_session(db, session_id, actor)
+
+
+@router.post("/funasr/sessions/{session_id}/retry-failed")
+def funasr_session_retry_failed(session_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    return funasr_service.retry_failed_tuning_items(db, session_id, actor)
+
+
+@router.post("/funasr/sessions/{session_id}/retry-analysis")
+def funasr_session_retry_analysis(session_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """仅重跑明确失败的 AI 阶段；状态未知时拒绝重发。"""
+    return funasr_service.retry_tuning_analysis(db, session_id, actor)
 
 
 @router.get("/audio")
@@ -55,6 +162,21 @@ def audio_list(
 ):
     """分页列出项目内已登记音频及链接可达性状态。"""
     return list_audios(db, project_id, actor, page=page, page_size=page_size, keyword=keyword)
+
+
+@router.get("/audio/recent-runs")
+def audio_recent_runs(
+    project_id: int = Query(gt=0), audio_ids: str = Query(default="", max_length=2400),
+    db: Session = Depends(get_db), actor: User = Depends(get_current_user),
+):
+    """返回当前音频页的最近运行链接，不包含识别文本或敏感请求字段。"""
+    try:
+        parsed_ids = [int(value) for value in audio_ids.split(",") if value]
+    except ValueError:
+        raise bad_request("音频编号格式无效") from None
+    if len(parsed_ids) > 200:
+        raise bad_request("一次最多读取 200 条音频")
+    return {"items": list_audio_recent_runs(db, project_id, parsed_ids, actor)}
 
 
 @router.post("/audio", status_code=status.HTTP_201_CREATED)
@@ -182,16 +304,119 @@ def run_workbench(
 
 @router.get("/runs/{run_id}/segments")
 def run_segments(
-    run_id: int, page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=200),
+    run_id: int, page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=1000),
+    at_ms: int | None = Query(default=None, ge=0),
+    start_ms: int | None = Query(default=None, ge=0), end_ms: int | None = Query(default=None, ge=0),
     speaker_id: int | None = Query(default=None, gt=0), unknown_only: bool = False,
     mixed_only: bool = False, search: str | None = Query(default=None, max_length=200),
+    native_speaker_id: str | None = Query(default=None, max_length=255),
+    locate_segment_id: str | None = Query(default=None, max_length=80),
     db: Session = Depends(get_db), actor: User = Depends(get_current_user),
 ):
     """分页读取稳定转写段、原生说话人字段和独立模型关联。"""
     return list_transcript_segments(
         db, run_id, actor, page=page, page_size=page_size, speaker_id=speaker_id,
         unknown_only=unknown_only, mixed_only=mixed_only, search=search,
+        native_speaker_id=native_speaker_id, at_ms=at_ms, start_ms=start_ms, end_ms=end_ms,
+        locate_segment_id=locate_segment_id,
     )
+
+
+@router.get("/runs/{run_id}/statistics")
+def run_statistics(run_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """读取完整转写结果的原生标签统计，不将其与独立说话人归属混同。"""
+    return get_native_statistics(db, run_id, actor)
+
+
+@router.get("/content-review-models")
+def content_review_models(project_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """列出当前项目成员可用于内容评审的文本模型摘要。"""
+    return list_review_models(db, project_id, actor)
+
+
+@router.post("/runs/{run_id}/content-review-jobs", status_code=status.HTTP_202_ACCEPTED)
+def run_content_review_create(run_id: int, model_config_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """基于已有运行创建单条内容评审。"""
+    return create_review(db, "SINGLE", run_id, model_config_id, actor)
+
+
+@router.get("/runs/{run_id}/content-review-jobs")
+def run_content_review_list(run_id: int, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                            db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """列出当前运行的单条评审。"""
+    return list_reviews(db, "run", run_id, actor, page=page, page_size=page_size)
+
+
+@router.post("/comparisons/{comparison_id}/content-review-jobs", status_code=status.HTTP_202_ACCEPTED)
+def comparison_content_review_create(comparison_id: int, model_config_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """基于同版本三方运行创建内容评审。"""
+    return create_review(db, "TRIPLET", comparison_id, model_config_id, actor)
+
+
+@router.get("/comparisons/{comparison_id}/content-review-jobs")
+def comparison_content_review_list(comparison_id: int, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                                   db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """列出当前对比的内容评审。"""
+    return list_reviews(db, "comparison", comparison_id, actor, page=page, page_size=page_size)
+
+
+@router.post("/experiments/{experiment_id}/content-review-jobs", status_code=status.HTTP_202_ACCEPTED)
+def experiment_content_review_create(experiment_id: int, model_config_id: int = Query(gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """基于实验的基线与候选运行创建 A/B 评审。"""
+    return create_review(db, "AB", experiment_id, model_config_id, actor)
+
+
+@router.get("/experiments/{experiment_id}/content-review-jobs")
+def experiment_content_review_list(experiment_id: int, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                                   db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """列出候选实验的 A/B 内容评审。"""
+    return list_reviews(db, "experiment", experiment_id, actor, page=page, page_size=page_size)
+
+
+@router.get("/content-review-jobs/{review_id}")
+def content_review_detail(review_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """读取评审覆盖、块状态及经过验证的证据。"""
+    return get_review(db, review_id, actor)
+
+
+@router.post("/content-review-jobs/{review_id}/retry", status_code=status.HTTP_202_ACCEPTED)
+def content_review_retry(review_id: int, chunk_id: int | None = Query(default=None, gt=0), db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """仅重新排队明确失败的评审块。"""
+    return retry_review(db, review_id, actor, chunk_id=chunk_id)
+
+
+@router.post("/content-review-jobs/{review_id}/cancel")
+def content_review_cancel(review_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """停止未发出的内容评审块，不承诺远端已取消。"""
+    return cancel_review(db, review_id, actor)
+
+
+@router.get("/jobs/{job_id}/content-review-summary")
+def content_review_summary(job_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """读取批次的音频及评审覆盖分子分母。"""
+    return review_summary(db, job_id, actor)
+
+
+@router.post("/runs/{run_id}/evaluation-artifacts", status_code=status.HTTP_201_CREATED)
+def evaluation_artifacts_create(run_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """冻结规范化快照并生成 Markdown，不重新调用 ASR。"""
+    return create_evaluation_artifacts(db, run_id, actor)
+
+
+@router.get("/runs/{run_id}/evaluation-artifacts")
+def evaluation_artifacts_list(run_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """列出运行产物元信息及原始响应是否可用。"""
+    return list_evaluation_artifacts(db, run_id, actor)
+
+
+@router.get("/evaluation-artifacts/{artifact_id}")
+def evaluation_artifact_download(artifact_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """按项目授权下载校验通过的产物。"""
+    row, data = read_evaluation_artifact(db, artifact_id, actor)
+    extension = "md" if row.kind in {"MARKDOWN", "REVIEW_INPUT_MD", "REVIEW_SOURCE_MD"} else "json"
+    return Response(content=data, media_type="text/markdown" if extension == "md" else "application/json",
+                    headers={"Content-Disposition": f'attachment; filename="asr-artifact-{row.id}.{extension}"',
+                             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.post("/runs/{run_id}/speaker-assignments", status_code=status.HTTP_202_ACCEPTED)
@@ -360,9 +585,17 @@ def job_create(body: JobCreate, db: Session = Depends(get_db), actor: User = Dep
 
 
 @router.get("/jobs/{job_id}")
-def job_detail(job_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+def job_detail(job_id: int, summary_only: bool = False, include_text: bool = True, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
     """读取批次、模型独立状态、脱敏请求快照和已有对比入口。"""
-    return get_job(db, job_id, actor)
+    return get_job(db, job_id, actor, summary_only=summary_only, include_text=include_text)
+
+
+@router.get("/jobs/{job_id}/audio-runs")
+def job_audio_runs(job_id: int, page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100),
+                   keyword: str | None = Query(default=None, max_length=200), status_filter: str | None = Query(default=None, alias="status", max_length=40),
+                   db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    """分页读取批次音频分组及模型状态，不返回全文。"""
+    return list_job_audio_runs(db, job_id, actor, page=page, page_size=page_size, keyword=keyword, status=status_filter)
 
 
 @router.get("/jobs/{job_id}/runs")
@@ -378,9 +611,21 @@ def job_cancel(job_id: int, db: Session = Depends(get_db), actor: User = Depends
 
 
 @router.post("/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED)
-def job_retry(job_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
-    """按原配置创建新的完整三方批次，不覆盖失败批次。"""
-    return retry_job(db, job_id, actor)
+def job_retry(
+    job_id: int, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=128),
+    db: Session = Depends(get_db), actor: User = Depends(get_current_user),
+):
+    """只重新提交明确失败项；保留其余运行结果和固定音频版本。"""
+    return retry_job(db, job_id, actor, request_key=idempotency_key)
+
+
+@router.post("/jobs/{job_id}/rerun", status_code=status.HTTP_202_ACCEPTED)
+def job_rerun(
+    job_id: int, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=128),
+    db: Session = Depends(get_db), actor: User = Depends(get_current_user),
+):
+    """完整重跑已终态批次，仍使用原模型配置和固定音频版本。"""
+    return rerun_job(db, job_id, actor, request_key=idempotency_key)
 
 
 @router.get("/comparisons")

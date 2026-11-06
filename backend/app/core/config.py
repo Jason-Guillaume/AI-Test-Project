@@ -173,6 +173,11 @@ class Settings(BaseSettings):
     ASR_DIARIZATION_CONCURRENCY: int = 1
     ASR_WORKER_LEASE_SECONDS: int = 90
     ASR_WORKER_HEARTBEAT_TIMEOUT_SECONDS: int = 90
+    # API 与 Worker 必须指向同一持久卷；大于上限时明确拒绝而非截断。
+    ASR_ARTIFACT_DIR: str = "./var/asr-artifacts"
+    ASR_ARTIFACT_MAX_BYTES: int = 20000000
+    ASR_ARTIFACT_RECOVERY_GRACE_SECONDS: int = 900
+    ASR_CONTENT_REVIEW_ENABLED: bool = True
 
     # 大小写敏感：环境变量名必须与字段名完全一致，避免 DATABASE_URL / database_url 双写歧义；
     # extra="ignore" 让 .env 里的历史遗留变量不报错，便于从旧项目平滑迁移。

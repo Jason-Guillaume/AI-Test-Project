@@ -87,6 +87,13 @@ class ParameterDefinition(AsrInput):
     value_type: Literal["string", "integer", "number", "boolean", "object", "array"]
     minimum: float | None = None
     maximum: float | None = None
+    exclusive_minimum: float | None = None
+    required: bool = True
+    nullable: bool = False
+    default: Any = None
+    unit: str | None = Field(default=None, max_length=40)
+    tunable: bool = True
+    active_when: dict[str, Any] | None = None
     choices: list[Any] | None = None
     description: str = Field(default="", max_length=1000)
     source: str = Field(default="接口提供方说明", max_length=200)

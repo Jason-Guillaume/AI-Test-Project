@@ -22,11 +22,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database.session import SessionLocal
+from app.core.config import settings
 from app.core.models.identity import User
 from app.core.security.crypto import decrypt_secret
 from app.platform.projects.services.access_service import require_writable_project
 from app.features.asr_evaluation.models import (
-    AsrJob, AsrModelRun, AsrProcessingRun, AsrProcessingWorkItem, AsrSchedule,
+    AsrConnection, AsrContentReviewJob, AsrJob, AsrModelRun, AsrProcessingRun, AsrProcessingWorkItem, AsrSchedule,
     AsrSuggestionJob, AsrWorkItem, AsrWorkerHeartbeat,
 )
 from app.features.asr_evaluation.providers.generic_json import (
@@ -36,11 +37,16 @@ from app.features.asr_evaluation.providers.generic_json import (
 from app.features.asr_evaluation.schemas import JobCreate
 from app.features.asr_evaluation.services.assets_service import _next_daily, _validate_schedule_assets
 from app.features.asr_evaluation.services.comparison_service import record_run_result
+from app.features.asr_evaluation.services.evaluation_artifact_service import recover_pending_artifacts, save_provider_response
+from app.features.asr_evaluation.services.content_review_service import (
+    claim_review, execute_review, extend_review_lease, recover_expired_reviews,
+)
 from app.features.asr_evaluation.services.job_service import create_job
 from app.features.asr_evaluation.services.diarization_service import record_diarization_result
 from app.features.asr_evaluation.services.suggestion_job_service import (
     execute_suggestion_job, extend_suggestion_lease, recover_expired_suggestion_jobs,
 )
+from app.features.asr_evaluation.runtime.request_slots import asr_request_slot
 from app.platform.model_configuration.models import ModelTaskSlot
 
 logger = logging.getLogger(__name__)
@@ -71,6 +77,7 @@ class AsrWorker:
         self._diarization_futures: set[Future] = set()
         self._media_futures: set[Future] = set()
         self._suggestion_futures: set[Future] = set()
+        self._review_futures: set[Future] = set()
         self._provider = GenericJsonProvider()
         self._diarization_provider = DiarizationJsonProvider()
 
@@ -87,6 +94,7 @@ class AsrWorker:
             ) as diarization_pool,
             ThreadPoolExecutor(max_workers=1, thread_name_prefix="asr-media") as media_pool,
             ThreadPoolExecutor(max_workers=1, thread_name_prefix="asr-suggestions") as suggestion_pool,
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="asr-content-review") as review_pool,
         ):
             while not self._stop.is_set():
                 if not self._business_dependencies_ready():
@@ -96,6 +104,8 @@ class AsrWorker:
                 try:
                     self._process_due_schedules()
                     self._recover_expired_suggestions()
+                    self._recover_expired_reviews()
+                    self._recover_pending_artifacts()
                 except Exception:
                     # Keep the process alive for the next cycle; Docker remains the outer crash restarter.
                     self._write_heartbeat(business_ready=False)
@@ -106,6 +116,7 @@ class AsrWorker:
                 }
                 self._media_futures = {future for future in self._media_futures if not future.done()}
                 self._suggestion_futures = {future for future in self._suggestion_futures if not future.done()}
+                self._review_futures = {future for future in self._review_futures if not future.done()}
                 while len(self._futures) < self.max_concurrency and not self._stop.is_set():
                     claim = self._claim_next()
                     if claim is None:
@@ -126,14 +137,26 @@ class AsrWorker:
                     suggestion_claim = self._claim_next_suggestion()
                     if suggestion_claim is not None:
                         self._suggestion_futures.add(suggestion_pool.submit(self._process_suggestion_claim, suggestion_claim))
-                active_count = len(self._futures) + len(self._diarization_futures) + len(self._media_futures) + len(self._suggestion_futures)
+                if settings.ASR_CONTENT_REVIEW_ENABLED and not self._review_futures and not self._stop.is_set():
+                    db = SessionLocal()
+                    try:
+                        review_claim = claim_review(db, self.worker_id)
+                    except Exception:
+                        db.rollback()
+                        logger.exception("领取 ASR 内容评审任务失败")
+                        review_claim = None
+                    finally:
+                        db.close()
+                    if review_claim is not None:
+                        self._review_futures.add(review_pool.submit(self._process_review_claim, review_claim))
+                active_count = len(self._futures) + len(self._diarization_futures) + len(self._media_futures) + len(self._suggestion_futures) + len(self._review_futures)
                 # Recheck after this cycle: a process can still be alive while its
                 # database/schema dependency has become unavailable.
                 self._write_heartbeat(
                     active_count=active_count,
                     business_ready=self._business_dependencies_ready(),
                 )
-                active = self._futures | self._diarization_futures | self._media_futures | self._suggestion_futures
+                active = self._futures | self._diarization_futures | self._media_futures | self._suggestion_futures | self._review_futures
                 if active:
                     wait(active, timeout=self.poll_seconds, return_when=FIRST_COMPLETED)
                 else:
@@ -148,12 +171,47 @@ class AsrWorker:
         finally:
             db.close()
 
+    def _recover_expired_reviews(self) -> None:
+        """过期评审只转待核实，不自动重复外部调用。"""
+        db = SessionLocal()
+        try:
+            recover_expired_reviews(db)
+        finally:
+            db.close()
+
+    def _recover_pending_artifacts(self) -> None:
+        """校验中断的产物登记，避免待处理状态永久占用或错误显示成功。"""
+        db = SessionLocal()
+        try:
+            recover_pending_artifacts(db)
+        finally:
+            db.close()
+
+    def _process_review_claim(self, claim: tuple[int, str, int]) -> None:
+        """运行评审并以独立会话保持租约，完成后停止心跳。"""
+        review_id, owner, generation = claim
+        stop = threading.Event()
+
+        def pulse() -> None:
+            """续约失败时停止心跳，结果写入仍由代次校验保护。"""
+            while not stop.wait(20):
+                if not extend_review_lease(review_id, owner, generation):
+                    return
+
+        thread = threading.Thread(target=pulse, name=f"asr-review-lease-{review_id}", daemon=True)
+        thread.start()
+        try:
+            execute_review(review_id, owner, generation)
+        finally:
+            stop.set()
+            thread.join(timeout=2)
+
     def _business_dependencies_ready(self) -> bool:
         """Check the database and every durable queue table before reporting readiness."""
         db = SessionLocal()
         try:
             db.execute(text("SELECT 1"))
-            for model in (AsrWorkItem, AsrProcessingWorkItem, AsrSchedule, AsrSuggestionJob):
+            for model in (AsrWorkItem, AsrProcessingWorkItem, AsrSchedule, AsrSuggestionJob, AsrContentReviewJob):
                 db.query(model.id).limit(1).all()
             return True
         except Exception:
@@ -590,15 +648,16 @@ class AsrWorker:
                 self._finish_processing(item_id, run_id, owner, generation, "FAILED", "加密的说话人执行快照无法读取")
                 return
             db.commit()
-            if submitting:
-                response = self._diarization_provider.submit(
-                    db, project_id=run.project_id, execution=execution,
-                    idempotency_key=f"asr-processing-{run.id}",
-                )
-            else:
-                response = self._diarization_provider.poll(
-                    db, project_id=run.project_id, execution=execution, remote_task_id=run.remote_task_id,
-                )
+            with asr_request_slot(db.get_bind()):
+                if submitting:
+                    response = self._diarization_provider.submit(
+                        db, project_id=run.project_id, execution=execution,
+                        idempotency_key=f"asr-processing-{run.id}",
+                    )
+                else:
+                    response = self._diarization_provider.poll(
+                        db, project_id=run.project_id, execution=execution, remote_task_id=run.remote_task_id,
+                    )
             db.rollback()
             db.expire_all()
             current_item = db.get(AsrProcessingWorkItem, item_id)
@@ -805,21 +864,42 @@ class AsrWorker:
             if submitting:
                 # 结束领取事务，避免在模型接口响应期间持有批次工作项的数据库事务。
                 db.commit()
-                response = self._provider.submit(
-                    db, project_id=job.project_id, execution=execution, idempotency_key=run.idempotency_key,
-                )
+                with asr_request_slot(db.get_bind()):
+                    response = self._provider.submit(
+                        db, project_id=job.project_id, execution=execution, idempotency_key=run.idempotency_key,
+                    )
             else:
                 # 轮询前同样释放 ASR 工作项读取事务；共享出站策略仍在每次请求前复核白名单。
                 db.commit()
-                response = self._provider.poll(
-                    db, project_id=job.project_id, execution=execution, remote_task_id=run.remote_task_id,
-                )
+                with asr_request_slot(db.get_bind()):
+                    response = self._provider.poll(
+                        db, project_id=job.project_id, execution=execution, remote_task_id=run.remote_task_id,
+                    )
             # 共享出站策略的只读查询事务不需要跟着本次网络响应继续存在。
             db.rollback()
             db.expire_all()
             # HTTP 请求期间没有行锁；写回前必须验证租约代次，旧 Worker 不可覆盖新结果。
             if not self._owns(db, item_id, owner, generation):
                 return
+            if response.get("response_capture") is not None:
+                # 响应在短事务中持久化后再次检查租约；提交事务期间旧 Worker 可能已失去所有权。
+                current = db.get(AsrModelRun, run_id)
+                if current is None:
+                    return
+                if submitting and response.get("remote_task_id"):
+                    # 即便回执文件写入失败，也保留已知远端任务号供人工核实。
+                    current.remote_task_id = response["remote_task_id"]
+                    db.commit()
+                    db.expire_all()
+                    if not self._owns(db, item_id, owner, generation):
+                        return
+                    current = db.get(AsrModelRun, run_id)
+                    if current is None:
+                        return
+                save_provider_response(db, current, response["response_kind"], response["response_capture"])
+                db.expire_all()
+                if not self._owns(db, item_id, owner, generation):
+                    return
             if response["state"] == "SUCCEEDED":
                 record_run_result(
                     db, run_id, status="SUCCEEDED", transcript=response["transcript"],

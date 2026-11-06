@@ -1,28 +1,34 @@
 // 单模型音频工作台：固定到一个转写运行与音频版本，呈现原文、说话人区间和执行阶段。
 import {
-  Alert, App, Button, Card, Collapse, Descriptions, Drawer, Empty, Input, Pagination,
+  Alert, App, Button, Card, Collapse, Descriptions, Drawer, Dropdown, Empty, Input, Pagination,
   Select, Space, Spin, Tag, Typography,
 } from 'antd';
 import {
-  AudioOutlined, CheckOutlined, DownloadOutlined, LinkOutlined, ReloadOutlined, SoundOutlined,
+  AudioOutlined, CheckOutlined, DownloadOutlined, DownOutlined, LinkOutlined, ReloadOutlined, SoundOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/asrEvaluation';
 import { modelCenterApi, modelCenterQueryKeys, type ModelAvailableResource } from '@/features/model-configuration/api/modelCenter';
 import type {
   AsrAudioMetadata, AsrProcessingRun, AsrSpeaker, AsrSpeakerTurn, AsrTranscriptSegment,
-  AsrWorkbench, JsonValue,
+  AsrJob, AsrWorkbench, JsonValue,
 } from '@/features/asr-evaluation/contracts';
 import { AsrFrame } from './AsrFrame';
 import { AudioWorkbenchPlayer } from '@/features/asr-evaluation/components/AudioWorkbenchPlayer';
+import { shouldLookupPlaybackWindow } from '@/features/asr-evaluation/components/playbackSegmentPage.mjs';
+import { fetchCompletePlaybackWindow } from '@/features/asr-evaluation/components/playbackSegmentWindow.mjs';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { ContentReviewPanel } from './ContentReviewPanel';
+import { confirmDraftDiscard, useDraftNavigationGuard } from '@/features/asr-evaluation/useDraftNavigationGuard';
+import { clearSpeakerDrafts, updateSpeakerNameDraft } from '@/features/asr-evaluation/speakerNameDraft.mjs';
+import { modelSwitchOption } from '@/features/asr-evaluation/modelSwitchOption.mjs';
 
 const { Text, Paragraph, Title } = Typography;
 
 const ACTIVE_PROCESSING = new Set(['PENDING', 'SUBMITTING', 'REMOTE_RUNNING', 'RECONCILIATION_REQUIRED']);
+const ACTIVE_ASR = new Set(['PENDING', 'SUBMITTING', 'REMOTE_RUNNING']);
 const AUDIO_FIELD_LABELS: Record<string, Record<string, string>> = {
   source: {
     name: '文件名', audio_version: '音频版本', url_display: '登记源地址（已脱敏）', playback_url: '平台代理地址',
@@ -51,8 +57,43 @@ function audioFieldLabel(group: 'source' | 'original' | 'analysis', key: string)
 /** 格式化区间时间，null 表示没有可信时间戳并明确显示未定位。 */
 function formatMs(value: number | null | undefined): string {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return '未定位';
-  const whole = Math.floor(value);
-  return `${Math.floor(whole / 60000).toString().padStart(2, '0')}:${((whole % 60000) / 1000).toFixed(3).padStart(6, '0')}`;
+  const wholeSeconds = Math.floor(value / 1000);
+  const seconds = (wholeSeconds % 60).toString().padStart(2, '0');
+  const minutes = Math.floor(wholeSeconds / 60);
+  if (minutes >= 60) {
+    return `${Math.floor(minutes / 60).toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${seconds}`;
+  }
+  return `${minutes.toString().padStart(2, '0')}:${seconds}`;
+}
+
+/** JSON 评审文件使用分钟:秒显示；精确时间仍保存在 start/end 毫秒字段。 */
+function formatExportTime(value: number): string {
+  const seconds = Math.floor(Math.max(0, value) / 1000);
+  return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+}
+
+/** 导出模型原始 speaker 标签，纯数字标签转为数字以兼容示例格式。 */
+function exportSpeakerLabel(value: string | null): number | string | null {
+  if (value === null) return null;
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
+
+/** Ultra 等仅返回全文的模型按句末标点拆分供阅读；不伪造模型片段或时间戳。 */
+function splitTranscriptForDisplay(transcript: string): string[] {
+  const sentences: string[] = [];
+  const endings = new Set(['。', '！', '？', '!', '?', '；', ';', '\n']);
+  let current = '';
+  for (const character of transcript) {
+    current += character;
+    if (endings.has(character)) {
+      const sentence = current.trim();
+      if (sentence) sentences.push(sentence);
+      current = '';
+    }
+  }
+  const remainder = current.trim();
+  if (remainder) sentences.push(remainder);
+  return sentences;
 }
 
 /** 将存储的 JSON 值转为可读文本；false 与 0 均按已知值显示。 */
@@ -75,33 +116,56 @@ function redactSnapshot(value: unknown): unknown {
   return value;
 }
 
-/** 给全文视图按 Unicode code point 偏移标记当前真实播放区间。 */
+/** 给全文同时标记真实播放区间、全文命中与当前命中。 */
 function highlightedTranscript(
   transcript: string,
   activeSegments: AsrTranscriptSegment[],
+  search: string,
+  currentSearchIndex: number,
 ): React.ReactNode {
   const codePoints = Array.from(transcript);
+  const codePointOffsets = [0];
+  codePoints.forEach((point) => codePointOffsets.push(codePointOffsets.at(-1)! + point.length));
   const spans = activeSegments
     .filter((item) => Number.isInteger(item.start_offset) && Number.isInteger(item.end_offset))
-    .map((item) => [Math.max(0, item.start_offset!), Math.min(codePoints.length, item.end_offset!)] as const)
+    .map((item) => [codePointOffsets[Math.min(codePoints.length, Math.max(0, item.start_offset!))],
+      codePointOffsets[Math.min(codePoints.length, item.end_offset!)] ] as const)
     .filter(([start, end]) => end > start)
     .sort((left, right) => left[0] - right[0]);
-  if (!spans.length) return transcript || '没有可显示的转写文本';
-  const merged: Array<[number, number]> = [];
-  spans.forEach(([start, end]) => {
-    const previous = merged.at(-1);
-    if (previous && start <= previous[1]) previous[1] = Math.max(previous[1], end);
-    else merged.push([start, end]);
-  });
+  const searchRanges: Array<[number, number]> = [];
+  const query = search.trim();
+  if (query) {
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matcher = new RegExp(escaped, 'giu');
+    let match: RegExpExecArray | null;
+    while ((match = matcher.exec(transcript)) !== null) {
+      searchRanges.push([match.index, match.index + match[0].length]);
+      if (!match[0].length) matcher.lastIndex += 1;
+    }
+  }
+  if (!spans.length && !searchRanges.length) return transcript || '没有可显示的转写文本';
+  const boundaries = [...new Set([0, transcript.length, ...spans.flat(), ...searchRanges.flat()])].sort((a, b) => a - b);
   const output: React.ReactNode[] = [];
-  let cursor = 0;
-  merged.forEach(([start, end], index) => {
-    if (start > cursor) output.push(codePoints.slice(cursor, start).join(''));
-    output.push(<mark key={`active-${index}`}>{codePoints.slice(start, end).join('')}</mark>);
-    cursor = end;
+  boundaries.slice(0, -1).forEach((start, index) => {
+    const end = boundaries[index + 1];
+    if (end <= start) return;
+    const active = spans.some(([left, right]) => left < end && right > start);
+    const searchIndex = searchRanges.findIndex(([left, right]) => left <= start && right >= end);
+    const classes = [active ? 'asr-playback-highlight' : '', searchIndex >= 0 ? 'asr-search-hit' : '',
+      searchIndex === currentSearchIndex ? 'asr-search-current' : ''].filter(Boolean).join(' ');
+    const text = transcript.slice(start, end);
+    if (classes) output.push(<mark className={classes} key={`text-${index}`} data-asr-search-hit={searchIndex >= 0 ? searchIndex : undefined}>{text}</mark>);
+    else output.push(text);
   });
-  if (cursor < codePoints.length) output.push(codePoints.slice(cursor).join(''));
   return output;
+}
+
+/** 在全文中标出所有直接文本命中；只改变呈现，不重写原文或偏移。 */
+function countSearchMatches(transcript: string, search: string): number {
+  const query = search.trim();
+  if (!query) return 0;
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Array.from(transcript.matchAll(new RegExp(escaped, 'giu'))).length;
 }
 
 /** 生成各类后台阶段的中文状态说明。 */
@@ -112,6 +176,11 @@ function processingLabel(run: AsrProcessingRun | null | undefined): string {
     FAILED: '失败', RECONCILIATION_REQUIRED: '远端提交状态待核实', CANCELLED: '已取消',
   };
   return labels[run.status] ?? run.status;
+}
+
+function asrStatusLabel(status: string): string {
+  return ({ PENDING: '排队中', SUBMITTING: '提交中', REMOTE_RUNNING: '识别中', SUCCEEDED: '已完成',
+    FAILED: '失败', CANCELLED: '已取消', RECONCILIATION_REQUIRED: '状态待核实' } as Record<string, string>)[status] ?? status;
 }
 
 /** 下载 JSON 或 TXT 导出文件，并释放临时浏览器对象地址。 */
@@ -125,20 +194,23 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 /** 按模型单次运行查看转写、说话人、真实波形、音频信息和可审计确认。 */
-export function RunWorkbenchPage() {
+function RunWorkbench({ listenMode }: { listenMode: boolean }) {
   const { message } = App.useApp();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const { currentProjectId } = useConsoleScope();
   const { runId: rawRunId } = useParams();
   const runId = Number(rawRunId);
   const validId = Number.isSafeInteger(runId) && runId > 0;
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playbackRangeEnd = useRef<number | null>(null);
+  const lastAutoLocatedSegment = useRef<string | null>(null);
+  const previousAudioVersion = useRef<number | null>(null);
   const [audioInfoOpen, setAudioInfoOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [playbackTime, setPlaybackTime] = useState(0);
   const [playbackSnapshot, setPlaybackSnapshot] = useState<Record<string, string>>({});
-  const [viewMode, setViewMode] = useState<'FULL' | 'DIALOGUE'>('FULL');
+  const [viewMode, setViewMode] = useState<'FULL' | 'DIALOGUE' | null>(listenMode ? 'DIALOGUE' : null);
   const [search, setSearch] = useState('');
   const [segmentPage, setSegmentPage] = useState(1);
   const [turnPage, setTurnPage] = useState(1);
@@ -147,14 +219,36 @@ export function RunWorkbenchPage() {
   const [selectedResourceId, setSelectedResourceId] = useState<number>();
   const [selectedProfileId, setSelectedProfileId] = useState<number>();
   const [renameDrafts, setRenameDrafts] = useState<Record<number, string>>({});
+  const [speakerEditingOpen, setSpeakerEditingOpen] = useState(false);
+  const [assignmentDrafts, setAssignmentDrafts] = useState<Record<number, number | null>>({});
+  const [searchMatch, setSearchMatch] = useState(0);
+  const hasDrafts = Object.keys(assignmentDrafts).length > 0 || Object.keys(renameDrafts).length > 0;
+  useDraftNavigationGuard(hasDrafts);
 
-  const workbenchKey = currentProjectId
-    ? asrQueryKeys.project(currentProjectId, 'run-workbench', runId)
-    : ['asr', 'run-workbench', null, runId];
+  useEffect(() => {
+    setViewMode(listenMode ? 'DIALOGUE' : null);
+    setSegmentPage(1);
+    setTurnPage(1);
+    setSearch('');
+    setSpeakerFilter('ALL');
+    setTurnFilter('ALL');
+    setAssignmentDrafts({});
+    setRenameDrafts(clearSpeakerDrafts());
+    setSpeakerEditingOpen(false);
+    setSearchMatch(0);
+    playbackRangeEnd.current = null;
+    lastAutoLocatedSegment.current = null;
+  }, [runId, listenMode]);
+  useEffect(() => { setSearchMatch(0); }, [search]);
+
+  // 运行编号全局唯一；先读所属项目，再使用该项目隔离其余查询，避免顶栏项目覆盖深链。
+  const workbenchKey = ['asr', 'run-workbench', runId];
   const workbenchQuery = useQuery<AsrWorkbench>({
     queryKey: workbenchKey,
     enabled: validId,
-    refetchInterval: (query) => ACTIVE_PROCESSING.has(query.state.data?.diarization.processing_run?.status ?? '') ? 3000 : false,
+    placeholderData: (previous) => previous,
+    refetchInterval: (query) => ACTIVE_ASR.has(query.state.data?.run.status ?? '')
+      || ACTIVE_PROCESSING.has(query.state.data?.diarization.processing_run?.status ?? '') ? 3000 : false,
     queryFn: async ({ signal }) => asrEvaluationApi.getRunWorkbench(runId, signal),
   });
   const workbench = workbenchQuery.data;
@@ -162,14 +256,31 @@ export function RunWorkbenchPage() {
   const processing = workbench?.diarization.processing_run;
   const resultId = workbench?.diarization.result_id ?? null;
   const run = workbench?.run;
-  const queryScope = currentProjectId ?? workbench?.run.project_id ?? null;
+  const loadedRunId = run?.id ?? runId;
+  useEffect(() => {
+    if (audio?.audio_version_id == null) return;
+    if (previousAudioVersion.current !== null && previousAudioVersion.current !== audio.audio_version_id) {
+      playbackRangeEnd.current = null;
+      audioRef.current?.pause();
+      if (audioRef.current) audioRef.current.currentTime = 0;
+      setPlaybackTime(0);
+    }
+    previousAudioVersion.current = audio.audio_version_id;
+  }, [audio?.audio_version_id]);
+  const queryScope = workbench?.run.project_id ?? null;
   const resourceKey = queryScope
-    ? asrQueryKeys.project(queryScope, 'run-workbench', runId)
-    : ['asr', 'run-workbench', null, runId];
+    ? asrQueryKeys.project(queryScope, 'run-workbench', loadedRunId)
+    : ['asr', 'run-workbench', null, loadedRunId];
 
-  const jobQuery = useQuery({
+  const jobQuery = useQuery<AsrJob>({
     queryKey: [...resourceKey, 'job'], enabled: Boolean(run?.job_id),
-    queryFn: async ({ signal }) => asrEvaluationApi.getJob(run!.job_id, { signal }),
+    refetchInterval: (query) => {
+      const job = query.state.data;
+      const jobIsActive = ['QUEUED', 'RUNNING'].includes(job?.status ?? '');
+      const runIsActive = job?.runs?.some((item) => ACTIVE_ASR.has(item.status)) ?? false;
+      return jobIsActive || runIsActive ? 3000 : false;
+    },
+    queryFn: async ({ signal }) => asrEvaluationApi.getJob(run!.job_id, { signal, params: { include_text: false } }),
   });
   const diarizationModelsQuery = useQuery({
     queryKey: queryScope ? modelCenterQueryKeys.available(queryScope, 'DIARIZATION') : ['model-center', 'available', null, 'DIARIZATION'],
@@ -178,8 +289,8 @@ export function RunWorkbenchPage() {
   });
   const diarizationModels = diarizationModelsQuery.data?.items ?? [];
   const segmentsFilter = useMemo(() => ({
-    ...(speakerFilter !== 'ALL' && speakerFilter !== 'UNKNOWN' && speakerFilter !== 'MIXED'
-      ? { speaker_id: Number(speakerFilter) } : {}),
+    ...(speakerFilter.startsWith('native:') ? { native_speaker_id: speakerFilter.slice(7) } : {}),
+    ...(speakerFilter.startsWith('linked:') ? { speaker_id: Number(speakerFilter.slice(7)) } : {}),
     ...(speakerFilter === 'UNKNOWN' ? { unknown_only: true } : {}),
     ...(speakerFilter === 'MIXED' ? { mixed_only: true } : {}),
     ...(search.trim() ? { search: search.trim() } : {}),
@@ -187,12 +298,48 @@ export function RunWorkbenchPage() {
   const segmentsKey = [...resourceKey, 'segments', segmentPage, segmentsFilter];
   const segmentsQuery = useQuery({
     queryKey: segmentsKey,
-    enabled: Boolean(runId),
-    queryFn: async ({ signal }) => asrEvaluationApi.listRunSegments(runId, segmentPage, signal, segmentsFilter),
+    enabled: Boolean(run),
+    refetchInterval: () => ACTIVE_ASR.has(run?.status ?? '') ? 3000 : false,
+    queryFn: async ({ signal }) => asrEvaluationApi.listRunSegments(loadedRunId, segmentPage, signal, segmentsFilter),
   });
   const segments = segmentsQuery.data?.items ?? [];
+  const timedSegmentCount = segmentsQuery.data?.timed_segment_count;
+  const timedLookupMs = Math.floor(playbackTime / 5) * 5000;
+  const playbackSegmentsQuery = useQuery({
+    queryKey: [...resourceKey, 'segment-window', timedLookupMs],
+    enabled: shouldLookupPlaybackWindow(Boolean(run?.transcript), playbackTime, timedSegmentCount),
+    staleTime: 5_000,
+    gcTime: 0,
+    queryFn: ({ signal }) => fetchCompletePlaybackWindow((page, requestSignal) =>
+      asrEvaluationApi.listRunSegments(loadedRunId, page, requestSignal,
+        { start_ms: timedLookupMs, end_ms: timedLookupMs + 5_000, page_size: 1000 }), signal),
+  });
+  const playbackSegments = (playbackSegmentsQuery.data?.items ?? []).filter((segment) =>
+    segment.start_ms !== null && segment.end_ms !== null
+      && segment.start_ms <= playbackTime * 1000 && segment.end_ms > playbackTime * 1000);
+  const statisticsQuery = useQuery({
+    queryKey: [...resourceKey, 'statistics'], enabled: Boolean(run),
+    refetchInterval: () => ACTIVE_ASR.has(run?.status ?? '') ? 3000 : false,
+    queryFn: ({ signal }) => asrEvaluationApi.getRunStatistics(loadedRunId, signal),
+  });
+  const artifactsKey = [...resourceKey, 'evaluation-artifacts'];
+  const artifactsQuery = useQuery({
+    queryKey: artifactsKey, enabled: Boolean(run),
+    refetchInterval: () => ACTIVE_ASR.has(run?.status ?? '') ? 3000 : false,
+    queryFn: ({ signal }) => asrEvaluationApi.listEvaluationArtifacts(loadedRunId, signal),
+  });
+  const reviewSummaryKey = queryScope
+    ? asrQueryKeys.project(queryScope, 'content_review', 'runs', loadedRunId)
+    : ['asr', 'content_review', null, loadedRunId];
+  const reviewSummaryQuery = useQuery({
+    queryKey: reviewSummaryKey,
+    enabled: Boolean(run && queryScope),
+    queryFn: ({ signal }) => asrEvaluationApi.listContentReviews('runs', loadedRunId, signal),
+    refetchInterval: (query) => query.state.data?.items.some((item) => ['QUEUED', 'RUNNING'].includes(item.status)) ? 3000 : false,
+  });
   const speakersQuery = useQuery({
     queryKey: [...resourceKey, 'speakers', resultId], enabled: Boolean(resultId),
+    refetchInterval: () => Boolean(processing && ACTIVE_PROCESSING.has(processing.status)) ? 3000 : false,
     queryFn: async ({ signal }) => asrEvaluationApi.listSpeakers(resultId!, signal),
   });
   const speakers = speakersQuery.data?.items ?? [];
@@ -205,9 +352,63 @@ export function RunWorkbenchPage() {
   const turnsQuery = useQuery({
     queryKey: [...resourceKey, 'speaker-turns', resultId, turnPage, turnsFilter],
     enabled: Boolean(resultId),
+    refetchInterval: () => Boolean(processing && ACTIVE_PROCESSING.has(processing.status)) ? 3000 : false,
     queryFn: async ({ signal }) => asrEvaluationApi.listSpeakerTurns(resultId!, turnPage, signal, turnsFilter),
   });
   const turns = turnsQuery.data?.items ?? [];
+  const previousRunStatus = useRef<{ id: number; status: string } | null>(null);
+  const playbackLocationAbort = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!run) return;
+    const previous = previousRunStatus.current;
+    if (previous?.id === run.id && ACTIVE_ASR.has(previous.status) && !ACTIVE_ASR.has(run.status)) {
+      void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'segments'] });
+      void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'statistics'] });
+      void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'evaluation-artifacts'] });
+      void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'speakers'] });
+      void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'speaker-turns'] });
+      void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'job'] });
+      void queryClient.invalidateQueries({ queryKey: reviewSummaryKey });
+    }
+    previousRunStatus.current = { id: run.id, status: run.status };
+  }, [run?.id, run?.status, queryClient, resourceKey, reviewSummaryKey]);
+  const nativeSegmentTotal = Math.max(workbench?.run.segment_count ?? 0, segmentsQuery.data?.total ?? 0);
+  const effectiveViewMode = viewMode ?? (nativeSegmentTotal ? 'FULL' : 'DIALOGUE');
+  useEffect(() => {
+    if (effectiveViewMode !== 'DIALOGUE' || search.trim() || speakerFilter !== 'ALL') return;
+    const activeSegment = playbackSegments[0];
+    if (!activeSegment) {
+      lastAutoLocatedSegment.current = null;
+      return;
+    }
+    if (segmentsQuery.data?.items.some((item) => item.id === activeSegment.id)) {
+      lastAutoLocatedSegment.current = activeSegment.id;
+      playbackLocationAbort.current?.abort();
+      playbackLocationAbort.current = null;
+      return;
+    }
+    if (lastAutoLocatedSegment.current === activeSegment.id) return;
+    lastAutoLocatedSegment.current = activeSegment.id;
+    playbackLocationAbort.current?.abort();
+    const controller = new AbortController();
+    playbackLocationAbort.current = controller;
+    void asrEvaluationApi.locateRunSegmentPage(loadedRunId, activeSegment.id, controller.signal)
+      .then((result) => {
+        if (controller.signal.aborted || lastAutoLocatedSegment.current !== activeSegment.id) return;
+        if (result.located_page && result.located_page > 0) setSegmentPage(result.located_page);
+        else lastAutoLocatedSegment.current = null;
+      })
+      .catch(() => {
+        if (!controller.signal.aborted && lastAutoLocatedSegment.current === activeSegment.id) lastAutoLocatedSegment.current = null;
+      });
+  }, [effectiveViewMode, playbackSegments, search, speakerFilter, segmentsQuery.data?.items, loadedRunId]);
+  useEffect(() => () => playbackLocationAbort.current?.abort(), []);
+  const displaySentences = useMemo(() => {
+    const query = search.trim();
+    return splitTranscriptForDisplay(workbench?.run.transcript ?? '')
+      .filter((sentence) => !query || sentence.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+  }, [workbench?.run.transcript, search]);
+  const displaySentencePage = displaySentences.slice((segmentPage - 1) * 100, segmentPage * 100);
 
   const metadataQuery = useQuery<AsrAudioMetadata>({
     queryKey: [...resourceKey, 'audio-metadata', audio?.audio_version_id],
@@ -224,13 +425,23 @@ export function RunWorkbenchPage() {
   });
 
   /** 播放位置是 AudioElement 当前值；不要因打开抽屉或查询刷新改写它。 */
-  const onTimeChange = useCallback((seconds: number) => setPlaybackTime(seconds), []);
+  const onTimeChange = useCallback((seconds: number) => {
+    setPlaybackTime(seconds);
+    const rangeEnd = playbackRangeEnd.current;
+    const player = audioRef.current;
+    if (rangeEnd !== null && player && seconds >= rangeEnd) {
+      playbackRangeEnd.current = null;
+      player.pause();
+    }
+  }, []);
+  const clearPlaybackRange = useCallback(() => { playbackRangeEnd.current = null; }, []);
   /** 刷新工作台与关联读模型，保留播放器 DOM 和播放进度。 */
   const refreshWorkbench = () => {
     void queryClient.invalidateQueries({ queryKey: workbenchKey });
     void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'segments'] });
     void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'speakers'] });
     void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'speaker-turns'] });
+    void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'statistics'] });
   };
 
   const diarizationMutation = useMutation({
@@ -248,7 +459,7 @@ export function RunWorkbenchPage() {
     onError: () => message.error('仅明确失败的说话人阶段可以重试。'),
   });
   const fusionMutation = useMutation({
-    mutationFn: () => asrEvaluationApi.createSpeakerFusion(runId, resultId!),
+    mutationFn: () => asrEvaluationApi.createSpeakerFusion(loadedRunId, resultId!),
     onSuccess: () => { message.success('同一音频版本的说话人结果已关联'); refreshWorkbench(); },
     onError: () => message.error('说话人结果与当前转写版本不匹配，未建立关联。'),
   });
@@ -257,13 +468,22 @@ export function RunWorkbenchPage() {
       asrEvaluationApi.reviewSpeakerAssignment(input.assignmentId, {
         expected_version: input.expectedVersion, review_status: 'CONFIRMED', speaker_id: input.speakerId,
       }),
-    onSuccess: () => { message.success('人工说话人确认已保存并留有版本记录'); refreshWorkbench(); },
+    onSuccess: (_data, variables) => {
+      setAssignmentDrafts((current) => {
+        const next = { ...current };
+        delete next[variables.assignmentId];
+        return next;
+      });
+      message.success('人工说话人确认已保存并留有版本记录');
+      refreshWorkbench();
+    },
     onError: () => message.error('人工确认保存失败；如版本冲突，请刷新片段后重试。'),
   });
   const renameMutation = useMutation({
     mutationFn: ({ speakerId, displayName }: { speakerId: number; displayName: string }) =>
       asrEvaluationApi.renameSpeaker(speakerId, displayName),
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      setRenameDrafts((current) => { const next = { ...current }; delete next[variables.speakerId]; return next; });
       message.success('本次录音的说话人显示名已更新');
       void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'speakers'] });
       void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'speaker-turns'] });
@@ -282,10 +502,87 @@ export function RunWorkbenchPage() {
     onError: () => message.error('后台音频分析未能启动；原生播放器仍可回听。'),
   });
   const exportMutation = useMutation({
-    mutationFn: (format: 'json' | 'txt') => asrEvaluationApi.exportRun(runId, format),
-    onSuccess: (blob, format) => downloadBlob(blob, `asr-run-${runId}.${format}`),
+    mutationFn: (format: 'json' | 'txt') => asrEvaluationApi.exportRun(loadedRunId, format),
+    onSuccess: (blob, format) => downloadBlob(blob, `asr-run-${loadedRunId}.${format}`),
     onError: () => message.error('导出失败；当前页面仍可查看识别结果。'),
   });
+  const speakerJsonExportMutation = useMutation({
+    mutationFn: async () => {
+      if (!resultId || !workbench?.audio || !workbench.run) throw new Error('当前运行没有可导出的说话人结果');
+      const firstPage = await asrEvaluationApi.listSpeakerTurns(resultId, 1);
+      const pageSize = firstPage.page_size > 0 ? firstPage.page_size : 100;
+      const pageCount = Math.ceil(firstPage.total / pageSize);
+      const pages = [firstPage];
+      for (let start = 2; start <= pageCount; start += 8) {
+        const pageNumbers = Array.from({ length: Math.min(8, pageCount - start + 1) }, (_, index) => start + index);
+        pages.push(...await Promise.all(pageNumbers.map((page) => asrEvaluationApi.listSpeakerTurns(resultId, page))));
+      }
+      const turns = pages.flatMap((page) => page.items);
+      if (turns.length !== firstPage.total) throw new Error('分段分页读取不完整');
+      const exportData = {
+        schema_version: '1.0',
+        time_unit: 'milliseconds',
+        audio: {
+          id: workbench.audio.id,
+          name: workbench.audio.name,
+          version: workbench.audio.content_version,
+          duration_seconds: workbench.audio.duration_seconds,
+        },
+        transcription: {
+          run_id: workbench.run.id,
+          model_id: workbench.model?.model_id ?? null,
+          text: workbench.run.transcript ?? '',
+        },
+        speaker_result: {
+          result_id: resultId,
+          processing_run_id: workbench.diarization.processing_run?.id ?? null,
+          timeline: workbench.diarization.timeline,
+          alignment_status: workbench.diarization.fusion_status,
+        },
+        sentences: turns.map((turn) => ({
+          start: turn.start_ms,
+          end: turn.end_ms,
+          spk: exportSpeakerLabel(turn.source_speaker_id),
+          text: turn.text ?? '',
+          time: `${formatExportTime(turn.start_ms)}-${formatExportTime(turn.end_ms)}`,
+        })),
+      };
+      return new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json;charset=utf-8' });
+    },
+    onSuccess: (blob) => downloadBlob(blob, `asr-run-${loadedRunId}-speaker-review.json`),
+    onError: () => message.error('分段 JSON 导出失败；请确认说话人结果已完成后重试。'),
+  });
+  const artifactMutation = useMutation({
+    mutationFn: () => asrEvaluationApi.createEvaluationArtifacts(loadedRunId),
+    onSuccess: () => {
+      message.success('已生成重新构建的评测快照和 Markdown');
+      void queryClient.invalidateQueries({ queryKey: artifactsKey });
+    },
+    onError: () => message.error('评测资料生成失败，请检查运行状态与持久存储配置。'),
+  });
+  const artifactDownload = useMutation({
+    mutationFn: (item: { id: number; kind: string }) => asrEvaluationApi.downloadEvaluationArtifact(item.id),
+    onSuccess: (blob, item) => downloadBlob(blob, `asr-artifact-${item.id}.${item.kind === 'MARKDOWN' ? 'md' : 'json'}`),
+    onError: () => message.error('评测资料无法读取或完整性校验失败。'),
+  });
+
+  useEffect(() => {
+    const requested = new URLSearchParams(location.search).get('start_ms');
+    if (requested === null || !/^\d+$/.test(requested)) return undefined;
+    const audioElement = audioRef.current;
+    const milliseconds = Number(requested);
+    if (!audioElement || !Number.isSafeInteger(milliseconds)) return undefined;
+    /** 证据深链只定位真实时间，播放须由用户主动触发。 */
+    const seekEvidence = () => { playbackRangeEnd.current = null; audioElement.currentTime = milliseconds / 1000; };
+    if (audioElement.readyState >= 1) seekEvidence();
+    else {
+      audioElement.addEventListener('loadedmetadata', seekEvidence, { once: true });
+      // The player intentionally uses preload="none". A deep link must ask
+      // the browser for metadata explicitly or this listener can wait forever.
+      audioElement.load();
+    }
+    return () => audioElement.removeEventListener('loadedmetadata', seekEvidence);
+  }, [location.search, audio?.media_url]);
 
   useEffect(() => {
     if (!audioInfoOpen) return undefined;
@@ -313,23 +610,12 @@ export function RunWorkbenchPage() {
   const seekTo = (startMs: number | null, endMs?: number | null) => {
     const player = audioRef.current;
     if (!player || startMs === null || !Number.isFinite(startMs)) return;
-    player.ontimeupdate = null;
+    playbackRangeEnd.current = endMs !== null && endMs !== undefined && endMs > startMs ? endMs / 1000 : null;
     player.currentTime = Math.max(0, startMs / 1000);
-    if (endMs !== null && endMs !== undefined && endMs > startMs) {
-      player.ontimeupdate = () => {
-        if (player.currentTime >= endMs / 1000) {
-          player.pause();
-          player.ontimeupdate = null;
-        }
-      };
-    }
     void player.play().catch(() => message.error('音频无法播放；请检查源文件是否可访问或格式是否受浏览器支持。'));
   };
 
-  const currentSegments = segments.filter((segment) =>
-    segment.start_ms !== null && segment.end_ms !== null &&
-    segment.start_ms <= playbackTime * 1000 && segment.end_ms > playbackTime * 1000,
-  );
+  const currentSegments = playbackSegments;
   const activeTurns = turns.filter((turn) => turn.start_ms <= playbackTime * 1000 && turn.end_ms > playbackTime * 1000);
   const diarizationModelOptions = diarizationModels.map((item: ModelAvailableResource) => ({
     value: item.id, label: `${item.display_name} · ${item.revision.model_name} · v${item.revision.version} · ${(item.revision.capabilities ?? []).join('、') || '能力未声明'}`,
@@ -338,7 +624,8 @@ export function RunWorkbenchPage() {
   const selectedProfile = selectedModel?.profiles.find((item) => item.id === selectedProfileId);
   const speakerOptions = [
     { value: 'ALL', label: '全部归属' },
-    ...speakers.map((item: AsrSpeaker) => ({ value: String(item.id), label: item.display_name })),
+    ...(statisticsQuery.data?.speakers ?? []).map((item) => ({ value: `native:${item.native_speaker_id}`, label: `原生 ${item.native_speaker_id}` })),
+    ...speakers.map((item: AsrSpeaker) => ({ value: `linked:${item.id}`, label: `关联 ${item.display_name}` })),
     { value: 'UNKNOWN', label: '未知归属' }, { value: 'MIXED', label: '混合 / 重叠' },
   ];
   const metadata = metadataQuery.data;
@@ -349,17 +636,28 @@ export function RunWorkbenchPage() {
   } as Record<string, string>)[key] ?? key, value }));
 
   if (!validId) return <AsrFrame title="单模型音频工作台"><Empty description="运行编号无效" /></AsrFrame>;
-  if (workbenchQuery.isPending) return <AsrFrame title="单模型音频工作台"><LoadingState /></AsrFrame>;
-  if (workbenchQuery.isError) return <AsrFrame title="单模型音频工作台"><ErrorState error={workbenchQuery.error} onRetry={workbenchQuery.refetch} /></AsrFrame>;
+  if (workbenchQuery.isPending && !workbench) return <AsrFrame title="单模型音频工作台"><LoadingState /></AsrFrame>;
+  if (workbenchQuery.isError && !workbench) return <AsrFrame title="单模型音频工作台"><ErrorState error={workbenchQuery.error} onRetry={workbenchQuery.refetch} /></AsrFrame>;
   if (!workbench || !run) return <AsrFrame title="单模型音频工作台"><Empty description="转写运行不存在" /></AsrFrame>;
 
   const sameAudioRuns = (jobQuery.data?.runs ?? []).filter((item) => item.audio_id === run.audio_id && item.audio_version_id === run.audio_version_id);
+  const workbenchMatchesRoute = workbench.run.id === runId;
   const relatedComparison = (jobQuery.data?.comparisons ?? []).find((item) => item.audio_id === run.audio_id);
+  const jobSnapshot = jobQuery.data?.config_snapshot as Parameters<typeof modelSwitchOption>[1];
   const activeProcessing = processing && ACTIVE_PROCESSING.has(processing.status);
+  const displayMode = effectiveViewMode;
   const analysisStatus = metadata?.analysis_status ?? 'NOT_STARTED';
   const peakChannels = (peaksQuery.data?.channels ?? null) as JsonValue;
   const displayedTranscript = run.transcript ?? '';
-  const playbackText = highlightedTranscript(displayedTranscript, currentSegments);
+  const searchMatchCount = countSearchMatches(displayedTranscript, search);
+  const playbackText = highlightedTranscript(displayedTranscript, currentSegments, search, searchMatch);
+  const moveSearchMatch = (direction: number) => {
+    if (!searchMatchCount) return;
+    const next = (searchMatch + direction + searchMatchCount) % searchMatchCount;
+    setSearchMatch(next);
+    requestAnimationFrame(() => document.querySelectorAll<HTMLElement>('[data-asr-search-hit]')[next]
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+  };
 
   /** 将当前选择的说话人连接修订和参数版本固定到独立阶段。 */
   const startDiarization = () => {
@@ -377,7 +675,10 @@ export function RunWorkbenchPage() {
     return <Space direction="vertical" size={4}>
       {segment.assignments.map((assignment) => {
         const speaker = speakers.find((item) => item.id === assignment.speaker_id);
-        const selected = assignment.speaker_id;
+        const selected = Object.prototype.hasOwnProperty.call(assignmentDrafts, assignment.id)
+          ? assignmentDrafts[assignment.id] : assignment.speaker_id;
+        const dirty = Object.prototype.hasOwnProperty.call(assignmentDrafts, assignment.id)
+          && assignmentDrafts[assignment.id] !== assignment.speaker_id;
         return <Space key={assignment.id} wrap size={6}>
           <Tag color={assignment.source === 'MANUAL' ? 'green' : assignment.status === 'UNKNOWN' || assignment.status === 'UNALIGNED' ? 'default' : 'blue'}>
             {speaker?.display_name ?? (selected === null ? '未知' : `说话人 ${selected}`)} · {assignment.status}
@@ -388,14 +689,19 @@ export function RunWorkbenchPage() {
             style={{ minWidth: 135 }}
             value={selected}
             options={[{ value: null, label: '未知 / 无法确认' }, ...speakers.map((item) => ({ value: item.id, label: item.display_name }))]}
-            onChange={(speakerId) => reviewMutation.mutate({
-              assignmentId: assignment.id, expectedVersion: assignment.review_version, speakerId,
+            onChange={(speakerId) => setAssignmentDrafts((current) => {
+              const next = { ...current };
+              if (speakerId === assignment.speaker_id) delete next[assignment.id];
+              else next[assignment.id] = speakerId;
+              return next;
             })}
             loading={reviewMutation.isPending}
           />
-          <Button size="small" icon={<CheckOutlined />} onClick={() => reviewMutation.mutate({
-            assignmentId: assignment.id, expectedVersion: assignment.review_version, speakerId: selected,
-          })}>确认</Button>
+          <Button size="small" icon={<CheckOutlined />}
+            disabled={!dirty && assignment.review_status === 'CONFIRMED'} loading={reviewMutation.isPending}
+            onClick={() => reviewMutation.mutate({
+              assignmentId: assignment.id, expectedVersion: assignment.review_version, speakerId: selected,
+            })}>{dirty ? '保存归属' : assignment.review_status === 'CONFIRMED' ? '已确认' : '确认归属'}</Button>
         </Space>;
       })}
     </Space>;
@@ -404,12 +710,37 @@ export function RunWorkbenchPage() {
   /** 汇总卡在窄屏收起，防止挤压转写与片段区域。 */
   const executionSummary = <div className="asr-execution-summary-content">
     <Space direction="vertical" style={{ display: 'flex' }} size="small">
-      <div><Text type="secondary">转写</Text><div><Tag color={run.status === 'SUCCEEDED' ? 'green' : 'blue'}>{run.status}</Tag></div></div>
+      <div><Text type="secondary">转写</Text><div><Tag color={run.status === 'SUCCEEDED' ? 'green' : run.status === 'FAILED' ? 'red' : 'blue'}>{asrStatusLabel(run.status)}</Tag></div></div>
       <div><Text type="secondary">说话人分析</Text><div><Tag color={processing?.status === 'FAILED' ? 'red' : processing?.status === 'SUCCEEDED' ? 'green' : 'default'}>{processingLabel(processing)}</Tag></div></div>
       <div><Text type="secondary">模型 / 连接版本</Text><div>{workbench.model?.model_id ?? '未报告'} · v{workbench.model?.connection_version ?? '未报告'}</div></div>
       <div><Text type="secondary">请求参数版本</Text><div>{run.parameter_set_id ? `参数方案 ${run.parameter_set_id}` : '逐次请求快照'}</div></div>
-      <div><Text type="secondary">运行耗时</Text><div>{run.duration_ms === null ? '未报告' : `${run.duration_ms} ms`}</div></div>
-      <div><Text type="secondary">尝试次数</Text><div>{processing?.attempts ?? 0}</div></div>
+      <div><Text type="secondary">ASR 请求耗时</Text><div>{run.duration_ms === null ? '未报告' : `${run.duration_ms} ms`}</div></div>
+      <div><Text type="secondary">转写尝试次数</Text><div>未报告</div></div>
+      <div><Text type="secondary">说话人尝试次数</Text><div>{processing?.attempts ?? '未报告'}</div></div>
+      <div><Text type="secondary">LLM 内容评审</Text><div>{reviewSummaryQuery.data?.items[0]
+        ? `${reviewSummaryQuery.data.items[0].status} · 尝试 ${reviewSummaryQuery.data.items[0].attempts} · ${reviewSummaryQuery.data.items[0].completed_chunks}/${reviewSummaryQuery.data.items[0].total_chunks} 块`
+        : reviewSummaryQuery.isError ? '读取失败' : '尚未执行'}</div></div>
+      <div><Text type="secondary">原生标签统计（完整结果）</Text><div>
+        {statisticsQuery.isError ? '读取失败' : statisticsQuery.data
+          ? `${statisticsQuery.data.character_count} 字符 · ${statisticsQuery.data.segment_count} 片段 · ${statisticsQuery.data.speaker_count} 人 · 未知 ${statisticsQuery.data.unknown_segment_count} 片段`
+          : '加载中'}
+      </div></div>
+      {statisticsQuery.data?.speakers.map((item) => <div key={item.native_speaker_id}>
+        原生 {item.native_speaker_id}：{item.timed_intervals ? `${(item.speech_duration_ms / 1000).toFixed(1)} 秒` : '无可靠时间'}
+        {item.share !== null ? ` · ${(item.share * 100).toFixed(1)}%` : ''}
+      </div>)}
+      <Text type="secondary">时长按各原生标签的区间并集计算，重叠发言分别计入；标签仅在本次运行内有效。</Text>
+      {resultId && <div><Text type="secondary">独立说话人结果（按该结果全量区间）</Text>
+        {speakers.map((speaker: AsrSpeaker) => {
+          const total = speakers.reduce((sum, item) => sum + item.speech_duration_ms, 0);
+          return <div key={speaker.id}>{speaker.display_name}：{(speaker.speech_duration_ms / 1000).toFixed(1)} 秒
+            {total > 0 ? ` · ${(speaker.speech_duration_ms / total * 100).toFixed(1)}%` : ' · 占比未知'}</div>;
+        })}
+      </div>}
+      {statisticsQuery.data?.fusion_summary && <div><Text type="secondary">关联版本 v{statisticsQuery.data.fusion_summary.fusion_version}</Text><div>
+        人工确认 {statisticsQuery.data.fusion_summary.manual_confirmed} · 未确认自动关联 {statisticsQuery.data.fusion_summary.automatic} ·
+        原始状态未知 {statisticsQuery.data.fusion_summary.unknown} · 混合 {statisticsQuery.data.fusion_summary.mixed} · 重叠 {statisticsQuery.data.fusion_summary.overlap}
+      </div><Text type="secondary">按关联记录计数；人工确认不推断发言时长。</Text></div>}
       {run.error_message && <Alert type="warning" showIcon message="转写阶段提示" description={run.error_message} />}
       {processing?.error_message && <Alert type="error" showIcon message="说话人阶段失败" description={processing.error_message} />}
       {processing?.status === 'FAILED' && <Button icon={<ReloadOutlined />} loading={retryMutation.isPending} onClick={() => retryMutation.mutate()}>单独重试说话人阶段</Button>}
@@ -417,29 +748,52 @@ export function RunWorkbenchPage() {
   </div>;
 
   return (
-    <AsrFrame title={audio?.name ? `${audio.name} · ${workbench.model?.name ?? '模型运行'}` : '单模型音频工作台'}>
+    <AsrFrame title={audio?.name ?? '语音识别工作台'} projectId={run.project_id}>
       <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
+        {!workbenchMatchesRoute && <Alert type="info" showIcon message="正在切换到所选模型；原音频播放器保持当前播放位置。" />}
+        {workbenchQuery.isError && <Alert type="warning" showIcon message="新模型结果读取失败；当前仍显示上一个模型的音频和结果。" action={<Button size="small" onClick={() => void workbenchQuery.refetch()}>重试</Button>} />}
         <Space wrap>
           <Tag color="blue">运行 #{run.id}</Tag>
           <Tag>音频版本 {audio?.content_version ? `v${audio.content_version}` : '不可用'}</Tag>
-          <Tag>{workbench.model?.model_id ?? '模型未报告'}</Tag>
-          <Text type="secondary">原始标签与人工确认分开保留；说话人名称只在本次结果内有效。</Text>
+          <Tag color={run.status === 'SUCCEEDED' ? 'green' : run.status === 'FAILED' ? 'red' : 'blue'}>{asrStatusLabel(run.status)}</Tag>
+          <Text type="secondary">{workbench.model?.name ?? workbench.model?.model_id ?? '模型未报告'} · 运行 #{run.id}</Text>
         </Space>
-        <Space wrap>
+        <Space wrap className="asr-run-actions">
+          <div className="asr-run-model-select">
           <Text>切换同音频模型</Text>
           <Select
             aria-label="切换当前转写模型"
             value={run.id}
             style={{ minWidth: 290 }}
-            options={sameAudioRuns.map((item) => ({ value: item.id, label: `${item.role} · 运行 ${item.id} · ${item.status}` }))}
-            onChange={(nextId) => navigate(`/console/asr/runs/${nextId}`)}
+            options={sameAudioRuns.map((item) => modelSwitchOption(item, jobSnapshot, asrStatusLabel))}
+            onChange={(nextId) => {
+              if (hasDrafts && !confirmDraftDiscard()) return;
+              setAssignmentDrafts({});
+              setRenameDrafts(clearSpeakerDrafts());
+              navigate(`/console/asr/runs/${nextId}${listenMode ? '/listen' : ''}`);
+            }}
           />
+          </div>
+          <Link to={`/console/asr/runs/${run.id}${listenMode ? '' : '/listen'}`}><Button>{listenMode ? '完整工作台' : '收听'}</Button></Link>
+          <Link to={`/console/asr/jobs/${run.job_id}`}><Button>返回批次</Button></Link>
           {relatedComparison && <Link to={`/console/asr/comparisons/${relatedComparison.id}`}><Button icon={<LinkOutlined />}>三方结果对比</Button></Link>}
-          <Button icon={<DownloadOutlined />} loading={exportMutation.isPending} onClick={() => exportMutation.mutate('json')}>导出 JSON</Button>
-          <Button icon={<DownloadOutlined />} loading={exportMutation.isPending} onClick={() => exportMutation.mutate('txt')}>导出 TXT</Button>
+          <Button icon={<ReloadOutlined />} onClick={refreshWorkbench}>刷新</Button>
+          <Button disabled={!run.transcript} onClick={() => {
+            // 复制由明确用户手势触发；权限或非安全上下文失败时显示提示。
+            if (!navigator.clipboard) { message.error('无法访问剪贴板，请手动选择文本复制。'); return; }
+            void navigator.clipboard.writeText(run.transcript ?? '').then(() => message.success('全文已复制'))
+              .catch(() => message.error('无法访问剪贴板，请手动选择文本复制。'));
+          }}>复制全文</Button>
+          <Dropdown menu={{ items: [
+            { key: 'txt', label: '转写文本（TXT）' },
+            { key: 'json', label: '运行数据（JSON）' },
+            { key: 'speaker', label: '说话人分段（JSON）', disabled: !resultId },
+          ], onClick: ({ key }) => key === 'speaker' ? speakerJsonExportMutation.mutate() : exportMutation.mutate(key as 'json' | 'txt') }}>
+            <Button icon={<DownloadOutlined />} loading={exportMutation.isPending || speakerJsonExportMutation.isPending}>导出 <DownOutlined /></Button>
+          </Dropdown>
         </Space>
         {!audio?.version_available && <Alert type="warning" showIcon message="历史音频版本不可用" description="本次运行未绑定可信的固定音频版本，因此不自动切换到当前 URL，也不能启动说话人关联。" />}
-        <Card size="small" title={<Space><SoundOutlined />统一音频播放器</Space>}>
+        <Card className="asr-sticky-player" size="small" title={<Space><SoundOutlined />音频播放</Space>}>
           {audio ? <AudioWorkbenchPlayer
             src={audio.media_url}
             durationSeconds={audio.duration_seconds}
@@ -448,22 +802,40 @@ export function RunWorkbenchPage() {
             onAudioInfo={() => setAudioInfoOpen(true)}
             onRequestParameters={() => setRequestOpen(true)}
             onTimeChange={onTimeChange}
+            onClearPlaybackRange={clearPlaybackRange}
           /> : <Empty description="音频原文件版本不可用，但转写全文仍可查看" />}
         </Card>
-        <div className="asr-workbench-layout">
+        <div className={`asr-workbench-layout${resultId ? ' has-speakers' : ''}`}>
           <Card size="small" title="转写文本">
             <Space direction="vertical" style={{ display: 'flex' }} size="small">
               <Space wrap>
-                <Select aria-label="转写展示模式" value={viewMode} style={{ width: 140 }} onChange={setViewMode} options={[
-                  { value: 'FULL', label: '全文' }, { value: 'DIALOGUE', label: '对话片段' },
+                <Select aria-label="转写展示模式" value={displayMode} style={{ width: 140 }} onChange={setViewMode} options={[
+                  { value: 'FULL', label: '全文' }, { value: 'DIALOGUE', label: nativeSegmentTotal ? '模型片段' : '按句查看' },
                 ]} />
-                <Select aria-label="说话人筛选" value={speakerFilter} style={{ width: 180 }} onChange={(value) => { setSpeakerFilter(value); setSegmentPage(1); }} options={speakerOptions} />
-                <Input.Search allowClear placeholder="搜索转写片段" value={search} onChange={(event) => { setSearch(event.target.value); setSegmentPage(1); }} style={{ width: 220 }} />
-                <Text type="secondary">{segmentsQuery.data?.total ?? run.segment_count} 个片段</Text>
+                {displayMode === 'DIALOGUE' && <Select aria-label="说话人筛选" value={speakerFilter} disabled={!nativeSegmentTotal} style={{ width: 180 }} onChange={(value) => { setSpeakerFilter(value); setSegmentPage(1); }} options={speakerOptions} />}
+                <Input.Search allowClear placeholder={displayMode === 'FULL' ? '查找全文' : '筛选转写片段'} value={search}
+                  onChange={(event) => { setSearch(event.target.value); setSegmentPage(1); setSearchMatch(0); }} style={{ width: 220 }} />
+                <Text type="secondary">{nativeSegmentTotal ? `${nativeSegmentTotal} 个模型片段` : `${displaySentences.length} 个展示分句`}</Text>
               </Space>
-              {viewMode === 'FULL' ? <Paragraph className="asr-workbench-transcript">{playbackText}</Paragraph> : (
+              {displayMode === 'FULL' && search.trim() && <Space wrap>
+                <Button size="small" disabled={!searchMatchCount} onClick={() => moveSearchMatch(-1)}>上一个匹配</Button>
+                <Button size="small" disabled={!searchMatchCount} onClick={() => moveSearchMatch(1)}>下一个匹配</Button>
+                <Text type="secondary">{searchMatchCount ? `当前第 ${searchMatch % searchMatchCount + 1} / ${searchMatchCount} 处` : '全文没有匹配内容'}</Text>
+              </Space>}
+              {Object.keys(assignmentDrafts).length > 0 && <Alert type="warning" showIcon
+                message={`有 ${Object.keys(assignmentDrafts).length} 项说话人归属尚未保存；草稿会保留在当前运行中。`} />}
+              {displayMode === 'FULL' ? <>
+                <Paragraph className="asr-workbench-transcript">{playbackText}</Paragraph>
+                {playbackTime > 0 && playbackSegmentsQuery.isPending && <Text type="secondary">正在定位当前播放位置…</Text>}
+                {playbackTime > 0 && playbackSegmentsQuery.isError && <Text type="danger">播放位置定位失败；全文仍可阅读和搜索。</Text>}
+                {playbackTime > 0 && timedSegmentCount === 0 && <Text type="secondary">此运行没有可靠时间戳，无法按播放位置高亮。</Text>}
+                {playbackTime > 0 && timedSegmentCount !== undefined && timedSegmentCount > 0
+                  && playbackSegmentsQuery.data && !playbackSegments.length && <Text type="secondary">
+                  当前播放时间没有对应的转写片段。
+                </Text>}
+              </> : (
                 <div className="asr-workbench-list">
-                  {segmentsQuery.isPending ? <Spin /> : segments.length ? segments.map((segment) => {
+                  {segmentsQuery.isError ? <ErrorState error={segmentsQuery.error} onRetry={segmentsQuery.refetch} /> : segmentsQuery.isPending ? <Spin /> : nativeSegmentTotal ? segments.length ? segments.map((segment) => {
                     const active = currentSegments.some((item) => item.id === segment.id);
                     return <article key={segment.id} className={`asr-workbench-segment ${active ? 'is-active' : ''}`}>
                       <Space wrap>
@@ -476,47 +848,64 @@ export function RunWorkbenchPage() {
                       <Paragraph className="asr-transcript-cell">{segment.text || '（空文本片段）'}</Paragraph>
                       {renderAssignment(segment)}
                     </article>;
-                  }) : <Empty description="没有可靠时间戳的转写仍显示在全文中；当前筛选没有片段。" />}
+                  }) : <Empty description="当前筛选下没有模型片段。" /> : displaySentencePage.length ? <>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="当前 ASR 只返回全文；此处按句末标点拆分，便于阅读，不代表模型原生片段，也不含时间戳或说话人标签。时间和说话人见右侧独立分段结果。"
+                    />
+                    {displaySentencePage.map((sentence, index) => (
+                      <article key={`display-sentence-${(segmentPage - 1) * 100 + index}`} className="asr-workbench-segment">
+                        <Space wrap>
+                          <Tag color="blue">展示分句 {(segmentPage - 1) * 100 + index + 1}</Tag>
+                          <Text type="secondary">按原文顺序</Text>
+                        </Space>
+                        <Paragraph className="asr-transcript-cell">{sentence}</Paragraph>
+                      </article>
+                    ))}
+                  </> : <Empty description="没有匹配的分句。" />}
                 </div>
               )}
-              {viewMode === 'DIALOGUE' && <Pagination size="small" current={segmentPage} pageSize={segmentsQuery.data?.page_size ?? 100} total={segmentsQuery.data?.total ?? 0} onChange={setSegmentPage} showSizeChanger={false} />}
+              {displayMode === 'DIALOGUE' && <Pagination size="small" current={segmentPage} pageSize={nativeSegmentTotal ? (segmentsQuery.data?.page_size ?? 100) : 100} total={nativeSegmentTotal ? (segmentsQuery.data?.total ?? nativeSegmentTotal) : displaySentences.length} onChange={setSegmentPage} showSizeChanger={false} />}
               {!run.transcript && <Alert type="info" showIcon message="该运行没有返回完整转写文本" />}
-              {viewMode === 'FULL' && !currentSegments.length && playbackTime > 0 && <Text type="secondary">当前播放时间没有对应的可靠转写片段。</Text>}
             </Space>
           </Card>
 
-          <Card size="small" title={<Space><AudioOutlined />说话人片段</Space>}>
-            {!resultId ? <Empty description="尚无说话人结果。选择已配置的独立分段接口后可启动后台分析。" /> : (
+          {resultId && <Card size="small" title={<Space><AudioOutlined />说话人片段</Space>}>
+            {speakersQuery.isError ? <ErrorState error={speakersQuery.error} onRetry={speakersQuery.refetch} /> : speakersQuery.isPending ? <Spin /> : (
               <Space direction="vertical" style={{ display: 'flex' }} size="small">
                 <Space wrap>
-                  <Tag color="blue">{printable(speakersQuery.data?.summary.speaker_count ?? speakers.length)} 人</Tag>
-                  <Tag>{printable(speakersQuery.data?.summary.turn_count ?? turnsQuery.data?.total ?? 0)} 段</Tag>
-                  <Tag>未知 {printable(speakersQuery.data?.summary.unknown_turn_count ?? 0)}</Tag>
-                  <Tag color="orange">重叠 {printable(speakersQuery.data?.summary.overlap_turn_count ?? 0)}</Tag>
+                  <Tag color="blue">{speakersQuery.data?.summary.speaker_count ?? speakers.length} 人</Tag>
+                  <Tag>{speakersQuery.data?.summary.turn_count ?? (turnsQuery.isError ? '读取失败' : turnsQuery.data?.total ?? '加载中')} 段</Tag>
+                  <Tag>未知 {speakersQuery.data?.summary.unknown_turn_count ?? '未报告'}</Tag>
+                  <Tag color="orange">重叠 {speakersQuery.data?.summary.overlap_turn_count ?? '未报告'}</Tag>
                 </Space>
                 <Text type="secondary">发言时长按每人区间并集统计；不同人同时发言时总和可超过录音时长。</Text>
                 <Space direction="vertical" style={{ display: 'flex' }} size={4}>
                   {speakers.map((speaker: AsrSpeaker) => <div className="asr-speaker-summary" key={speaker.id}>
                     <div><Text strong>{speaker.display_name}</Text> <Text type="secondary">原始标签 {speaker.source_label}{speaker.channel ? ` · 声道 ${speaker.channel}` : ''}</Text></div>
                     <Text type="secondary">{speaker.turn_count} 段 · {(speaker.speech_duration_ms / 1000).toFixed(1)} 秒</Text>
-                    <Space.Compact block>
-                      <Input
-                        aria-label={`${speaker.display_name}新显示名`}
-                        value={renameDrafts[speaker.id] ?? speaker.display_name}
-                        onChange={(event) => setRenameDrafts((old) => ({ ...old, [speaker.id]: event.target.value }))}
-                        maxLength={120}
-                      />
-                      <Button loading={renameMutation.isPending} onClick={() => renameMutation.mutate({
-                        speakerId: speaker.id, displayName: (renameDrafts[speaker.id] ?? speaker.display_name).trim(),
-                      })}>改名</Button>
-                    </Space.Compact>
                   </div>)}
                 </Space>
+                <Button size="small" onClick={() => setSpeakerEditingOpen((open) => !open)}>
+                  {speakerEditingOpen ? '收起名称编辑' : '编辑说话人名称'}
+                </Button>
+                {speakerEditingOpen && <Space direction="vertical" style={{ display: 'flex' }}>
+                  {speakers.map((speaker: AsrSpeaker) => <Space.Compact block key={`rename-${speaker.id}`}>
+                    <Input aria-label={`${speaker.display_name}新显示名`}
+                      value={renameDrafts[speaker.id] ?? speaker.display_name} maxLength={120}
+                      onChange={(event) => setRenameDrafts((old) =>
+                        updateSpeakerNameDraft(old, speaker.id, event.target.value, speaker.display_name))} />
+                    <Button loading={renameMutation.isPending} onClick={() => renameMutation.mutate({
+                      speakerId: speaker.id, displayName: (renameDrafts[speaker.id] ?? speaker.display_name).trim(),
+                    })}>保存名称</Button>
+                  </Space.Compact>)}
+                </Space>}
                 <Select aria-label="说话人片段筛选" value={turnFilter} onChange={(value) => { setTurnFilter(value); setTurnPage(1); }} options={[
                   { value: 'ALL', label: '全部说话人区间' }, ...speakers.map((item: AsrSpeaker) => ({ value: String(item.id), label: item.display_name })),
                   { value: 'UNKNOWN', label: '未知归属' }, { value: 'OVERLAP', label: '重叠发言' },
                 ]} />
-                {turnsQuery.isPending ? <Spin /> : turns.length ? <div className="asr-workbench-list">
+                {turnsQuery.isError ? <ErrorState error={turnsQuery.error} onRetry={turnsQuery.refetch} /> : turnsQuery.isPending ? <Spin /> : turns.length ? <div className="asr-workbench-list">
                   {turns.map((turn: AsrSpeakerTurn) => {
                     const active = activeTurns.some((item) => item.id === turn.id);
                     return <button type="button" key={turn.stable_id} className={`asr-turn-row ${active ? 'is-active' : ''}`} onClick={() => seekTo(turn.start_ms, turn.end_ms)}>
@@ -534,21 +923,30 @@ export function RunWorkbenchPage() {
                 </div> : <Empty description="当前筛选下无说话人区间" />}
               </Space>
             )}
-          </Card>
-
-          <div className="asr-execution-summary asr-execution-summary-desktop">
-            <Card size="small" title="执行概况">{executionSummary}</Card>
-          </div>
-          <div className="asr-execution-summary asr-execution-summary-compact">
-            <Collapse items={[{ key: 'execution', label: '执行概况', children: executionSummary }]} />
-          </div>
+          </Card>}
         </div>
 
-        <Card size="small" title="独立说话人处理阶段">
+        <Collapse items={[{ key: 'execution', label: '运行详情', children: executionSummary }]} />
+
+        {!listenMode && <Collapse items={[{ key: 'artifacts', label: '评测文件与来源详情', children: <Card size="small" title="评测资料">
           <Space direction="vertical" style={{ display: 'flex' }}>
+            <Text type="secondary">快照和 Markdown 根据当前保存的规范化结果重新生成，不代表当时 Provider 的原始响应。</Text>
+            {artifactsQuery.isError && <Text type="danger">产物列表读取失败。</Text>}
+            {artifactsQuery.data && !artifactsQuery.data.raw_response_available && <Text type="secondary">当时的 ASR 响应未留存。</Text>}
+            <Button disabled={run.status !== 'SUCCEEDED'} loading={artifactMutation.isPending} onClick={() => artifactMutation.mutate()}>生成评测快照与 Markdown</Button>
+            {(artifactsQuery.data?.items ?? []).map((item) => <Space key={item.id} wrap>
+              <Text>{item.kind === 'MARKDOWN' ? 'Markdown' : item.kind === 'SNAPSHOT_JSON' ? '规范化 JSON' : item.kind} #{item.id}</Text>
+              <Tag>{item.status}</Tag><Text type="secondary">{item.schema_version} · {item.byte_size} 字节 · SHA-256 {item.sha256}</Text>
+              {item.redaction_version && <Text type="secondary">响应脱敏策略 {item.redaction_version} · {item.redacted ? '内容已脱敏' : '未发生替换'}</Text>}
+              <Button size="small" disabled={item.status !== 'READY'} loading={artifactDownload.isPending} onClick={() => artifactDownload.mutate(item)}>下载</Button>
+            </Space>)}
+          </Space>
+        </Card> }]} />}
+        {!listenMode && <Collapse items={[{ key: 'content-review', label: '内容评审', children: <ContentReviewPanel kind="runs" resourceId={run.id} projectId={run.project_id} /> }]} />}
+        {!listenMode && <Collapse
+          defaultActiveKey={resultId ? ['speaker-details'] : []}
+          items={[{ key: 'speaker-details', label: resultId ? '说话人分析与证据' : '添加说话人分析', children: <Space direction="vertical" style={{ display: 'flex' }}>
             <Alert type="info" showIcon message="该阶段按音频版本去重，失败和重试均不重新提交三家 ASR。" description="如果转写没有可靠时间戳，只显示说话人时间轨并标注未对齐，不按字数或标点分配说话人。" />
-            <Alert type="info" showIcon message="原生说话人标签与独立分段模型是不同能力来源"
-              description="原生标签来自 ASR 响应；独立分段需要项目已授权的 DIARIZATION 模型、固定修订和参数方案。没有分段模型时，历史转写与原生标签仍可查看。" />
             {diarizationModelsQuery.isError && <Alert type="error" showIcon message="说话人模型清单读取失败，暂时不能启动独立分析" action={<Button size="small" onClick={() => void diarizationModelsQuery.refetch()}>重试</Button>} />}
             {!diarizationModelsQuery.isPending && !diarizationModelsQuery.isError && diarizationModels.length === 0 && <Alert type="warning" showIcon
               message="当前项目没有已授权的独立说话人模型"
@@ -594,8 +992,7 @@ export function RunWorkbenchPage() {
             </div>}
             {!audio?.version_available && <Text type="secondary">当前历史运行缺少固定音频版本，不能将其错误关联到最新 URL。</Text>}
             {activeProcessing && <Space><Spin size="small" /><Text>后台阶段独立运行中；本页面按其自身状态恢复查询。</Text></Space>}
-          </Space>
-        </Card>
+          </Space> }]} />}
       </Space>
 
       <Drawer
@@ -653,4 +1050,14 @@ export function RunWorkbenchPage() {
       </Drawer>
     </AsrFrame>
   );
+}
+
+/** 打开完整运行工作台；数据加载及错误态由工作台统一处理。 */
+export function RunWorkbenchPage() {
+  return <RunWorkbench listenMode={false} />;
+}
+
+/** 打开同一运行的收听视图，复用播放器、片段同步和资源授权。 */
+export function RunListenPage() {
+  return <RunWorkbench listenMode />;
 }

@@ -5,18 +5,22 @@
 
 from app.features.asr_evaluation.models.asr_models import (
     AsrAudio, AsrAudioVersion, AsrComparison, AsrConnection, AsrDiffBlock, AsrDiarizationResult,
-    AsrExperiment, AsrFusionVersion, AsrMediaAnalysis, AsrProcessingRun, AsrProcessingWorkItem,
+    AsrContentReviewChunk, AsrContentReviewJob, AsrEvaluationArtifact, AsrExperiment, AsrFusionVersion, AsrMediaAnalysis, AsrProcessingRun, AsrProcessingWorkItem,
     AsrReferenceSample, AsrSpeaker, AsrSpeakerAssignment, AsrSpeakerNameAudit, AsrSpeakerReviewAudit,
     AsrSpeakerTurn, AsrTranscriptSegment,
     AsrJob, AsrModelRun, AsrParameterSet, AsrReviewAudit, AsrSchedule,
     AsrSuggestion, AsrSuggestionJob, AsrWorkItem, AsrWorkerHeartbeat,
 )
+from app.features.asr_evaluation.models.funasr_models import (
+    AsrApiBinding, AsrGroundTruthVersion, AsrTuningItem, AsrTuningRound, AsrTuningSession,
+)
 
 __all__ = [
     "AsrAudio", "AsrAudioVersion", "AsrComparison", "AsrConnection", "AsrDiffBlock", "AsrDiarizationResult",
-    "AsrExperiment", "AsrFusionVersion", "AsrMediaAnalysis", "AsrProcessingRun", "AsrProcessingWorkItem",
+    "AsrContentReviewChunk", "AsrContentReviewJob", "AsrEvaluationArtifact", "AsrExperiment", "AsrFusionVersion", "AsrMediaAnalysis", "AsrProcessingRun", "AsrProcessingWorkItem",
     "AsrReferenceSample", "AsrSpeaker", "AsrSpeakerAssignment", "AsrSpeakerNameAudit",
     "AsrSpeakerReviewAudit", "AsrSpeakerTurn", "AsrTranscriptSegment",
     "AsrJob", "AsrModelRun", "AsrParameterSet", "AsrReviewAudit", "AsrSchedule",
     "AsrSuggestion", "AsrSuggestionJob", "AsrWorkItem", "AsrWorkerHeartbeat",
+    "AsrApiBinding", "AsrGroundTruthVersion", "AsrTuningSession", "AsrTuningRound", "AsrTuningItem",
 ]

@@ -10,6 +10,7 @@ from app.execution.http import executor as http_executor
 from app.execution.http.contracts import ApiRequestResult
 from app.features.asr_evaluation.providers import audio_transcriptions
 from app.features.asr_evaluation.providers.generic_json import AsrProviderError, GenericJsonProvider
+from app.features.asr_evaluation.providers.response_redaction import execution_secrets, redact_response
 
 
 def execution(**updates):
@@ -23,6 +24,38 @@ def execution(**updates):
                              "start_pointer": "/start", "end_pointer": "/end", "speaker_pointer": "/speaker"},
         "timeout_seconds": 3, "max_response_bytes": 2048, **updates,
     }
+
+
+def test_response_redaction_preserves_long_nested_transcript():
+    """脱敏不截断长文本或数组，同时清除敏感字段和签名地址。"""
+    transcript = "语音" * 1600
+    result, changed = redact_response({"nested": [{"text": transcript}, {"token": "secret"}],
+        "link": "https://example.invalid/audio?signature=private", "other": "key test-key"}, "test-key")
+    assert changed is True
+    assert result["nested"][0]["text"] == transcript
+    assert result["nested"][1]["token"] == "[已脱敏]"
+    assert "private" not in result["link"]
+    assert "test-key" not in result["other"]
+    secrets = execution_secrets({"parameters": {"access_token": "nested-secret"}, "secret_header": "Authorization"})
+    assert secrets == ["nested-secret"]
+
+
+def test_async_submission_and_final_preserve_distinct_complete_responses():
+    """异步回执与最终轮询响应分别捕获；指针提取不丢失外层字段。"""
+    provider = GenericJsonProvider()
+    config = execution(async_config={"task_id_pointer": "/id", "status_pointer": "/status",
+        "result_pointer": "/result", "success_values": ["done"]})
+    receipt = ApiRequestResult()
+    receipt.status_code = 200
+    receipt.response_body = json.dumps({"id": "remote", "metadata": "receipt"})
+    assert provider._parse_response(receipt, config, submitting=True)["response_kind"] == "RESPONSE_SUBMISSION"
+    final = ApiRequestResult()
+    final.status_code = 200
+    final.response_body = json.dumps({"status": "done", "result": {"text": "甲" * 3000}, "extra": "完整外层"})
+    response = provider._parse_response(final, config, submitting=False)
+    assert response["response_kind"] == "RESPONSE_POLL_FINAL"
+    assert response["response_capture"]["body"]["extra"] == "完整外层"
+    assert len(response["transcript"]) == 3000
 
 
 def install_audio_source(monkeypatch, response, captured):

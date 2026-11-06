@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,12 +40,23 @@ def main() -> int:
         print("DATABASE_URL must include a PostgreSQL host, user, and password.", file=sys.stderr)
         return 2
 
+    container_database_url = database_url
+    if parsed.hostname in {"127.0.0.1", "localhost"}:
+        user_info = parsed.netloc.rsplit("@", 1)[0] + "@"
+        authority = f"{user_info}host.docker.internal"
+        if parsed.port is not None:
+            authority += f":{parsed.port}"
+        container_database_url = urlunsplit((
+            parsed.scheme, authority, parsed.path, parsed.query, parsed.fragment,
+        ))
+
     env = os.environ.copy()
     env.update(
         {
             "POSTGRES_USER": unquote(parsed.username),
             "POSTGRES_PASSWORD": unquote(parsed.password),
             "POSTGRES_DB": unquote(parsed.path.lstrip("/")),
+            "DATABASE_URL": container_database_url,
         }
     )
     command = ["docker", "compose", "-f", str(ROOT / "compose.yaml"), *sys.argv[1:]]

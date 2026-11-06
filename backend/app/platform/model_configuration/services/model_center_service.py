@@ -28,7 +28,10 @@ _SUPPORTED_ADAPTERS = {
     "TEXT_GENERATION": {"openai-compatible-chat": "OpenAI 兼容聊天"},
     "ASR": {"generic-json-http": "通用 JSON HTTP 转写",
             "siliconflow-audio-transcriptions": "硅基流动音频文件转写"},
-    "DIARIZATION": {"generic-json-http": "通用 JSON HTTP 说话人分段"},
+    "DIARIZATION": {
+        "generic-json-http": "通用 JSON HTTP 说话人分段",
+        "siliconflow-audio-transcriptions": "硅基流动原生说话人分段",
+    },
 }
 _ADAPTER_CAPABILITIES = {
     ("TEXT_GENERATION", "openai-compatible-chat"): {"text_generation"},
@@ -42,6 +45,9 @@ _ADAPTER_CAPABILITIES = {
     ("DIARIZATION", "generic-json-http"): {
         "speaker_intervals", "speaker_text_segments", "native_speaker_labels", "channel_metadata",
         "confidence", "overlap_intervals",
+    },
+    ("DIARIZATION", "siliconflow-audio-transcriptions"): {
+        "speaker_intervals", "speaker_text_segments", "native_speaker_labels",
     },
 }
 _SENSITIVE_HEADER = re.compile(r"(authorization|auth|token|secret|password|api[-_]?key|cookie|signature)", re.I)

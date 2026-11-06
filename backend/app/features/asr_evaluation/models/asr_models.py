@@ -123,6 +123,7 @@ class AsrJob(Base):
     __tablename__ = "asr_job"
     __table_args__ = (
         UniqueConstraint("schedule_id", "scheduled_for", name="uq_asr_job_schedule_tick"),
+        Index("uq_asr_job_request_key", "request_key", unique=True),
         Index("ix_asr_job_project_created", "project_id", "created_at"),
     )
 
@@ -132,6 +133,7 @@ class AsrJob(Base):
     scheduled_for = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(40), nullable=False, default="QUEUED", server_default=text("'QUEUED'"), index=True)
     config_snapshot = Column(JSON, nullable=False)
+    request_key = Column(String(128), nullable=True)
     cancel_requested = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -169,6 +171,26 @@ class AsrModelRun(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class AsrEvaluationArtifact(Base):
+    """固定运行的产物元信息；正文存于受控持久卷，不进入列表响应。"""
+
+    __tablename__ = "asr_evaluation_artifact"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("asr_job.id", ondelete="CASCADE"), nullable=False)
+    run_id = Column(Integer, ForeignKey("asr_model_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(40), nullable=False)
+    schema_version = Column(String(60), nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    byte_size = Column(Integer, nullable=False)
+    storage_key = Column(String(64), nullable=False, unique=True)
+    status = Column(String(20), nullable=False, default="PENDING", index=True)
+    source = Column(String(40), nullable=False)
+    redaction_version = Column(String(40), nullable=True)
+    redacted = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class AsrWorkItem(Base):
@@ -315,6 +337,58 @@ class AsrSuggestionJob(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class AsrContentReviewJob(Base):
+    """独立内容评审任务，不复用人工确认后的调参建议合同。"""
+    __tablename__ = "asr_content_review_job"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_asr_content_review_key"),
+                      Index("ix_asr_content_review_status_lease", "status", "lease_expires_at"))
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("asr_job.id", ondelete="CASCADE"), nullable=False, index=True)
+    comparison_id = Column(Integer, ForeignKey("asr_comparison.id", ondelete="CASCADE"), nullable=True, index=True)
+    experiment_id = Column(Integer, ForeignKey("asr_experiment.id", ondelete="CASCADE"), nullable=True, index=True)
+    model_config_id = Column(Integer, ForeignKey("model_configuration.id", ondelete="RESTRICT"), nullable=False)
+    review_type = Column(String(20), nullable=False)
+    run_ids = Column(JSON, nullable=False)
+    primary_run_id = Column(Integer, ForeignKey("asr_model_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_artifact_ids = Column(JSON, nullable=False, default=list)
+    report_artifact_id = Column(Integer, ForeignKey("asr_evaluation_artifact.id", ondelete="SET NULL"), nullable=True)
+    idempotency_key = Column(String(64), nullable=False)
+    input_version = Column(String(40), nullable=False)
+    model_revision = Column(String(64), nullable=True)
+    expected_runs = Column(Integer, nullable=False)
+    status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"), index=True)
+    coverage_status = Column(String(20), nullable=False, default="UNAVAILABLE", server_default=text("'UNAVAILABLE'"))
+    cancel_requested = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    requested_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    lease_owner = Column(String(160), nullable=True)
+    lease_generation = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class AsrContentReviewChunk(Base):
+    """冻结的评审块和独立阶段状态，失败重试不重新识别。"""
+    __tablename__ = "asr_content_review_chunk"
+    __table_args__ = (UniqueConstraint("review_job_id", "ordinal", name="uq_asr_review_chunk_ordinal"),)
+    id = Column(Integer, primary_key=True)
+    review_job_id = Column(Integer, ForeignKey("asr_content_review_job.id", ondelete="CASCADE"), nullable=False, index=True)
+    ordinal = Column(Integer, nullable=False)
+    scope = Column(JSON, nullable=False)
+    coverage_json = Column(JSON, nullable=False, default=list)
+    input_json = Column(JSON, nullable=False)
+    input_artifact_id = Column(Integer, ForeignKey("asr_evaluation_artifact.id", ondelete="SET NULL"), nullable=True)
+    response_artifact_id = Column(Integer, ForeignKey("asr_evaluation_artifact.id", ondelete="SET NULL"), nullable=True)
+    result_json = Column(JSON, nullable=False, default=dict)
+    status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
+    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    error_message = Column(Text, nullable=True)
 
 
 class AsrExperiment(Base):

@@ -17,6 +17,15 @@ interface AppErrorBoundaryState {
 export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { error: null, errorId: null };
 
+  componentDidUpdate(previousProps: AppErrorBoundaryProps) {
+    // Keep a healthy route tree mounted when only route params change (for
+    // example, switching ASR runs). If a route failed, let navigation recover
+    // the boundary without keying and remounting every child on each location.
+    if (this.state.error && previousProps.path !== this.props.path) {
+      this.setState({ error: null, errorId: null });
+    }
+  }
+
   static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
     return { error, errorId: crypto.randomUUID() };
   }
@@ -59,7 +68,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 export function RouteErrorBoundary({ children }: { children: ReactNode }) {
   const location = useLocation();
   return (
-    <AppErrorBoundary key={location.key} scope="route" path={location.pathname}>
+    <AppErrorBoundary scope="route" path={location.pathname}>
       {children}
     </AppErrorBoundary>
   );

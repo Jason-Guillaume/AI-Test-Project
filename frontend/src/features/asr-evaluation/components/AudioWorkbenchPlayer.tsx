@@ -1,8 +1,12 @@
 // 单模型工作台播放器：音频元素始终挂载在工作区中，抽屉开关不会重置播放位置。
-import { Button, Select, Slider, Space, Typography } from 'antd';
-import { InfoCircleOutlined, PauseOutlined, PlayCircleOutlined, SettingOutlined } from '@ant-design/icons';
-import { useEffect, useState, type MouseEvent, type RefObject } from 'react';
+import { Alert, Button, Select, Slider, Space, Typography } from 'antd';
+import {
+  InfoCircleOutlined, PauseOutlined, PlayCircleOutlined, SettingOutlined,
+  StepBackwardOutlined, StepForwardOutlined,
+} from '@ant-design/icons';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from 'react';
 import type { JsonValue } from '../contracts';
+import { observeAudioSource, rememberAudioPlayback } from './audioPlaybackMemory.mjs';
 
 const { Text } = Typography;
 
@@ -14,13 +18,27 @@ interface AudioWorkbenchPlayerProps {
   onAudioInfo: () => void;
   onRequestParameters: () => void;
   onTimeChange: (seconds: number) => void;
+  onClearPlaybackRange: () => void;
 }
 
 /** 用媒体元素实际报告的时长、位置与音量绘制播放器状态。 */
 function clockLabel(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '—:—';
   const whole = Math.floor(seconds);
-  return `${Math.floor(whole / 60).toString().padStart(2, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
+  const minutes = Math.floor(whole / 60);
+  if (minutes >= 60) {
+    return `${Math.floor(minutes / 60).toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
+  }
+  return `${minutes.toString().padStart(2, '0')}:${(whole % 60).toString().padStart(2, '0')}`;
+}
+
+function mediaErrorMessage(audio: HTMLAudioElement): string {
+  switch (audio.error?.code) {
+    case 2: return '音频传输失败。请检查网络或项目出站访问权限后重试。';
+    case 3: return '浏览器无法解码此音频。识别文本仍可查看，也可尝试下载源文件后收听。';
+    case 4: return '音频来源不可用或格式不受浏览器支持。识别文本仍可查看。';
+    default: return '音频播放失败。请检查来源或浏览器支持情况后重试。';
+  }
 }
 
 /** 仅将后台生成的真实极值压缩为可视条，不在浏览器解码整条音频。 */
@@ -51,14 +69,91 @@ function peakBars(peaks: JsonValue): number[] {
 
 /** 单一 AudioElement 驱动进度、波形定位、音频信息与请求参数入口。 */
 export function AudioWorkbenchPlayer({
-  src, durationSeconds, audioRef, peaks, onAudioInfo, onRequestParameters, onTimeChange,
+  src, durationSeconds, audioRef, peaks, onAudioInfo, onRequestParameters, onTimeChange, onClearPlaybackRange,
 }: AudioWorkbenchPlayerProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(durationSeconds ?? 0);
   const [paused, setPaused] = useState(true);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [volume, setVolume] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const previousSrc = useRef(src);
   const bars = peakBars(peaks);
+
+  // Run routes can replace the workbench component while switching models.
+  // Restore the real media position if that happened, and resume only when the
+  // previous element was actively playing. A different audio source clears the
+  // in-memory snapshot so its old position can never leak into new audio.
+  useLayoutEffect(() => {
+    const audio = audioRef.current;
+    const snapshot = observeAudioSource(src);
+    if (snapshot && audio) {
+      setCurrentTime(snapshot.currentTime);
+      setPaused(snapshot.paused);
+      setVolume(snapshot.volume);
+      setPlaybackRate(snapshot.playbackRate);
+      const shouldRestore = snapshot.currentTime > 0 || !snapshot.paused
+        || snapshot.volume !== 1 || snapshot.playbackRate !== 1;
+      let cancelled = false;
+      const restore = () => {
+        if (cancelled || !audio || audio.readyState < 1) return;
+        const restoredTime = Number.isFinite(audio.duration)
+          ? Math.min(snapshot.currentTime, audio.duration)
+          : snapshot.currentTime;
+        audio.currentTime = Math.max(0, restoredTime);
+        audio.volume = snapshot.volume;
+        audio.playbackRate = snapshot.playbackRate;
+        setCurrentTime(audio.currentTime);
+        onTimeChange(audio.currentTime);
+        if (!snapshot.paused) {
+          void audio.play().catch(() => {
+            setPaused(true);
+            setErrorMessage('切换模型后浏览器暂停了回听；点击播放可从当前位置继续。');
+            rememberAudioPlayback({ ...snapshot, currentTime: audio.currentTime, paused: true });
+          });
+        }
+      };
+      if (shouldRestore) {
+        if (audio.readyState >= 1) restore();
+        else {
+          audio.addEventListener('loadedmetadata', restore, { once: true });
+          audio.load();
+        }
+      }
+      return () => {
+        cancelled = true;
+        audio.removeEventListener('loadedmetadata', restore);
+        rememberAudioPlayback({
+          source: src ?? '', currentTime: audio.currentTime, paused: audio.paused,
+          volume: audio.volume, playbackRate: audio.playbackRate,
+        });
+      };
+    }
+    return () => {
+      if (audio && src) {
+        rememberAudioPlayback({
+          source: src, currentTime: audio.currentTime, paused: audio.paused,
+          volume: audio.volume, playbackRate: audio.playbackRate,
+        });
+      }
+    };
+  }, [src, audioRef, onTimeChange]);
+
+  useEffect(() => {
+    setErrorMessage(null);
+    setLoading(false);
+    if (previousSrc.current !== src) {
+      previousSrc.current = src;
+      const audio = audioRef.current;
+      audio?.pause();
+      if (audio && Number.isFinite(audio.duration)) audio.currentTime = 0;
+      setCurrentTime(0);
+      setDuration(durationSeconds ?? 0);
+      setPaused(true);
+      onClearPlaybackRange();
+    }
+  }, [src, durationSeconds, audioRef, onClearPlaybackRange]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -96,8 +191,10 @@ export function AudioWorkbenchPlayer({
   const seek = (value: number) => {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(value)) return;
+    onClearPlaybackRange();
     audio.currentTime = Math.max(0, duration > 0 ? Math.min(duration, value) : value);
     setCurrentTime(audio.currentTime);
+    onTimeChange(audio.currentTime);
   };
 
   /** 波形数据只作定位表面；没有服务端峰值时保留播放器的其余控制。 */
@@ -108,7 +205,38 @@ export function AudioWorkbenchPlayer({
 
   return (
     <div className="asr-player-shell">
-      <audio ref={audioRef} src={src ?? undefined} preload="none" onError={() => setPaused(true)} />
+      <audio
+        ref={audioRef}
+        src={src ?? undefined}
+        preload="none"
+        onLoadStart={() => { setLoading(true); setErrorMessage(null); }}
+        onWaiting={() => setLoading(true)}
+        onCanPlay={() => { setLoading(false); setErrorMessage(null); }}
+        onPlaying={() => { setPaused(false); setLoading(false); setErrorMessage(null); }}
+        onPause={() => setPaused(true)}
+        onError={(event) => {
+          setPaused(true);
+          setLoading(false);
+          setErrorMessage(mediaErrorMessage(event.currentTarget));
+        }}
+      />
+      {loading && src && <Typography.Text type="secondary">正在加载音频…</Typography.Text>}
+      {errorMessage && <Alert
+        type="error"
+        showIcon
+        message={errorMessage}
+        action={<Button size="small" onClick={() => {
+          const audio = audioRef.current;
+          if (!audio) return;
+          setErrorMessage(null);
+          setLoading(true);
+          audio.load();
+          void audio.play().catch(() => {
+            setLoading(false);
+            setErrorMessage('重试仍未能播放。请检查音频来源或浏览器支持情况。');
+          });
+        }}>重试播放</Button>}
+      />}
       <Space className="asr-player-controls" wrap align="center">
         <Button
           type="primary"
@@ -119,9 +247,29 @@ export function AudioWorkbenchPlayer({
           onClick={() => {
             const audio = audioRef.current;
             if (!audio) return;
-            if (audio.paused) void audio.play().catch(() => setPaused(true)); else audio.pause();
+            if (audio.paused) {
+              onClearPlaybackRange();
+              void audio.play().catch(() => {
+                setPaused(true);
+                setErrorMessage('浏览器拒绝播放或音频暂不可用。请检查来源后重试。');
+              });
+            } else audio.pause();
           }}
         />
+        <Button
+          icon={<StepBackwardOutlined />}
+          aria-label="后退 5 秒"
+          title="后退 5 秒"
+          disabled={!src}
+          onClick={() => seek(currentTime - 5)}
+        >5 秒</Button>
+        <Button
+          icon={<StepForwardOutlined />}
+          aria-label="快进 5 秒"
+          title="快进 5 秒"
+          disabled={!src}
+          onClick={() => seek(currentTime + 5)}
+        >5 秒</Button>
         <Text className="asr-player-time">{clockLabel(currentTime)} / {clockLabel(duration || durationSeconds || 0)}</Text>
         <Slider
           className="asr-player-progress"
@@ -131,7 +279,7 @@ export function AudioWorkbenchPlayer({
           tooltip={{ formatter: (value) => clockLabel(value ?? 0) }}
           onChange={seek}
         />
-        <Space size="small" align="center">
+        <Space className="asr-player-options" size="small" align="center" wrap>
           <Text type="secondary">音量</Text>
           <Slider
             className="asr-player-volume"

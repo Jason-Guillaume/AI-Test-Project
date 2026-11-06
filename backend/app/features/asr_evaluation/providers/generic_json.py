@@ -14,6 +14,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.execution.http.executor import ApiRequestExecutor
+from app.features.asr_evaluation.providers.response_redaction import REDACTION_VERSION, execution_secrets, redact_response
 
 _TOKEN = re.compile(r"\{\{([a-zA-Z0-9_.-]+)\}\}")
 _EXACT_TOKEN = re.compile(r"^\{\{([a-zA-Z0-9_.-]+)\}\}$")
@@ -71,8 +72,8 @@ def _lookup_context(context: dict[str, Any], name: str) -> Any:
     return current
 
 
-def read_json_pointer(value: Any, pointer: str) -> Any:
-    """按 RFC 6901 JSON Pointer 读取字段；不存在路径时返回 None。"""
+def read_json_pointer(value: Any, pointer: str, *, missing: Any = None) -> Any:
+    """按 RFC 6901 读取字段；调用方可指定缺失值以区别 JSON null。"""
     if pointer == "":
         return value
     if not pointer.startswith("/"):
@@ -82,14 +83,14 @@ def read_json_pointer(value: Any, pointer: str) -> Any:
         part = raw_part.replace("~1", "/").replace("~0", "~")
         if isinstance(current, list):
             if not part.isdigit() or int(part) >= len(current):
-                return None
+                return missing
             current = current[int(part)]
         elif isinstance(current, dict):
             if part not in current:
-                return None
+                return missing
             current = current[part]
         else:
-            return None
+            return missing
     return current
 
 
@@ -194,12 +195,16 @@ class GenericJsonProvider:
             if submitting:
                 raise AsrSubmissionUncertain("接口已响应但结果无法解析，需核实远端状态") from None
             raise AsrProviderError("接口响应不是有效 JSON") from None
+        # 在结果指针提取前保留完整解析对象的脱敏副本；业务文本不做预览截断。
+        safe_response, was_redacted = redact_response(body, execution_secrets(execution))
+        capture = {"body": safe_response, "redacted": was_redacted, "redaction_version": REDACTION_VERSION}
         async_config = execution.get("async_config") or {}
         response_mapping = execution.get("response_mapping") or {}
         if submitting and async_config:
             task_id = read_json_pointer(body, str(async_config.get("task_id_pointer", "")))
             if task_id is not None:
-                return {"state": "RUNNING", "remote_task_id": str(task_id), "response_time_ms": response.response_time_ms}
+                return {"state": "RUNNING", "remote_task_id": str(task_id), "response_time_ms": response.response_time_ms,
+                        "response_capture": capture, "response_kind": "RESPONSE_SUBMISSION"}
             if async_config:
                 raise AsrSubmissionUncertain("接口已响应但没有返回远端任务 ID，需核实提交状态")
         if not submitting and async_config:
@@ -222,6 +227,7 @@ class GenericJsonProvider:
         return {
             "state": "SUCCEEDED", "transcript": text_value,
             "segments": segments, "response_time_ms": response.response_time_ms,
+            "response_capture": capture, "response_kind": "RESPONSE_SYNC" if submitting else "RESPONSE_POLL_FINAL",
         }
 
     def _segments(self, body: Any, mapping: dict[str, Any], transcript: str = "") -> list[dict[str, Any]]:
@@ -232,6 +238,8 @@ class GenericJsonProvider:
         rows = read_json_pointer(body, str(segment_path))
         if not isinstance(rows, list):
             return []
+        if len(rows) > 100_000:
+            raise AsrProviderError("响应片段数超出上限，未保存截断结果")
         normalized: list[dict[str, Any]] = []
         unit = str(mapping.get("time_unit", "seconds")).lower()
         cursor = 0

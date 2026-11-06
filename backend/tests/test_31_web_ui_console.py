@@ -119,7 +119,8 @@ def test_real_console_create_confirm_debug_report(api, admin, db, web_setup, tmp
             # 旧用例等待 /admin/dashboard，但生产登录代码不会按 admin role 改写目标。
             page.wait_for_url("**/console")
             assert page.url == base + "/console", login_diagnostics
-            page.evaluate("id => localStorage.setItem('console.current_project_id', String(id))", project)
+            # 作用域必须同时绑定登录用户，避免刷新时被身份隔离逻辑清除。
+            page.evaluate("([projectId, userId]) => { localStorage.setItem('console.current_project_id', String(projectId)); localStorage.setItem('console.scope_user_id', String(userId)); }", [project, login_user["id"]])
             page.goto(base + "/console/web-ui")
             expect(page.get_by_role("heading", name="Web UI 工作区", exact=True)).to_be_visible()
             page.get_by_role("button", name="新增 UI 用例").click()

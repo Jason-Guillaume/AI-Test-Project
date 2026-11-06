@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import time
 from pathlib import PurePosixPath
@@ -26,7 +27,8 @@ def send_audio_transcription(executor, db, *, project_id, method, url, headers, 
     if method != "POST" or not isinstance(body, dict):
         raise AsrProviderError("文件转写适配器仅支持同步 POST 请求")
     source_url = execution["audio_url"]
-    for target in (url, source_url):
+    managed = urlsplit(source_url).scheme == "managed-audio"
+    for target in ((url,) if managed else (url, source_url)):
         if resolve_project_outbound_target(db, target, project_id).rejection_message:
             raise AsrProviderError("音频源或模型接口不在项目出站授权范围内")
     parameters = body.get("parameters", {})
@@ -41,6 +43,30 @@ def send_audio_transcription(executor, db, *, project_id, method, url, headers, 
     suffix = PurePosixPath(urlsplit(source_url).path).suffix.lower()
     mime = _AUDIO_TYPES.get(suffix, "application/octet-stream")
     upload_headers = {key: value for key, value in headers.items() if key.lower() not in {"content-type", "content-length"}}
+    if managed:
+        from app.core.security.crypto import decrypt_secret
+        from app.features.asr_evaluation.models import AsrAudio, AsrAudioVersion
+        from app.features.asr_evaluation.services.media_service import _managed_audio_path
+
+        key = urlsplit(source_url).netloc
+        if re.fullmatch(r"[0-9a-f]{64}\.m4a", key) is None:
+            raise AsrProviderError("平台音频登记无效")
+        versions = db.query(AsrAudioVersion).join(AsrAudio, AsrAudio.id == AsrAudioVersion.audio_id).filter(
+            AsrAudio.project_id == project_id, AsrAudioVersion.content_fingerprint == key[:-4],
+        ).all()
+        version = next((row for row in versions if decrypt_secret(row.url_ciphertext) == source_url
+                        and (row.source_info or {}).get("local_media_key") == key), None)
+        if version is None:
+            raise AsrProviderError("平台音频不属于当前项目")
+        audio_path = _managed_audio_path(version)
+        if audio_path is None or not 0 < audio_path.stat().st_size <= limit:
+            raise AsrProviderError("平台音频为空或超过上传大小上限")
+        with audio_path.open("rb") as audio:
+            return executor.execute(
+                db, project_id=project_id, method="POST", url=url, headers=upload_headers,
+                form_body=form, files=[("file", ("audio.m4a", audio, "audio/mp4"))],
+                timeout=int(execution["timeout_seconds"]), max_response_bytes=int(execution["max_response_bytes"]),
+            )
     with tempfile.TemporaryFile(mode="w+b") as audio:
         started = time.monotonic()
         try:
