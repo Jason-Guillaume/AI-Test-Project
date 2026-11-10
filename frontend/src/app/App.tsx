@@ -1,3 +1,4 @@
+import { KnowledgePage } from '@/pages/console/KnowledgePage';
 // 应用路由表：
 // - /admin/*  平台管理端（仅平台管理员，RequireAdmin + AdminLayout）
 // - /console/* 用户控制台（登录用户，RequireAuth + ConsoleLayout + 作用域上下文）
@@ -255,6 +256,7 @@ function AppRoutes() {
           <Route path="web-ui" element={<ConsoleWebUIPage />} />
           <Route path="web-ui-agent" element={<ConsoleWebUIAgentPage />} />
           <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
+          <Route path="knowledge" element={<KnowledgePage />} />
           <Route path="asr/audio" element={<AsrAudioPage />} />
           {/* 兼容旧书签；模型中心现在仅由管理后台提供。 */}
           <Route path="model-center" element={<LegacyModelEntry />} />

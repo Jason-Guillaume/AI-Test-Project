@@ -198,6 +198,7 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
   const { message } = App.useApp();
   const navigate = useNavigate();
   const location = useLocation();
+  const returnToAudio = (location.state as { returnTo?: string } | null)?.returnTo;
   const queryClient = useQueryClient();
   const { runId: rawRunId } = useParams();
   const runId = Number(rawRunId);
@@ -268,9 +269,9 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
     previousAudioVersion.current = audio.audio_version_id;
   }, [audio?.audio_version_id]);
   const queryScope = workbench?.run.project_id ?? null;
-  const resourceKey = queryScope
+  const resourceKey = useMemo(() => queryScope
     ? asrQueryKeys.project(queryScope, 'run-workbench', loadedRunId)
-    : ['asr', 'run-workbench', null, loadedRunId];
+    : ['asr', 'run-workbench', null, loadedRunId], [queryScope, loadedRunId]);
 
   const jobQuery = useQuery<AsrJob>({
     queryKey: [...resourceKey, 'job'], enabled: Boolean(run?.job_id),
@@ -328,9 +329,9 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
     refetchInterval: () => ACTIVE_ASR.has(run?.status ?? '') ? 3000 : false,
     queryFn: ({ signal }) => asrEvaluationApi.listEvaluationArtifacts(loadedRunId, signal),
   });
-  const reviewSummaryKey = queryScope
+  const reviewSummaryKey = useMemo(() => queryScope
     ? asrQueryKeys.project(queryScope, 'content_review', 'runs', loadedRunId)
-    : ['asr', 'content_review', null, loadedRunId];
+    : ['asr', 'content_review', null, loadedRunId], [queryScope, loadedRunId]);
   const reviewSummaryQuery = useQuery({
     queryKey: reviewSummaryKey,
     enabled: Boolean(run && queryScope),
@@ -358,10 +359,12 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
   const turns = turnsQuery.data?.items ?? [];
   const previousRunStatus = useRef<{ id: number; status: string } | null>(null);
   const playbackLocationAbort = useRef<AbortController | null>(null);
+  const observedRunId = run?.id;
+  const observedRunStatus = run?.status;
   useEffect(() => {
-    if (!run) return;
+    if (observedRunId == null || observedRunStatus == null) return;
     const previous = previousRunStatus.current;
-    if (previous?.id === run.id && ACTIVE_ASR.has(previous.status) && !ACTIVE_ASR.has(run.status)) {
+    if (previous?.id === observedRunId && ACTIVE_ASR.has(previous.status) && !ACTIVE_ASR.has(observedRunStatus)) {
       void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'segments'] });
       void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'statistics'] });
       void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'evaluation-artifacts'] });
@@ -370,8 +373,8 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
       void queryClient.invalidateQueries({ queryKey: [...resourceKey, 'job'] });
       void queryClient.invalidateQueries({ queryKey: reviewSummaryKey });
     }
-    previousRunStatus.current = { id: run.id, status: run.status };
-  }, [run?.id, run?.status, queryClient, resourceKey, reviewSummaryKey]);
+    previousRunStatus.current = { id: observedRunId, status: observedRunStatus };
+  }, [observedRunId, observedRunStatus, queryClient, resourceKey, reviewSummaryKey]);
   const nativeSegmentTotal = Math.max(workbench?.run.segment_count ?? 0, segmentsQuery.data?.total ?? 0);
   const effectiveViewMode = viewMode ?? (nativeSegmentTotal ? 'FULL' : 'DIALOGUE');
   useEffect(() => {
@@ -770,13 +773,14 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
               if (hasDrafts && !confirmDraftDiscard()) return;
               setAssignmentDrafts({});
               setRenameDrafts(clearSpeakerDrafts());
-              navigate(`/console/asr/runs/${nextId}${listenMode ? '/listen' : ''}`);
+              navigate(`/console/asr/runs/${nextId}${listenMode ? '/listen' : ''}`, { state: location.state });
             }}
           />
           </div>
-          <Link to={`/console/asr/runs/${run.id}${listenMode ? '' : '/listen'}`}><Button>{listenMode ? '完整工作台' : '收听'}</Button></Link>
-          <Link to={`/console/asr/jobs/${run.job_id}`}><Button>返回批次</Button></Link>
-          {relatedComparison && <Link to={`/console/asr/comparisons/${relatedComparison.id}`}><Button icon={<LinkOutlined />}>三方结果对比</Button></Link>}
+          <Link to={`/console/asr/runs/${run.id}${listenMode ? '' : '/listen'}`} state={location.state}><Button>{listenMode ? '完整工作台' : '收听'}</Button></Link>
+          <Link to={`/console/asr/jobs/${run.job_id}`} state={returnToAudio ? { returnTo: returnToAudio } : undefined}><Button>返回批次</Button></Link>
+          {returnToAudio && <Button onClick={() => navigate(returnToAudio)}>返回音频列表</Button>}
+          {relatedComparison && <Link to={`/console/asr/comparisons/${relatedComparison.id}`} state={returnToAudio ? { returnTo: returnToAudio } : undefined}><Button icon={<LinkOutlined />}>三方结果对比</Button></Link>}
           <Button icon={<ReloadOutlined />} onClick={refreshWorkbench}>刷新</Button>
           <Button disabled={!run.transcript} onClick={() => {
             // 复制由明确用户手势触发；权限或非安全上下文失败时显示提示。

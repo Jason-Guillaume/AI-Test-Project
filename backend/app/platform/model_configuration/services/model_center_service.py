@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.parse import urlsplit
+import time
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -20,7 +21,9 @@ from app.platform.model_configuration.models import (
     ModelCredential, ModelDefaultBinding, ModelLegacyBinding, ModelParameterProfile,
     ModelResource, ModelResourceGrant, ModelRevision, ModelValidationRun,
 )
-from app.platform.model_configuration.center_schemas import ModelProfileInput, ModelResourceCreate
+from app.platform.model_configuration.center_schemas import (
+    ModelConnectionTestInput, ModelProfileInput, ModelResourceCreate,
+)
 from app.platform.model_configuration.schemas import normalize_provider
 from app.platform.projects.services.access_service import get_project_or_404
 
@@ -99,12 +102,9 @@ def _require_project_editor(db: Session, project_id: int, actor: User) -> Projec
 
 def _require_resource_editor(db: Session, resource: ModelResource, actor: User) -> None:
     """平台资源仅管理员可改，项目资源仅所属项目编辑者可改。"""
-    if resource.visibility == "PLATFORM":
-        _require_platform_admin(actor)
-    elif resource.project_id is None:
-        raise forbidden("模型资源范围配置无效")
-    else:
-        _require_project_editor(db, resource.project_id, actor)
+    _require_platform_admin(actor)
+    if resource.visibility != 'PLATFORM':
+        raise bad_request('历史私有资源已隔离，请先审核替代模型映射')
 
 
 def _supported_adapter(category: str, adapter_key: str) -> None:
@@ -712,6 +712,8 @@ def _sync_revision_projection(db: Session, resource: ModelResource, revision: Mo
 
 def create_resource(db: Session, body: ModelResourceCreate, actor: User, *, commit: bool = True) -> dict:
     """创建资源、首个连接修订、凭据和参数方案并生成兼容运行时投影。"""
+    if body.visibility != "PLATFORM":
+        raise bad_request("不再新增项目私有模型，请联系平台管理员配置")
     if body.visibility == "PLATFORM":
         _require_platform_admin(actor)
     else:
@@ -775,15 +777,10 @@ def create_resource(db: Session, body: ModelResourceCreate, actor: User, *, comm
 def list_resources(
     db: Session, actor: User, *, category: str | None = None, project_id: int | None = None,
 ) -> dict:
-    """列出管理者可维护的共享资源及所选项目私有资源。"""
-    query = db.query(ModelResource)
-    if not is_platform_admin(actor):
-        if project_id is None:
-            raise bad_request("查询项目私有模型时必须指定 project_id")
-        _require_project_editor(db, project_id, actor)
-        query = query.filter(ModelResource.project_id == project_id)
-    elif project_id is not None:
-        query = query.filter((ModelResource.project_id.is_(None)) | (ModelResource.project_id == project_id))
+    """列出平台共享资源；显式指定项目时再包含该项目的私有资源。"""
+    if project_id is not None:
+        get_project_or_404(db, project_id, actor)
+    query = db.query(ModelResource).filter(ModelResource.visibility == "PLATFORM")
     if category:
         query = query.filter(ModelResource.category == category)
     rows = query.order_by(ModelResource.category, ModelResource.display_name, ModelResource.id).limit(1000).all()
@@ -791,32 +788,14 @@ def list_resources(
 
 
 def list_available_models(db: Session, *, project_id: int, category: str | None, actor: User) -> dict:
-    """向项目成员提供安全的资源选择摘要，继续应用组织模型白名单与项目授权。"""
-    project = get_project_or_404(db, project_id, actor)
-    query = db.query(ModelResource).filter(ModelResource.status == "ACTIVE")
+    """向项目成员提供平台启用模型的安全摘要，不包含连接凭据。"""
+    get_project_or_404(db, project_id, actor)
+    query = db.query(ModelResource).filter(
+        ModelResource.status == "ACTIVE", ModelResource.visibility == "PLATFORM",
+    )
     if category:
         query = query.filter(ModelResource.category == category)
-    if is_platform_admin(actor):
-        query = query.filter((ModelResource.visibility == "PLATFORM") | (ModelResource.project_id == project_id))
-        rows = query.all()
-    else:
-        role = project_role_for(db, project, actor)
-        if role is None:
-            raise not_found("项目不存在")
-        project_rows = query.filter(ModelResource.visibility == "PROJECT", ModelResource.project_id == project_id).all()
-        grants = db.query(ModelResourceGrant.resource_id).filter(ModelResourceGrant.project_id == project_id).all()
-        granted_ids = {item[0] for item in grants}
-        platform_rows = query.filter(ModelResource.visibility == "PLATFORM").all()
-        allowed_domain_ids: set[str] = set()
-        if project.organization_id is not None:
-            allowed_domain_ids = set(db.query(OrganizationMember.allowed_model_ids).filter(
-                OrganizationMember.organization_id == project.organization_id, OrganizationMember.user_id == actor.id,
-            ).scalar() or [])
-        rows = [row for row in project_rows if has_project_role(role, "member")]
-        rows.extend(row for row in platform_rows if (
-            (row.category == "TEXT_GENERATION" and row.resource_key in allowed_domain_ids)
-            or row.id in granted_ids
-        ))
+    rows = query.all()
     items = []
     for row in rows:
         revision = db.get(ModelRevision, row.current_revision_id) if row.current_revision_id else None
@@ -940,6 +919,7 @@ def create_profile(db: Session, resource_id: int, body: ModelProfileCreate, acto
 
 
 def set_resource_grants(db: Session, resource_id: int, project_ids: list[int], actor: User) -> dict:
+    raise bad_request("平台模型无需项目授权")
     """替换平台共享资源的项目授权，不改变组织模型 domain_id 白名单。"""
     _require_platform_admin(actor)
     resource = db.get(ModelResource, resource_id)
@@ -1048,6 +1028,8 @@ def resolve_task_slots(db: Session, project_id: int, slots: list, actor: User) -
 
 def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> dict:
     """按用途设置默认模型与同类别备用列表，评测用途永远关闭自动换模型。"""
+    if body.project_id is not None:
+        raise bad_request("默认模型统一在平台维护")
     expected_purpose = {
         "TEXT_GENERATION": "TEXT_INFERENCE", "ASR": "ASR_EVALUATION", "DIARIZATION": "DIARIZATION",
     }.get(body.category)
@@ -1060,7 +1042,7 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
     resource = db.get(ModelResource, body.resource_id)
     revision = db.get(ModelRevision, body.revision_id)
     profile = db.get(ModelParameterProfile, body.profile_id) if body.profile_id else None
-    if (resource is None or revision is None or resource.category != body.category or
+    if (resource is None or resource.status != "ACTIVE" or revision is None or resource.category != body.category or
             revision.resource_id != resource.id or not revision.enabled):
         raise bad_request("默认模型与参数修订类别或资源不匹配")
     if body.project_id is None and resource.visibility != "PLATFORM":
@@ -1117,6 +1099,7 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
 
 def copy_resource(db: Session, resource_id: int, project_id: int, actor: User) -> dict:
     """复制非敏感连接与参数配置到项目作用域，凭据保持空白并重新授权出站目标。"""
+    raise bad_request("项目私有复制入口已停用")
     source = db.get(ModelResource, resource_id)
     if source is None:
         raise not_found("模型资源不存在")
@@ -1195,6 +1178,53 @@ def create_diagnostic(db: Session, resource_id: int, body, actor: User) -> dict:
     db.refresh(row)
     return {"id": row.id, "resource_id": row.resource_id, "revision_id": row.revision_id,
             "status": row.status, "diagnostic_kind": row.diagnostic_kind, "created_at": row.created_at}
+
+
+def test_model_connection(db: Session, body: ModelConnectionTestInput, actor: User) -> dict:
+    """按模型资源作用域授权并测试未保存的 OpenAI 兼容文本配置。"""
+    if body.visibility == "PLATFORM":
+        _require_platform_admin(actor)
+    else:
+        _require_project_editor(db, int(body.project_id), actor)
+
+    endpoint, _ = _endpoint(body.endpoint)
+    config = _validate_connection_config("TEXT_GENERATION", "openai-compatible-chat", dict(body.config))
+    timeout = config.get("timeout", 30)
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 1 <= timeout <= 180:
+        raise bad_request("模型测试超时必须在 1 到 180 秒之间")
+    parsed = urlsplit(endpoint)
+    if not parsed.path.rstrip("/").endswith("/chat/completions"):
+        endpoint = urlunsplit((parsed.scheme, parsed.netloc, f"{parsed.path.rstrip('/')}/chat/completions", parsed.query, ""))
+
+    from app.execution.http.executor import send_http_request
+
+    headers = {"Content-Type": "application/json"}
+    if body.credential:
+        headers["Authorization"] = f"Bearer {body.credential}"
+    started = time.perf_counter()
+    try:
+        response = send_http_request(
+            method="POST", url=endpoint, headers=headers,
+            json_body={"model": body.model_name, "messages": [{"role": "user", "content": "Return the word ok."}],
+                       "temperature": 0, "max_tokens": 1},
+            timeout=int(timeout), max_response_bytes=256_000,
+        )
+    except ValueError as exc:
+        raise bad_request("模型测试地址或请求配置无效") from exc
+    elapsed_ms = round((time.perf_counter() - started) * 1000)
+    status_code = int(response.status_code or 0)
+    success = not response.error_message and 200 <= status_code < 300
+    if success:
+        message = f"模型请求成功（HTTP {status_code}）"
+    elif response.transport_error_kind == "timeout":
+        message = "模型请求超时"
+    elif response.transport_error_kind == "connect":
+        message = "无法连接模型服务"
+    elif response.transport_error_kind == "dependency":
+        message = "模型请求依赖不可用"
+    else:
+        message = f"模型服务返回 HTTP {status_code}"
+    return {"success": success, "http_status": status_code or None, "elapsed_ms": elapsed_ms, "message": message}
 
 
 def run_model_diagnostic(run_id: int) -> None:
@@ -1358,6 +1388,7 @@ __all__ = [
     "adapter_catalog", "copy_resource", "create_profile", "create_resource", "create_revision",
     "create_diagnostic", "get_diagnostic", "import_resources", "list_available_models", "list_resources", "preview_import",
     "resolve_task_slots", "run_model_diagnostic", "set_default_binding", "set_resource_grants",
+    "test_model_connection",
     "sync_legacy_asr_connection", "sync_legacy_asr_parameter_set", "sync_legacy_text_configuration",
     "sync_legacy_text_default",
 ]

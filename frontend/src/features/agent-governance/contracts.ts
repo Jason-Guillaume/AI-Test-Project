@@ -6,6 +6,8 @@ export interface AgentDefinition {
   name: string;
   description: string;
   workflow_template: string;
+  test_types: string[];
+  purpose: string;
   instruction: string;
   model_config_id: number | null;
   skill_keys: string[];

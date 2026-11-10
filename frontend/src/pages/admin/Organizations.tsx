@@ -249,9 +249,7 @@ export function AdminOrganizationsPage() {
                         <Space size="small">
                           <OrgRoleTag role={member.role} />
                           {member.agent_enabled && <Tag color="purple">智能体开放</Tag>}
-                          {member.allowed_model_ids.length > 0 && (
-                            <Tag>授权模型 {member.allowed_model_ids.length}</Tag>
-                          )}
+
                           {member.is_org_owner && <Tag color="gold">负责人</Tag>}
                         </Space>
                       }
@@ -322,7 +320,7 @@ export function AdminOrganizationsPage() {
 function MemberDrawer({
   open,
   editing,
-  models,
+  models: _models,
   loading,
   onCancel,
   onSubmit,
@@ -417,13 +415,7 @@ function MemberDrawer({
         >
           <Switch />
         </Form.Item>
-        <Form.Item label="可分配模型" name="allowed_model_ids">
-          <Select
-            mode="multiple"
-            placeholder="选择该成员可使用的模型"
-            options={models.map((m) => ({ value: m.domain_id, label: m.label }))}
-          />
-        </Form.Item>
+
       </Form>
     </Drawer>
   );

@@ -1,6 +1,6 @@
 // Agent 配置列表、版本化编辑与受控工作流表单。
 import { collectPages } from '@/shared/api/pagination';
-import { App, Alert, Button, Card, Col, Drawer, Form, Input, Row, Select, Space, Switch, Tabs, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Col, Drawer, Form, Input, Row, Select, Space, Switch, Tabs, Tag, Tree, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -11,14 +11,27 @@ import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { DefinitionHistoryModal } from './SkillPane';
 
+import { CaseGenerationModal } from './CaseGenerationModal';
+import { agentTestTypes, fixedModel, filterAgentHierarchy, matchesAgent, TEST_TYPE_LABELS } from './agentHierarchy.mjs';
+
+import { EvaluationToolModal } from './EvaluationToolModal';
+
 const WORKFLOW_LABELS: Record<string, string> = {
+  case_generation: '用例生成 · 主子协作',
   api_test: '接口测试',
+  asr_evaluation: '语音识别评测',
+  ai_evaluation: 'AI 质量评测',
   web_ui: 'Web UI 测试',
   security: '安全测试',
   reporting: '测试报告',
 };
 
 export function AgentPane() {
+  const [moduleFilter, setModuleFilter] = useState<string>();
+  const [modelFilter, setModelFilter] = useState<string>();
+  const [view, setView] = useState('tree');
+  const [generating, setGenerating] = useState<AgentDefinition | null>(null);
+  const [evaluating, setEvaluating] = useState<AgentDefinition | null>(null);
   const [editing, setEditing] = useState<AgentDefinition | null>(null);
   const [creating, setCreating] = useState(false);
   const [history, setHistory] = useState<{ kind: 'agent' | 'skill'; id: number; name: string } | null>(null);
@@ -49,7 +62,23 @@ export function AgentPane() {
   if (agents.isPending || workflows.isPending || skills.isPending || tools.isPending || models.isPending || mcpServers.isPending) return <LoadingState />;
   const failed = [agents, workflows, skills, tools, models, mcpServers].find((query) => query.isError);
   if (failed) return <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
-  const agentRows = agents.data ?? [];
+  const allAgents = agents.data ?? [];
+  const groups = filterAgentHierarchy(allAgents, moduleFilter, modelFilter);
+  const agentRows = allAgents.filter((agent) => matchesAgent(agent, moduleFilter, modelFilter));
+  const modelLabel = (agent: AgentDefinition, child = false) => {
+    const id = fixedModel(agent);
+    return id == null ? (child ? '模型：继承主 Agent' : '模型：本次选择 / 全局默认') : `模型：${models.data?.items.find((item) => item.id === id)?.label ?? `#${id}`}`;
+  };
+  const treeTitle = (agent: AgentDefinition, child = false) => <Space wrap>
+    <Typography.Text strong>{agent.name}</Typography.Text>
+    <Tag color={child ? 'cyan' : agent.child_agent_ids.length ? 'purple' : 'default'}>{child ? '子 Agent' : agent.child_agent_ids.length ? '主 Agent' : '独立 Agent'}</Tag>
+    <Tag>{agentTestTypes(agent).map((type) => TEST_TYPE_LABELS[type] ?? TEST_TYPE_LABELS.general).join("、")}</Tag><Tag>{modelLabel(agent, child)}</Tag>
+    <Tag>{agent.is_enabled ? '启用' : '停用'}</Tag>
+    <Button size="small" onClick={() => setEditing(agent)}>配置</Button>
+    {agent.tool_keys.some((key) => key.startsWith('asr.') || key === 'ai.check_output') && <Button size="small" disabled={!agent.is_enabled} onClick={() => setEvaluating(agent)}>运行评测工具</Button>}
+    {agent.workflow_template === 'case_generation' && agent.child_agent_ids.length > 0 && <Button size="small" type="primary" disabled={!agent.is_enabled} onClick={() => setGenerating(agent)}>生成用例</Button>}
+  </Space>;
+  const treeData = groups.map(({ agent, children, matches }) => ({ key: `root-${agent.id}`, title: <>{treeTitle(agent)}{!matches && <Tag>包含匹配子 Agent</Tag>}</>, children: children.map((child) => ({ key: `${agent.id}-${child.id}`, title: treeTitle(child, true) })) }));
 
   const submit = (body: AgentDefinitionInput) => {
     const normalized = { ...body, skill_keys: body.skill_keys ?? [], tool_keys: body.tool_keys ?? [], child_agent_ids: body.child_agent_ids ?? [], instruction: body.instruction ?? '' };
@@ -59,8 +88,14 @@ export function AgentPane() {
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}><Button type="primary" onClick={() => setCreating(true)}>新增 Agent</Button></div>
-      {agentRows.length ? <Row gutter={[12, 12]}>
+      <Space wrap style={{ marginBottom: 12 }}>
+        <Select allowClear placeholder="测试类型" aria-label="测试类型" value={moduleFilter} onChange={setModuleFilter} style={{ width: 180 }} options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
+        <Select allowClear showSearch optionFilterProp="label" placeholder="按绑定模型筛选" aria-label="按绑定模型筛选" value={modelFilter} onChange={setModelFilter} style={{ width: 260 }} options={[{ value: 'inherit', label: '继承 / 本次选择 / 全局默认' }, ...(models.data?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.label} (${item.model_name})` }))]} />
+        <Select value={view} onChange={setView} options={[{ value: 'tree', label: '主子关系' }, { value: 'cards', label: '全部卡片' }]} />
+        <Button type="primary" onClick={() => setCreating(true)}>新增 Agent</Button>
+      </Space>
+      {view === 'tree' && (treeData.length ? <Card><Tree key={`${moduleFilter}-${modelFilter}-${allAgents.length}`} defaultExpandAll selectable={false} blockNode treeData={treeData} /></Card> : <EmptyState description="没有匹配的 Agent" />)}
+      {view === 'cards' && (agentRows.length ? <Row gutter={[12, 12]}>
         {agentRows.map((agent) => <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
           <Card
             size="small"
@@ -77,14 +112,18 @@ export function AgentPane() {
                 <Typography.Text strong ellipsis={{ tooltip: agent.name }} style={{ display: 'block' }}>{agent.name}</Typography.Text>
                 <Space size={4} style={{ marginTop: 4 }}>
                   <Tag color="blue">{WORKFLOW_LABELS[agent.workflow_template] ?? agent.workflow_template}</Tag>
-                  <Button type="link" size="small" style={{ paddingInline: 4 }} onClick={() => setHistory({ kind: 'agent', id: agent.id, name: agent.name })}>v{agent.version}</Button>
+
                 </Space>
               </div>
               <Tag color={agent.is_enabled ? 'green' : 'default'}>{agent.is_enabled ? '启用' : '停用'}</Tag>
             </div>
+            {agent.tool_keys.some((key) => key.startsWith('asr.') || key === 'ai.check_output') && <Button type="link" disabled={!agent.is_enabled} onClick={() => setEvaluating(agent)}>运行评测工具</Button>}
             <Typography.Paragraph type="secondary" ellipsis={{ rows: 2, tooltip: agent.description || '暂无说明' }} style={{ minHeight: 40, marginTop: 6, marginBottom: 8 }}>
               {agent.description || '暂无说明'}
             </Typography.Paragraph>
+            <Tag>{modelLabel(agent, allAgents.some((parent) => parent.child_agent_ids.includes(agent.id)))}</Tag>
+            <Tag>{allAgents.some((parent) => parent.child_agent_ids.includes(agent.id)) ? `子 Agent · 主 Agent：${allAgents.filter((parent) => parent.child_agent_ids.includes(agent.id)).map((parent) => parent.name).join('、')}` : agent.child_agent_ids.length ? '主 Agent' : '独立 Agent'}</Tag>
+            {agent.workflow_template === 'case_generation' && agent.child_agent_ids.length > 0 && <Button onClick={() => setGenerating(agent)} disabled={!agent.is_enabled}>生成用例</Button>}
             <Space wrap size={[4, 4]} style={{ marginTop: 'auto', marginBottom: 8 }}>
               <Tag>子 Agent {agent.child_agent_ids.length}</Tag>
               <Tag>Skill {agent.skill_keys.length}</Tag>
@@ -92,11 +131,14 @@ export function AgentPane() {
             </Space>
             <div className="agent-card-actions">
               <Button size="small" style={{ flex: 1 }} onClick={() => setEditing(agent)}>查看详情 / 编辑配置</Button>
+              <Button size="small" onClick={() => setHistory({ kind: 'agent', id: agent.id, name: agent.name })}>变更记录</Button>
               <Button size="small" danger onClick={() => modal.confirm({ title: `删除 Agent「${agent.name}」？`, okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(agent.id) })}>删除</Button>
             </div>
           </Card>
         </Col>)}
-      </Row> : <EmptyState description="还没有 Agent 定义" />}
+      </Row> : <EmptyState description="没有匹配的 Agent" />)}
+      <CaseGenerationModal key={generating?.id ?? 'closed'} agent={generating} agents={allAgents} models={(models.data?.items ?? []).map((item) => ({ value: item.id, label: `${item.label} (${item.model_name})` }))} onClose={() => setGenerating(null)} />
+      <EvaluationToolModal agent={evaluating} onClose={() => setEvaluating(null)} />
       <AgentFormModal
         key={editing ? `${editing.id}-${editing.version}` : (creating ? 'new' : 'closed')}
         open={creating || Boolean(editing)}
@@ -117,9 +159,10 @@ export function AgentPane() {
               disabled: !server.is_enabled || server.connection_status !== 'connected' || tool.annotations?.readOnlyHint !== true,
             }))),
         ]}
-        childAgentOptions={(agents.data ?? []).filter((item) => item.id !== editing?.id && item.child_agent_ids.length === 0 && item.tool_keys.length === 0).map((item) => ({
-          label: `${item.name} · v${item.version} · 分析节点${item.is_enabled ? '' : ' · 已停用'}`,
+        childAgentOptions={(agents.data ?? []).filter((item) => item.id !== editing?.id && item.child_agent_ids.length === 0 && (item.tool_keys.length === 0 || (item.workflow_template === 'case_generation' && item.tool_keys.length === 1 && /^case_generation\.generate_(api|web|security|asr|ai)$/.test(item.tool_keys[0])))).map((item) => ({
+          label: `${item.name} · ${item.tool_keys.length ? '用例生成节点' : '分析节点'}${item.is_enabled ? '' : ' · 已停用'}`,
           value: item.id,
+          generationOnly: item.tool_keys.length > 0,
           disabled: !item.is_enabled,
         }))}
         allowChildNodes={!editing || !(agents.data ?? []).some((item) => item.id !== editing.id && item.is_enabled && item.child_agent_ids.includes(editing.id))}
@@ -144,7 +187,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
   workflows: { key: string; label: string; description: string }[];
   skillOptions: { label: string; value: string; disabled?: boolean }[];
   toolOptions: { label: string; value: string; disabled?: boolean }[];
-  childAgentOptions: { label: string; value: number; disabled?: boolean }[];
+  childAgentOptions: { label: string; value: number; disabled?: boolean; generationOnly?: boolean }[];
   allowChildNodes: boolean;
   modelOptions: { label: string; value: number }[];
   loading: boolean;
@@ -153,6 +196,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
 }) {
   type AgentFormState = AgentDefinitionInput & { mcp_tool_keys: string[] };
   const [form] = Form.useForm<AgentFormState>();
+  const selectedWorkflow = Form.useWatch('workflow_template', form);
   const instruction = Form.useWatch('instruction', form) ?? '';
   const runtimeVariables = Form.useWatch(['settings_json', 'runtime_variables'], form) ?? [];
   const preview = runtimeVariables.reduce((text: string, variable: { name?: string; value?: string }) => {
@@ -171,7 +215,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
       triggers_json: initial.triggers_json ?? [],
     }
     : {
-      name: '', description: '', workflow_template: defaultWorkflow, instruction: '', model_config_id: null,
+      name: '', description: '', workflow_template: defaultWorkflow, test_types: ['general'], purpose: 'test_execution', instruction: '', model_config_id: null,
       skill_keys: [], tool_keys: [], mcp_tool_keys: [], child_agent_ids: [], is_enabled: false,
       settings_json: defaultAgentSettings(), triggers_json: [],
     }, [initial, defaultWorkflow]);
@@ -195,7 +239,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
       onClose={onCancel}
       width={720}
       destroyOnClose
-      extra={initial ? <Tag>v{initial.version}</Tag> : null}
+      extra={null}
       footer={<div className="editor-drawer-footer">
         <Space wrap>
           {initial && <Button onClick={() => form.setFieldsValue({ instruction: '', settings_json: defaultAgentSettings(), triggers_json: [] })}>恢复默认</Button>}
@@ -211,6 +255,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
               <Col span={12}><Form.Item name="name" label="Agent 名称" rules={[{ required: true }]}><Input maxLength={120} /></Form.Item></Col>
               <Col span={12}><Form.Item name="workflow_template" label="工作流模板" rules={[{ required: true }]}><Select options={workflows.map((item) => ({ value: item.key, label: item.label }))} /></Form.Item></Col>
             </Row>
+            <Row gutter={16}><Col span={12}><Form.Item name="test_types" label="测试类型" rules={[{ required: true }]}><Select mode="multiple" options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} /></Form.Item></Col><Col span={12}><Form.Item name="purpose" label="用途" rules={[{ required: true }]}><Select options={[{value:'case_generation',label:'用例生成'},{value:'test_execution',label:'测试执行'},{value:'quality_evaluation',label:'质量评测'},{value:'test_report',label:'测试报告'}]} /></Form.Item></Col></Row>
             <Form.Item name="description" label="说明"><Input.TextArea rows={2} maxLength={2000} /></Form.Item>
             <Row gutter={16}>
               <Col span={12}><Form.Item name={['settings_json', 'max_loop_count']} label="最大循环次数（0 = 不限）"><Input type="number" min={0} max={1000} /></Form.Item></Col>
@@ -265,8 +310,8 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
           </> },
           { key: 'skill', label: 'Skill', children: <>
             <Form.Item name="skill_keys" label="加载的 Skill"><Select mode="multiple" options={skillOptions} placeholder="选择已启用 Skill；任务启动时会冻结所选版本和文件内容" /></Form.Item>
-            <Form.Item name="child_agent_ids" label="子 Agent 节点"><Select mode="multiple" maxCount={8} disabled={!allowChildNodes} options={childAgentOptions} placeholder="按顺序加入最多 8 个已启用叶子 Agent" /></Form.Item>
-            <Typography.Paragraph type="secondary">{allowChildNodes ? '子 Agent 需是无工具授权的叶子配置；父 Agent 会在任务创建时冻结它们的版本与 Skill。' : '该配置已作为其他 Agent 的子节点使用，因此只能保持叶子节点。'}</Typography.Paragraph>
+            <Form.Item name="child_agent_ids" label="子 Agent 节点"><Select mode="multiple" maxCount={8} disabled={!allowChildNodes} options={childAgentOptions.filter((item) => selectedWorkflow === 'case_generation' ? item.generationOnly : !item.generationOnly)} placeholder="按顺序加入最多 8 个已启用叶子 Agent" /></Form.Item>
+            <Typography.Paragraph type="secondary">{allowChildNodes ? '普通子 Agent 承担分析；用例生成子 Agent 需绑定一个对应模块生成工具。子 Agent 可固定模型，也可继承主 Agent 模型。' : '该配置已作为其他 Agent 的子节点使用，因此只能保持叶子节点。'}</Typography.Paragraph>
           </> },
           { key: 'tools', label: 'Tools', children: <>
             <Form.Item name="tool_keys" label="绑定的系统工具"><Select mode="multiple" disabled={!allowChildNodes && Boolean(initial)} options={toolOptions.filter((item) => !item.value.startsWith('mcp:'))} placeholder="选择由平台注册并实现的工具" /></Form.Item>

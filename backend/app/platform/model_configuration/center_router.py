@@ -9,13 +9,13 @@ from app.core.database.session import get_db
 from app.core.models.identity import User
 from app.core.security.auth import get_current_user
 from app.platform.model_configuration.center_schemas import (
-    ModelDefaultInput, ModelDiagnosticInput, ModelGrantInput, ModelImportPreview, ModelProfileCreate,
-    ModelResourceCreate, ModelRevisionInput,
+    ModelConnectionTestInput, ModelDefaultInput, ModelDiagnosticInput, ModelGrantInput,
+    ModelImportPreview, ModelProfileCreate, ModelResourceCreate, ModelRevisionInput,
 )
 from app.platform.model_configuration.services.model_center_service import (
     adapter_catalog, copy_resource, create_diagnostic, create_profile, create_resource, create_revision,
     get_diagnostic, import_resources, list_available_models, list_resources, preview_import, run_model_diagnostic,
-    set_default_binding, set_resource_grants,
+    set_default_binding, set_resource_grants, test_model_connection,
 )
 
 router = APIRouter(prefix="/model-center", tags=["统一模型中心"])
@@ -108,6 +108,14 @@ def diagnostic_create(
     return run
 
 
+@router.post("/connection-tests")
+def connection_test(
+    body: ModelConnectionTestInput, db: Session = Depends(get_db), actor: User = Depends(get_current_user),
+):
+    """真实发送一次未保存的文本推理测试请求，并返回脱敏状态与耗时。"""
+    return test_model_connection(db, body, actor)
+
+
 @router.get("/diagnostics/{run_id}")
 def diagnostic_detail(
     run_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user),
@@ -133,3 +141,40 @@ def import_create(
 
 
 __all__ = ["router"]
+
+
+@router.put("/resources/{resource_id}/enabled")
+def resource_enabled(resource_id: int, enabled: bool, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    from app.platform.model_configuration.models import ModelResource, ModelRevision
+    from app.platform.model_configuration.services.model_center_service import _require_platform_admin
+    from app.core.models.configuration import ModelConfiguration
+    from app.core.http.errors import not_found, bad_request
+    _require_platform_admin(actor)
+    resource = db.get(ModelResource, resource_id)
+    if resource is None:
+        raise not_found("模型不存在")
+    if resource.visibility != 'PLATFORM':
+        raise bad_request("历史私有模型需明确审核后迁移，不得直接启用共享")
+    resource.status = 'ACTIVE' if enabled else 'DISABLED'
+    revision = db.get(ModelRevision, resource.current_revision_id)
+    if revision:
+        revision.enabled = enabled
+    legacy = db.get(ModelConfiguration, resource.legacy_model_id) if resource.legacy_model_id else None
+    if legacy:
+        legacy.is_enabled = enabled
+    from app.features.asr_evaluation.models import AsrConnection
+    revisions = db.query(ModelRevision).filter_by(resource_id=resource.id).all()
+    connection_ids = [r.legacy_connection_id for r in revisions if r.legacy_connection_id]
+    if connection_ids:
+        db.query(AsrConnection).filter(AsrConnection.id.in_(connection_ids)).update({'enabled': enabled}, synchronize_session=False)
+    # Platform ASR slots create per-project compatibility connections; retire these too.
+    from app.platform.model_configuration.models import ModelTaskSlot
+    slots = db.query(ModelTaskSlot).filter_by(resource_id=resource.id).all()
+    for slot in slots:
+        connection_id = getattr(slot, 'legacy_connection_id', None)
+        if connection_id:
+            connection = db.get(AsrConnection, connection_id)
+            if connection:
+                connection.enabled = enabled
+    db.commit()
+    return {'enabled': enabled}

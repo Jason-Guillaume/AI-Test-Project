@@ -22,7 +22,10 @@ from app.orchestration.tasks.models import (
 from app.orchestration.tasks.runtime.contracts import TaskHandlerContext, TaskHandlerServices, require_agent_tool
 from app.orchestration.tasks.schemas import TaskReviewOutput
 from app.agents.services.task_decision_service import _REVIEWER_SYSTEM, generate_structured_candidate
-from app.features.test_management.models.execution import TestRun
+from app.features.test_management.models.execution import TestRun, CaseExecution
+from app.features.test_management.models.test_case import TestCase
+from app.features.api_catalog.models.api_interface import ApiInterface
+from urllib.parse import urlsplit
 
 
 def reconcile_review_facts(
@@ -83,7 +86,30 @@ def handle_review(context: TaskHandlerContext, services: TaskHandlerServices) ->
         approved_case_ids = list((execution_work.input_json or {}).get("security_case_ids") or []) if execution_work else []
     else:
         approved_case_ids = list(plan.plan_json.get("case_ids", []))
+    executions = db.query(CaseExecution).filter(CaseExecution.test_run_id == test_run.id).order_by(CaseExecution.id).all()
+    case_rows = {row.id: row for row in db.query(TestCase).filter(TestCase.id.in_([item.test_case_id for item in executions])).all()}
+    api_rows = {row.id: row for row in db.query(ApiInterface).filter(ApiInterface.id.in_([row.api_id for row in case_rows.values() if row.api_id])).all()}
+    def request_evidence(item):
+        case = case_rows.get(item.test_case_id)
+        api = api_rows.get(case.api_id) if case else None
+        snapshot = item.request_snapshot or {}
+        return {'api_id': case.api_id if case else None, 'method': snapshot.get('method') or (api.method if api else None),
+                'path': urlsplit(str(snapshot.get('url') or '')).path or (api.path if api else None)}
     facts = {
+        "executed_case_ids": [item.test_case_id for item in executions],
+        "execution_environment_id": test_run.environment_id,
+        "execution_actor_id": test_run.created_by,
+        "execution_project_id": test_run.project_id,
+        "target_type": target_type,
+        "environment_id": run.input_snapshot.get('environment_id'),
+        "approval": {"plan_id": plan.id, "version": plan.version, "status": plan.status, "accepted_at": plan.accepted_at},
+        "case_executions": [{
+            "id": item.id, "case_id": item.test_case_id, "status": item.status,
+            "executor_type": item.executor_type, "request": request_evidence(item),
+            "started_at": item.started_at, "finished_at": item.finished_at,
+            "http_status": (item.response_snapshot or {}).get('status_code'),
+            "assertions": [{key: value for key, value in assertion.items() if key in {'assertion_type', 'passed', 'success', 'status', 'operator'}} for assertion in (item.assertion_results or []) if isinstance(assertion, dict)],
+        } for item in executions],
         "goal": run.goal_snapshot,
         "approved_case_ids": approved_case_ids,
         "acceptance_criteria": plan.plan_json.get("acceptance_criteria", []),

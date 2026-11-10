@@ -33,15 +33,18 @@ API = "/api/v1"
 class DeterministicTaskLLM:
     """只替代外部模型 HTTP 边界，工具、业务服务和数据库链路继续真实执行。"""
 
-    def __init__(self, db, model_config_id=None, *, model_config_ids=None, attempt_callback=None):
+    def __init__(self, db, model_config_id=None, *, model_config_ids=None, attempt_callback=None, before_request=None):
         """兼容生产 Provider 构造签名，不读取模型密钥。"""
         self.db = db
         self.model_config_id = model_config_id
         self.model_config_ids = model_config_ids or []
         self.attempt_callback = attempt_callback
+        self.before_request = before_request
 
     def generate_structured(self, system, user_content, schema=None, *, kind=None, history=None, validator=None):
         """按任务角色返回最小合法结构化文本。"""
+        if self.before_request:
+            self.before_request()
         if kind == "task_planner":
             output = {"summary": "执行已确认的健康检查 API 用例。", "acceptance_criteria": ["产生真实 TestRun 和正式报告"]}
         elif kind in {"task_api_worker", "task_ui_worker"}:
@@ -1099,8 +1102,8 @@ def test_task_planner_retry_and_cancel_are_persisted(api, admin, db, monkeypatch
     assert conflicting_cancel.status_code == 409, conflicting_cancel.text
 
 
-def test_task_model_binding_obeys_organization_grants(db):
-    """任务创建和后台调用分别尊重组织智能体开关、模型白名单及配置停用。"""
+def test_task_model_binding_uses_global_models_and_keeps_agent_permission(db):
+    """任务创建与调用保留智能体使用权，不再要求成员模型分配。"""
     from app.orchestration.tasks.services.task_service import TaskService
     from app.orchestration.tasks.services.assembly_service import resolve_authorized_model
     from app.core.models.identity import Organization, OrganizationMember, User
@@ -1134,18 +1137,19 @@ def test_task_model_binding_obeys_organization_grants(db):
 
     grant.agent_enabled = True
     db.commit()
-    with pytest.raises(HTTPException) as unassigned:
-        resolve_authorized_model(db, project.id, actor)
-    assert unassigned.value.status_code == 403
+    assert resolve_authorized_model(db, project.id, actor, requested_model_id=model.id).id == model.id
 
     grant.allowed_model_ids = [model.domain_id]
     db.commit()
-    assert resolve_authorized_model(db, project.id, actor).id == model.id
+    assert resolve_authorized_model(db, project.id, actor, requested_model_id=model.id).id == model.id
     assert TaskService.assert_agent_model_access(db, project.id, actor, model.id).id == model.id
 
     grant.allowed_model_ids = []
     db.commit()
-    with pytest.raises(RuntimeError, match="授权已撤销"):
+    assert TaskService.assert_agent_model_access(db, project.id, actor, model.id).id == model.id
+    grant.agent_enabled = False
+    db.commit()
+    with pytest.raises(RuntimeError, match="权限已撤销"):
         TaskService.assert_agent_model_access(db, project.id, actor, model.id)
 
 

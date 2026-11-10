@@ -171,6 +171,61 @@ TOOL_RUNTIME_DETAILS = {
     },
 }
 
+_EVALUATION_PARAMETERS = {
+    "asr.score_transcript": [
+        ("reference", "string", True, "人工标准答案，最多 4000 字符。"),
+        ("hypothesis", "string", True, "待测转写，最多 4000 字符。"),
+        ("unit", "character | word", False, "默认 character（CER）；word 按空白分词计算 WER。"),
+        ("ignore_case", "boolean", False, "默认 false；是否忽略大小写。"),
+        ("ignore_punctuation", "boolean", False, "默认 false；是否忽略 Unicode 标点。"),
+    ],
+    "asr.get_job_summary": [("job_id", "integer", True, "当前项目的 ASR 批次 ID。")],
+    "asr.get_comparison_summary": [("comparison_id", "integer", True, "当前项目的 ASR 对比版本 ID。")],
+    "ai.check_output": [
+        ("output", "string", True, "实际模型输出，最多 20000 字符。"),
+        ("expected", "string", False, "可选精确答案，最多 20000 字符。"),
+        ("required_phrases", "string[]", False, "必须出现的短语，最多 50 条。"),
+        ("forbidden_phrases", "string[]", False, "不得出现的短语，最多 50 条。"),
+        ("require_json_object", "boolean", False, "默认 false；要求整个输出为 JSON 对象。"),
+    ],
+}
+
+# 评测工具通过治理中心的显式调用入口执行，不冒充固定 Task Worker 节点。
+for _key, _name, _category, _description in (
+    ("asr.score_transcript", "计算 ASR 标准答案错误率", "ASR 评测", "根据人工标准答案计算 CER/WER，返回归一化口径与错误率。"),
+    ("asr.get_job_summary", "读取 ASR 批次状态", "ASR 评测", "读取当前项目评测批次状态，不返回音频地址、配置密文或转写正文。"),
+    ("asr.get_comparison_summary", "读取 ASR 对比摘要", "ASR 评测", "读取当前项目对比版本、降级状态及复核统计。"),
+    ("ai.check_output", "校验 AI 输出规则", "AI 质量评测", "校验精确答案、必含/禁含短语和 JSON 对象；不替代语义评审。"),
+):
+    BUILTIN_TOOLS.append({"key": _key, "name": _name, "category": _category, "risk": "只读", "description": _description,
+        "parameters": [{"name": name, "type": kind, "required": required, "description": description}
+                       for name, kind, required, description in _EVALUATION_PARAMETERS[_key]]})
+    TOOL_RUNTIME_DETAILS[_key] = {
+        "status": "active", "status_label": "已接入评测工具调用入口", "runtime_name": _key,
+        "runtime_role": "评测工具调用（非自动 Task Worker）", "input_context": [],
+        "output": _description,
+        "constraints": ["须启用 Agent 并授权此工具；遵循项目读取权限。", "不启动外部推理或修改评测数据。"],
+        "audit": "同步返回工具键、Agent 版本及计算结果；不创建 TaskRun。",
+    }
+
+# 用例生成子 Agent 的工具由 LangGraph 主 Agent 显式调度，不能执行或保存资产。
+for _module, _label in {"api": "接口", "web": "Web UI", "security": "安全", "asr": "ASR", "ai": "AI 质量"}.items():
+    _key = f"case_generation.generate_{_module}"
+    BUILTIN_TOOLS.append({
+        "key": _key, "name": f"生成{_label}用例草稿", "category": "用例生成", "risk": "模型调用",
+        "description": f"由对应子 Agent 使用授权模型和专项 Skill 生成{_label}用例草稿，不执行或保存。",
+        "parameters": [
+            {"name": "requirements", "type": "string", "required": True, "description": "用户确认的需求上下文。"},
+            {"name": "count", "type": "integer", "required": True, "description": "每模块最多 20 条。"},
+        ],
+    })
+    TOOL_RUNTIME_DETAILS[_key] = {
+        "status": "active", "status_label": "已接入 LangGraph 用例生成子节点", "runtime_name": _key,
+        "runtime_role": "用例生成子 Agent", "input_context": [], "output": "经结构化校验、待人工审核的用例草稿。",
+        "constraints": ["模型身份和 Skill 由主 Agent 在服务端解析。", "不执行测试或写入测试资产；调用会消耗模型额度。"],
+        "audit": "返回主子 Agent 版本、模型选择、分模块结果及失败状态。",
+    }
+
 _RUNTIME_CONTEXT_TYPES = {
     "project_id": "integer",
     "api_ids": "integer[]",

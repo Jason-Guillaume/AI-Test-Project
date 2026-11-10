@@ -117,8 +117,27 @@ class ModelDiagnosticInput(ModelCenterInput):
     confirm_model_call: Literal[True]
 
 
+class ModelConnectionTestInput(ModelCenterInput):
+    """以未保存的文本推理配置发送一次明确触发的在线请求。"""
+
+    visibility: Literal["PLATFORM", "PROJECT"]
+    project_id: int | None = Field(default=None, gt=0)
+    endpoint: str = Field(min_length=1, max_length=2000)
+    model_name: str = Field(min_length=1, max_length=200)
+    credential: str = Field(default="", max_length=8000)
+    config: dict[str, Any] = Field(default_factory=dict)
+    confirm_model_call: Literal[True]
+
+    @model_validator(mode="after")
+    def validate_scope(self) -> "ModelConnectionTestInput":
+        """平台资源不绑定项目；项目资源测试必须保持所属项目边界。"""
+        if (self.visibility == "PROJECT") != (self.project_id is not None):
+            raise ValueError("项目私有模型测试必须指定项目，平台共享模型测试不能指定项目")
+        return self
+
+
 __all__ = [
-    "ModelAvailableQuery", "ModelDefaultInput", "ModelDiagnosticInput", "ModelGrantInput",
+    "ModelAvailableQuery", "ModelConnectionTestInput", "ModelDefaultInput", "ModelDiagnosticInput", "ModelGrantInput",
     "ModelImportPreview", "ModelProfileCreate", "ModelProfileInput", "ModelResourceCreate",
     "ModelRevisionInput",
 ]

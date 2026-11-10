@@ -25,7 +25,9 @@ from app.platform.model_configuration.services.model_center_service import (
     resolve_task_slots, sync_legacy_asr_connection, sync_legacy_asr_parameter_set,
 )
 from app.platform.model_configuration.models import ModelTaskSlot
-from app.features.asr_evaluation.models import AsrAudio, AsrAudioVersion, AsrConnection, AsrParameterSet, AsrSchedule
+from app.features.asr_evaluation.models import (
+    AsrAudio, AsrAudioVersion, AsrConnection, AsrGroundTruthVersion, AsrParameterSet, AsrSchedule,
+)
 from app.features.asr_evaluation.schemas import (
     AudioItemInput, ConnectionCreate, ParameterSetCreate, ScheduleCreate,
 )
@@ -287,7 +289,7 @@ def update_audio(db: Session, audio_id: int, *, name: str | None, url: str | Non
 
 def list_audios(
     db: Session, project_id: int, actor: User, *, page: int = 1, page_size: int = 20,
-    keyword: str | None = None,
+    keyword: str | None = None, availability: str | None = None, ground_truth_status: str | None = None,
 ) -> dict:
     """分页列出项目可见音频，不暴露签名查询串。"""
     get_project_or_404(db, project_id, actor)
@@ -295,11 +297,32 @@ def list_audios(
     normalized_keyword = (keyword or "").strip()
     if normalized_keyword:
         query = query.filter(AsrAudio.name.ilike(f"%{normalized_keyword}%"))
+    if availability:
+        allowed_availability = {"AVAILABLE", "UNKNOWN", "UNREACHABLE", "PLATFORM_DENIED"}
+        if availability not in allowed_availability:
+            raise bad_request("音频可用性筛选值无效")
+        query = query.filter(AsrAudio.availability == availability)
+    if ground_truth_status:
+        if ground_truth_status not in {"BOUND", "UNBOUND"}:
+            raise bad_request("标准答案筛选值无效")
+        current_ground_truth = db.query(AsrGroundTruthVersion.id).join(
+            AsrAudioVersion, AsrAudioVersion.id == AsrGroundTruthVersion.audio_version_id,
+        ).filter(
+            AsrGroundTruthVersion.audio_id == AsrAudio.id,
+            AsrAudioVersion.version == AsrAudio.content_version,
+            AsrGroundTruthVersion.is_current.is_(True),
+        ).exists()
+        query = query.filter(current_ground_truth if ground_truth_status == "BOUND" else ~current_ground_truth)
     total = query.order_by(None).count()
     rows = query.order_by(AsrAudio.created_at.desc(), AsrAudio.id.desc()).offset(
         (page - 1) * page_size,
     ).limit(page_size).all()
-    return {"items": [_dump_audio(row) for row in rows], "total": total, "page": page, "page_size": page_size}
+    current_versions = db.query(AsrAudioVersion).filter(
+        AsrAudioVersion.audio_id.in_([row.id for row in rows] or [-1]),
+    ).all()
+    version_ids = {(row.audio_id, row.version): row.id for row in current_versions}
+    items = [_dump_audio(row) | {"current_audio_version_id": version_ids.get((row.id, row.content_version))} for row in rows]
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 def check_audio(db: Session, audio_id: int, actor: User) -> dict:

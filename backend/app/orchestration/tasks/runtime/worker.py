@@ -237,4 +237,18 @@ class TaskWorker:
             history = [*(attempt.checkpoint_json or {}).get("model_attempts", []), item]
             attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "model_attempts": history}
 
-        return ProductionLLMProvider(db, model_config_ids=candidate_ids, attempt_callback=record_model_attempt)
+        def recheck_access():
+            # Provider reloads the actual candidate immediately before each request.
+            # A disabled primary must not block an explicitly configured live fallback.
+            for candidate_id in candidate_ids:
+                model = db.get(ModelConfiguration, candidate_id, populate_existing=True)
+                if model is not None and model.is_enabled:
+                    assembly_service.assert_agent_model_access(db, task.project_id, actor, candidate_id)
+                    break
+            else:
+                raise RuntimeError('任务主模型及配置的备用模型均已停用')
+            from app.knowledge.service import search
+            profile = (run.input_snapshot or {}).get('agent_definition') or {}
+            if profile.get('knowledge'):
+                search(db, profile['knowledge'], actor, '', limit=0)
+        return ProductionLLMProvider(db, model_config_ids=candidate_ids, attempt_callback=record_model_attempt, before_request=recheck_access)

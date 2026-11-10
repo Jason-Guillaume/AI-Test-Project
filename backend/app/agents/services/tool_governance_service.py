@@ -87,7 +87,7 @@ def update_builtin_tool(
             next_keys.append(tool_key)
             validate_agent_links(
                 db, agent.skill_keys or [], next_keys, agent.model_config_id,
-                agent_enabled=agent.is_enabled, child_agent_ids=agent.child_agent_ids or [],
+                agent_enabled=agent.is_enabled, child_agent_ids=agent.child_agent_ids or [], workflow_template=agent.workflow_template,
                 agent_id=agent.id,
             )
         updates.append((agent, next_keys))

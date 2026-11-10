@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, App, Button, Card, Checkbox, Collapse, Descriptions, Divider, Flex, Input,
   InputNumber, Select, Space, Table, Tag, Typography, Upload,
@@ -46,6 +46,8 @@ export function FunAsrTuningPage() {
   const { message } = App.useApp();
   const { currentProjectId } = useConsoleScope();
   const projectId = currentProjectId;
+  const activeProjectRef = useRef(projectId);
+  activeProjectRef.current = projectId;
   const [audios, setAudios] = useState<AsrAudio[]>([]);
   const [answers, setAnswers] = useState<FunAsrGroundTruth[]>([]);
   const [interfaces, setInterfaces] = useState<FunAsrInterface[]>([]);
@@ -80,15 +82,29 @@ export function FunAsrTuningPage() {
   const [nightEnd, setNightEnd] = useState('07:00');
   const [busy, setBusy] = useState(false);
   const [previewMarkdown, setPreviewMarkdown] = useState<string>();
+  const [setupLoading, setSetupLoading] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const sessionsLoaded = useRef(false);
+  const setupRequestId = useRef(0);
+  const sessionsRequestId = useRef(0);
+  const selectedSessionRequestId = useRef(0);
+  const selectedSessionIdRef = useRef<number | null>(null);
 
   const loadSetup = useCallback(async () => {
     if (!projectId) return;
+    const requestId = ++setupRequestId.current;
+    const requestProjectId = projectId;
+    setSetupLoading(true);
+    setSetupError(null);
     try {
       const [audioResult, answerResult, interfaceResult, environmentResult, bindingResult, definitionResult, modelResult] = await Promise.all([
         funasrTuningApi.audioList(projectId), funasrTuningApi.groundTruth(projectId),
         funasrTuningApi.interfaces(projectId), funasrTuningApi.environments(projectId),
         funasrTuningApi.bindings(projectId), funasrTuningApi.definitions(), funasrTuningApi.models(projectId),
       ]);
+      if (requestId !== setupRequestId.current || activeProjectRef.current !== requestProjectId) return;
       setAudios(audioResult.items); setAnswers(answerResult.items); setInterfaces(interfaceResult.items);
       setEnvironments(environmentResult.items); setBindings(bindingResult.items); setDefinitions(definitionResult.items);
       setModels(modelResult.items);
@@ -96,30 +112,58 @@ export function FunAsrTuningPage() {
       setModelConfigId((previous) => previous ?? modelResult.items[0]?.id);
       setSelectedAudioIds((previous) => previous.filter((id) => audioResult.items.some((item) => item.id === id)));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : '读取 FunASR 配置失败');
+      if (requestId !== setupRequestId.current || activeProjectRef.current !== requestProjectId) return;
+      const detail = error instanceof Error ? error.message : '读取 FunASR 配置失败';
+      setSetupError(detail);
+      message.error(detail);
+    } finally {
+      if (requestId === setupRequestId.current && activeProjectRef.current === requestProjectId) setSetupLoading(false);
     }
   }, [message, projectId]);
 
   const loadSessions = useCallback(async () => {
     if (!projectId) return;
+    const requestId = ++sessionsRequestId.current;
+    const selectedRequestId = selectedSessionRequestId.current;
+    const selectedSessionId = selectedSessionIdRef.current;
+    const requestProjectId = projectId;
+    if (!sessionsLoaded.current) setSessionsLoading(true);
     try {
       const result = await funasrTuningApi.sessions(projectId);
+      if (requestId !== sessionsRequestId.current || activeProjectRef.current !== requestProjectId) return;
       setSessions(result.items);
-      if (selectedSession) {
-        const current = result.items.find((item) => item.id === selectedSession.id);
+      setSessionsError(null);
+      sessionsLoaded.current = true;
+      if (selectedSessionId != null) {
+        const current = result.items.find((item) => item.id === selectedSessionId);
         if (current) {
           const detail = await funasrTuningApi.session(current.id);
+          if (requestId !== sessionsRequestId.current || activeProjectRef.current !== requestProjectId
+            || selectedRequestId !== selectedSessionRequestId.current
+            || selectedSessionId !== selectedSessionIdRef.current) return;
           setSelectedSession(detail);
         }
       }
-    } catch { /* retain the latest readable state while polling */ }
-  }, [projectId, selectedSession]);
+    } catch (error) {
+      if (requestId !== sessionsRequestId.current || activeProjectRef.current !== requestProjectId) return;
+      setSessionsError(error instanceof Error ? error.message : '读取任务列表失败');
+    } finally {
+      if (requestId === sessionsRequestId.current && activeProjectRef.current === requestProjectId) setSessionsLoading(false);
+    }
+  }, [projectId]);
 
   useEffect(() => {
+    setupRequestId.current += 1;
+    sessionsRequestId.current += 1;
+    selectedSessionRequestId.current += 1;
+    selectedSessionIdRef.current = null;
     setAudios([]); setAnswers([]); setInterfaces([]); setEnvironments([]); setBindings([]); setModels([]); setSessions([]);
     setSelectedSession(null); setSelectedAudioIds([]); setInterfaceId(undefined); setEnvironmentName(undefined);
     setBindingId(undefined); setModelConfigId(undefined); setCredential(''); setResponseMappingText(EMPTY_MAPPING);
     setGroundTruthMappingText(EMPTY_MAPPING); setAnswerFixture(''); setResponseFixture('');
+    setSetupError(null); setSessionsError(null);
+    setSetupLoading(false); setSessionsLoading(false); setBusy(false);
+    sessionsLoaded.current = false;
   }, [projectId]);
   useEffect(() => { void loadSetup(); }, [loadSetup]);
   useEffect(() => {
@@ -131,46 +175,68 @@ export function FunAsrTuningPage() {
 
   const audioById = useMemo(() => new Map(audios.map((audio) => [audio.id, audio])), [audios]);
   const answerByAudioId = useMemo(() => new Map(answers.map((answer) => [answer.audio_id, answer])), [answers]);
+  const selectedAudioMissingAnswers = selectedAudioIds.filter((id) => {
+    const audio = audioById.get(id);
+    const answer = answerByAudioId.get(id);
+    return !audio || !answer || answer.audio_content_version !== audio.content_version;
+  });
   const selectedBinding = bindings.find((item) => item.id === bindingId);
   const selectedInterface = interfaces.find((item) => item.id === interfaceId);
   const currentParameters = useMemo(() => {
     try { return parseObject(parameterText, '基线参数'); } catch { return {}; }
   }, [parameterText]);
+  const updateBaselineParameter = (name: string, value: JsonValue | undefined) => {
+    try {
+      const current = parseObject(parameterText, '基线参数');
+      const next = { ...current };
+      if (value === undefined) delete next[name];
+      else next[name] = value;
+      setParameterText(JSON.stringify(next, null, 2));
+    } catch {
+      message.error('请先修正基线参数 JSON，再使用表单控件修改。');
+    }
+  };
   const funasrInterfaces = interfaces.filter((item) => item.method.toUpperCase() === 'POST'
     && item.path.replace(/\/$/, '').endsWith('/api/v1/transcribe/paraformer/v2'));
 
   const createBinding = async () => {
     if (!projectId || !interfaceId || !environmentName) return;
+    const requestProjectId = projectId;
     setBusy(true);
     try {
       const mapping = parseObject(responseMappingText, '响应映射');
       const row = await funasrTuningApi.createBinding({ project_id: projectId, api_interface_id: interfaceId,
         environment_name: environmentName, response_mapping: mapping, credential: credential || null,
         credential_header: credential ? credentialHeader : null });
+      if (activeProjectRef.current !== requestProjectId) return;
       setBindings((current) => [row, ...current]); setBindingId(row.id); setCredential('');
       setParameterText(JSON.stringify(row.parameter_seed ?? {}, null, 2));
       message.success('接口绑定已保存；原接口参数示例仍按原值保留');
-    } catch (error) { message.error(error instanceof Error ? error.message : '保存接口绑定失败'); }
-    finally { setBusy(false); }
+    } catch (error) { if (activeProjectRef.current === requestProjectId) message.error(error instanceof Error ? error.message : '保存接口绑定失败'); }
+    finally { if (activeProjectRef.current === requestProjectId) setBusy(false); }
   };
 
   const saveResponseMapping = async () => {
     if (!bindingId) return;
+    const requestProjectId = projectId;
     setBusy(true);
     try {
       const mapping = parseObject(responseMappingText, '响应映射');
       if (!responseFixture.trim()) throw new Error('请提供实际响应 JSON 样本并预览映射');
       const sample = JSON.parse(responseFixture) as JsonValue;
       const preview = await funasrTuningApi.previewMapping(sample, mapping, 'recognition');
+      if (activeProjectRef.current !== requestProjectId) return;
       setPreviewMarkdown(preview.markdown);
       const row = await funasrTuningApi.updateBinding(bindingId, mapping, sample);
+      if (activeProjectRef.current !== requestProjectId) return;
       setBindings((current) => current.map((item) => item.id === row.id ? row : item));
       message.success('响应映射已保存。请用真实响应样本预览后再创建任务。');
-    } catch (error) { message.error(error instanceof Error ? error.message : '保存映射失败'); }
-    finally { setBusy(false); }
+    } catch (error) { if (activeProjectRef.current === requestProjectId) message.error(error instanceof Error ? error.message : '保存映射失败'); }
+    finally { if (activeProjectRef.current === requestProjectId) setBusy(false); }
   };
 
   const previewJson = async (source: 'ground_truth' | 'recognition') => {
+    const requestProjectId = projectId;
     const text = source === 'ground_truth' ? answerFixture : responseFixture;
     if (!text.trim()) { message.info('请先选择或粘贴一份 JSON 样本用于预览'); return; }
     try {
@@ -178,27 +244,33 @@ export function FunAsrTuningPage() {
       const mapping = parseObject(source === 'ground_truth' ? groundTruthMappingText : responseMappingText,
         source === 'ground_truth' ? '标准答案映射' : '响应映射');
       const result = await funasrTuningApi.previewMapping(document, mapping, source);
+      if (activeProjectRef.current !== requestProjectId) return;
       setPreviewMarkdown(result.markdown);
       message.success(`映射预览完成${result.warnings.length ? `，${result.warnings.length} 条提示` : ''}`);
-    } catch (error) { message.error(error instanceof Error ? error.message : '映射预览失败'); }
+    } catch (error) { if (activeProjectRef.current === requestProjectId) message.error(error instanceof Error ? error.message : '映射预览失败'); }
   };
 
   const uploadAnswer = async (audioId: number, file: File) => {
+    const requestProjectId = projectId;
+    if (!requestProjectId) return;
     setBusy(true);
     try {
       const document = JSON.parse(await file.text()) as JsonValue;
       const mapping = parseObject(groundTruthMappingText, '标准答案映射');
       await funasrTuningApi.createGroundTruth(audioId, document, mapping);
-      const refreshed = await funasrTuningApi.groundTruth(projectId!);
+      if (activeProjectRef.current !== requestProjectId) return;
+      const refreshed = await funasrTuningApi.groundTruth(requestProjectId);
+      if (activeProjectRef.current !== requestProjectId) return;
       setAnswers(refreshed.items);
       setAnswerFixture(JSON.stringify(document, null, 2));
       message.success('标准答案已保存为新版本');
-    } catch (error) { message.error(error instanceof Error ? error.message : '标准答案 JSON 上传失败'); }
-    finally { setBusy(false); }
+    } catch (error) { if (activeProjectRef.current === requestProjectId) message.error(error instanceof Error ? error.message : '标准答案 JSON 上传失败'); }
+    finally { if (activeProjectRef.current === requestProjectId) setBusy(false); }
   };
 
   const createSession = async () => {
     if (!projectId || !bindingId || !modelConfigId || !selectedAudioIds.length) return;
+    const requestProjectId = projectId;
     setBusy(true);
     try {
       const parameters = parseObject(parameterText, '基线参数');
@@ -209,29 +281,55 @@ export function FunAsrTuningPage() {
         no_improvement_limit: noImprovementLimit, failed_items_limit: failedItemsLimit,
         target_micro_cer: targetCer, min_improvement: 0.001, max_sample_degradation: 0.05,
         window_enabled: nightWindow, night_start: nightStart, night_end: nightEnd, idempotency_key: makeKey() });
+      if (activeProjectRef.current !== requestProjectId) return;
+      selectedSessionRequestId.current += 1;
+      selectedSessionIdRef.current = result.id;
       setSelectedSession(result);
       await loadSessions();
+      if (activeProjectRef.current !== requestProjectId) return;
       message.success('后台调优任务已创建；关闭页面不会停止任务');
-    } catch (error) { message.error(error instanceof Error ? error.message : '创建调优任务失败'); }
-    finally { setBusy(false); }
+    } catch (error) { if (activeProjectRef.current === requestProjectId) message.error(error instanceof Error ? error.message : '创建调优任务失败'); }
+    finally { if (activeProjectRef.current === requestProjectId) setBusy(false); }
   };
 
   const actOnSession = async (action: 'pause' | 'resume' | 'stop' | 'retryFailed' | 'retryAnalysis') => {
     if (!selectedSession) return;
+    const requestProjectId = projectId;
     setBusy(true);
     try {
       const next = await funasrTuningApi[action](selectedSession.id);
+      if (activeProjectRef.current !== requestProjectId) return;
+      selectedSessionRequestId.current += 1;
+      selectedSessionIdRef.current = next.id;
       setSelectedSession(next); await loadSessions();
+      if (activeProjectRef.current !== requestProjectId) return;
       message.success('任务操作已提交');
-    } catch (error) { message.error(error instanceof Error ? error.message : '任务操作失败'); }
-    finally { setBusy(false); }
+    } catch (error) { if (activeProjectRef.current === requestProjectId) message.error(error instanceof Error ? error.message : '任务操作失败'); }
+    finally { if (activeProjectRef.current === requestProjectId) setBusy(false); }
+  };
+
+  const openTuningSession = async (sessionId: number) => {
+    const requestProjectId = projectId;
+    const requestId = ++selectedSessionRequestId.current;
+    try {
+      const detail = await funasrTuningApi.session(sessionId);
+      if (activeProjectRef.current === requestProjectId && requestId === selectedSessionRequestId.current) {
+        selectedSessionIdRef.current = detail.id;
+        setSelectedSession(detail);
+      }
+    } catch {
+      if (activeProjectRef.current === requestProjectId && requestId === selectedSessionRequestId.current) message.error('读取任务详情失败');
+    }
   };
 
   const audioColumns: TableColumnsType<AsrAudio> = [
     { title: '录音', dataIndex: 'name', key: 'name', render: (_value, row) => <Space direction="vertical" size={0}><Text strong>{row.name}</Text><Text type="secondary">音频版本 {row.content_version}</Text></Space> },
     { title: '标准答案 JSON', key: 'answer', width: 220, render: (_value, row) => {
       const answer = answerByAudioId.get(row.id);
-      return <Space direction="vertical" size="small">{answer ? <Tag color="green">答案 v{answer.version} 已冻结</Tag> : <Tag color="orange">待上传</Tag>}
+      if (setupLoading) return <Tag color="processing">读取中</Tag>;
+      if (setupError) return <Tag color="error">读取失败</Tag>;
+      const currentAnswer = answer?.audio_content_version === row.content_version;
+      return <Space direction="vertical" size="small">{answer ? <Tag color={currentAnswer ? 'green' : 'orange'}>{currentAnswer ? `答案 v${answer.version} 已冻结` : `答案绑定音频 v${answer.audio_content_version}；当前 v${row.content_version}`}</Tag> : <Tag color="orange">待上传</Tag>}
         <Upload accept=".json,application/json" showUploadList={false} disabled={busy}
           beforeUpload={(file) => { void uploadAnswer(row.id, file); return false; }}>
           <Button size="small" icon={<UploadOutlined />} disabled={busy}>
@@ -250,21 +348,30 @@ export function FunAsrTuningPage() {
     { title: '进度', key: 'progress', render: (_value, row) => `${row.completed_items}/${row.total_items} 项` },
     { title: '最佳微平均 CER', dataIndex: 'best_micro_cer', key: 'cer', render: (value) => value == null ? '—' : Number(value).toFixed(4) },
     { title: 'ASR / AI 用量', key: 'usage', render: (_value, row) => `${row.asr_requests_used}/${row.max_asr_requests} · ${row.ai_calls_used}/${row.max_ai_calls}` },
+    { title: '操作', key: 'action', width: 130, render: (_value, row) => <Button size="small" onClick={() => void openTuningSession(row.id)}>查看详情</Button> },
   ];
 
   const detail = selectedSession;
   const currentStatus = detail?.status ?? '';
   const canPause = ['QUEUED', 'RUNNING', 'WAITING_WINDOW'].includes(currentStatus);
   const canResume = ['PAUSED', 'WAITING_WINDOW'].includes(currentStatus);
-  const canStop = !['COMPLETED', 'STOPPED', 'FAILED'].includes(currentStatus);
+  const canStop = !['COMPLETED', 'STOPPED', 'FAILED', 'STOP_REQUESTED'].includes(currentStatus);
   const canRetryAsr = currentStatus === 'FAILED' && detail?.rounds?.some((round) => round.items?.some((item) => item.status === 'FAILED'));
   const canRetryAi = currentStatus === 'FAILED' && detail?.rounds?.some((round) => round.items?.some((item) => item.review_status === 'FAILED') || round.status === 'FAILED');
 
   return <AsrFrame title="AI 分析与调优" projectId={projectId ?? undefined}>
     {!projectId ? <Alert type="info" showIcon message="请先在顶部选择项目" description="接口、录音、答案和任务均按项目隔离。" /> : <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Alert type="info" showIcon message="独立 FunASR 评测流程" description="从接口管理绑定 POST /api/v1/transcribe/paraformer/v2，逐条串行识别并计算 CER。后台按预算、窗口和停止条件自动运行；页面关闭不会停止任务。真实响应与答案路径必须由你配置并预览。" />
+      {setupError && <Alert type="error" showIcon message="AI 调优准备信息加载失败" description={setupError} action={<Button size="small" loading={setupLoading} onClick={() => void loadSetup()}>重试</Button>} />}
 
-      <Card title="1. 绑定接口与项目环境" extra={selectedBinding && (selectedBinding.interface_updated || selectedBinding.interface_removed) ? <Tag color="orange">来源接口已更新</Tag> : null}>
+      <Collapse items={[{
+        key: 'connection',
+        label: <Space wrap><Text strong>连接配置（接口、鉴权与响应映射）</Text>
+          {selectedBinding?.response_mapping_verified && !selectedBinding.interface_updated && !selectedBinding.interface_removed
+            ? <Tag color="green">已验证绑定 v{selectedBinding.interface_version}</Tag>
+            : <Tag color="orange">{selectedBinding ? '需要重新验证' : '尚未选择已验证方案'}</Tag>}
+        </Space>,
+        children: <Card title="FunASR 接口绑定" extra={selectedBinding && (selectedBinding.interface_updated || selectedBinding.interface_removed) ? <Tag color="orange">来源接口已更新</Tag> : null}>
         <Flex gap="middle" wrap="wrap" align="end">
           <div style={{ minWidth: 280, flex: 1 }}><Text>接口管理中的 FunASR 接口</Text><Select style={{ width: '100%' }} value={interfaceId}
             placeholder="选择 POST Paraformer V2 接口" options={funasrInterfaces.map((item) => ({ value: item.id, label: `${item.name} · ${item.method} ${item.path}` }))}
@@ -304,7 +411,8 @@ export function FunAsrTuningPage() {
         </Flex>
         <Input.TextArea rows={4} value={responseFixture} onChange={(event) => setResponseFixture(event.target.value)}
           placeholder="粘贴用于映射预览的真实响应 JSON。缺少真实响应时可先继续配置标准答案，但不能启动真实任务。" style={{ marginTop: 10 }} spellCheck={false} />
-      </Card>
+        </Card>,
+      }]} />
 
       <Card title="2. 给录音绑定标准答案 JSON">
         <Paragraph type="secondary">先在 ASR 音频页导入录音，再在下方对应录音行的“标准答案 JSON”列点击“绑定样例 JSON”选择文件。答案会保存为不可变版本并绑定当前音频版本；只配置样例中实际存在的字段，缺失的时间和说话人不会补造。</Paragraph>
@@ -315,7 +423,7 @@ export function FunAsrTuningPage() {
         </Flex>
         <Input.TextArea rows={3} value={answerFixture} onChange={(event) => setAnswerFixture(event.target.value)}
           placeholder="可粘贴答案 JSON 预览映射；正式配对请在录音行上传 JSON 文件。" style={{ marginTop: 10 }} spellCheck={false} />
-        <Table rowKey="id" style={{ marginTop: 14 }} size="small" dataSource={audios} columns={audioColumns}
+        <Table rowKey="id" style={{ marginTop: 14 }} size="small" loading={setupLoading} dataSource={audios} columns={audioColumns}
           rowSelection={{ selectedRowKeys: selectedAudioIds, onChange: (keys) => setSelectedAudioIds(keys.map(Number)) }}
           pagination={{ pageSize: 10 }} locale={{ emptyText: '当前项目还没有录音，请先在 ASR 音频列表中导入。' }} />
       </Card>
@@ -331,53 +439,96 @@ export function FunAsrTuningPage() {
           <div><Text>任务模式</Text><Select style={{ width: 190 }} value={mode} onChange={setMode}
             options={[{ value: 'AUTO_TUNE', label: '自动多轮调优' }, { value: 'ANALYZE', label: '单轮分析' }]} /></div>
         </Flex>
-        <Title level={5} style={{ marginTop: 18 }}>FunASR 基线参数（JSON 顶层字段）</Title>
-        <Input.TextArea rows={8} value={parameterText} onChange={(event) => setParameterText(event.target.value)} spellCheck={false} />
-        <Paragraph type="secondary">不能包含 audio、parameters 包装或任务元数据。audio 会逐条注入。null、false、0 和空字符串均按原值保留。</Paragraph>
-        <Text strong>允许搜索范围（空对象表示不自动调参）</Text>
-        <Input.TextArea rows={4} value={allowedText} onChange={(event) => setAllowedText(event.target.value)} spellCheck={false}
-          placeholder={'例如：{ "/target_rms_dbfs": { "minimum": -30, "maximum": -10 } }'} />
-        <Paragraph type="secondary">只允许调优已勾选字段的范围；热词、固定人数、批处理性能字段默认锁定。speaker_merge_threshold 只有自动估计人数时生效，merge_length_s 只有 merge_vad=true 时生效。</Paragraph>
-        <Descriptions size="small" column={{ xs: 1, md: 2 }} bordered style={{ marginTop: 12 }}>
-          {definitions.map((item) => <Descriptions.Item key={item.path} label={<code>{item.path.slice(1)}</code>}>
-            <Space wrap size={4}><Text>{item.value_type}</Text>
-              <Text type="secondary">{item.exclusive_minimum != null ? `(${item.exclusive_minimum}, ${item.maximum}]` : item.minimum != null ? `[${item.minimum}, ${item.maximum}]` : '按类型限制'}</Text>
-              {item.unit && <Text type="secondary">{item.unit}</Text>}
-              {item.nullable && <Tag>可空</Tag>}{item.tunable ? <Tag color="blue">可调</Tag> : <Tag>默认固定</Tag>}
-              <Text type="secondary">文档默认：{item.default === null ? 'null' : JSON.stringify(item.default)}</Text>
-              {item.active_when && <Tag color={currentParameters[String(item.active_when.path).slice(1)] === item.active_when.equals ? 'green' : 'orange'}>
-                {currentParameters[String(item.active_when.path).slice(1)] === item.active_when.equals ? '当前生效' : '当前不生效'}
-              </Tag>}
-            </Space>
-            <div><Text type="secondary">{item.description}</Text>{item.tuning_note && <div><Text type="warning">{item.tuning_note}</Text></div>}</div>
-          </Descriptions.Item>)}
-        </Descriptions>
-        <Divider />
-        <Flex gap="middle" wrap="wrap" align="center">
-          <label>最大轮数 <InputNumber min={1} max={100} value={maxRounds} onChange={(value) => setMaxRounds(Number(value ?? 1))} /></label>
-          <label>ASR 请求预算 <InputNumber min={1} max={20000} value={maxAsrRequests} onChange={(value) => setMaxAsrRequests(Number(value ?? 1))} /></label>
-          <label>AI 调用预算 <InputNumber min={1} max={100} value={maxAiCalls} onChange={(value) => setMaxAiCalls(Number(value ?? 1))} /></label>
-          <label>连续无改善上限 <InputNumber min={1} max={20} value={noImprovementLimit} onChange={(value) => setNoImprovementLimit(Number(value ?? 1))} /></label>
-          <label>失败录音上限 <InputNumber min={0} max={200} value={failedItemsLimit} onChange={(value) => setFailedItemsLimit(Number(value ?? 0))} /></label>
-          <label>目标微平均 CER <InputNumber min={0} max={5} step={0.01} value={targetCer ?? undefined} onChange={(value) => setTargetCer(value ?? null)} placeholder="可选" /></label>
-        </Flex>
-        <Flex gap="middle" wrap="wrap" align="center" style={{ marginTop: 16 }}>
-          <Checkbox checked={nightWindow} onChange={(event) => setNightWindow(event.target.checked)}>仅在夜间窗口发起新请求（Asia/Shanghai）</Checkbox>
-          <label>开始 <Input value={nightStart} onChange={(event) => setNightStart(event.target.value)} style={{ width: 90 }} /></label>
-          <label>结束 <Input value={nightEnd} onChange={(event) => setNightEnd(event.target.value)} style={{ width: 90 }} /></label>
-        </Flex>
-        <Paragraph type="secondary" style={{ marginTop: 8 }}>预算按请求次数控制；没有价格信息时不显示费用估算。窗口外不会开始新的 ASR 或 AI 调用，在途调用会完成并落盘。</Paragraph>
+        <Card size="small" title="常用参数" style={{ marginTop: 14 }}>
+          <div className="asr-tuning-parameter-grid">
+            {definitions.filter((item) => item.tunable).map((item) => (
+              <div className="asr-tuning-parameter" key={item.path}>
+                <Text strong>{item.display_name}{item.unit ? ' · ' + item.unit : ''}</Text>
+                {item.value_type === 'boolean' ? (
+                  <Select
+                    aria-label={item.display_name}
+                    value={typeof currentParameters[item.path.slice(1)] === 'boolean' ? String(currentParameters[item.path.slice(1)]) : 'UNSET'}
+                    onChange={(value) => updateBaselineParameter(item.path.slice(1), value === 'UNSET' ? undefined : value === 'true')}
+                    options={[
+                      { value: 'UNSET', label: '未显式设置（使用接口默认）' },
+                      { value: 'true', label: '开启' },
+                      { value: 'false', label: '关闭' },
+                    ]}
+                  />
+                ) : (
+                  <InputNumber
+                    aria-label={item.display_name}
+                    style={{ width: '100%' }}
+                    value={typeof currentParameters[item.path.slice(1)] === 'number' ? currentParameters[item.path.slice(1)] as number : undefined}
+                    min={item.exclusive_minimum ?? item.minimum ?? undefined}
+                    max={item.maximum ?? undefined}
+                    step={item.value_type === 'integer' ? 1 : 0.1}
+                    placeholder="未显式设置（使用接口默认）"
+                    onChange={(value) => updateBaselineParameter(item.path.slice(1), value == null ? undefined : value)}
+                  />
+                )}
+                <Typography.Text type="secondary">{item.description}</Typography.Text>
+              </div>
+            ))}
+          </div>
+          <Typography.Paragraph type="secondary" style={{ margin: '12px 0 0' }}>
+            表单修改会同步到高级 JSON；省略值继续使用接口默认，关闭与 0 会按明确值保存。
+          </Typography.Paragraph>
+        </Card>
+        <Collapse items={[{ key: 'advanced', label: '参数与执行上限（高级设置）', children: <Space direction="vertical" style={{ width: '100%' }}>
+          <Title level={5} style={{ marginTop: 0 }}>FunASR 基线参数（JSON 顶层字段）</Title>
+          <Input.TextArea rows={8} value={parameterText} onChange={(event) => setParameterText(event.target.value)} spellCheck={false} />
+          <Paragraph type="secondary">不能包含 audio、parameters 包装或任务元数据。audio 会逐条注入。null、false、0 和空字符串均按原值保留。</Paragraph>
+          <Text strong>允许搜索范围（空对象表示不自动调参）</Text>
+          <Input.TextArea rows={4} value={allowedText} onChange={(event) => setAllowedText(event.target.value)} spellCheck={false}
+            placeholder={'例如：{ "/target_rms_dbfs": { "minimum": -30, "maximum": -10 } }'} />
+          <Paragraph type="secondary">只允许调优已勾选字段的范围；热词、固定人数、批处理性能字段默认锁定。speaker_merge_threshold 只有自动估计人数时生效，merge_length_s 只有 merge_vad=true 时生效。</Paragraph>
+          <Descriptions size="small" column={{ xs: 1, md: 2 }} bordered>
+            {definitions.map((item) => <Descriptions.Item key={item.path} label={<code>{item.path.slice(1)}</code>}>
+              <Space wrap size={4}><Text>{item.value_type}</Text>
+                <Text type="secondary">{item.exclusive_minimum != null ? `(${item.exclusive_minimum}, ${item.maximum}]` : item.minimum != null ? `[${item.minimum}, ${item.maximum}]` : '按类型限制'}</Text>
+                {item.unit && <Text type="secondary">{item.unit}</Text>}
+                {item.nullable && <Tag>可空</Tag>}{item.tunable ? <Tag color="blue">可调</Tag> : <Tag>默认固定</Tag>}
+                <Text type="secondary">文档默认：{item.default === null ? 'null' : JSON.stringify(item.default)}</Text>
+                {item.active_when && <Tag color={currentParameters[String(item.active_when.path).slice(1)] === item.active_when.equals ? 'green' : 'orange'}>
+                  {currentParameters[String(item.active_when.path).slice(1)] === item.active_when.equals ? '当前生效' : '当前不生效'}
+                </Tag>}
+              </Space>
+              <div><Text type="secondary">{item.description}</Text>{item.tuning_note && <div><Text type="warning">{item.tuning_note}</Text></div>}</div>
+            </Descriptions.Item>)}
+          </Descriptions>
+          <Divider />
+          <Flex gap="middle" wrap="wrap" align="center">
+            <label>最大轮数 <InputNumber min={1} max={100} value={maxRounds} onChange={(value) => setMaxRounds(Number(value ?? 1))} /></label>
+            <label>ASR 请求预算 <InputNumber min={1} max={20000} value={maxAsrRequests} onChange={(value) => setMaxAsrRequests(Number(value ?? 1))} /></label>
+            <label>AI 调用预算 <InputNumber min={1} max={100} value={maxAiCalls} onChange={(value) => setMaxAiCalls(Number(value ?? 1))} /></label>
+            <label>连续无改善上限 <InputNumber min={1} max={20} value={noImprovementLimit} onChange={(value) => setNoImprovementLimit(Number(value ?? 1))} /></label>
+            <label>失败录音上限 <InputNumber min={0} max={200} value={failedItemsLimit} onChange={(value) => setFailedItemsLimit(Number(value ?? 0))} /></label>
+            <label>目标微平均 CER <InputNumber min={0} max={5} step={0.01} value={targetCer ?? undefined} onChange={(value) => setTargetCer(value ?? null)} placeholder="可选" /></label>
+          </Flex>
+          <Flex gap="middle" wrap="wrap" align="center">
+            <Checkbox checked={nightWindow} onChange={(event) => setNightWindow(event.target.checked)}>仅在夜间窗口发起新请求（Asia/Shanghai）</Checkbox>
+            <label>开始 <Input value={nightStart} onChange={(event) => setNightStart(event.target.value)} style={{ width: 90 }} /></label>
+            <label>结束 <Input value={nightEnd} onChange={(event) => setNightEnd(event.target.value)} style={{ width: 90 }} /></label>
+          </Flex>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>预算按请求次数控制；没有价格信息时不显示费用估算。窗口外不会开始新的 ASR 或 AI 调用，在途调用会完成并落盘。</Paragraph>
+        </Space> }]} />
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
+          当前执行目标：{mode === 'AUTO_TUNE' ? '自动多轮调优' : '单轮分析'} · {maxRounds} 轮上限 · ASR {maxAsrRequests} 次 · AI {maxAiCalls} 次{nightWindow ? ' · 夜间窗口 ' + nightStart + '–' + nightEnd : ''}
+        </Typography.Paragraph>
+        {selectedAudioMissingAnswers.length > 0 && <Alert type="warning" showIcon message="准备清单未完成" description={'所选音频中有 ' + selectedAudioMissingAnswers.length + ' 条缺少当前音频版本的标准答案；请先上传或更新答案。'} style={{ marginBottom: 12 }} />}
       <Button type="primary" size="large" loading={busy} disabled={!bindingId || !selectedBinding?.response_mapping_verified || !modelConfigId || !selectedAudioIds.length
-          || Boolean(selectedBinding?.interface_updated) || selectedAudioIds.some((id) => !answerByAudioId.has(id))}
+          || Boolean(selectedBinding?.interface_updated) || Boolean(selectedBinding?.interface_removed) || selectedAudioMissingAnswers.length > 0}
           onClick={() => void createSession()}>
           创建后台任务（{selectedAudioIds.length} 条录音）
         </Button>
-        {selectedAudioIds.some((id) => !answerByAudioId.has(id)) && <Text type="danger" style={{ marginLeft: 12 }}>所选录音必须都有当前版本标准答案。</Text>}
+        {selectedAudioMissingAnswers.length > 0 && <Text type="danger" style={{ marginLeft: 12 }}>所选录音必须都有当前版本标准答案。</Text>}
       </Card>
 
       <Card title="4. 后台任务与轮次结果">
+        {sessionsError && <Alert type="warning" showIcon message="后台任务列表读取失败" description={sessionsError} action={<Button size="small" onClick={() => void loadSessions()}>重试</Button>} style={{ marginBottom: 12 }} />}
         <Table rowKey="id" size="small" dataSource={sessions} columns={sessionColumns} pagination={{ pageSize: 8 }}
-          onRow={(row) => ({ onClick: () => { void funasrTuningApi.session(row.id).then(setSelectedSession).catch(() => message.error('读取任务详情失败')); } })}
+          loading={sessionsLoading}
           rowClassName={(row) => row.id === selectedSession?.id ? 'ant-table-row-selected' : ''}
           locale={{ emptyText: '尚无 FunASR AI 分析任务。' }} />
         {detail && <>
@@ -393,6 +544,7 @@ export function FunAsrTuningPage() {
             </Space>
           </Flex>
           {canRetryAsr && <Paragraph type="secondary" style={{ marginTop: 8 }}>已有识别响应的项目只会重新映射和评分，不会重发 ASR；没有收到响应的明确失败项才会按操作补跑请求。待核实项始终不会自动重发。</Paragraph>}
+          {canStop && <Paragraph type="secondary" style={{ marginTop: 8 }}>停止请求会阻止后续录音或轮次继续提交；已经发出的上游请求无法撤回，会在该请求返回后停止。</Paragraph>}
           <Descriptions size="small" column={{ xs: 1, md: 3 }} style={{ marginTop: 14 }}>
             <Descriptions.Item label="进度">{detail.completed_items}/{detail.total_items}</Descriptions.Item>
             <Descriptions.Item label="最佳轮次">{detail.best_round_id ?? '尚无完整轮次'}</Descriptions.Item>

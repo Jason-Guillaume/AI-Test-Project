@@ -47,7 +47,7 @@ from app.features.asr_evaluation.services.suggestion_job_service import (
     execute_suggestion_job, extend_suggestion_lease, recover_expired_suggestion_jobs,
 )
 from app.features.asr_evaluation.runtime.request_slots import asr_request_slot
-from app.platform.model_configuration.models import ModelTaskSlot
+from app.platform.model_configuration.models import ModelTaskSlot, ModelResource, ModelRevision
 
 logger = logging.getLogger(__name__)
 
@@ -639,7 +639,11 @@ class AsrWorker:
                 self._finish_processing(item_id, run_id, owner, generation, "FAILED", "发起人的项目权限已撤销")
                 return
             connection = db.get(AsrConnection, run.connection_id) if run.connection_id else None
-            if connection is None or not connection.enabled or connection.task_type != "DIARIZATION":
+            canonical_slots = db.query(ModelTaskSlot).filter_by(legacy_connection_id=run.connection_id).all()
+            canonical_revisions = db.query(ModelRevision).filter_by(legacy_connection_id=run.connection_id).all()
+            resource_ids = {slot.resource_id for slot in canonical_slots} | {rev.resource_id for rev in canonical_revisions}
+            model_disabled = any((resource := db.get(ModelResource, ident, populate_existing=True)) is None or resource.status != 'ACTIVE' or resource.visibility != 'PLATFORM' for ident in resource_ids)
+            if model_disabled or connection is None or not connection.enabled or connection.task_type != "DIARIZATION":
                 self._finish_processing(item_id, run_id, owner, generation, "FAILED", "说话人连接已停用或不存在")
                 return
             try:
@@ -851,7 +855,11 @@ class AsrWorker:
                 return
             from app.features.asr_evaluation.models import AsrConnection
             connection = db.get(AsrConnection, run.connection_id)
-            if connection is None or not connection.enabled:
+            canonical_slots = db.query(ModelTaskSlot).filter_by(legacy_connection_id=run.connection_id).all()
+            canonical_revisions = db.query(ModelRevision).filter_by(legacy_connection_id=run.connection_id).all()
+            resource_ids = {slot.resource_id for slot in canonical_slots} | {rev.resource_id for rev in canonical_revisions}
+            model_disabled = any((resource := db.get(ModelResource, ident, populate_existing=True)) is None or resource.status != 'ACTIVE' or resource.visibility != 'PLATFORM' for ident in resource_ids)
+            if model_disabled or connection is None or not connection.enabled:
                 db.commit()
                 self._finish(run_id, item_id, owner, generation, "FAILED", "接口连接已停用，已阻止新请求")
                 return

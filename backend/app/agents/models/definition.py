@@ -16,6 +16,8 @@ class AgentDefinition(Base):
     name = Column(String(120), nullable=False)
     description = Column(Text, nullable=False, default="", server_default=text("''"))
     workflow_template = Column(String(40), nullable=False, comment="受控的内置工作流模板")
+    test_types = Column(JSON, nullable=False, default=list, server_default=text("'[\"general\"]'"))
+    purpose = Column(String(32), nullable=False, default="test_execution", server_default=text("'test_execution'"))
     instruction = Column(Text, nullable=False, default="", server_default=text("''"))
     model_config_id = Column(Integer, ForeignKey("model_configuration.id", ondelete="SET NULL"), nullable=True)
     skill_keys = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))

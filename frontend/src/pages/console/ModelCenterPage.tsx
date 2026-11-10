@@ -3,26 +3,23 @@ import {
   Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Select, Space,
   Switch, Table, Tag, Tabs, Typography,
 } from 'antd';
-import { CopyOutlined, ExperimentOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
+import { ExperimentOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { useSearchParams } from 'react-router-dom';
-import { projectsApi } from '@/features/projects/api/projects';
-import type { Project } from '@/features/projects/contracts';
-import { modelCenterApi, modelCenterQueryKeys, type ModelAvailableResource, type ModelCategory, type ModelDiagnosticRun, type ModelParameterProfile, type ModelResource, type ModelResourceWrite } from '@/features/model-configuration/api/modelCenter';
+import { modelCenterApi, modelCenterQueryKeys, type ModelCategory, type ModelConnectionTestResult, type ModelDiagnosticRun, type ModelParameterProfile, type ModelResource, type ModelResourceWrite } from '@/features/model-configuration/api/modelCenter';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { collectPages } from '@/shared/api/pagination';
 
 interface ResourceFormValues {
-  visibility: 'PLATFORM' | 'PROJECT'; project_id?: number; display_name: string; provider: string;
+  visibility?: 'PLATFORM' | 'PROJECT'; project_id?: number; display_name: string; provider: string;
   adapter_key: string; model_name: string; endpoint: string; credential?: string; credential_header?: string;
   config_json: string; capabilities: string[]; parameter_schema_json: string; enabled: boolean;
   profile_name: string; profile_values_json: string; profile_definitions_json: string;
-  grant_projects?: Array<{ value: number; label: string }>;
 }
 
 interface ProfileFormValues {
@@ -192,41 +189,31 @@ export function ModelCenterPage() {
     return requested === 'ASR' || requested === 'DIARIZATION' ? requested : 'TEXT_GENERATION';
   });
   const [resourceOpen, setResourceOpen] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<ModelConnectionTestResult | null>(null);
   const [revisionTarget, setRevisionTarget] = useState<ModelResource | null>(null);
   const [profileTarget, setProfileTarget] = useState<ModelResource | null>(null);
   const [diagnosticTarget, setDiagnosticTarget] = useState<ModelResource | null>(null);
   const [diagnosticRunId, setDiagnosticRunId] = useState<number | null>(null);
-  const [grantTarget, setGrantTarget] = useState<ModelResource | null>(null);
+
   const [defaultTarget, setDefaultTarget] = useState<ModelResource | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [importJson, setImportJson] = useState('[]');
-  const [projectSearch, setProjectSearch] = useState('');
-  const [projectKeyword, setProjectKeyword] = useState('');
   const [importPreview, setImportPreview] = useState<{ valid_count: number; invalid_count: number; can_apply: boolean; items: Array<{ index: number; valid: boolean; errors: string[]; display_name?: string | null }> } | null>(null);
   const [resourceForm] = Form.useForm<ResourceFormValues>();
   const [profileForm] = Form.useForm<ProfileFormValues>();
   const [diagnosticForm] = Form.useForm<DiagnosticFormValues>();
-  const [grantForm] = Form.useForm<{ project_ids_json: string }>();
+
   const [defaultForm] = Form.useForm<{
     revision_id: number; profile_id?: number; purpose: string;
     fallback_resource_ids: number[]; automatic_fallback: boolean;
   }>();
 
   const catalogQuery = useQuery({ queryKey: modelCenterQueryKeys.catalog, queryFn: modelCenterApi.catalog });
-  const grantProjectsQuery = useQuery({
-    queryKey: ['model-center', 'grant-project-options', projectKeyword],
-    enabled: isPlatformAdmin && resourceOpen,
-    queryFn: () => projectsApi.list({ page: 1, page_size: 50, keyword: projectKeyword || undefined }),
-  });
+  const resourceProjectId = null;
   const resourcesQuery = useQuery({
-    queryKey: modelCenterQueryKeys.resources(currentProjectId, category),
-    enabled: isPlatformAdmin || Boolean(currentProjectId),
-    queryFn: ({ signal }) => modelCenterApi.list(currentProjectId, category, signal),
-  });
-  const availableQuery = useQuery({
-    queryKey: currentProjectId ? modelCenterQueryKeys.available(currentProjectId, category) : ['model-center', 'available', null, category],
-    enabled: Boolean(currentProjectId),
-    queryFn: ({ signal }) => modelCenterApi.available(currentProjectId!, category, signal),
+    queryKey: modelCenterQueryKeys.resources(resourceProjectId, category),
+    enabled: true,
+    queryFn: ({ signal }) => modelCenterApi.list(resourceProjectId, category, signal),
   });
   const audioQuery = useQuery({
     queryKey: currentProjectId ? ['project', currentProjectId, 'asr', 'audio', 1, 100] : ['asr', 'audio', null],
@@ -252,6 +239,11 @@ export function ModelCenterPage() {
     onSuccess: () => { message.success('模型资源已创建'); setResourceOpen(false); resourceForm.resetFields(); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '模型资源保存失败')),
   });
+  const connectionTestMutation = useMutation({
+    mutationFn: (body: Parameters<typeof modelCenterApi.testConnection>[0]) => modelCenterApi.testConnection(body),
+    onSuccess: setConnectionTestResult,
+    onError: (error) => message.error(getErrorMessage(error, '模型测试请求失败')),
+  });
   const revisionMutation = useMutation({
     mutationFn: ({ id, body }: { id: number; body: Omit<ModelResourceWrite, 'category' | 'visibility' | 'project_id' | 'display_name' | 'grant_project_ids'> }) => modelCenterApi.addRevision(id, body),
     onSuccess: () => { message.success('连接修订已保存，旧任务快照保持不变'); setRevisionTarget(null); resourceForm.resetFields(); refresh(); },
@@ -262,20 +254,10 @@ export function ModelCenterPage() {
     onSuccess: () => { message.success('参数方案版本已创建'); setProfileTarget(null); profileForm.resetFields(); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '参数方案创建失败')),
   });
-  const copyMutation = useMutation({
-    mutationFn: (resource: ModelResource) => modelCenterApi.copy(resource.id, currentProjectId!),
-    onSuccess: () => { message.success('已复制到当前项目，凭据需重新配置'); refresh(); },
-    onError: (error) => message.error(getErrorMessage(error, '复制模型失败')),
-  });
   const defaultMutation = useMutation({
     mutationFn: (body: Parameters<typeof modelCenterApi.setDefault>[0]) => modelCenterApi.setDefault(body),
     onSuccess: () => { message.success('用途默认策略已更新'); setDefaultTarget(null); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '默认策略设置失败')),
-  });
-  const grantMutation = useMutation({
-    mutationFn: ({ id, projects }: { id: number; projects: number[] }) => modelCenterApi.grants(id, projects),
-    onSuccess: () => { message.success('项目授权已更新'); setGrantTarget(null); refresh(); },
-    onError: (error) => message.error(getErrorMessage(error, '项目授权更新失败')),
   });
   const diagnosticMutation = useMutation({
     mutationFn: ({ resource, values }: { resource: ModelResource; values: DiagnosticFormValues }) => modelCenterApi.createDiagnostic(resource.id, {
@@ -296,30 +278,23 @@ export function ModelCenterPage() {
   });
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setProjectKeyword(projectSearch.trim()), 250);
-    return () => window.clearTimeout(timer);
-  }, [projectSearch]);
-
-  useEffect(() => {
     if (!diagnosticQuery.data || diagnosticQuery.data.status === 'QUEUED' || diagnosticQuery.data.status === 'RUNNING') return;
     const result = diagnosticQuery.data.result;
     if (diagnosticQuery.data.status === 'SUCCEEDED') message.success(result.message || '模型诊断成功');
     else if (diagnosticQuery.data.status === 'FAILED') message.error(result.message || '模型诊断失败');
   }, [diagnosticQuery.data, message]);
 
-  /** 设置新建表单的作用域及当前类别的通用协议示例。 */
+  /** 设置新建表单为平台共享资源及当前类别的通用协议示例。 */
   const openCreate = () => {
     setRevisionTarget(null);
+    setConnectionTestResult(null);
     resourceForm.resetFields();
-    setProjectSearch('');
-    setProjectKeyword('');
     resourceForm.setFieldsValue({
-      visibility: isPlatformAdmin ? 'PLATFORM' : 'PROJECT', project_id: currentProjectId || undefined,
+      visibility: 'PLATFORM', project_id: isPlatformAdmin ? undefined : currentProjectId || undefined,
       provider: category === 'TEXT_GENERATION' ? 'openai-compatible' : 'custom',
       adapter_key: adapters[0]?.value, config_json: JSON_CONFIG_EXAMPLES[category],
       capabilities: [], parameter_schema_json: PARAMETER_SCHEMA_EXAMPLES[category], enabled: true,
       profile_name: '默认参数', profile_values_json: PROFILE_EXAMPLES[category], profile_definitions_json: '[]',
-      grant_projects: [],
     });
     setResourceOpen(true);
   };
@@ -328,6 +303,7 @@ export function ModelCenterPage() {
   const openRevision = (resource: ModelResource) => {
     const revision = resource.current_revision;
     const profile = revision?.profiles[0];
+    setConnectionTestResult(null);
     resourceForm.resetFields();
     resourceForm.setFieldsValue({
       provider: revision?.provider, adapter_key: revision?.adapter_key, model_name: revision?.model_name,
@@ -360,17 +336,33 @@ export function ModelCenterPage() {
         },
       };
       if (revisionTarget) revisionMutation.mutate({ id: revisionTarget.id, body: base });
-      else {
-        const grants = (values.grant_projects || []).map((project) => project.value);
-        if (grants.some((item) => !Number.isInteger(item) || item <= 0)) throw new Error('请选择有效的授权项目');
-        createMutation.mutate({
-          ...base, category, visibility: isPlatformAdmin ? values.visibility : 'PROJECT',
-          project_id: values.visibility === 'PROJECT' || !isPlatformAdmin ? currentProjectId || undefined : undefined,
-          display_name: values.display_name, grant_project_ids: values.visibility === 'PLATFORM' ? grants : [],
-        });
-      }
+      else createMutation.mutate({
+        ...base, category, visibility: 'PLATFORM',
+        project_id: isPlatformAdmin ? undefined : currentProjectId || undefined,
+        display_name: values.display_name, grant_project_ids: [],
+      });
     } catch (error) {
       message.error(error instanceof Error ? error.message : '配置内容无效');
+    }
+  };
+
+  /** 使用当前未保存表单配置发送一次低 token 聊天请求。 */
+  const testUnsavedModel = async () => {
+    try {
+      await resourceForm.validateFields(['adapter_key', 'model_name', 'endpoint', 'config_json']);
+      const values = resourceForm.getFieldsValue(true);
+      if (values.adapter_key !== 'openai-compatible-chat') throw new Error('当前仅支持测试 OpenAI 兼容聊天适配器');
+      const visibility: 'PLATFORM' | 'PROJECT' = 'PLATFORM' as 'PLATFORM' | 'PROJECT';
+      const projectId = visibility === 'PROJECT' ? currentProjectId ?? undefined : undefined;
+      if (visibility === 'PROJECT' && !projectId) throw new Error('请选择项目后再测试项目私有模型');
+      setConnectionTestResult(null);
+      connectionTestMutation.mutate({
+        visibility, project_id: projectId, endpoint: values.endpoint, model_name: values.model_name,
+        credential: values.credential || '', config: parseJsonObject(values.config_json, '连接配置'),
+        confirm_model_call: true,
+      });
+    } catch (error) {
+      if (error instanceof Error) message.error(error.message);
     }
   };
 
@@ -418,7 +410,6 @@ export function ModelCenterPage() {
       <Typography.Text type="secondary">{row.visibility === 'PLATFORM' ? '平台共享' : `项目私有 · #${row.project_id}`}</Typography.Text>
       <Space wrap size={[2, 2]}>
         {row.defaults.map((item) => <Tag key={`${item.purpose}:${item.project_id || 0}`} color="blue">默认 · {item.purpose}</Tag>)}
-        {row.visibility === 'PLATFORM' && row.grant_project_ids.length > 0 && <Tag>{row.grant_project_ids.length} 个项目已授权</Tag>}
       </Space>
     </Space> },
     { title: '能力', key: 'capabilities', render: (_: unknown, row: ModelResource) => <Space wrap>
@@ -450,10 +441,10 @@ export function ModelCenterPage() {
         revision_id: row.current_revision?.id, name: '调优参数', values_json: PROFILE_EXAMPLES[row.category], definitions_json: JSON.stringify(row.current_revision?.parameter_schema || [], null, 2),
       }); }}>参数版本</Button>
       {isPlatformAdmin && <Button size="small" onClick={() => openRevision(row)}>连接修订</Button>}
-      {row.visibility === 'PLATFORM' && currentProjectId && <Button size="small" icon={<CopyOutlined />} onClick={() => copyMutation.mutate(row)}>复制到项目</Button>}
-      {isPlatformAdmin && row.visibility === 'PLATFORM' && <Button size="small" onClick={() => {
-        setGrantTarget(row); grantForm.setFieldsValue({ project_ids_json: JSON.stringify(row.grant_project_ids || []) });
-      }}>项目授权</Button>}
+      {isPlatformAdmin && <Switch checked={row.status === 'ACTIVE'} checkedChildren="启用" unCheckedChildren="停用" onChange={async (enabled) => {
+        try { await modelCenterApi.setEnabled(row.id, enabled); await resourcesQuery.refetch(); }
+        catch { message.error('模型状态更新失败'); }
+      }} />}
     </Space> },
   ];
 
@@ -462,8 +453,8 @@ export function ModelCenterPage() {
   if (resourcesQuery.isError) return <PageContainer><ErrorState error={resourcesQuery.error} onRetry={resourcesQuery.refetch} /></PageContainer>;
 
   return <PageContainer>
-    <PageHeader title="统一模型中心" subtitle="按模型类别管理连接修订、能力、参数版本、授权与显式诊断" />
-    {!isPlatformAdmin && !currentProjectId && <Alert type="info" showIcon message="请选择项目后管理项目私有模型；平台共享模型由管理员授权。" />}
+    <PageHeader title="统一模型中心" subtitle="全平台统一维护模型连接、参数方案和默认策略；启用后各项目可用" />
+    {!isPlatformAdmin && !currentProjectId && <Alert type="info" showIcon message="模型由平台管理员统一维护，启用后即可使用。" />}
     <Card bordered={false}>
       <Tabs activeKey={category} onChange={(key) => setCategory(key as ModelCategory)} items={[
         { key: 'TEXT_GENERATION', label: '文本推理' }, { key: 'ASR', label: 'ASR 转写' }, { key: 'DIARIZATION', label: '说话人分段' },
@@ -472,7 +463,7 @@ export function ModelCenterPage() {
         <Typography.Text type="secondary">类别、供应商、适配器、能力和任务用途分别记录。仅展示已注册适配器。</Typography.Text>
         <Space>
           {isPlatformAdmin && <Button onClick={() => { setImportPreview(null); setImportOpen(true); }}>批量导入预检</Button>}
-          <Button type="primary" icon={<PlusOutlined />} disabled={!isPlatformAdmin && !currentProjectId} onClick={openCreate}>新增模型资源</Button>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!isPlatformAdmin} onClick={openCreate}>新增模型资源</Button>
         </Space>
       </div>
       {category !== 'TEXT_GENERATION' && <Alert style={{ marginBottom: 16 }} type="info" showIcon
@@ -483,21 +474,9 @@ export function ModelCenterPage() {
     <Modal title={revisionTarget ? `为「${revisionTarget.display_name}」新增连接修订` : `新增${CATEGORY_LABELS[category]}资源`}
       open={resourceOpen || Boolean(revisionTarget)} onCancel={() => { setResourceOpen(false); setRevisionTarget(null); resourceForm.resetFields(); }}
       width={820} footer={null} destroyOnHidden>
-      <Form<ResourceFormValues> form={resourceForm} layout="vertical" onFinish={submitResource}>
+      <Form<ResourceFormValues> form={resourceForm} layout="vertical" onFinish={submitResource}
+        onValuesChange={() => setConnectionTestResult(null)}>
         {!revisionTarget && <>
-          {isPlatformAdmin && <Form.Item name="visibility" label="资源范围" rules={[{ required: true }]}>
-            <Select options={[{ value: 'PLATFORM', label: '平台共享' }, { value: 'PROJECT', label: '项目私有' }]} />
-          </Form.Item>}
-          {isPlatformAdmin && <Form.Item noStyle shouldUpdate={(a, b) => a.visibility !== b.visibility}>
-            {({ getFieldValue }) => getFieldValue('visibility') === 'PLATFORM' ? <Form.Item name="grant_projects" label="初始授权项目" extra="按项目名称或 ID 搜索，可多选。">
-              <Select mode="multiple" showSearch labelInValue filterOption={false} onSearch={setProjectSearch}
-                loading={grantProjectsQuery.isFetching} placeholder="搜索项目名称或 ID 后选择"
-                notFoundContent={grantProjectsQuery.isError ? '项目列表加载失败，请重试' : '没有匹配的项目'}
-                options={(grantProjectsQuery.data?.items || []).map((project: Project) => ({
-                  value: project.id, label: `${project.name} · #${project.id}`,
-                }))} />
-            </Form.Item> : null}
-          </Form.Item>}
           <Form.Item name="display_name" label="模型名称" rules={[{ required: true }]}><Input maxLength={160} /></Form.Item>
         </>}
         <Space style={{ display: 'flex' }} align="start">
@@ -520,10 +499,12 @@ export function ModelCenterPage() {
           <Form.Item name="model_name" label="厂商模型 ID" rules={[{ required: true }]} style={{ flex: 1 }}><Input /></Form.Item>
         </Space>
         <Form.Item name="endpoint" label="服务地址" rules={[{ required: true }]}><Input placeholder="https://..." /></Form.Item>
-        <Space style={{ display: 'flex' }} align="start">
-          <Form.Item name="credential" label="Token / API Key（只写入）" style={{ flex: 2 }}><Input.Password autoComplete="new-password" placeholder="留空表示不设置凭据" /></Form.Item>
-          {category !== 'TEXT_GENERATION' && <Form.Item name="credential_header" label="凭据请求头" style={{ flex: 1 }}><Input placeholder="Authorization" /></Form.Item>}
-        </Space>
+        <Form.Item name="credential" label="Token / API Key（只写入）" style={{ width: '100%' }}>
+          <Input.Password autoComplete="new-password" placeholder="留空表示不设置凭据" style={{ width: '100%' }} />
+        </Form.Item>
+        {category !== 'TEXT_GENERATION' && <Form.Item name="credential_header" label="凭据请求头" style={{ width: '100%' }}>
+          <Input placeholder="Authorization" style={{ width: '100%' }} />
+        </Form.Item>}
         <Form.Item name="config_json" label="协议连接参数 JSON" rules={[{ required: true }]} extra={category === 'TEXT_GENERATION' ? '仅配置当前适配器支持的接口参数。' : '通用 JSON 适配器需配置请求模板；硅基流动适配器读取音频 URL 后上传文件，响应字段使用 JSON Pointer 映射。'}>
           <Input.TextArea rows={8} spellCheck={false} />
         </Form.Item>
@@ -552,8 +533,15 @@ export function ModelCenterPage() {
           }}
         </Form.Item>
         {category !== 'TEXT_GENERATION' && <Form.Item name="profile_definitions_json" label="方案参数定义 JSON 数组"><Input.TextArea rows={3} spellCheck={false} /></Form.Item>}
+        {!revisionTarget && category === 'TEXT_GENERATION' && <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          message="模型测试会真实发送一次请求，可能产生费用；测试不会保存当前配置。" />}
+        {connectionTestResult && <Alert style={{ marginBottom: 12 }} showIcon
+          type={connectionTestResult.success ? 'success' : 'error'}
+          message={`${connectionTestResult.message} · 耗时 ${connectionTestResult.elapsed_ms} ms`} />}
         <Space style={{ justifyContent: 'flex-end', width: '100%' }}>
           <Button onClick={() => { setResourceOpen(false); setRevisionTarget(null); }}>取消</Button>
+          {!revisionTarget && category === 'TEXT_GENERATION' && <Button icon={<ExperimentOutlined />}
+            loading={connectionTestMutation.isPending} onClick={testUnsavedModel}>测试模型</Button>}
           <Button type="primary" htmlType="submit" loading={createMutation.isPending || revisionMutation.isPending}>保存配置</Button>
         </Space>
       </Form>
@@ -611,9 +599,8 @@ export function ModelCenterPage() {
           }}
         </Form.Item>
         <Form.Item name="fallback_resource_ids" label="同类别备用模型">
-          <Select mode="multiple" allowClear options={(currentProjectId
-            ? (availableQuery.data?.items || []).map((item: ModelAvailableResource) => ({ value: item.id, label: item.display_name }))
-            : rows.filter((item) => item.visibility === 'PLATFORM').map((item) => ({ value: item.id, label: item.display_name })))
+          <Select mode="multiple" allowClear options={rows.filter((item) => item.visibility === 'PLATFORM')
+            .map((item) => ({ value: item.id, label: item.display_name }))
             .filter((item) => item.value !== defaultTarget?.id)} />
         </Form.Item>
         <Form.Item name="automatic_fallback" label="自动切换备用模型" valuePropName="checked">
@@ -621,19 +608,6 @@ export function ModelCenterPage() {
         </Form.Item>
         <Alert type="info" showIcon message="ASR 评测默认禁止自动切换模型，避免污染对比结果；备用模型只允许同类别资源。" />
         <Button style={{ marginTop: 16 }} type="primary" htmlType="submit" loading={defaultMutation.isPending}>保存默认策略</Button>
-      </Form>
-    </Modal>
-
-    <Modal title={`授权平台模型「${grantTarget?.display_name || ''}」`} open={Boolean(grantTarget)} onCancel={() => setGrantTarget(null)} footer={null} destroyOnHidden>
-      <Form form={grantForm} layout="vertical" onFinish={(values) => {
-        try {
-          const ids: unknown = JSON.parse(values.project_ids_json || '[]');
-          if (!Array.isArray(ids) || ids.some((item) => !Number.isInteger(item) || item <= 0)) throw new Error('请输入正整数项目 ID 数组');
-          if (grantTarget) grantMutation.mutate({ id: grantTarget.id, projects: ids as number[] });
-        } catch (error) { message.error(error instanceof Error ? error.message : '项目 ID 无效'); }
-      }}>
-        <Form.Item name="project_ids_json" label="项目 ID（JSON 数组）" rules={[{ required: true }]}><Input.TextArea rows={3} placeholder="[12, 15]" /></Form.Item>
-        <Button type="primary" htmlType="submit" loading={grantMutation.isPending}>替换项目授权</Button>
       </Form>
     </Modal>
 

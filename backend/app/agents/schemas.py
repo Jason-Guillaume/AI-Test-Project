@@ -40,6 +40,8 @@ class AgentDefinitionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
     workflow_template: str
+    test_types: list[Literal["api", "web", "security", "asr", "ai", "general"]] = Field(default_factory=lambda: ["general"], min_length=1)
+    purpose: Literal["case_generation", "test_execution", "quality_evaluation", "test_report"] = "test_execution"
     instruction: str = Field(default="", max_length=12000)
     model_config_id: int | None = Field(default=None, ge=1)
     skill_keys: list[str] = Field(default_factory=list, max_length=30)
@@ -93,6 +95,8 @@ class AgentDefinitionUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
     workflow_template: str | None = None
+    test_types: list[Literal["api", "web", "security", "asr", "ai", "general"]] | None = Field(default=None, min_length=1)
+    purpose: Literal["case_generation", "test_execution", "quality_evaluation", "test_report"] | None = None
     instruction: str | None = Field(default=None, max_length=12000)
     model_config_id: int | None = Field(default=None, ge=1)
     skill_keys: list[str] | None = Field(default=None, max_length=30)
@@ -136,6 +140,8 @@ class AgentDefinitionResponse(BaseModel):
     name: str
     description: str
     workflow_template: str
+    test_types: list[str]
+    purpose: str
     instruction: str
     model_config_id: int | None
     skill_keys: list[str]
