@@ -1,4 +1,3 @@
-import { KnowledgePage } from '@/pages/console/KnowledgePage';
 // 应用路由表：
 // - /admin/*  平台管理端（仅平台管理员，RequireAdmin + AdminLayout）
 // - /console/* 用户控制台（登录用户，RequireAuth + ConsoleLayout + 作用域上下文）
@@ -75,6 +74,7 @@ const AdminProjectsPage = lazyNamedPage(() => import('@/pages/admin/Projects'), 
 const AdminModelConfigsPage = lazyNamedPage(() => import('@/pages/admin/ModelConfigs'), 'AdminModelConfigsPage');
 const AdminEnvironmentsPage = lazyNamedPage(() => import('@/pages/admin/Environments'), 'AdminEnvironmentsPage');
 const AdminAgentGovernancePage = lazyNamedPage(() => import('@/pages/admin/AgentGovernance'), 'AdminAgentGovernancePage');
+const AdminKnowledgePage = lazyNamedPage(() => import('@/pages/admin/Knowledge'), 'AdminKnowledgePage');
 const ConsoleWorkbenchPage = lazyNamedPage(() => import('@/pages/console/Workbench'), 'ConsoleWorkbenchPage');
 const ConsoleProjectsPage = lazyNamedPage(() => import('@/pages/console/Projects'), 'ConsoleProjectsPage');
 const ConsoleProjectDetailPage = lazyNamedPage(() => import('@/pages/console/Projects/ProjectDetail'), 'ConsoleProjectDetailPage');
@@ -215,6 +215,7 @@ function AppRoutes() {
           <Route path="users" element={<AdminUsersPage />} />
           <Route path="organizations" element={<AdminOrganizationsPage />} />
           <Route path="projects" element={<AdminProjectsPage />} />
+          <Route path="knowledge" element={<AdminKnowledgePage />} />
           <Route path="model-configs" element={<AdminModelConfigsPage />} />
           <Route path="environments" element={<AdminEnvironmentsPage />} />
           <Route path="agents" element={<AdminAgentGovernancePage />} />
@@ -256,7 +257,7 @@ function AppRoutes() {
           <Route path="web-ui" element={<ConsoleWebUIPage />} />
           <Route path="web-ui-agent" element={<ConsoleWebUIAgentPage />} />
           <Route path="security-testing" element={<ConsoleSecurityTestingPage />} />
-          <Route path="knowledge" element={<KnowledgePage />} />
+          <Route path="knowledge" element={<Navigate to="/admin/knowledge" replace />} />
           <Route path="asr/audio" element={<AsrAudioPage />} />
           {/* 兼容旧书签；模型中心现在仅由管理后台提供。 */}
           <Route path="model-center" element={<LegacyModelEntry />} />

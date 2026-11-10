@@ -119,29 +119,25 @@ def save_binding(db, project_id, agent_id, actor, body):
 
 
 def freeze(db, project_id, agent_id, actor):
+    """冻结当前项目已启用知识的版本清单。
+
+    知识只属于项目。agent_id 仅保留在快照里供调用方追踪，不参与筛选；
+    历史的 Agent 绑定不再决定可读范围，否则换一个 Agent 就会读不到同一项目的资料。
+    """
     access(db, project_id, actor)
-    binding = db.query(KnowledgeBinding).populate_existing().filter_by(project_id=project_id, agent_id=agent_id).first()
     ids = []
-    if binding and binding.enabled:
-        for scope in binding.scopes:
-            base = owned(db, KnowledgeBase, scope['base_id'], project_id)
-            if not base.enabled:
-                continue
-            docs = db.query(KnowledgeDocument).filter_by(project_id=project_id, base_id=base.id, enabled=True).all()
-            for doc in docs:
-                match = scope['mode'] == 'ALL' or (scope['mode'] == 'DOCUMENTS' and doc.id in scope.get('document_ids', [])) or (scope['mode'] == 'CATEGORIES' and doc.category in scope.get('categories', []))
-                if match and doc.current_version_id:
-                    ids.append(doc.current_version_id)
-    if binding and binding.required and not ids:
-        raise bad_request('该 Agent 需要知识资料，请绑定有效文档')
-    return {'project_id': project_id, 'agent_id': agent_id, 'revision': binding.revision if binding else 0, 'version_ids': sorted(set(ids))}
+    bases = db.query(KnowledgeBase).filter_by(project_id=project_id, enabled=True).all()
+    for base in bases:
+        docs = db.query(KnowledgeDocument).filter_by(project_id=project_id, base_id=base.id, enabled=True).all()
+        for doc in docs:
+            if doc.current_version_id:
+                ids.append(doc.current_version_id)
+    return {'project_id': project_id, 'agent_id': agent_id, 'revision': 0, 'version_ids': sorted(set(ids))}
 
 
 def search(db, snapshot, actor, query, limit=8):
     current = freeze(db, snapshot['project_id'], snapshot['agent_id'], actor)
-    if current['revision'] != snapshot['revision']:
-        raise bad_request('Agent 知识范围已变更，请重新创建任务')
-    # Old versions remain valid while the owning document and base remain in scope.
+    # 修订号来自已停用的 Agent 绑定，不能再用来拒绝检索；停用文档由下面的来源校验拦截。
     allowed_documents = {db.get(KnowledgeVersion, i).document_id for i in current['version_ids']}
     versions = [db.get(KnowledgeVersion, i) for i in snapshot['version_ids']]
     if any(v is None or v.status != 'READY' or v.document_id not in allowed_documents for v in versions):
