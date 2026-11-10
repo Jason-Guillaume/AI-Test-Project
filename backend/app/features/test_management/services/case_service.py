@@ -185,6 +185,9 @@ class CaseService:
         )
         db.add(case)
         db.flush()
+        # 新用例立刻有目录归属。挂接失败会连同用例一起回滚，避免出现没有范围的正式用例。
+        from app.features.test_management.services.scope_service import ScopeService
+        ScopeService().attach_new_case(db, case)
         notify(db, user_id=actor.id, event_type="test.case.created",
                title=f"你已创建测试用例「{case.name}」", project_id=project_id,
                actor_id=actor.id, actor_username=actor.username,
@@ -216,6 +219,9 @@ class CaseService:
             db.query(TestAssertion).filter(TestAssertion.test_case_id == case_id)
             .order_by(TestAssertion.sort.asc(), TestAssertion.id.asc()).all()
         )
+        from app.features.test_management.services.generation_service import GenerationService
+        from app.features.test_management.services.scope_service import ScopeService
+        trace = GenerationService().trace(db, case.id)
         return TestCaseDetailResponse(
             **_response(case).model_dump(),
             preconditions=[TestCasePreconditionResponse.model_validate(p) for p in preconditions],
@@ -223,6 +229,8 @@ class CaseService:
             steps=[TestStepResponse.model_validate(s) for s in steps],
             assertions=[TestAssertionResponse.model_validate(a) for a in assertions],
             fixtures=self._fixture_rows(db, case_id),
+            **ScopeService().center_context(db, case),
+            generation=trace,
         )
 
     def update_case(

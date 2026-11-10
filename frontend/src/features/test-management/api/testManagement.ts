@@ -13,7 +13,7 @@
 // 不带分页信封；仅 list_runs / list_case_executions 返回 {items,total,page,page_size} 信封。
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
-import type { CaseExecutionListResponse, RunCompareResponse, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
+import type { CaseExecutionListResponse, GenerationAgentOption, GenerationBatch, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
 
@@ -93,6 +93,35 @@ export const testManagementApi = {
   updateCase: (caseId: number, body: TestCaseUpdate) =>
     api.patch<TestCase>(`/test-cases/${caseId}`, body),
   removeCase: (caseId: number) => api.delete<void>(`/test-cases/${caseId}`),
+
+  /** 某一测试方向的范围树。计数含子孙节点。 */
+  listScopes: (projectId: number, direction: string) =>
+    api.get<ScopeTree>(`/projects/${projectId}/test-scopes`, { params: { direction } }),
+  scopeStats: (projectId: number, direction: string) =>
+    api.get<ScopeStats>(`/projects/${projectId}/test-scopes/stats`, { params: { direction } }),
+  createScope: (projectId: number, body: { direction: string; parent_id?: number | null; node_type: 'FOLDER' | 'ASSET_LINK'; name: string; description?: string; asset_type?: string; asset_id?: number }) =>
+    api.post<ScopeNode>(`/projects/${projectId}/test-scopes`, body),
+  updateScope: (nodeId: number, body: { name?: string; description?: string; sort_order?: number; status?: string }) =>
+    api.patch<ScopeNode>(`/test-scopes/${nodeId}`, body),
+  moveScope: (nodeId: number, body: { parent_id: number | null; sort_order: number }) =>
+    api.post<ScopeNode>(`/test-scopes/${nodeId}/move`, body),
+  removeScope: (nodeId: number) => api.delete<void>(`/test-scopes/${nodeId}`),
+  getScope: (nodeId: number) => api.get<ScopeNodeDetail>(`/test-scopes/${nodeId}`),
+  listScopeCases: (projectId: number, params: { direction?: string; scope_node_id?: number; include_descendants?: boolean; case_type?: string; priority?: string; status?: string; keyword?: string; sort?: string; order?: string; page?: number; page_size?: number }) =>
+    api.get<ScopeCaseList>(`/projects/${projectId}/test-scope-cases`, { params }),
+  moveScopeCases: (projectId: number, body: { case_ids: number[]; scope_node_id: number }) =>
+    api.post<{ affected: number }>(`/projects/${projectId}/test-scope-cases/move`, body),
+  archiveScopeCases: (projectId: number, body: { case_ids: number[] }) =>
+    api.post<{ affected: number }>(`/projects/${projectId}/test-scope-cases/archive`, body),
+  listGenerationAgents: (projectId: number) =>
+    api.get<GenerationAgentOption[]>(`/projects/${projectId}/case-generation-agents`),
+  startGeneration: (projectId: number, body: { agent_id: number; direction: string; scope_node_id?: number | null; requirements: string; include_security: boolean; cases_per_module: number; model_config_id?: number | null }) =>
+    api.post<GenerationBatch>(`/projects/${projectId}/case-generation-batches`, body, { timeout: 600000 }),
+  getGenerationBatch: (batchId: number) => api.get<GenerationBatch>(`/case-generation-batches/${batchId}`),
+  updateDraft: (draftId: number, body: { title?: string; priority?: string; requirement?: string; steps?: string[]; expected_results?: string[] }) =>
+    api.patch<GenerationBatch['drafts'][number]>(`/case-drafts/${draftId}`, body),
+  acceptDraft: (draftId: number) => api.post<{ draft_id: number; status: string; test_case_id: number | null }>(`/case-drafts/${draftId}/accept`),
+  rejectDraft: (draftId: number) => api.post<{ draft_id: number; status: string; test_case_id: number | null }>(`/case-drafts/${draftId}/reject`),
 
   // ---- 用例子实体：前置条件 ----
   listPreconditions: (caseId: number) =>
