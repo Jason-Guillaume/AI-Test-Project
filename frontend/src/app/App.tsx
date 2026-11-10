@@ -84,6 +84,7 @@ const ConsoleDefectsPage = lazyNamedPage(() => import('@/pages/console/Defects')
 const ConsoleApiCatalogPage = lazyNamedPage(() => import('@/pages/console/ApiCatalog'), 'ConsoleApiCatalogPage');
 const ConsoleBusinessManagementPage = lazyNamedPage(() => import('@/pages/console/BusinessManagement'), 'ConsoleBusinessManagementPage');
 const ConsoleTestAssetPage = lazyNamedPage(() => import('@/pages/console/TestManagement/TestAsset'), 'ConsoleTestAssetPage');
+const ConsoleTestCasesPage = lazyNamedPage(() => import('@/pages/console/TestManagement/TestCases'), 'ConsoleTestCasesPage');
 const ConsoleTestSuitesPage = lazyNamedPage(() => import('@/pages/console/TestManagement/TestSuites'), 'ConsoleTestSuitesPage');
 const ConsoleTestPlansPage = lazyNamedPage(() => import('@/pages/console/TestManagement/TestPlans'), 'ConsoleTestPlansPage');
 const ConsoleExecutionCenterPage = lazyNamedPage(() => import('@/pages/console/TestManagement/ExecutionCenter'), 'ConsoleExecutionCenterPage');
@@ -242,6 +243,7 @@ function AppRoutes() {
           <Route path="api-catalog" element={<ConsoleApiCatalogPage />} />
           <Route path="business-management" element={<ConsoleBusinessManagementPage />} />
           <Route path="test-asset" element={<ConsoleTestAssetPage />} />
+          <Route path="test-cases" element={<ConsoleTestCasesPage />} />
           <Route path="test-suites" element={<ConsoleTestSuitesPage />} />
           <Route path="test-plans" element={<ConsoleTestPlansPage />} />
           <Route path="execution-center" element={<ConsoleExecutionCenterPage />} />

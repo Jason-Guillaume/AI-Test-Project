@@ -26,8 +26,10 @@ export const TEST_PRIORITY_OPTIONS = [
 
 export const TEST_TARGET_TYPE_OPTIONS = [
   { value: 'API' as TestTargetType, label: '接口 API' },
+  { value: 'WEB' as TestTargetType, label: '界面 WEB' },
   { value: 'BUSINESS_FLOW' as TestTargetType, label: '业务流程 BUSINESS_FLOW' },
   { value: 'BUSINESS_ACTION' as TestTargetType, label: '业务动作 BUSINESS_ACTION' },
+  { value: 'AI' as TestTargetType, label: 'AI 能力 AI' },
 ];
 
 export const TEST_STATUS_OPTIONS = [

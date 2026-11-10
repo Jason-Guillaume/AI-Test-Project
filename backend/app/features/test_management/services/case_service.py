@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.features.test_data.models.case_fixture import TestCaseFixture
@@ -29,6 +29,8 @@ from app.features.test_management.schemas import (
     TEST_PRIORITIES,
     TEST_STATUSES,
     TEST_TARGET_TYPES,
+    TestCaseCoverageItem,
+    TestCaseCoverageResponse,
     TestCaseCreate,
     TestCaseDataCreate,
     TestCaseDataResponse,
@@ -86,6 +88,7 @@ class CaseService:
     def list_cases(
         self, db: Session, project_id: int, user: User, *,
         test_point_id: int | None = None, target_type: str | None = None,
+        case_type: str | None = None, strategy_id: int | None = None,
         status: str | None = None, keyword: str | None = None,
         page: int = 1, page_size: int = DEFAULT_PAGE_SIZE,
     ) -> TestCaseListResponse:
@@ -98,6 +101,15 @@ class CaseService:
             if target_type not in TEST_TARGET_TYPES:
                 raise bad_request("被测对象类型取值非法")
             q = q.filter(TestCase.target_type == target_type)
+        if case_type:
+            if case_type not in TEST_CASE_TYPES:
+                raise bad_request("用例类型取值非法")
+            q = q.filter(TestCase.case_type == case_type)
+        if strategy_id is not None:
+            # 用例不直接挂策略，经测试点（TestPoint.strategy_id）归属；未挂测试点的用例不进该过滤结果。
+            q = q.join(TestPoint, TestCase.test_point_id == TestPoint.id).filter(
+                TestPoint.strategy_id == strategy_id,
+            )
         if status:
             if status not in TEST_STATUSES:
                 raise bad_request("状态取值非法")
@@ -108,6 +120,38 @@ class CaseService:
         total = int(q.count())
         items = q.order_by(TestCase.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
         return TestCaseListResponse(items=[_response(c) for c in items], total=total, page=page, page_size=page_size)
+
+    def coverage(
+        self, db: Session, project_id: int, user: User, *,
+        target_type: str | None = None,
+    ) -> TestCaseCoverageResponse:
+        """用例覆盖矩阵：按 被测对象 × 用例维度 聚合用例数与关联接口数。
+
+        替代旧「范围树」的节点统计：树里每个节点的「接口数/用例数」就是矩阵的一个单元格。
+        api_count 只统计 api_id 非空的去重接口；导入存量未回填 api_id 时为 0，
+        待数据整理脚本回填后自然准确（见 P1 数据整理）。
+        """
+        get_project_or_404(db, project_id, user)
+        if target_type and target_type not in TEST_TARGET_TYPES:
+            raise bad_request("被测对象类型取值非法")
+        q = db.query(
+            TestCase.target_type,
+            TestCase.case_type,
+            func.count(TestCase.id),
+            func.count(func.distinct(TestCase.api_id)),
+        ).filter(TestCase.project_id == project_id)
+        if target_type:
+            q = q.filter(TestCase.target_type == target_type)
+        rows = q.group_by(TestCase.target_type, TestCase.case_type).all()
+        items = [
+            TestCaseCoverageItem(
+                target_type=row_target, case_type=row_type,
+                case_count=int(case_count), api_count=int(api_count),
+            )
+            for row_target, row_type, case_count, api_count in rows
+        ]
+        items.sort(key=lambda item: (item.target_type, item.case_type))
+        return TestCaseCoverageResponse(items=items)
 
     def create_case(
         self, db: Session, project_id: int, body: TestCaseCreate, *, actor: User,

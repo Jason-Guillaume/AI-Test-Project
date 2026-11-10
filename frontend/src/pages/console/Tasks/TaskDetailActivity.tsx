@@ -61,7 +61,7 @@ export function ResourceList({ resources, projectId, targetType }: { resources: 
             : resource.resource_type === 'SECURITY_FINDING'
               ? `/console/security-testing?tab=findings&projectId=${projectId}&findingId=${id}`
               : resource.resource_type === 'TEST_CASE'
-                ? targetType === 'WEB' || targetType === 'WEB_AUTHORING' ? `/console/web-ui?caseId=${id}&projectId=${projectId}` : targetType === 'API' ? `/console/test-asset?caseId=${id}&projectId=${projectId}` : undefined
+                ? targetType === 'WEB' || targetType === 'WEB_AUTHORING' ? `/console/web-ui?caseId=${id}&projectId=${projectId}` : `/console/test-cases?caseId=${id}&projectId=${projectId}`
                 : undefined;
         return (
           <List.Item>

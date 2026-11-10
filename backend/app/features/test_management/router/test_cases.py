@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.features.test_management.schemas import (
     TestAssertionCreate,
+    TestCaseCoverageResponse,
     TestCaseCreate,
     TestCaseDataCreate,
     TestCaseFixtureReplace,
@@ -32,14 +33,32 @@ def list_cases(
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     test_point_id: int | None = Query(None, ge=1),
     target_type: str | None = Query(None),
+    case_type: str | None = Query(None),
+    strategy_id: int | None = Query(None, ge=1),
     status: str | None = Query(None),
     keyword: str | None = Query(None),
 ):
     """列出`cases`。"""
     return _CASE.list_cases(
         db, project_id, user, test_point_id=test_point_id, target_type=target_type,
+        case_type=case_type, strategy_id=strategy_id,
         status=status, keyword=keyword, page=page, page_size=page_size,
     ).items
+
+
+@router.get(
+    "/projects/{project_id}/test-cases/coverage",
+    response_model=TestCaseCoverageResponse,
+    summary="用例覆盖矩阵（被测对象 × 用例维度）",
+)
+def case_coverage(
+    project_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    target_type: str | None = Query(None),
+):
+    """按 被测对象 × 用例维度 聚合用例数与关联接口数，供用例库双维过滤展示。"""
+    return _CASE.coverage(db, project_id, user, target_type=target_type)
 
 
 @router.post("/projects/{project_id}/test-cases", status_code=status.HTTP_201_CREATED, summary="新建测试用例")

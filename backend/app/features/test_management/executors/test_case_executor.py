@@ -74,6 +74,13 @@ def execute(
             result = execute_business_action(
                 db, test_case, environment, actor, fixture_outputs, extra_headers
             )
+        elif target == "AI":
+            # AI 对象（模型/智能体能力）的用例可建可管，执行器待 AI 评测链路接入后提供。
+            result = CaseExecutionResult(
+                status="ERROR", executor_type=target,
+                error_code="AI_EXECUTOR_PENDING",
+                error_message="AI 用例的执行能力尚未开放，请先在用例库维护，后续版本接入评测执行",
+            )
         else:
             result = CaseExecutionResult(
                 status="ERROR", executor_type=target,

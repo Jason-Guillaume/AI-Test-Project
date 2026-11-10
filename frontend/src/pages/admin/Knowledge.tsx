@@ -37,6 +37,7 @@ export function AdminKnowledgePage() {
   const [document, setDocument] = useState<Doc>();
   const [query, setQuery] = useState('');
   const [sources, setSources] = useState<SearchResult>();
+  const [saving, setSaving] = useState(false);
   const projectsQuery = useQuery({
     queryKey: ['projects', 'knowledge-admin'],
     queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 200 })),
@@ -60,13 +61,17 @@ export function AdminKnowledgePage() {
     queryFn: () => api.get<{ items: Version[] }>(`${root}/knowledge-documents/${document!.id}/versions`),
   });
 
-  /** 执行写操作；失败时展示后端文案，成功后由调用方刷新对应列表。 */
+  /** 执行写操作。保存中禁止再次点击，避免同一名称连续入库却看不到结果。 */
   const execute = async (fn: () => Promise<unknown>) => {
+    if (saving) return;
+    setSaving(true);
     try {
       await fn();
       message.success('已保存');
     } catch (error) {
       message.error(getErrorMessage(error, '操作失败，请检查权限或刷新后重试'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -111,9 +116,11 @@ export function AdminKnowledgePage() {
             ))}
             <Input placeholder="新知识库名称" value={name} onChange={(event) => setName(event.target.value)} />
             <Button
-              disabled={!name.trim() || project == null}
+              disabled={!name.trim() || project == null || saving}
               onClick={() => execute(async () => {
-                await api.post(`${root}/knowledge-bases`, { name });
+                const created = await api.post<Base>(`${root}/knowledge-bases`, { name });
+                setBase(created.id);
+                setDocument(undefined);
                 await bases.refetch();
               })}
             >
@@ -141,16 +148,34 @@ export function AdminKnowledgePage() {
             </Upload>
             {document && <Button onClick={() => setDocument(undefined)}>返回新文档上传</Button>}
           </Space>
-          <Table<Doc>
+          <Table<Base>
+            rowKey="id"
+            dataSource={bases.data?.items || []}
+            locale={{ emptyText: '当前项目还没有知识库' }}
+            rowClassName={(row) => (row.id === base ? 'ant-table-row-selected' : '')}
+            onRow={(row) => ({
+              onClick: () => {
+                setBase(row.id);
+                setDocument(undefined);
+              },
+            })}
+            columns={[
+              { title: '知识库', dataIndex: 'name' },
+              { title: '状态', render: (_, row) => (row.enabled ? '启用' : '停用') },
+              { title: '操作', render: (_, row) => <Button onClick={() => { setBase(row.id); setDocument(undefined); }}>查看文档</Button> },
+            ]}
+          />
+          {base != null && <Table<Doc>
             rowKey="id"
             dataSource={docs.data?.items || []}
+            locale={{ emptyText: '这个知识库还没有文档' }}
             columns={[
               { title: '名称', dataIndex: 'name' },
               { title: '分类', dataIndex: 'category' },
               { title: '状态', render: (_, row) => (row.enabled ? '启用' : '停用') },
               { title: '版本', render: (_, row) => <Button onClick={() => setDocument(row)}>查看版本 / 更新</Button> },
             ]}
-          />
+          />}
           {document && (
             <Table<Version>
               rowKey="id"
