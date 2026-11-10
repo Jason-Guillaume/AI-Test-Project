@@ -13,7 +13,7 @@
 // 不带分页信封；仅 list_runs / list_case_executions 返回 {items,total,page,page_size} 信封。
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
-import type { CaseExecutionListResponse, RunCompareResponse, TestCase, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
+import type { CaseExecutionListResponse, RunCompareResponse, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
 
@@ -74,6 +74,8 @@ export const testManagementApi = {
       page_size?: number;
       test_point_id?: number;
       target_type?: string;
+      case_type?: string;
+      strategy_id?: number;
       status?: string;
       keyword?: string;
     } = {},
@@ -81,6 +83,9 @@ export const testManagementApi = {
     api.get<TestCase[]>(`/projects/${projectId}/test-cases`, {
       params: { page: 1, page_size: 100, ...params },
     }),
+  // 用例覆盖矩阵：被测对象 × 用例维度 交叉格上的用例数/接口数。
+  getCaseCoverage: (projectId: number, params: { target_type?: string } = {}) =>
+    api.get<TestCaseCoverage>(`/projects/${projectId}/test-cases/coverage`, { params }),
   createCase: (projectId: number, body: TestCaseCreate) =>
     api.post<TestCase>(`/projects/${projectId}/test-cases`, body),
   getCase: (caseId: number) => api.get<TestCase>(`/test-cases/${caseId}`),

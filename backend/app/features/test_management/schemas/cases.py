@@ -85,6 +85,21 @@ class TestCaseListResponse(BaseModel):
     page_size: int = 20
 
 
+class TestCaseCoverageItem(BaseModel):
+    """用例覆盖矩阵单元：被测对象 × 用例维度 交叉格上的数量。"""
+
+    target_type: str = Field(description="被测对象类型：API/WEB/BUSINESS_FLOW/BUSINESS_ACTION")
+    case_type: str = Field(description="用例类型（测试维度）：FUNCTIONAL/BOUNDARY/SECURITY/…")
+    case_count: int = Field(ge=0, description="该交叉格下的用例数")
+    api_count: int = Field(ge=0, description="该交叉格下关联到接口管理的不重复接口数（api_id 非空才计入）")
+
+
+class TestCaseCoverageResponse(BaseModel):
+    """项目用例覆盖矩阵：替代旧的「范围树」嵌套统计，按两个维度展开。"""
+
+    items: list[TestCaseCoverageItem] = Field(default_factory=list)
+
+
 class TestCaseDetailResponse(TestCaseResponse):
     """测试用例聚合详情：基本信息 + 前置条件 + 测试数据 + 步骤 + 断言。
 

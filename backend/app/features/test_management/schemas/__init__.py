@@ -30,6 +30,8 @@ from app.features.test_management.schemas.case_inputs import TestAssertionRespon
 from app.features.test_management.schemas.common import TestAssertionType
 from app.features.test_management.schemas.case_inputs import TestAssertionUpdate
 from app.features.test_management.schemas.cases import TestCaseBase
+from app.features.test_management.schemas.cases import TestCaseCoverageItem
+from app.features.test_management.schemas.cases import TestCaseCoverageResponse
 from app.features.test_management.schemas.cases import TestCaseCreate
 from app.features.test_management.schemas.case_inputs import TestCaseDataBase
 from app.features.test_management.schemas.case_inputs import TestCaseDataCreate
@@ -166,6 +168,8 @@ __all__ = [
     'TestAssertionUpdate',
     'TestAssertionResponse',
     'TestCaseDetailResponse',
+    'TestCaseCoverageItem',
+    'TestCaseCoverageResponse',
     'TestSuiteBase',
     'TestSuiteCreate',
     'TestSuiteUpdate',

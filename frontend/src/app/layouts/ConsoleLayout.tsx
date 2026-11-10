@@ -23,6 +23,7 @@ import {
   DatabaseOutlined,
   FileSearchOutlined,
   FileTextOutlined,
+  ProfileOutlined,
   HistoryOutlined,
   AudioOutlined,
   LogoutOutlined,
@@ -86,6 +87,7 @@ const BASE_MENU_ITEMS: MenuSection[] = [
       { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' },
       { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' },
       { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
+      { key: '/console/test-cases', icon: <ProfileOutlined />, label: '测试用例' },
       { key: '/console/asr/audio', icon: <AudioOutlined />, label: 'ASR 评测' },
       { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
       { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
@@ -129,6 +131,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/api-catalog': '接口管理', // 接口管理
   '/console/business-management': '业务管理', // 业务管理
   '/console/test-asset': '测试资产', // 测试资产
+  '/console/test-cases': '测试用例',
   '/console/test-suites': '测试套件', // 测试套件
   '/console/test-plans': '测试计划', // 测试计划
   '/console/execution-center': '执行中心', // 执行中心

@@ -19,7 +19,7 @@ export type TestStrategyCategory =
 
 export type TestPriority = 'P0' | 'P1' | 'P2' | 'P3';
 
-export type TestTargetType = 'API' | 'BUSINESS_FLOW' | 'BUSINESS_ACTION' | 'WEB';
+export type TestTargetType = 'API' | 'BUSINESS_FLOW' | 'BUSINESS_ACTION' | 'WEB' | 'AI';
 
 export type TestStatus = 'DRAFT' | 'ACTIVE' | 'DEPRECATED';
 
@@ -149,6 +149,18 @@ export interface TestCase {
   created_by: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/** 用例覆盖矩阵单元：被测对象 × 用例维度 交叉格上的数量（替代旧范围树的节点统计）。 */
+export interface TestCaseCoverageItem {
+  target_type: string;
+  case_type: string;
+  case_count: number; // 该交叉格下的用例数
+  api_count: number; // 该交叉格下关联接口管理的不重复接口数（api_id 非空才计入）
+}
+
+export interface TestCaseCoverage {
+  items: TestCaseCoverageItem[];
 }
 
 export interface TestCaseCreate {
