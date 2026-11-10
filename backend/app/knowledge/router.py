@@ -96,8 +96,15 @@ def binding(project_id: int, agent_id: int, db: Session = Depends(get_db), actor
 def put_binding(project_id: int, agent_id: int, body: BindingInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
     return dump(service.save_binding(db, project_id, agent_id, actor, body.model_dump()))
 
+@router.post('/knowledge-search')
+def project_search(project_id: int, body: SearchInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    # 检索范围是整个项目的已启用知识，不接收 Agent。
+    snapshot = service.freeze(db, project_id, 0, actor)
+    return {'items': service.search(db, snapshot, actor, body.query)}
+
 @router.post('/agents/{agent_id}/knowledge-search')
 def search(project_id: int, agent_id: int, body: SearchInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    # 兼容旧调用：agent_id 不缩小范围，实际仍返回该项目的知识。
     snapshot = service.freeze(db, project_id, agent_id, actor)
     return {'snapshot': snapshot, 'items': service.search(db, snapshot, actor, body.query)}
 

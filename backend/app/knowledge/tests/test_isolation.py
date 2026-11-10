@@ -39,9 +39,11 @@ def test_project_isolation_and_unbound_agent(db):
     prepared(db)
     a = service.freeze(db, 1, 1, {1})
     assert '商城' in service.search(db, a, {1}, '规范')[0]['text']
+    # 同一项目的另一个 Agent 读到同一批资料，不需要单独绑定。
+    assert service.freeze(db, 1, 2, {1})['version_ids'] == a['version_ids']
     b = service.freeze(db, 2, 1, {2})
     assert '支付' in service.search(db, b, {2}, '规范')[0]['text']
-    assert not service.freeze(db, 1, 2, {1})['version_ids']
+    assert set(a['version_ids']).isdisjoint(b['version_ids'])
     with pytest.raises(HTTPException):
         service.search(db, a, {2}, '')
 
@@ -62,15 +64,13 @@ def test_pinned_version_failed_update_and_revocation(db):
         service.search(db, snapshot, {1}, '')
 
 
-def test_agent_document_scope_and_required(db):
+def test_binding_does_not_limit_project_knowledge(db):
     prepared(db)
     binding = db.query(KnowledgeBinding).filter_by(project_id=1).one()
     binding.scopes = [{'base_id': 1, 'mode': 'DOCUMENTS', 'document_ids': []}]
+    binding.required = True
     db.commit()
-    assert service.freeze(db, 1, 1, {1})['version_ids'] == []
-    binding.required = True; db.commit()
-    with pytest.raises(HTTPException):
-        service.freeze(db, 1, 1, {1})
+    assert service.freeze(db, 1, 1, {1})['version_ids']
 
 
 def test_text_docx_and_scanned_pdf():
@@ -88,7 +88,7 @@ def test_text_docx_and_scanned_pdf():
         service.extract('scan.pdf', file.getvalue())
 
 
-def test_two_agents_with_distinct_nonempty_scopes(db):
+def test_agents_share_project_knowledge(db):
     prepared(db)
     first_doc = db.query(KnowledgeDocument).filter_by(project_id=1).one()
     extra = service.upload(db, 1, 1, {1}, '安全.md', '安全规则禁止明文密码'.encode())
@@ -99,5 +99,5 @@ def test_two_agents_with_distinct_nonempty_scopes(db):
     db.commit()
     first = service.search(db, service.freeze(db, 1, 1, {1}), {1}, '')
     second = service.search(db, service.freeze(db, 1, 2, {1}), {1}, '')
-    assert {s['document_id'] for s in first} == {first_doc.id}
-    assert {s['document_id'] for s in second} == {extra.document_id}
+    assert {s['document_id'] for s in first} == {first_doc.id, extra.document_id}
+    assert {s['document_id'] for s in second} == {s['document_id'] for s in first}
