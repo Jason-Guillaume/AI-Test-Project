@@ -13,7 +13,6 @@ import {
   Alert,
   App,
   Button,
-  Checkbox,
   Col,
   Descriptions,
   Drawer,
@@ -34,6 +33,7 @@ import type { DataNode, TreeProps } from 'antd/es/tree';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
+import { GenerationWorkbench } from '@/pages/console/TestManagement/GenerationWorkbench';
 import type { GenerationBatch, ScopeNode, TestCaseDetail } from '@/features/test-management/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
@@ -455,7 +455,7 @@ function CreateCaseModal({ open, onCancel, onSubmit }: {
   );
 }
 
-/** 调用已有主子 Agent 生成草稿，并在这里逐条接受或拒绝。 */
+/** 调用已有主子 Agent 生成草稿，并在审核工作台里逐条或批量处理。 */
 function GenerationDrawer({ open, projectId, direction, scopeNodeId, agents, batch, onClose, onBatch, onChanged }: {
   open: boolean;
   projectId: number;
@@ -464,95 +464,21 @@ function GenerationDrawer({ open, projectId, direction, scopeNodeId, agents, bat
   agents: { id: number; name: string; version: number; modules: string[] }[];
   batch: GenerationBatch | null;
   onClose: () => void;
-  onBatch: (batch: GenerationBatch) => void;
+  onBatch: (batch: GenerationBatch | null) => void;
   onChanged: () => void;
 }) {
-  const { message } = App.useApp();
-  const [form] = Form.useForm();
-  const [busy, setBusy] = useState(false);
-  const reload = async (batchId: number) => onBatch(await testManagementApi.getGenerationBatch(batchId));
-  const run = async () => {
-    const values = await form.validateFields();
-    setBusy(true);
-    try {
-      const created = await testManagementApi.startGeneration(projectId, {
-        agent_id: values.agent_id,
-        direction,
-        scope_node_id: scopeNodeId,
-        requirements: values.requirements,
-        include_security: Boolean(values.include_security),
-        cases_per_module: values.cases_per_module,
-      });
-      onBatch(created);
-      message.success('草稿已生成，请逐条审核');
-    } catch (error) {
-      message.error(getErrorMessage(error, '生成失败'));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const decide = async (draftId: number, action: 'accept' | 'reject') => {
-    if (!batch) return;
-    try {
-      if (action === 'accept') await testManagementApi.acceptDraft(draftId);
-      else await testManagementApi.rejectDraft(draftId);
-      await reload(batch.id);
-      onChanged();
-    } catch (error) {
-      message.error(getErrorMessage(error, '审核失败'));
-    }
-  };
   return (
-    <Drawer title="生成草稿审核" open={open} width={720} onClose={onClose}>
-      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="草稿不会自动成为正式用例，也不能直接执行。接受后才进入用例库。" />
-      <Form form={form} layout="vertical" initialValues={{ cases_per_module: 5, include_security: false }}>
-        <Form.Item name="agent_id" label="主 Agent" rules={[{ required: true }]}>
-          <Select options={agents.map((agent) => ({ value: agent.id, label: `${agent.name} v${agent.version}（${agent.modules.join('、')}）` }))} placeholder={agents.length ? '选择用例生成主 Agent' : '还没有启用的用例生成主 Agent'} />
-        </Form.Item>
-        <Form.Item name="cases_per_module" label="每模块条数"><InputNumber min={1} max={20} /></Form.Item>
-        <Form.Item name="include_security" valuePropName="checked"><Checkbox>同时生成安全专项（主 Agent 已绑定安全子 Agent 时）</Checkbox></Form.Item>
-        <Form.Item name="requirements" label="需求" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={5} maxLength={20000} /></Form.Item>
-        <Button type="primary" loading={busy} onClick={run}>生成草稿</Button>
-      </Form>
-      {batch ? (
-        <div style={{ marginTop: 16 }}>
-          <Typography.Paragraph>主 Agent {batch.supervisor_name} v{batch.supervisor_version} · {batch.status}</Typography.Paragraph>
-          {batch.review_summary ? <Typography.Paragraph type="secondary">{batch.review_summary}</Typography.Paragraph> : null}
-          {batch.module_errors.map((item, index) => <Alert key={index} type={item.status === 'SKIPPED' ? 'warning' : 'error'} showIcon style={{ marginBottom: 8 }} message={`${item.module ?? '模块'}：${item.error}`} />)}
-          {batch.drafts.map((draft) => (
-            <div key={draft.id} style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12, marginBottom: 8 }}>
-              <Space>
-                <Typography.Text strong>{draft.title}</Typography.Text>
-                <Tag>{draft.priority}</Tag>
-                <Tag>{draft.module}</Tag>
-                <Tag>{draft.status === 'PENDING' ? '待审核' : draft.status === 'ACCEPTED' ? '已入库' : '已拒绝'}</Tag>
-              </Space>
-              <Typography.Paragraph style={{ marginTop: 8 }}>{draft.payload.requirement}</Typography.Paragraph>
-              <Typography.Text type="secondary">子 Agent {draft.child_name} v{draft.child_version} · 模型 {draft.model_name || '-'} · Skill {draft.skill_versions.map((item) => `${item.key}@${item.version}`).join('、') || '无'}</Typography.Text>
-              {draft.status === 'PENDING' ? (
-                <Space direction="vertical" style={{ marginTop: 8, width: '100%' }}>
-                  <Input
-                    defaultValue={draft.title}
-                    onBlur={async (event) => {
-                      const title = event.target.value.trim();
-                      if (!title || title === draft.title || !batch) return;
-                      try {
-                        await testManagementApi.updateDraft(draft.id, { title });
-                        await reload(batch.id);
-                      } catch (error) {
-                        message.error(getErrorMessage(error, '修改草稿失败'));
-                      }
-                    }}
-                  />
-                  <Space>
-                    <Button size="small" type="primary" onClick={() => decide(draft.id, 'accept')}>接受</Button>
-                    <Button size="small" onClick={() => decide(draft.id, 'reject')}>拒绝</Button>
-                  </Space>
-                </Space>
-              ) : null}
-            </div>
-          ))}
-        </div>
+    <Drawer title="生成草稿审核" open={open} width={860} onClose={onClose}>
+      {open ? (
+        <GenerationWorkbench
+          projectId={projectId}
+          direction={direction}
+          scopeNodeId={scopeNodeId}
+          agents={agents}
+          batch={batch}
+          onBatch={onBatch}
+          onChanged={onChanged}
+        />
       ) : null}
     </Drawer>
   );

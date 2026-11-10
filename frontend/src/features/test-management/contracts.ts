@@ -484,9 +484,23 @@ export interface CaseDraft {
     expected_results: string[];
     coverage: string[];
   };
+  /** 原始 AI 生成内容，人工编辑只改 payload。 */
+  original_payload: Record<string, unknown>;
+  /** 系统规则校验结果，仅提示不阻断。 */
+  quality: DraftQualityIssue[];
   status: string;
+  review_comment: string | null;
+  reviewed_at: string | null;
   test_case_id: number | null;
+  import_error: string | null;
   updated_at: string;
+}
+
+export interface DraftQualityIssue {
+  rule: string;
+  level: 'error' | 'warning' | 'info';
+  message: string;
+  similar_cases?: { test_case_id: number; name: string }[];
 }
 
 export interface GenerationBatch {
@@ -503,7 +517,58 @@ export interface GenerationBatch {
   review_summary: string | null;
   review_gaps: string[];
   module_errors: { module?: string; status?: string; error?: string }[];
+  module_metrics: { module?: string; status?: string; duration_ms?: number | null; usage?: Record<string, number> }[];
   drafts: CaseDraft[];
+  created_at: string;
+}
+
+export interface GenerationBatchListItem {
+  id: number;
+  project_id: number;
+  direction: string;
+  status: string;
+  supervisor_name: string;
+  modules: string[];
+  draft_total: number;
+  pending_count: number;
+  accepted_count: number;
+  rejected_count: number;
+  module_error_count: number;
+  created_by: number | null;
+  created_at: string;
+}
+
+export interface GenerationBatchListResponse {
+  items: GenerationBatchListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  completed_count: number;
+  partial_failed_count: number;
+  failed_count: number;
+}
+
+export interface BatchReviewItem {
+  draft_id: number;
+  ok: boolean;
+  test_case_id: number | null;
+  error: string | null;
+}
+
+export interface BatchReviewResponse {
+  batch_id: number;
+  action: string;
+  affected: number;
+  items: BatchReviewItem[];
+}
+
+export interface GenerationAudit {
+  id: number;
+  batch_id: number;
+  draft_id: number | null;
+  action: string;
+  actor_id: number | null;
+  detail: Record<string, unknown>;
   created_at: string;
 }
 

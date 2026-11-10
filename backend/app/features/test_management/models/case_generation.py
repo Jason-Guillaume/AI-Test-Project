@@ -31,6 +31,8 @@ class CaseGenerationBatch(Base):
     review_summary = Column(Text, nullable=True)
     review_gaps_json = Column(JSON, nullable=False, default=list)
     module_errors_json = Column(JSON, nullable=False, default=list)
+    # 各模块生成耗时与 token 指标；只存数值，不含提示词、响应或密钥。
+    module_metrics_json = Column(JSON, nullable=False, default=list)
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
@@ -53,7 +55,32 @@ class CaseDraft(Base):
     title = Column(String(200), nullable=False)
     priority = Column(String(10), nullable=False)
     payload_json = Column(JSON, nullable=False)
+    # 原始 AI 生成内容，人工编辑只改 payload_json，本字段不变。
+    original_payload_json = Column(JSON, nullable=False)
+    # 系统规则校验结果：[{rule, level, message, ...}]；只提示，不阻断审核。
+    quality_json = Column(JSON, nullable=False, default=list)
     status = Column(String(20), nullable=False, default="PENDING", server_default=text("'PENDING'"), index=True)
+    review_comment = Column(String(500), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
     test_case_id = Column(Integer, ForeignKey("test_case.id", ondelete="SET NULL"), nullable=True)
+    import_error = Column(String(500), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class CaseGenerationAudit(Base):
+    """审核、编辑、入库与再生成操作的审计行。"""
+
+    __tablename__ = "case_generation_audit"
+    __table_args__ = ({"comment": "用例生成审核与入库操作审计"},)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    batch_id = Column(Integer, ForeignKey("case_generation_batch.id", ondelete="CASCADE"), nullable=False, index=True)
+    # 空表示批次级操作（批量审核、再生成）。
+    draft_id = Column(Integer, ForeignKey("case_draft.id", ondelete="CASCADE"), nullable=True, index=True)
+    action = Column(String(30), nullable=False, comment="CREATE/EDIT/APPROVE/REJECT/REOPEN/BATCH_REVIEW/REGENERATE")
+    actor_id = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    detail_json = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
