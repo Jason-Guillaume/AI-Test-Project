@@ -354,6 +354,159 @@ export interface TestAssertionUpdate {
   sort?: number;
 }
 
+export interface ScopePathItem {
+  id: number;
+  name: string;
+  node_type: string;
+}
+
+export interface ScopePath {
+  scope_node_id: number;
+  direction: string;
+  path: ScopePathItem[];
+}
+
+export interface CaseAssetLink {
+  id: number;
+  asset_type: string;
+  asset_id: number;
+}
+
+export interface CaseExecutionBrief {
+  id: number;
+  status: string;
+  executor_type: string | null;
+  error_code: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface GenerationTrace {
+  batch_id: number;
+  supervisor_agent_id: number | null;
+  supervisor_version: number;
+  supervisor_name: string;
+  model_config_id: number | null;
+  model_name: string | null;
+  module: string | null;
+  child_agent_id: number | null;
+  child_version: number | null;
+  child_name: string | null;
+  skill_versions: { key: string; version: number }[];
+  review_status: string;
+  review_summary: string | null;
+}
+
+export interface ScopeNode {
+  id: number;
+  project_id: number;
+  direction: string;
+  parent_id: number | null;
+  node_type: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  status: string;
+  asset_type: string | null;
+  asset_id: number | null;
+  is_system: boolean;
+  case_count: number;
+  point_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScopeTree {
+  direction: string;
+  items: ScopeNode[];
+}
+
+export interface ScopeNodeDetail extends ScopeNode {
+  path: ScopePathItem[];
+  children: ScopeNode[];
+}
+
+export interface ScopeStats {
+  direction: string;
+  scope_count: number;
+  case_count: number;
+  point_count: number;
+  priority_counts: Record<string, number>;
+}
+
+export interface ScopeCaseItem {
+  id: number;
+  project_id: number;
+  name: string;
+  priority: string;
+  case_type: string;
+  target_type: string;
+  status: string;
+  source_type: string;
+  test_point_id: number | null;
+  test_point_name: string | null;
+  direction: string;
+  updated_at: string;
+}
+
+export interface ScopeCaseList {
+  items: ScopeCaseItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface GenerationAgentOption {
+  id: number;
+  name: string;
+  version: number;
+  modules: string[];
+}
+
+export interface CaseDraft {
+  id: number;
+  batch_id: number;
+  module: string;
+  child_agent_id: number | null;
+  child_version: number;
+  child_name: string;
+  model_config_id: number | null;
+  model_name: string | null;
+  skill_versions: { key: string; version: number }[];
+  title: string;
+  priority: string;
+  payload: {
+    title: string;
+    requirement: string;
+    preconditions: string[];
+    test_data: string[];
+    steps: string[];
+    expected_results: string[];
+    coverage: string[];
+  };
+  status: string;
+  test_case_id: number | null;
+  updated_at: string;
+}
+
+export interface GenerationBatch {
+  id: number;
+  project_id: number;
+  direction: string;
+  scope_node_id: number | null;
+  supervisor_agent_id: number | null;
+  supervisor_version: number;
+  supervisor_name: string;
+  model_config_id: number | null;
+  model_name: string | null;
+  status: string;
+  review_summary: string | null;
+  review_gaps: string[];
+  module_errors: { module?: string; status?: string; error?: string }[];
+  drafts: CaseDraft[];
+  created_at: string;
+}
+
 // ---- 用例聚合详情（编辑器一次性拉取，减少往返）----
 export interface TestCaseDetail extends TestCase {
   preconditions: TestCasePrecondition[];
@@ -361,6 +514,15 @@ export interface TestCaseDetail extends TestCase {
   steps: TestStep[];
   assertions: TestAssertion[];
   fixtures: TestCaseFixture[];
+  agent_session_id?: number | null;
+  generation_version?: number | null;
+  direction?: string | null;
+  executor_ready?: boolean;
+  executor_note?: string | null;
+  scope_paths?: ScopePath[];
+  assets?: CaseAssetLink[];
+  recent_executions?: CaseExecutionBrief[];
+  generation?: GenerationTrace | null;
 }
 
 // ---- 测试套件 ----

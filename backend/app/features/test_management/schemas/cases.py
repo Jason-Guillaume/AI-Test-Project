@@ -14,6 +14,12 @@ from app.features.test_management.schemas.common import TestSourceType
 from app.features.test_management.schemas.common import TestStatus
 from app.features.test_management.schemas.case_inputs import TestStepResponse
 from app.features.test_management.schemas.common import TestTargetType
+from app.features.test_management.schemas.generation import GenerationTrace
+from app.features.test_management.schemas.scopes import (
+    CaseAssetResponse,
+    CaseExecutionBrief,
+    ScopePathResponse,
+)
 
 
 class TestCaseBase(BaseModel):
@@ -113,3 +119,12 @@ class TestCaseDetailResponse(TestCaseResponse):
     fixtures: list[TestCaseFixtureResponse] = Field(
         default_factory=list, description="所需 Fixture（执行前由 Data Factory 生成并注入）",
     )
+    agent_session_id: int | None = None
+    generation_version: int | None = None
+    direction: str | None = None
+    executor_ready: bool = True
+    executor_note: str | None = None
+    scope_paths: list[ScopePathResponse] = Field(default_factory=list)
+    assets: list[CaseAssetResponse] = Field(default_factory=list)
+    recent_executions: list[CaseExecutionBrief] = Field(default_factory=list)
+    generation: GenerationTrace | None = None

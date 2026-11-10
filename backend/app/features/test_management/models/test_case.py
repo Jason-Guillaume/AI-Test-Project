@@ -77,6 +77,10 @@ class TestCase(Base):
         comment="生成该用例的 Agent 会话ID（追溯用，MANUAL 来源为空）",
     )
     generation_version = Column(Integer, nullable=True, comment="Agent 生成版本号（追溯用）")
+    generation_batch_id = Column(
+        Integer, ForeignKey("case_generation_batch.id", ondelete="SET NULL"), nullable=True,
+        comment="生成批次 ID。手工用例为空；草稿未接受前不会写入本列",
+    )
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True, comment="创建人")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
     updated_at = Column(

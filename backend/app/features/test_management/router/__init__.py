@@ -14,7 +14,9 @@ from .test_suites import router as test_suites_router
 from .test_suite_cases import router as test_suite_cases_router
 from .test_plans import router as test_plans_router
 from .test_plan_suites import router as test_plan_suites_router
+from .test_generation import router as test_generation_router
 from .test_runs import router as test_runs_router
+from .test_scopes import router as test_scopes_router
 
 
 router = APIRouter(tags=["测试管理"])
@@ -54,3 +56,5 @@ router.include_router(test_plan_suites_router)
 
 
 router.include_router(test_runs_router)
+router.include_router(test_scopes_router)
+router.include_router(test_generation_router)

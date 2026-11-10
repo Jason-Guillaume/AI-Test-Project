@@ -10,6 +10,7 @@
 但本阶段不接入 LLM / LangGraph / Agent。
 """
 
+from app.features.test_management.models.case_generation import CaseDraft, CaseGenerationBatch
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_assertion import TestAssertion
 from app.features.test_management.models.test_case import TestCase
@@ -18,10 +19,19 @@ from app.features.test_management.models.test_case_precondition import TestCaseP
 from app.features.test_management.models.test_plan import TestPlan, TestPlanSuite
 from app.features.test_management.models.test_point import TestPoint
 from app.features.test_management.models.test_step import TestStep
+from app.features.test_management.models.test_scope import (
+    TestCaseAsset,
+    TestCaseScope,
+    TestScopeApiBackfill,
+    TestScopeMigrationCheck,
+    TestScopeNode,
+)
 from app.features.test_management.models.test_strategy import TestStrategy
 from app.features.test_management.models.test_suite import TestSuite, TestSuiteCase
 
 __all__ = [
+    "CaseDraft",
+    "CaseGenerationBatch",
     "TestCase",
     "TestCaseData",
     "TestCasePrecondition",
@@ -32,6 +42,11 @@ __all__ = [
     "TestRun",
     "CaseExecution",
     "TestStep",
+    "TestCaseAsset",
+    "TestCaseScope",
+    "TestScopeApiBackfill",
+    "TestScopeMigrationCheck",
+    "TestScopeNode",
     "TestStrategy",
     "TestSuite",
     "TestSuiteCase",

@@ -1,268 +1,272 @@
-// 测试用例库。
-// 由 /console/test-cases 挂载，不再放进测试资产。
-// 组织方式：被测对象（接口/界面/业务流程/业务动作）× 测试维度（功能/边界/安全/…）双维过滤，
-// 替代旧的「范围树」嵌套——树节点的「接口数/用例数」就是覆盖矩阵的一个单元格。
-// 空组合（某对象下没有该维度用例）不出现在维度 Tab 里。
-// 接口对象按接口归组（优先对上接口管理的接口名）；其余对象按测试点归组。
-// 用例内容按接口管理的方式只读展示：基本信息、前置条件、测试数据、断言、步骤。
-//
-// 权限（服务端为准）：读 = 项目可见（viewer+）。
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Col, Descriptions, Input, Row, Segmented, Table, Tabs, Tag, Typography } from 'antd';
+// 用例管理中心。
+// 三个测试方向各自一棵无限级范围树。维度只做筛选，不进入目录。
+// 生成结果先进入审核抽屉，接受后才写入正式用例。AI 执行未开放时详情会明确标出。
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ApiOutlined,
+  DesktopOutlined,
+  FolderOutlined,
+  InboxOutlined,
+  RobotOutlined,
+} from '@ant-design/icons';
+import {
+  Alert,
+  App,
+  Button,
+  Checkbox,
+  Col,
+  Descriptions,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Row,
+  Segmented,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tree,
+  Typography,
+} from 'antd';
+import type { DataNode, TreeProps } from 'antd/es/tree';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
-import { collectArrayPages, collectPages } from '@/shared/api/pagination';
+import type { GenerationBatch, ScopeNode, TestCaseDetail } from '@/features/test-management/contracts';
+import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
-import type { TestCase, TestCaseDetail } from '@/features/test-management/contracts';
 
-const HTTP_PATTERN = /(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s]+)/;
-const METHOD_COLOR: Record<string, string> = {
-  GET: 'green',
-  POST: 'blue',
-  PUT: 'orange',
-  PATCH: 'gold',
-  DELETE: 'red',
-};
+const DIRECTIONS = [
+  { value: 'API', label: 'API 接口测试' },
+  { value: 'UI', label: 'UI 界面测试' },
+  { value: 'AI', label: 'AI 专项测试' },
+] as const;
 
-// 被测对象 facet。顺序固定，界面文案用短名，和后端 target_type 枚举一一对应。
-const OBJECT_FACETS = ['API', 'WEB', 'AI', 'BUSINESS_FLOW', 'BUSINESS_ACTION'] as const;
-type ObjectFacet = (typeof OBJECT_FACETS)[number];
-const OBJECT_LABEL: Record<ObjectFacet, string> = {
-  API: '接口',
-  WEB: '界面',
-  AI: 'AI 能力',
-  BUSINESS_FLOW: '业务流程',
-  BUSINESS_ACTION: '业务动作',
-};
+const DIMENSIONS: { value: string; label: string }[] = [
+  { value: 'ALL', label: '全部维度' },
+  { value: 'FUNCTIONAL', label: '功能' },
+  { value: 'BUSINESS', label: '业务' },
+  { value: 'NEGATIVE', label: '负向' },
+  { value: 'BOUNDARY', label: '边界' },
+  { value: 'PERMISSION', label: '权限' },
+  { value: 'SECURITY', label: '安全' },
+  { value: 'EXCEPTION', label: '异常' },
+];
 
-// 测试维度短名。NEGATIVE 与 EXCEPTION 都含「异常」，这里用「负向/异常」区分开。
-const DIMENSION_LABEL: Record<string, string> = {
-  FUNCTIONAL: '功能',
-  BUSINESS: '业务',
-  NEGATIVE: '负向',
-  BOUNDARY: '边界',
-  PERMISSION: '权限',
-  SECURITY: '安全',
-  EXCEPTION: '异常',
-};
-const ALL_DIMENSIONS = 'ALL';
-// 接口对象下解析不出方法+路径的用例归入这个兜底组，不再静默丢失。
-const UNMATCHED_KEY = 'unmatched';
+const TARGET_BY_DIRECTION: Record<string, 'API' | 'WEB' | 'AI'> = { API: 'API', UI: 'WEB', AI: 'AI' };
 
-interface CaseGroup {
-  key: string;
-  title: string;
-  subtitle: string;
-  method?: string;
-  path?: string;
-  cases: TestCase[];
+/** 被测对象对应到页面上的三个方向。 */
+function directionOfTarget(targetType: string): string {
+  if (targetType === 'WEB') return 'UI';
+  if (targetType === 'AI') return 'AI';
+  return 'API';
 }
 
-/** 取出描述里某一行标签后面的文字。没有这一行时返回空串。 */
-function labeled(description: string | null, label: string): string {
-  if (!description) return '';
-  const line = description.split('\n').find((item) => item.startsWith(`${label}：`) || item.startsWith(`${label}:`));
-  return line ? line.split(/：|:/).slice(1).join('：').trim() : '';
+/** 节点图标只区分导航类型，不把策略画成目录。 */
+function nodeIcon(node: ScopeNode) {
+  if (node.is_system || node.node_type === 'INBOX') return <InboxOutlined />;
+  if (node.asset_type === 'API_INTERFACE' || node.asset_type === 'API_MODULE') return <ApiOutlined />;
+  if (node.asset_type === 'WEB_PAGE') return <DesktopOutlined />;
+  if (node.asset_type === 'AGENT') return <RobotOutlined />;
+  return <FolderOutlined />;
 }
 
-/** 把路径参数收成 {}，方便和接口管理里的 path 对齐。 */
-function normalizePath(path: string): string {
-  return path.replace(/\/+$/, '').replace(/\{[^}]+\}/g, '{}');
-}
-
-/** 从用例描述里取出这条用例打到的接口。对不上方法和路径时返回空。 */
-function endpointOf(item: TestCase): { method: string; path: string } | null {
-  const source = `${labeled(item.description, '模块路径')}\n${labeled(item.description, '画布')}`;
-  const matched = source.match(HTTP_PATTERN);
-  if (!matched) return null;
-  return { method: matched[1], path: matched[2] };
-}
-
-/** 一条用例在当前对象 facet 下归属的分组 key，选中态和归组共用。 */
-function groupKeyOf(item: TestCase, facet: ObjectFacet): string {
-  if (facet === 'API') {
-    const endpoint = endpointOf(item);
-    return endpoint ? `${endpoint.method} ${normalizePath(endpoint.path)}` : UNMATCHED_KEY;
-  }
-  return `point:${item.test_point_id ?? 'none'}`;
-}
-
-/**
- * 按接口把用例归在一起。
- * 标题优先用接口管理里的接口名；没有同名接口时用「方法 + 路径」，不用画布里的模块名。
- * 解析不出接口的用例进兜底组，保证列表条数和覆盖矩阵一致。
- */
-function groupByInterface(cases: TestCase[], catalog: { name: string; method: string; path: string }[]): CaseGroup[] {
-  const groups = new Map<string, CaseGroup>();
-  for (const item of cases) {
-    const endpoint = endpointOf(item);
-    if (!endpoint) {
-      const fallback = groups.get(UNMATCHED_KEY) ?? {
-        key: UNMATCHED_KEY,
-        title: '未匹配接口的用例',
-        subtitle: '',
-        cases: [],
-      };
-      fallback.cases.push(item);
-      groups.set(UNMATCHED_KEY, fallback);
-      continue;
+/** 按名称过滤时保留命中节点的祖先，避免树被截断。 */
+function filterNodes(nodes: ScopeNode[], keyword: string): ScopeNode[] {
+  const text = keyword.trim().toLowerCase();
+  if (!text) return nodes;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const keep = new Set<number>();
+  for (const node of nodes) {
+    if (!node.name.toLowerCase().includes(text)) continue;
+    let cursor: ScopeNode | undefined = node;
+    while (cursor) {
+      keep.add(cursor.id);
+      cursor = cursor.parent_id == null ? undefined : byId.get(cursor.parent_id);
     }
-    const key = `${endpoint.method} ${normalizePath(endpoint.path)}`;
-    const known = catalog.find((api) => api.method.toUpperCase() === endpoint.method && normalizePath(api.path) === normalizePath(endpoint.path));
-    const current = groups.get(key) ?? {
-      key,
-      title: known?.name || `${endpoint.method} ${endpoint.path}`,
-      subtitle: '',
-      method: endpoint.method,
-      path: endpoint.path,
-      cases: [],
-    };
-    current.cases.push(item);
-    groups.set(key, current);
   }
-  return [...groups.values()]
-    .map((group) => ({
-      ...group,
-      subtitle: `${group.path ? `${group.path} · ` : ''}${group.cases.length} 条用例`,
-    }))
-    .sort((left, right) => {
-      if (left.key === UNMATCHED_KEY) return 1;
-      if (right.key === UNMATCHED_KEY) return -1;
-      return left.subtitle.localeCompare(right.subtitle) || left.title.localeCompare(right.title);
-    });
+  return nodes.filter((node) => keep.has(node.id));
 }
 
-/** 非接口对象按测试点归组；没挂测试点的用例进「未关联测试点」组。 */
-function groupByPoint(cases: TestCase[], pointNames: Map<number, string>): CaseGroup[] {
-  const groups = new Map<string, CaseGroup>();
-  for (const item of cases) {
-    const key = `point:${item.test_point_id ?? 'none'}`;
-    const current = groups.get(key) ?? {
-      key,
-      title: item.test_point_id != null ? pointNames.get(item.test_point_id) ?? `测试点 #${item.test_point_id}` : '未关联测试点',
-      subtitle: '',
-      cases: [],
-    };
-    current.cases.push(item);
-    groups.set(key, current);
+/** 把扁平节点收成 antd Tree。 */
+function toTreeData(nodes: ScopeNode[]): DataNode[] {
+  const byParent = new Map<number | null, ScopeNode[]>();
+  for (const node of nodes) {
+    const list = byParent.get(node.parent_id) ?? [];
+    list.push(node);
+    byParent.set(node.parent_id, list);
   }
-  return [...groups.values()]
-    .map((group) => ({ ...group, subtitle: `${group.cases.length} 条用例` }))
-    .sort((left, right) => left.title.localeCompare(right.title));
+  const build = (parentId: number | null): DataNode[] => (byParent.get(parentId) ?? [])
+    .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
+    .map((node) => ({
+      key: String(node.id),
+      icon: nodeIcon(node),
+      title: `${node.name}  ${node.case_count} 用例 / ${node.point_count} 测试点`,
+      children: build(node.id),
+    }));
+  return build(null);
 }
 
-/** 测试用例页。未选项目时不请求。 */
+/** 用例管理中心页面。 */
 export function ConsoleTestCasesPage() {
+  const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
   const [searchParams] = useSearchParams();
   const requestedCaseId = Number(searchParams.get('caseId'));
   const requestedProjectId = Number(searchParams.get('projectId'));
-  const [objectFacet, setObjectFacet] = useState<ObjectFacet>('API');
-  const [dimension, setDimension] = useState<string>(ALL_DIMENSIONS);
+  const [direction, setDirection] = useState('API');
+  const [dimension, setDimension] = useState('ALL');
   const [keyword, setKeyword] = useState('');
-  const [selectedKey, setSelectedKey] = useState<string>();
-  const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
+  const [treeKeyword, setTreeKeyword] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedNodeId, setSelectedNodeId] = useState<number>();
+  const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [nodeModal, setNodeModal] = useState<{ mode: 'create' | 'edit'; parentId?: number | null; node?: ScopeNode } | null>(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [batch, setBatch] = useState<GenerationBatch | null>(null);
 
-  // 覆盖矩阵驱动两个 facet：对象选项的用例总数、维度 Tab 的单元格计数。
-  const coverageQuery = useQuery({
-    queryKey: ['test-cases', currentProjectId, 'coverage'],
-    queryFn: () => testManagementApi.getCaseCoverage(currentProjectId!),
+  const treeQuery = useQuery({
+    queryKey: ['test-scopes', currentProjectId, direction],
+    queryFn: () => testManagementApi.listScopes(currentProjectId!, direction),
     enabled: currentProjectId != null,
+  });
+  const statsQuery = useQuery({
+    queryKey: ['test-scope-stats', currentProjectId, direction],
+    queryFn: () => testManagementApi.scopeStats(currentProjectId!, direction),
+    enabled: currentProjectId != null,
+  });
+  const nodeQuery = useQuery({
+    queryKey: ['test-scope', selectedNodeId],
+    queryFn: () => testManagementApi.getScope(selectedNodeId!),
+    enabled: selectedNodeId != null,
   });
   const casesQuery = useQuery({
-    queryKey: ['test-cases', currentProjectId, 'grouped', objectFacet, dimension],
-    queryFn: () => collectArrayPages(
-      (page) => testManagementApi.listCases(currentProjectId!, {
-        page,
-        page_size: 100,
-        target_type: objectFacet,
-        case_type: dimension === ALL_DIMENSIONS ? undefined : dimension,
-      }),
-      100,
-    ),
-    enabled: currentProjectId != null,
-  });
-  const catalogQuery = useQuery({
-    queryKey: ['api-catalog', currentProjectId, 'case-interfaces'],
-    queryFn: () => collectPages((page) => apiCatalogApi.listApis(currentProjectId!, { page, page_size: 200 })),
-    enabled: currentProjectId != null && objectFacet === 'API',
-  });
-  const pointsQuery = useQuery({
-    queryKey: ['test-points', currentProjectId, 'case-groups'],
-    queryFn: () => testManagementApi.listPoints(currentProjectId!, { page: 1, page_size: 100 }),
-    enabled: currentProjectId != null && objectFacet !== 'API',
+    queryKey: ['test-scope-cases', currentProjectId, selectedNodeId, dimension, keyword, page],
+    queryFn: () => testManagementApi.listScopeCases(currentProjectId!, {
+      scope_node_id: selectedNodeId,
+      include_descendants: true,
+      case_type: dimension === 'ALL' ? undefined : dimension,
+      keyword: keyword || undefined,
+      page,
+      page_size: 10,
+      sort: 'updated_at',
+      order: 'desc',
+    }),
+    enabled: currentProjectId != null && selectedNodeId != null,
   });
   const detailQuery = useQuery({
-    queryKey: ['test-case-detail', selectedCaseId],
-    queryFn: () => testManagementApi.getCaseDetail(selectedCaseId!),
-    enabled: selectedCaseId != null,
+    queryKey: ['test-case-detail', detailId],
+    queryFn: () => testManagementApi.getCaseDetail(detailId!),
+    enabled: detailId != null,
   });
-  // 深链 caseId 可能指向别的对象 facet：先取一次基本信息，把 facet 对齐过去。
   const requestedCaseQuery = useQuery({
     queryKey: ['test-case-brief', requestedCaseId],
     queryFn: () => testManagementApi.getCase(requestedCaseId),
     enabled: Number.isSafeInteger(requestedCaseId) && requestedCaseId > 0,
   });
+  const agentsQuery = useQuery({
+    queryKey: ['case-generation-agents', currentProjectId],
+    queryFn: () => testManagementApi.listGenerationAgents(currentProjectId!),
+    enabled: currentProjectId != null && generateOpen,
+  });
 
-  const coverageCells = coverageQuery.data?.items ?? [];
-  const objectCount = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const cell of coverageCells) {
-      totals.set(cell.target_type, (totals.get(cell.target_type) ?? 0) + cell.case_count);
-    }
-    return totals;
-  }, [coverageCells]);
-  const dimensionCells = useMemo(
-    () => coverageCells.filter((cell) => cell.target_type === objectFacet && cell.case_count > 0),
-    [coverageCells, objectFacet],
-  );
+  const nodes = treeQuery.data?.items ?? [];
+  const visible = useMemo(() => filterNodes(nodes, treeKeyword), [nodes, treeKeyword]);
+  const treeData = useMemo(() => toTreeData(visible), [visible]);
 
-  // 切对象后当前维度在新对象下可能没有用例：收回「全部」，空组合不留入口。
   useEffect(() => {
-    if (dimension === ALL_DIMENSIONS) return;
-    if (!dimensionCells.some((cell) => cell.case_type === dimension)) {
-      setDimension(ALL_DIMENSIONS);
-    }
-  }, [dimension, dimensionCells]);
+    setSelectedNodeId(undefined);
+    setPage(1);
+    setSelectedCaseIds([]);
+  }, [direction, currentProjectId]);
+
+  useEffect(() => {
+    if (selectedNodeId != null || nodes.length === 0) return;
+    const inbox = nodes.find((node) => node.is_system);
+    if (inbox) setSelectedNodeId(inbox.id);
+  }, [nodes, selectedNodeId]);
 
   useEffect(() => {
     const brief = requestedCaseQuery.data;
     if (!brief) return;
-    if ((OBJECT_FACETS as readonly string[]).includes(brief.target_type) && brief.target_type !== objectFacet) {
-      setObjectFacet(brief.target_type as ObjectFacet);
-      setDimension(ALL_DIMENSIONS);
-    }
-    // 只对齐一次：facet 切换后由下方选中 effect 接手。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setDirection(directionOfTarget(brief.target_type));
+    setDetailId(brief.id);
   }, [requestedCaseQuery.data]);
 
-  const groups = useMemo(() => {
-    const cases = casesQuery.data ?? [];
-    if (objectFacet === 'API') {
-      return groupByInterface(cases, catalogQuery.data?.items ?? []);
-    }
-    const pointNames = new Map((pointsQuery.data ?? []).map((point) => [point.id, point.name]));
-    return groupByPoint(cases, pointNames);
-  }, [casesQuery.data, catalogQuery.data, pointsQuery.data, objectFacet]);
-  const visibleGroups = useMemo(() => {
-    const text = keyword.trim().toLowerCase();
-    if (!text) return groups;
-    return groups.filter((group) => `${group.title} ${group.subtitle}`.toLowerCase().includes(text));
-  }, [groups, keyword]);
-  const selected = groups.find((group) => group.key === selectedKey) ?? null;
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['test-scopes'] });
+    queryClient.invalidateQueries({ queryKey: ['test-scope-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['test-scope-cases'] });
+    queryClient.invalidateQueries({ queryKey: ['test-scope'] });
+    queryClient.invalidateQueries({ queryKey: ['test-case-detail'] });
+  };
 
-  useEffect(() => {
-    if (!Number.isSafeInteger(requestedCaseId) || requestedCaseId <= 0 || !casesQuery.data) return;
-    const item = casesQuery.data.find((row) => row.id === requestedCaseId);
-    if (!item) return;
-    setSelectedKey(groupKeyOf(item, objectFacet));
-    setSelectedCaseId(item.id);
-    // objectFacet 由对齐 effect 先切好，这里不依赖它，避免重复选中。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [casesQuery.data, requestedCaseId]);
+  const createNode = useMutation({
+    mutationFn: (values: { name: string; description?: string; node_type: 'FOLDER' | 'ASSET_LINK'; asset_type?: string; asset_id?: number }) => {
+      if (nodeModal?.mode === 'edit' && nodeModal.node) {
+        return testManagementApi.updateScope(nodeModal.node.id, { name: values.name, description: values.description });
+      }
+      return testManagementApi.createScope(currentProjectId!, {
+        direction,
+        parent_id: nodeModal?.parentId,
+        node_type: values.node_type,
+        name: values.name,
+        description: values.description,
+        asset_type: values.node_type === 'ASSET_LINK' ? values.asset_type : undefined,
+        asset_id: values.node_type === 'ASSET_LINK' ? values.asset_id : undefined,
+      });
+    },
+    onSuccess: () => { message.success('范围已保存'); setNodeModal(null); refresh(); },
+    onError: (error) => message.error(getErrorMessage(error, '保存范围失败')),
+  });
+  const moveCases = useMutation({
+    mutationFn: (scopeNodeId: number) => testManagementApi.moveScopeCases(currentProjectId!, { case_ids: selectedCaseIds, scope_node_id: scopeNodeId }),
+    onSuccess: () => { message.success('用例已移动'); setMoveOpen(false); setSelectedCaseIds([]); refresh(); },
+    onError: (error) => message.error(getErrorMessage(error, '移动失败')),
+  });
+  const archiveCases = useMutation({
+    mutationFn: () => testManagementApi.archiveScopeCases(currentProjectId!, { case_ids: selectedCaseIds }),
+    onSuccess: () => { message.success('用例已归档'); setSelectedCaseIds([]); refresh(); },
+    onError: (error) => message.error(getErrorMessage(error, '归档失败')),
+  });
+  const createCase = useMutation({
+    mutationFn: (values: { name: string; priority: 'P0' | 'P1' | 'P2' | 'P3'; case_type: string }) => testManagementApi.createCase(currentProjectId!, {
+      name: values.name,
+      priority: values.priority,
+      case_type: values.case_type as 'FUNCTIONAL',
+      target_type: TARGET_BY_DIRECTION[direction],
+    }).then(async (created) => {
+      if (selectedNodeId != null) {
+        await testManagementApi.moveScopeCases(currentProjectId!, { case_ids: [created.id], scope_node_id: selectedNodeId });
+      }
+      return created;
+    }),
+    onSuccess: () => { message.success('用例已创建'); setCreateOpen(false); refresh(); },
+    onError: (error) => message.error(getErrorMessage(error, '创建用例失败')),
+  });
+
+  const onDrop: TreeProps['onDrop'] = (info) => {
+    const dragId = Number(info.dragNode.key);
+    const drag = nodes.find((node) => node.id === dragId);
+    if (!drag || drag.is_system) {
+      message.warning('待整理节点不能移动');
+      return;
+    }
+    const dropId = Number(info.node.key);
+    const drop = nodes.find((node) => node.id === dropId);
+    if (!drop) return;
+    const parentId = info.dropToGap ? drop.parent_id : drop.id;
+    testManagementApi.moveScope(dragId, { parent_id: parentId, sort_order: drop.sort_order })
+      .then(() => refresh())
+      .catch((error) => message.error(getErrorMessage(error, '调整目录失败')));
+  };
 
   if (currentProjectId == null) {
     return <PageContainer><EmptyState description="请先在顶部选择一个项目" /></PageContainer>;
@@ -271,201 +275,337 @@ export function ConsoleTestCasesPage() {
     return <PageContainer><EmptyState description={`此链接指向项目 #${requestedProjectId}，请先在顶部切换项目`} /></PageContainer>;
   }
 
-  const changeFacet = (value: string | number) => {
-    setObjectFacet(value as ObjectFacet);
-    setSelectedKey(undefined);
-    setSelectedCaseId(null);
-  };
+  const stats = statsQuery.data;
+  const selected = nodeQuery.data;
 
   return (
     <PageContainer>
-      <div style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Segmented
-          value={objectFacet}
-          onChange={changeFacet}
-          options={OBJECT_FACETS
-            .filter((facet) => facet === objectFacet || (objectCount.get(facet) ?? 0) > 0)
-            .map((facet) => ({ value: facet, label: `${OBJECT_LABEL[facet]} ${objectCount.get(facet) ?? 0}` }))}
+          value={direction}
+          onChange={(value) => setDirection(String(value))}
+          options={DIRECTIONS.map((item) => ({ value: item.value, label: item.label }))}
         />
-        <Tabs
-          size="small"
-          activeKey={dimension}
-          onChange={setDimension}
-          style={{ flex: 1, minWidth: 320, marginBottom: -12 }}
-          items={[
-            { key: ALL_DIMENSIONS, label: `全部 ${dimensionCells.reduce((sum, cell) => sum + cell.case_count, 0)}` },
-            ...dimensionCells.map((cell) => ({
-              key: cell.case_type,
-              label: `${DIMENSION_LABEL[cell.case_type] ?? cell.case_type} ${cell.case_count}`,
-            })),
-          ]}
-        />
-      </div>
-      <Row gutter={16} wrap={false}>
+        <Space wrap>
+          <Tag>用例 {stats?.case_count ?? 0}</Tag>
+          <Tag>范围 {stats?.scope_count ?? 0}</Tag>
+          <Tag>测试点 {stats?.point_count ?? 0}</Tag>
+          <Tag>P0 {stats?.priority_counts.P0 ?? 0}</Tag>
+          <Tag>P1 {stats?.priority_counts.P1 ?? 0}</Tag>
+          <Tag>P2 {stats?.priority_counts.P2 ?? 0}</Tag>
+          <Tag>P3 {stats?.priority_counts.P3 ?? 0}</Tag>
+          <Select
+            value={dimension}
+            style={{ width: 140 }}
+            options={DIMENSIONS}
+            onChange={(value) => { setDimension(value); setPage(1); }}
+          />
+        </Space>
+      </Space>
+      <Row gutter={16} style={{ marginTop: 12 }} wrap={false}>
         <Col flex="320px">
-          <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 8, height: 'calc(100vh - 230px)', minHeight: 380, display: 'flex', flexDirection: 'column' }}>
-            <Typography.Text strong style={{ margin: '4px 8px 8px' }}>{objectFacet === 'API' ? '接口' : '测试点'}</Typography.Text>
-            <Input.Search
-              allowClear
-              placeholder={objectFacet === 'API' ? '搜索接口名称或路径' : '搜索测试点'}
-              style={{ marginBottom: 8 }}
-              onSearch={setKeyword}
-            />
+          <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 8, height: 'calc(100vh - 250px)', minHeight: 420, display: 'flex', flexDirection: 'column' }}>
+            <Space style={{ marginBottom: 8 }}>
+              <Button size="small" type="primary" onClick={() => setNodeModal({ mode: 'create', parentId: null })}>新建目录</Button>
+              <Button size="small" disabled={selectedNodeId == null} onClick={() => setNodeModal({ mode: 'create', parentId: selectedNodeId })}>子目录</Button>
+            </Space>
+            <Input.Search allowClear placeholder="搜索范围" onSearch={setTreeKeyword} style={{ marginBottom: 8 }} />
             <div style={{ overflow: 'auto', flex: 1 }}>
-              {casesQuery.isPending ? <LoadingState /> : casesQuery.isError ? <ErrorState error={casesQuery.error} onRetry={casesQuery.refetch} /> : visibleGroups.length === 0 ? <EmptyState description="该维度下没有用例" /> : visibleGroups.map((group) => (
-                <button
-                  key={group.key}
-                  type="button"
-                  onClick={() => { setSelectedKey(group.key); setSelectedCaseId(null); }}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    textAlign: 'left',
-                    border: 0,
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    marginBottom: 4,
-                    cursor: 'pointer',
-                    background: group.key === selectedKey ? '#edf3ff' : 'transparent',
-                  }}
-                >
-                  <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    {group.method ? <Tag color={METHOD_COLOR[group.method] ?? 'default'} style={{ marginInlineEnd: 0 }}>{group.method}</Tag> : null}
-                    <Typography.Text strong ellipsis>{group.title}</Typography.Text>
-                  </span>
-                  <Typography.Text type="secondary" ellipsis style={{ display: 'block', fontSize: 12 }}>{group.subtitle}</Typography.Text>
-                </button>
-              ))}
+              {treeQuery.isPending ? <LoadingState /> : treeQuery.isError ? <ErrorState error={treeQuery.error} onRetry={treeQuery.refetch} /> : (
+                <Tree
+                  showIcon
+                  blockNode
+                  draggable
+                  selectedKeys={selectedNodeId == null ? [] : [String(selectedNodeId)]}
+                  treeData={treeData}
+                  onSelect={(keys) => setSelectedNodeId(keys[0] == null ? undefined : Number(keys[0]))}
+                  onDrop={onDrop}
+                />
+              )}
             </div>
           </div>
         </Col>
         <Col flex="1 1 0" style={{ minWidth: 0 }}>
-          <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, height: 'calc(100vh - 230px)', minHeight: 380, overflow: 'auto' }}>
-            {!selected ? <EmptyState description={objectFacet === 'API' ? '请在左侧选择一个接口' : '请在左侧选择一个测试点'} /> : (
+          <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, height: 'calc(100vh - 250px)', minHeight: 420, overflow: 'auto' }}>
+            {!selected ? <EmptyState description="请选择左侧范围" /> : (
               <>
-                <Typography.Text type="secondary">{objectFacet === 'API' ? '接口名称' : '测试点'}</Typography.Text>
-                <Typography.Title level={4} style={{ marginTop: 4 }}>{selected.title}</Typography.Title>
-                {selected.method ? (
-                  <Typography.Paragraph>
-                    <Tag color={METHOD_COLOR[selected.method] ?? 'default'}>{selected.method}</Tag>
-                    <Typography.Text code>{selected.path}</Typography.Text>
-                  </Typography.Paragraph>
+                <Space style={{ marginBottom: 8 }} wrap>
+                  <Typography.Title level={4} style={{ margin: 0 }}>{selected.name}</Typography.Title>
+                  <Button size="small" disabled={selected.is_system} onClick={() => setNodeModal({ mode: 'edit', node: selected })}>编辑</Button>
+                  <Button size="small" danger disabled={selected.is_system} onClick={() => modal.confirm({
+                    title: '删除这个范围？',
+                    content: '子节点需要先移走。当前节点上的用例会改挂到父级或待整理。',
+                    onOk: () => testManagementApi.removeScope(selected.id).then(() => { message.success('已删除'); setSelectedNodeId(undefined); refresh(); }).catch((error) => message.error(getErrorMessage(error, '删除失败'))),
+                  })}>删除</Button>
+                  <Button size="small" onClick={() => setCreateOpen(true)}>手工用例</Button>
+                  <Button size="small" type="primary" onClick={() => setGenerateOpen(true)}>生成草稿</Button>
+                </Space>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+                  {selected.path.map((item) => item.name).join(' / ') || selected.name}
+                </Typography.Paragraph>
+                <Typography.Paragraph>
+                  {selected.description || '没有补充说明'}
+                  {selected.asset_type ? ` · 关联 ${selected.asset_type} #${selected.asset_id}` : ''}
+                </Typography.Paragraph>
+                {selected.children.length > 0 ? (
+                  <Space wrap style={{ marginBottom: 12 }}>
+                    {selected.children.map((child) => (
+                      <Tag key={child.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedNodeId(child.id)}>
+                        {child.name} {child.case_count}
+                      </Tag>
+                    ))}
+                  </Space>
                 ) : null}
-                <CasePicker cases={selected.cases} selectedId={selectedCaseId} onSelect={setSelectedCaseId} />
-                {selectedCaseId == null ? null : detailQuery.isPending ? <LoadingState /> : detailQuery.isError ? <ErrorState error={detailQuery.error} onRetry={detailQuery.refetch} /> : detailQuery.data ? <CaseContent detail={detailQuery.data} /> : <EmptyState description="没有获取到用例内容" />}
+                <Space style={{ marginBottom: 8 }}>
+                  <Input.Search allowClear placeholder="搜索用例" onSearch={(value) => { setKeyword(value); setPage(1); }} style={{ width: 220 }} />
+                  <Button disabled={selectedCaseIds.length === 0} onClick={() => setMoveOpen(true)}>批量移动</Button>
+                  <Button disabled={selectedCaseIds.length === 0} onClick={() => archiveCases.mutate()}>批量归档</Button>
+                </Space>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  loading={casesQuery.isFetching}
+                  dataSource={casesQuery.data?.items ?? []}
+                  rowSelection={{ selectedRowKeys: selectedCaseIds, onChange: (keys) => setSelectedCaseIds(keys.map(Number)) }}
+                  pagination={{ current: page, pageSize: 10, total: casesQuery.data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
+                  onRow={(row) => ({ onClick: () => setDetailId(row.id) })}
+                  columns={[
+                    { title: '编号', dataIndex: 'id', width: 72 },
+                    { title: '用例名称', dataIndex: 'name', ellipsis: true },
+                    { title: '优先级', dataIndex: 'priority', width: 80 },
+                    { title: '维度', dataIndex: 'case_type', width: 100, render: (value: string) => DIMENSIONS.find((item) => item.value === value)?.label ?? value },
+                    { title: '状态', dataIndex: 'status', width: 110 },
+                    { title: '来源', dataIndex: 'source_type', width: 80, render: (value: string) => value === 'AI' ? 'AI' : '人工' },
+                    { title: '测试点', dataIndex: 'test_point_name', width: 140, render: (value: string | null) => value || '-' },
+                    { title: '更新时间', dataIndex: 'updated_at', width: 170, render: (value: string) => value?.replace('T', ' ').slice(0, 16) },
+                  ]}
+                />
               </>
             )}
           </div>
         </Col>
       </Row>
+      <NodeModal open={nodeModal != null} initial={nodeModal} onCancel={() => setNodeModal(null)} onSubmit={(values) => createNode.mutate(values)} />
+      <Modal title="移动到范围" open={moveOpen} onCancel={() => setMoveOpen(false)} footer={null} destroyOnClose>
+        <Select
+          showSearch
+          style={{ width: '100%' }}
+          placeholder="选择目标范围"
+          options={nodes.map((node) => ({ value: node.id, label: node.name }))}
+          onChange={(value) => moveCases.mutate(value)}
+        />
+      </Modal>
+      <CreateCaseModal open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={(values) => createCase.mutate(values)} />
+      <GenerationDrawer
+        open={generateOpen}
+        projectId={currentProjectId}
+        direction={direction}
+        scopeNodeId={selectedNodeId}
+        agents={agentsQuery.data ?? []}
+        batch={batch}
+        onClose={() => setGenerateOpen(false)}
+        onBatch={setBatch}
+        onChanged={refresh}
+      />
+      <CaseDetailDrawer detail={detailQuery.data} loading={detailQuery.isFetching} open={detailId != null} onClose={() => setDetailId(null)} />
     </PageContainer>
   );
 }
 
-/** 当前分组下的用例标题。点一条才加载它的前置条件、数据和断言。 */
-function CasePicker({ cases, selectedId, onSelect }: { cases: TestCase[]; selectedId: number | null; onSelect: (id: number) => void }) {
+/** 新建或编辑范围节点。资产链接只保存已有资产 ID。 */
+function NodeModal({ open, initial, onCancel, onSubmit }: {
+  open: boolean;
+  initial: { mode: 'create' | 'edit'; node?: ScopeNode } | null;
+  onCancel: () => void;
+  onSubmit: (values: { name: string; description?: string; node_type: 'FOLDER' | 'ASSET_LINK'; asset_type?: string; asset_id?: number }) => void;
+}) {
+  const [form] = Form.useForm();
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-      {cases.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => onSelect(item.id)}
-          style={{
-            textAlign: 'left',
-            border: '1px solid #e7eef6',
-            borderRadius: 8,
-            padding: '8px 12px',
-            cursor: 'pointer',
-            background: item.id === selectedId ? '#f3f7ff' : '#fff',
-          }}
-        >
-          <Typography.Text strong>{item.name}</Typography.Text>
-          <Typography.Text type="secondary" style={{ marginLeft: 8 }}>{item.priority} · {DIMENSION_LABEL[item.case_type] ?? item.case_type}</Typography.Text>
-        </button>
-      ))}
-    </div>
+    <Modal title={initial?.mode === 'edit' ? '编辑范围' : '新建范围'} open={open} onCancel={onCancel} onOk={() => form.validateFields().then(onSubmit)} destroyOnClose>
+      <Form form={form} layout="vertical" initialValues={{ node_type: 'FOLDER', name: initial?.node?.name, description: initial?.node?.description }}>
+        <Form.Item name="name" label="名称" rules={[{ required: true, whitespace: true, max: 200 }]}><Input /></Form.Item>
+        <Form.Item name="description" label="说明"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
+        {initial?.mode === 'create' ? (
+          <>
+            <Form.Item name="node_type" label="类型"><Select options={[{ value: 'FOLDER', label: '目录' }, { value: 'ASSET_LINK', label: '资产链接' }]} /></Form.Item>
+            <Form.Item name="asset_type" label="资产类型"><Select allowClear options={['API_MODULE', 'API_INTERFACE', 'BUSINESS_DOMAIN', 'BUSINESS_FLOW', 'BUSINESS_ACTION', 'WEB_PAGE', 'AGENT'].map((value) => ({ value, label: value }))} /></Form.Item>
+            <Form.Item name="asset_id" label="资产 ID"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
+          </>
+        ) : null}
+      </Form>
+    </Modal>
   );
 }
 
-/** 用接口详情那样的说明表展示一条用例，不提供子表编辑。 */
-function CaseContent({ detail }: { detail: TestCaseDetail }) {
+/** 手工编写一条用例，并挂到当前选中的范围。 */
+function CreateCaseModal({ open, onCancel, onSubmit }: {
+  open: boolean;
+  onCancel: () => void;
+  onSubmit: (values: { name: string; priority: 'P0' | 'P1' | 'P2' | 'P3'; case_type: string }) => void;
+}) {
+  const [form] = Form.useForm();
   return (
-    <>
-      <Descriptions bordered size="small" column={2} style={{ marginBottom: 16 }}>
-        <Descriptions.Item label="用例标题" span={2}>{detail.name}</Descriptions.Item>
-        <Descriptions.Item label="优先级">{detail.priority}</Descriptions.Item>
-        <Descriptions.Item label="类型">{DIMENSION_LABEL[detail.case_type] ?? detail.case_type}</Descriptions.Item>
-        <Descriptions.Item label="状态">{detail.status}</Descriptions.Item>
-        <Descriptions.Item label="启用">{detail.enabled ? '是' : '否'}</Descriptions.Item>
-      </Descriptions>
-      <Section title="前置条件">
-        <Table
-          size="small"
-          pagination={false}
-          rowKey="id"
-          dataSource={detail.preconditions}
-          locale={{ emptyText: '没有前置条件' }}
-          columns={[
-            { title: '类型', dataIndex: 'type', width: 120 },
-            { title: '目标', dataIndex: 'target', width: 160, render: (value: string | null) => value || '-' },
-            { title: '期望', dataIndex: 'expected_value', render: (value: string | null) => value || '-' },
-          ]}
-        />
-      </Section>
-      <Section title="测试数据">
-        <Table
-          size="small"
-          pagination={false}
-          rowKey="id"
-          dataSource={detail.test_data}
-          locale={{ emptyText: '没有测试数据' }}
-          columns={[
-            { title: '名称', dataIndex: 'name', width: 180 },
-            { title: '来源', dataIndex: 'source_type', width: 120 },
-            { title: '值', dataIndex: 'value', render: (value: string | null) => value || '-' },
-          ]}
-        />
-      </Section>
-      <Section title="断言">
-        <Table
-          size="small"
-          pagination={false}
-          rowKey="id"
-          dataSource={detail.assertions}
-          locale={{ emptyText: '没有断言' }}
-          columns={[
-            { title: '类型', dataIndex: 'assertion_type', width: 140 },
-            { title: '路径', dataIndex: 'path', width: 180, render: (value: string | null) => value || '-' },
-            { title: '操作', dataIndex: 'operator', width: 100 },
-            { title: '期望', dataIndex: 'expected_value', render: (value: string | null) => value || '-' },
-          ]}
-        />
-      </Section>
-      <Section title="步骤">
-        <Table
-          size="small"
-          pagination={false}
-          rowKey="id"
-          dataSource={detail.steps}
-          locale={{ emptyText: '没有步骤' }}
-          columns={[
-            { title: '顺序', dataIndex: 'sort', width: 80 },
-            { title: '类型', dataIndex: 'step_type', width: 120 },
-            { title: '步骤', dataIndex: 'name' },
-          ]}
-        />
-      </Section>
-    </>
+    <Modal title="手工用例" open={open} onCancel={onCancel} onOk={() => form.validateFields().then(onSubmit)} destroyOnClose>
+      <Form form={form} layout="vertical" initialValues={{ priority: 'P1', case_type: 'FUNCTIONAL' }}>
+        <Form.Item name="name" label="用例名称" rules={[{ required: true, whitespace: true }]}><Input /></Form.Item>
+        <Form.Item name="priority" label="优先级"><Select options={['P0', 'P1', 'P2', 'P3'].map((value) => ({ value, label: value }))} /></Form.Item>
+        <Form.Item name="case_type" label="测试维度"><Select options={DIMENSIONS.filter((item) => item.value !== 'ALL')} /></Form.Item>
+      </Form>
+    </Modal>
   );
 }
 
-/** 一块只读内容，标题和接口管理里的分区一致。 */
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** 调用已有主子 Agent 生成草稿，并在这里逐条接受或拒绝。 */
+function GenerationDrawer({ open, projectId, direction, scopeNodeId, agents, batch, onClose, onBatch, onChanged }: {
+  open: boolean;
+  projectId: number;
+  direction: string;
+  scopeNodeId?: number;
+  agents: { id: number; name: string; version: number; modules: string[] }[];
+  batch: GenerationBatch | null;
+  onClose: () => void;
+  onBatch: (batch: GenerationBatch) => void;
+  onChanged: () => void;
+}) {
+  const { message } = App.useApp();
+  const [form] = Form.useForm();
+  const [busy, setBusy] = useState(false);
+  const reload = async (batchId: number) => onBatch(await testManagementApi.getGenerationBatch(batchId));
+  const run = async () => {
+    const values = await form.validateFields();
+    setBusy(true);
+    try {
+      const created = await testManagementApi.startGeneration(projectId, {
+        agent_id: values.agent_id,
+        direction,
+        scope_node_id: scopeNodeId,
+        requirements: values.requirements,
+        include_security: Boolean(values.include_security),
+        cases_per_module: values.cases_per_module,
+      });
+      onBatch(created);
+      message.success('草稿已生成，请逐条审核');
+    } catch (error) {
+      message.error(getErrorMessage(error, '生成失败'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const decide = async (draftId: number, action: 'accept' | 'reject') => {
+    if (!batch) return;
+    try {
+      if (action === 'accept') await testManagementApi.acceptDraft(draftId);
+      else await testManagementApi.rejectDraft(draftId);
+      await reload(batch.id);
+      onChanged();
+    } catch (error) {
+      message.error(getErrorMessage(error, '审核失败'));
+    }
+  };
   return (
-    <section style={{ marginBottom: 16 }}>
+    <Drawer title="生成草稿审核" open={open} width={720} onClose={onClose}>
+      <Alert type="info" showIcon style={{ marginBottom: 12 }} message="草稿不会自动成为正式用例，也不能直接执行。接受后才进入用例库。" />
+      <Form form={form} layout="vertical" initialValues={{ cases_per_module: 5, include_security: false }}>
+        <Form.Item name="agent_id" label="主 Agent" rules={[{ required: true }]}>
+          <Select options={agents.map((agent) => ({ value: agent.id, label: `${agent.name} v${agent.version}（${agent.modules.join('、')}）` }))} placeholder={agents.length ? '选择用例生成主 Agent' : '还没有启用的用例生成主 Agent'} />
+        </Form.Item>
+        <Form.Item name="cases_per_module" label="每模块条数"><InputNumber min={1} max={20} /></Form.Item>
+        <Form.Item name="include_security" valuePropName="checked"><Checkbox>同时生成安全专项（主 Agent 已绑定安全子 Agent 时）</Checkbox></Form.Item>
+        <Form.Item name="requirements" label="需求" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={5} maxLength={20000} /></Form.Item>
+        <Button type="primary" loading={busy} onClick={run}>生成草稿</Button>
+      </Form>
+      {batch ? (
+        <div style={{ marginTop: 16 }}>
+          <Typography.Paragraph>主 Agent {batch.supervisor_name} v{batch.supervisor_version} · {batch.status}</Typography.Paragraph>
+          {batch.review_summary ? <Typography.Paragraph type="secondary">{batch.review_summary}</Typography.Paragraph> : null}
+          {batch.module_errors.map((item, index) => <Alert key={index} type={item.status === 'SKIPPED' ? 'warning' : 'error'} showIcon style={{ marginBottom: 8 }} message={`${item.module ?? '模块'}：${item.error}`} />)}
+          {batch.drafts.map((draft) => (
+            <div key={draft.id} style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12, marginBottom: 8 }}>
+              <Space>
+                <Typography.Text strong>{draft.title}</Typography.Text>
+                <Tag>{draft.priority}</Tag>
+                <Tag>{draft.module}</Tag>
+                <Tag>{draft.status === 'PENDING' ? '待审核' : draft.status === 'ACCEPTED' ? '已入库' : '已拒绝'}</Tag>
+              </Space>
+              <Typography.Paragraph style={{ marginTop: 8 }}>{draft.payload.requirement}</Typography.Paragraph>
+              <Typography.Text type="secondary">子 Agent {draft.child_name} v{draft.child_version} · 模型 {draft.model_name || '-'} · Skill {draft.skill_versions.map((item) => `${item.key}@${item.version}`).join('、') || '无'}</Typography.Text>
+              {draft.status === 'PENDING' ? (
+                <Space direction="vertical" style={{ marginTop: 8, width: '100%' }}>
+                  <Input
+                    defaultValue={draft.title}
+                    onBlur={async (event) => {
+                      const title = event.target.value.trim();
+                      if (!title || title === draft.title || !batch) return;
+                      try {
+                        await testManagementApi.updateDraft(draft.id, { title });
+                        await reload(batch.id);
+                      } catch (error) {
+                        message.error(getErrorMessage(error, '修改草稿失败'));
+                      }
+                    }}
+                  />
+                  <Space>
+                    <Button size="small" type="primary" onClick={() => decide(draft.id, 'accept')}>接受</Button>
+                    <Button size="small" onClick={() => decide(draft.id, 'reject')}>拒绝</Button>
+                  </Space>
+                </Space>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Drawer>
+  );
+}
+
+/** 用例详情。AI 未接入执行时只展示维护信息和明确的未开放说明。 */
+function CaseDetailDrawer({ detail, loading, open, onClose }: { detail?: TestCaseDetail; loading: boolean; open: boolean; onClose: () => void }) {
+  return (
+    <Drawer title={detail?.name ?? '用例详情'} open={open} width={760} onClose={onClose}>
+      {loading && !detail ? <LoadingState /> : !detail ? <EmptyState description="没有用例详情" /> : (
+        <>
+          {detail.executor_ready === false ? <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={detail.executor_note || '执行能力尚未开放'} /> : null}
+          <Descriptions bordered size="small" column={2}>
+            <Descriptions.Item label="编号">{detail.id}</Descriptions.Item>
+            <Descriptions.Item label="方向">{detail.direction || directionOfTarget(detail.target_type)}</Descriptions.Item>
+            <Descriptions.Item label="优先级">{detail.priority}</Descriptions.Item>
+            <Descriptions.Item label="维度">{DIMENSIONS.find((item) => item.value === detail.case_type)?.label ?? detail.case_type}</Descriptions.Item>
+            <Descriptions.Item label="状态">{detail.status}</Descriptions.Item>
+            <Descriptions.Item label="来源">{detail.source_type === 'AI' ? 'AI' : '人工'}</Descriptions.Item>
+            <Descriptions.Item label="目录" span={2}>{detail.scope_paths?.[0]?.path.map((item) => item.name).join(' / ') || '未归类'}</Descriptions.Item>
+            <Descriptions.Item label="被测对象" span={2}>{detail.target_type}{detail.api_id ? ` · 接口 #${detail.api_id}` : ''}{(detail.assets ?? []).map((asset) => ` · ${asset.asset_type} #${asset.asset_id}`).join('')}</Descriptions.Item>
+          </Descriptions>
+          {detail.generation ? (
+            <Descriptions bordered size="small" column={1} style={{ marginTop: 12 }} title="生成来源">
+              <Descriptions.Item label="主 Agent">{detail.generation.supervisor_name} #{detail.generation.supervisor_agent_id} v{detail.generation.supervisor_version}</Descriptions.Item>
+              <Descriptions.Item label="子 Agent">{detail.generation.child_name} #{detail.generation.child_agent_id} v{detail.generation.child_version} · {detail.generation.module}</Descriptions.Item>
+              <Descriptions.Item label="模型">{detail.generation.model_name || '-'} #{detail.generation.model_config_id ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Skill">{detail.generation.skill_versions.map((item) => `${item.key}@${item.version}`).join('、') || '无'}</Descriptions.Item>
+              <Descriptions.Item label="审核">{detail.generation.review_status} · 批次 #{detail.generation.batch_id}</Descriptions.Item>
+              <Descriptions.Item label="审阅">{detail.generation.review_summary || '-'}</Descriptions.Item>
+            </Descriptions>
+          ) : null}
+          <Section title="前置条件" rows={detail.preconditions.map((item) => item.expected_value || item.target || item.type)} />
+          <Section title="测试数据" rows={detail.test_data.map((item) => `${item.name}: ${item.value || ''}`)} />
+          <Section title="步骤" rows={detail.steps.map((item) => item.name)} />
+          <Section title="断言" rows={detail.assertions.map((item) => `${item.assertion_type} ${item.expected_value || ''}`)} />
+          <Section title="Fixture" rows={detail.fixtures.map((item) => String(item.fixture_id))} />
+          <Typography.Title level={5}>执行历史</Typography.Title>
+          {(detail.recent_executions ?? []).length === 0 ? <Typography.Text type="secondary">还没有执行记录</Typography.Text> : detail.recent_executions?.map((item) => (
+            <div key={item.id}>{item.status} · {item.executor_type || '-'} · {item.error_code || '无错误码'}</div>
+          ))}
+        </>
+      )}
+    </Drawer>
+  );
+}
+
+/** 详情里的一段文本列表。 */
+function Section({ title, rows }: { title: string; rows: string[] }) {
+  return (
+    <section style={{ marginTop: 16 }}>
       <Typography.Title level={5}>{title}</Typography.Title>
-      {children}
+      {rows.length === 0 ? <Typography.Text type="secondary">无</Typography.Text> : rows.map((row, index) => <div key={index}>{index + 1}. {row}</div>)}
     </section>
   );
 }
