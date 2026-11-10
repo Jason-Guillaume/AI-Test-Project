@@ -17,20 +17,32 @@ export const asrQueryKeys = {
 
 export const asrEvaluationApi = {
   /** 分页读取项目音频资源。 */
-  listAudios: (projectId: number, page = 1, pageSize = 50, signal?: AbortSignal, keyword?: string) =>
+  listAudios: (
+    projectId: number, page = 1, pageSize = 50, signal?: AbortSignal, keyword?: string,
+    filters: { availability?: string; groundTruthStatus?: 'BOUND' | 'UNBOUND' } = {},
+  ) =>
     api.get<AsrPage<AsrAudio>>('/asr/audio', {
-      signal, params: { project_id: projectId, page, page_size: pageSize, keyword: keyword?.trim() || undefined },
+      signal, params: {
+        project_id: projectId, page, page_size: pageSize, keyword: keyword?.trim() || undefined,
+        availability: filters.availability || undefined, ground_truth_status: filters.groundTruthStatus || undefined,
+      },
     }),
   /** 查询当前音频页的最近运行链接，不加载转写正文。 */
   getRecentAudioRuns: (projectId: number, audioIds: number[], signal?: AbortSignal) =>
-    api.get<{ items: Array<{ audio_id: number; run_id: number; job_id: number; audio_version_id: number | null; status: string; created_at: string }> }>(
+    api.get<{ items: Array<{ audio_id: number; run_id: number; job_id: number; audio_version_id: number | null; audio_version: number | null; status: string; run_status: string; created_at: string }> }>(
       '/asr/audio/recent-runs', { signal, params: { project_id: projectId, audio_ids: audioIds.join(',') } },
     ),
+  /** 供原生 audio 元素播放的同源、项目权限保护媒体地址；浏览器会自动携带会话 Cookie 和 Range。 */
+  audioMediaUrl: (audioId: number, audioVersionId?: number | null) =>
+    `/api/v1/asr/audio/${audioId}${audioVersionId ? `/versions/${audioVersionId}` : ''}/media`,
   /** 批量导入已有音频 URL。 */
   importAudios: (projectId: number, items: Array<{ name: string; url: string; duration_seconds?: number | null; tags?: string[] }>) =>
     api.post<{ items: AsrAudio[] }>('/asr/audio/import', { project_id: projectId, items }),
   /** 检查平台出站授权和上游 URL 可达性。 */
-  checkAudio: (audioId: number) => api.post('/asr/audio/' + audioId + '/check'),
+  checkAudio: (audioId: number) => api.post<{
+    id: number; availability: string; platform_access: 'ALLOWED' | 'DENIED';
+    audio_source: string; http_status: number | null;
+  }>('/asr/audio/' + audioId + '/check'),
   /** 更新音频名称、时长或替换 URL；签名 URL 本身不从读取接口回显。 */
   updateAudio: (audioId: number, body: { name?: string; url?: string; duration_seconds?: number | null }) =>
     api.patch<AsrAudio>('/asr/audio/' + audioId, body),

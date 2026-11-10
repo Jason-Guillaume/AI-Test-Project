@@ -2,7 +2,7 @@
 // 模型意见不会写入人工确认；输入与原回复通过项目授权的产物接口下载。
 import { App, Button, Card, Collapse, Empty, Pagination, Select, Space, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/asrEvaluation';
 import { hasReviewTime, reviewTimeLabel } from '@/features/asr-evaluation/components/reviewEvidenceTime.mjs';
@@ -50,10 +50,10 @@ export function ContentReviewPanel({ kind, resourceId, projectId }: Props) {
     queryKey: [...key, 'page', page], queryFn: ({ signal }) => asrEvaluationApi.listContentReviews(kind, resourceId, signal, page),
     refetchInterval: (query) => query.state.data?.items.some((item) => ['QUEUED', 'RUNNING'].includes(item.status)) ? 3000 : false,
   });
-  const invalidateBatchViews = (jobId: number) => {
+  const invalidateBatchViews = useCallback((jobId: number) => {
     void client.invalidateQueries({ queryKey: ['asr', 'job-content-review-summary', projectId, jobId] });
     void client.invalidateQueries({ queryKey: ['asr', 'job-audio-groups', projectId, jobId] });
-  };
+  }, [client, projectId]);
   useEffect(() => {
     const rows = reviews.data?.items ?? [];
     for (const row of rows) {
@@ -63,7 +63,7 @@ export function ContentReviewPanel({ kind, resourceId, projectId }: Props) {
       }
       previousStatuses.current[row.id] = row.status;
     }
-  }, [client, projectId, reviews.data?.items]);
+  }, [invalidateBatchViews, reviews.data?.items]);
   const detail = useQuery({
     queryKey: [...key, 'detail', openId], enabled: openId !== null,
     queryFn: ({ signal }) => asrEvaluationApi.getContentReview(openId!, signal),

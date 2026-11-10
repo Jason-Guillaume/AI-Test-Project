@@ -119,6 +119,8 @@ def load_builtin_handlers() -> None:
         "app.tools.builtin.security_testing.zap_scan_tool",
         "app.tools.builtin.web_testing.web_ui_tool",
         "app.tools.builtin.reports.report_tool",
+        "app.tools.builtin.ai_evaluation.evaluation_tools",
+        "app.tools.builtin.case_generation.generation_tools",
         "app.tools.builtin.notifications.notification_tool",
     )
     for module_name in modules:

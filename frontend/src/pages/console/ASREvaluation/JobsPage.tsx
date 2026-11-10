@@ -4,7 +4,7 @@ import { PlusOutlined, StopOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
 import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/asrEvaluation';
@@ -146,6 +146,7 @@ function formatInTimezone(value: string | null, timezone: string): string {
 /** 列表、计划创建和执行器在线状态。 */
 export function JobsPage() {
   const { message } = App.useApp();
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentProjectId } = useConsoleScope();
@@ -166,15 +167,40 @@ export function JobsPage() {
   }, [currentProjectId, form]);
   useEffect(() => {
     const rawAudioId = searchParams.get('audio_id');
-    const audioId = rawAudioId ? Number(rawAudioId) : NaN;
-    if (!open && currentProjectId && rawAudioId !== autoOpenedAudioId && Number.isSafeInteger(audioId) && audioId > 0) {
+    const rawAudioIds = searchParams.get('audio_ids');
+    const rawProjectId = searchParams.get('project_id');
+    const rawSelection = rawAudioIds || rawAudioId;
+    const selectionKey = rawSelection ? rawSelection + ':' + (rawProjectId ?? '') : null;
+    if (rawProjectId && currentProjectId && Number(rawProjectId) !== currentProjectId) {
+      message.warning('预选音频属于其他项目，已清除；请在当前项目重新选择。');
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete('audio_id'); next.delete('audio_ids'); next.delete('project_id');
+        return next;
+      }, { replace: true });
+      return;
+    }
+    const audioIds = (rawAudioIds ? rawAudioIds.split(',') : rawAudioId ? [rawAudioId] : []).map(Number);
+    const validSelection = audioIds.length > 0 && audioIds.length <= 200
+      && audioIds.every((id) => Number.isSafeInteger(id) && id > 0)
+      && new Set(audioIds).size === audioIds.length;
+    if (rawSelection && !validSelection) {
+      message.warning('预选音频列表无效或超过 200 条，已清除；请重新选择。');
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.delete('audio_id'); next.delete('audio_ids'); next.delete('project_id');
+        return next;
+      }, { replace: true });
+      return;
+    }
+    if (!open && currentProjectId && selectionKey && selectionKey !== autoOpenedAudioId && validSelection) {
       form.resetFields();
-      form.setFieldsValue({ mode: 'NOW', audio_ids: [audioId] });
+      form.setFieldsValue({ mode: 'NOW', audio_ids: audioIds });
       setWizardStep(0);
-      setAutoOpenedAudioId(rawAudioId);
+      setAutoOpenedAudioId(selectionKey);
       setOpen(true);
     }
-  }, [autoOpenedAudioId, currentProjectId, form, open, searchParams]);
+  }, [autoOpenedAudioId, currentProjectId, form, message, open, searchParams, setSearchParams]);
   const jobsKey = currentProjectId ? asrQueryKeys.project(currentProjectId, 'jobs', jobsPage) : ['asr', 'jobs', null, jobsPage];
   const schedulesKey = currentProjectId ? asrQueryKeys.project(currentProjectId, 'schedules') : ['asr', 'schedules', null];
   const jobsQuery = useQuery({
@@ -215,7 +241,8 @@ export function JobsPage() {
       message.success('评测任务已加入后台队列');
       setOpen(false);
       void queryClient.invalidateQueries({ queryKey: jobsKey });
-      navigate('/console/asr/jobs/' + data.id);
+      const returnTo = (location.state as { returnTo?: string } | null)?.returnTo;
+      navigate('/console/asr/jobs/' + data.id, { state: returnTo ? { returnTo } : null });
     },
     onError: (error) => message.error(getErrorMessage(error, '创建评测任务失败')),
   });
@@ -248,7 +275,11 @@ export function JobsPage() {
 
   const closeCreate = () => {
     setOpen(false);
-    setSearchParams((previous) => { const next = new URLSearchParams(previous); next.delete('audio_id'); return next; }, { replace: true });
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.delete('audio_id'); next.delete('audio_ids'); next.delete('project_id');
+      return next;
+    }, { replace: true });
   };
   const startCreate = () => {
     form.resetFields();
@@ -533,9 +564,11 @@ export function JobsPage() {
 /** 批次详情页显示每家模型的独立状态、结果文本和对比入口。 */
 export function JobDetailPage() {
   const { message } = App.useApp();
+  const location = useLocation();
   const { jobId: rawJobId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const returnToAudio = (location.state as { returnTo?: string } | null)?.returnTo;
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [audioPage, setAudioPage] = useState(1);
@@ -564,22 +597,24 @@ export function JobDetailPage() {
     queryFn: ({ signal }) => asrEvaluationApi.getContentReviewSummary(jobId, signal),
   });
   const previousJobStatus = useRef<{ id: number; status: string } | null>(null);
+  const observedJobProjectId = jobQuery.data?.project_id;
+  const observedJobStatus = jobQuery.data?.status;
   useEffect(() => {
-    if (!jobQuery.data) return;
+    if (observedJobProjectId == null || observedJobStatus == null) return;
     const previous = previousJobStatus.current;
-    if (previous?.id === jobId && enteredTerminalJobState(previous.status, jobQuery.data.status)) {
-      void queryClient.invalidateQueries({ queryKey: ['asr', 'job-content-review-summary', jobQuery.data.project_id, jobId] });
-      void queryClient.invalidateQueries({ queryKey: ['asr', 'job-audio-groups', jobQuery.data.project_id, jobId] });
+    if (previous?.id === jobId && enteredTerminalJobState(previous.status, observedJobStatus)) {
+      void queryClient.invalidateQueries({ queryKey: ['asr', 'job-content-review-summary', observedJobProjectId, jobId] });
+      void queryClient.invalidateQueries({ queryKey: ['asr', 'job-audio-groups', observedJobProjectId, jobId] });
     }
-    previousJobStatus.current = { id: jobId, status: jobQuery.data.status };
-  }, [jobId, jobQuery.data?.project_id, jobQuery.data?.status, queryClient]);
+    previousJobStatus.current = { id: jobId, status: observedJobStatus };
+  }, [jobId, observedJobProjectId, observedJobStatus, queryClient]);
   const retryJob = useMutation({
     mutationFn: (requestKey: string) => asrEvaluationApi.retryJob(jobId, requestKey),
     onSuccess: (newJob) => {
       clearJobRequestKey(jobId, 'retry');
       message.success(`已创建 ASR-${newJob.id}：只重试明确失败项，成功结果和原批次均保留`);
       void queryClient.invalidateQueries({ queryKey: asrQueryKeys.project(newJob.project_id, 'jobs') });
-      navigate('/console/asr/jobs/' + newJob.id);
+      navigate('/console/asr/jobs/' + newJob.id, { state: returnToAudio ? { returnTo: returnToAudio } : null });
     },
     onError: (error) => message.error(getErrorMessage(error, '创建重试批次失败')),
   });
@@ -589,7 +624,7 @@ export function JobDetailPage() {
       clearJobRequestKey(jobId, 'rerun');
       message.success(`已创建完整重跑批次 ASR-${newJob.id}；原任务、模型配置和音频版本保持不变`);
       void queryClient.invalidateQueries({ queryKey: asrQueryKeys.project(newJob.project_id, 'jobs') });
-      navigate('/console/asr/jobs/' + newJob.id);
+      navigate('/console/asr/jobs/' + newJob.id, { state: returnToAudio ? { returnTo: returnToAudio } : null });
     },
     onError: (error) => message.error(getErrorMessage(error, '创建完整重跑批次失败')),
   });
@@ -602,7 +637,11 @@ export function JobDetailPage() {
   return (
     <AsrFrame title={'评测任务 ASR-' + job.id} projectId={job.project_id}>
       <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
-        <Space>{jobStatusTag(job.status)}<Typography.Text type="secondary">任务会在 Worker 后台继续运行。</Typography.Text></Space>
+        <Space wrap>
+          {jobStatusTag(job.status)}
+          <Typography.Text type="secondary">任务会在 Worker 后台继续运行。</Typography.Text>
+          {returnToAudio && <Button onClick={() => navigate(returnToAudio)}>返回音频列表</Button>}
+        </Space>
         {summaryQuery.data && <>
           <Space wrap>
             <Tag>音频 {summaryQuery.data.planned_audio} 条</Tag>
@@ -652,12 +691,12 @@ export function JobDetailPage() {
           { title: '音频标题 / 版本', key: 'audio', render: (_: unknown, row: AsrJobAudioGroup) => {
             const testRun = row.runs.find((run) => run.role === 'TEST');
             const title = row.audio_name ?? `音频 #${row.audio_id}`;
-            return <Space direction="vertical" size={0}>{testRun ? <Link to={`/console/asr/runs/${testRun.id}`}>{title}</Link> : <Typography.Text>{title}（请选择模型）</Typography.Text>}
+            return <Space direction="vertical" size={0}>{testRun ? <Link to={`/console/asr/runs/${testRun.id}`} state={returnToAudio ? { returnTo: returnToAudio } : undefined}>{title}</Link> : <Typography.Text>{title}（请选择模型）</Typography.Text>}
               <Typography.Text type="secondary">{row.audio_content_version != null ? `版本 v${row.audio_content_version}` : '固定版本未知'}</Typography.Text></Space>;
           } },
           { title: '模型运行', key: 'runs', render: (_: unknown, row: AsrJobAudioGroup) => <Space direction="vertical" size={4}>{row.runs.map((run) => <Space key={run.id} wrap>
-            <Link to={`/console/asr/runs/${run.id}`}>{run.role === 'TEST' ? '待测' : run.request_snapshot.task_slot === 'REFERENCE_A' ? '参考 A' : run.request_snapshot.task_slot === 'REFERENCE_B' ? '参考 B' : '参考'} #{run.id}</Link>
-            {jobStatusTag(run.status)}<Link to={`/console/asr/runs/${run.id}/listen`}>听</Link>
+            <Link to={`/console/asr/runs/${run.id}`} state={returnToAudio ? { returnTo: returnToAudio } : undefined}>{run.role === 'TEST' ? '待测' : run.request_snapshot.task_slot === 'REFERENCE_A' ? '参考 A' : run.request_snapshot.task_slot === 'REFERENCE_B' ? '参考 B' : '参考'} #{run.id}</Link>
+            {jobStatusTag(run.status)}<Link to={`/console/asr/runs/${run.id}/listen`} state={returnToAudio ? { returnTo: returnToAudio } : undefined}>听</Link>
           </Space>)}</Space> },
           { title: '音频时长', key: 'duration', render: (_: unknown, row: AsrJobAudioGroup) => row.audio_duration_seconds != null ? `${row.audio_duration_seconds} 秒` : '未知' },
           { title: '后续阶段', key: 'stages', render: (_: unknown, row: AsrJobAudioGroup) => <Space direction="vertical" size={0}>

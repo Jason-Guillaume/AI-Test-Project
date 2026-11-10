@@ -158,10 +158,15 @@ def audio_list(
     project_id: int = Query(gt=0), page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200), db: Session = Depends(get_db),
     keyword: str | None = Query(default=None, max_length=200),
+    availability: str | None = Query(default=None, max_length=30),
+    ground_truth_status: str | None = Query(default=None, max_length=10),
     actor: User = Depends(get_current_user),
 ):
     """分页列出项目内已登记音频及链接可达性状态。"""
-    return list_audios(db, project_id, actor, page=page, page_size=page_size, keyword=keyword)
+    return list_audios(
+        db, project_id, actor, page=page, page_size=page_size, keyword=keyword,
+        availability=availability, ground_truth_status=ground_truth_status,
+    )
 
 
 @router.get("/audio/recent-runs")

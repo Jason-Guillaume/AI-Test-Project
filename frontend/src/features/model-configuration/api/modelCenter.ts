@@ -69,6 +69,10 @@ export interface ModelDiagnosticRun {
   id: number; status: string; result: { message?: string }; created_at: string; finished_at?: string | null;
 }
 
+export interface ModelConnectionTestResult {
+  success: boolean; http_status: number | null; elapsed_ms: number; message: string;
+}
+
 export interface ModelResourceWrite {
   category: ModelCategory;
   visibility: ModelVisibility;
@@ -103,6 +107,7 @@ export const modelCenterQueryKeys = {
 };
 
 export const modelCenterApi = {
+  setEnabled: (id: number, enabled: boolean) => api.put(`/model-center/resources/${id}/enabled?enabled=${enabled}`),
   catalog: () => api.get<ModelCenterCatalog>('/model-center/catalog'),
   list: (projectId: number | null, category?: ModelCategory, signal?: AbortSignal) =>
     api.get<{ items: ModelResource[]; total: number }>('/model-center/resources', {
@@ -129,6 +134,8 @@ export const modelCenterApi = {
     api.post<{ items: ModelResource[]; total: number; status: string }>('/model-center/imports', { items }),
   createDiagnostic: (resourceId: number, body: { project_id: number; profile_id?: number; audio_id?: number; confirm_model_call: true }) =>
     api.post<{ id: number; status: string }>(`/model-center/resources/${resourceId}/diagnostics`, body),
+  testConnection: (body: { visibility: ModelVisibility; project_id?: number; endpoint: string; model_name: string; credential?: string; config: Record<string, unknown>; confirm_model_call: true }) =>
+    api.post<ModelConnectionTestResult>('/model-center/connection-tests', body),
   getDiagnostic: (runId: number, signal?: AbortSignal) =>
     api.get<ModelDiagnosticRun>(`/model-center/diagnostics/${runId}`, { signal }),
 };

@@ -23,7 +23,8 @@ from app.core.models.project import ProjectMember
 from app.core.security.crypto import decrypt_secret, encrypt_secret
 from app.features.asr_evaluation.alignment import align_triplet
 from app.features.asr_evaluation.models import (
-    AsrAudio, AsrComparison, AsrConnection, AsrEvaluationArtifact, AsrFusionVersion, AsrJob, AsrModelRun,
+    AsrAudio, AsrAudioVersion, AsrComparison, AsrConnection, AsrEvaluationArtifact, AsrFusionVersion,
+    AsrGroundTruthVersion, AsrJob, AsrModelRun,
     AsrParameterSet, AsrProcessingRun, AsrSchedule, AsrSpeaker, AsrSpeakerAssignment,
     AsrSpeakerTurn, AsrTranscriptSegment, AsrWorkItem,
 )
@@ -48,6 +49,8 @@ from app.features.asr_evaluation.services.evaluation_artifact_service import (
 )
 from app.features.asr_evaluation.services.evaluation_markdown_service import render_markdown
 from app.core.config import settings
+from app.features.api_catalog.models.api_interface import ApiInterface
+from app.features.api_catalog.models.api_module import ApiModule
 
 
 @pytest.fixture
@@ -57,6 +60,7 @@ def sandbox():
     names = {
         "user", "organization", "organization_member", "project", "project_member",
         "project_outbound_target", "model_configuration", "environment", "notification",
+        "api_module", "api_interface",
     }
     tables = [table for name, table in Base.metadata.tables.items()
               if name in names or name.startswith(("asr_", "model_"))]
@@ -540,6 +544,9 @@ def test_audio_recent_runs_returns_latest_visible_run_only(sandbox):
     items = list_audio_recent_runs(db, audio.project_id, [audio.id], actor)
     assert len(items) == 1
     assert items[0]["job_id"] == recent["id"]
+    assert items[0]["status"] == recent["status"] == "QUEUED"
+    assert items[0]["run_status"] == "PENDING"
+    assert items[0]["audio_version"] == audio.content_version
     assert "transcript" not in items[0]
     assert items[0]["job_id"] != first_job["id"]
 
@@ -634,6 +641,42 @@ def test_asr_project_switch_reads_only_selected_project_data(sandbox):
     switched = list_audios(db, other_project.id, admin)
     assert switched["total"] == 1
     assert switched["items"][0]["id"] == other_audio.id
+
+
+def test_audio_filters_are_project_scoped_and_answer_filter_tracks_current_audio_version(sandbox):
+    """可用性与标准答案筛选在服务端分页前执行，过期版本不算当前绑定。"""
+    db, _, actor, audio, _, _, _ = sandbox
+    audio.availability = "AVAILABLE"
+    current_version = db.query(AsrAudioVersion).filter(
+        AsrAudioVersion.audio_id == audio.id, AsrAudioVersion.version == audio.content_version,
+    ).first()
+    assert current_version is not None
+    stale = AsrGroundTruthVersion(
+        project_id=audio.project_id, audio_id=audio.id, audio_version_id=current_version.id,
+        version=1, raw_sha256="a" * 64, raw_document=[], mapping_snapshot={},
+        normalized_json={"transcript": "answer"}, markdown="answer", is_current=True,
+        created_by=actor.id,
+    )
+    db.add(stale)
+    other = AsrAudio(
+        project_id=audio.project_id, name="unbound audio",
+        url_ciphertext=encrypt_secret("https://example.invalid/unbound.mp3"),
+        url_display="https://example.invalid/unbound.mp3", availability="UNKNOWN", created_by=actor.id,
+    )
+    db.add(other)
+    db.commit()
+
+    bound = list_audios(db, audio.project_id, actor, ground_truth_status="BOUND")
+    unbound = list_audios(db, audio.project_id, actor, ground_truth_status="UNBOUND")
+    available = list_audios(db, audio.project_id, actor, availability="AVAILABLE")
+    assert [row["id"] for row in bound["items"]] == [audio.id]
+    assert [row["id"] for row in unbound["items"]] == [other.id]
+    assert available["total"] == 1 and available["items"][0]["id"] == audio.id
+
+    audio.content_version += 1
+    db.commit()
+    assert list_audios(db, audio.project_id, actor, ground_truth_status="BOUND")["total"] == 0
+    assert list_audios(db, audio.project_id, actor, ground_truth_status="UNBOUND")["total"] == 2
 
 
 def test_diarization_provider_keeps_native_zero_ids_overlap_and_text_segments():

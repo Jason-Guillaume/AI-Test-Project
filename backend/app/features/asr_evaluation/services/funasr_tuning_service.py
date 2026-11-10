@@ -234,12 +234,15 @@ def create_ground_truth(db: Session, audio_id: int, body: FunAsrGroundTruthCreat
 
 def list_ground_truth(db: Session, project_id: int, actor: User) -> dict[str, Any]:
     get_project_or_404(db, project_id, actor)
-    rows = db.query(AsrGroundTruthVersion, AsrAudio).join(AsrAudio, AsrAudio.id == AsrGroundTruthVersion.audio_id).filter(
+    rows = db.query(AsrGroundTruthVersion, AsrAudio, AsrAudioVersion).join(
+        AsrAudio, AsrAudio.id == AsrGroundTruthVersion.audio_id,
+    ).join(AsrAudioVersion, AsrAudioVersion.id == AsrGroundTruthVersion.audio_version_id).filter(
         AsrGroundTruthVersion.project_id == project_id, AsrGroundTruthVersion.is_current.is_(True)).order_by(AsrAudio.name).all()
     return {"items": [{"id": gt.id, "audio_id": gt.audio_id, "audio_name": audio.name,
                         "audio_version_id": gt.audio_version_id, "version": gt.version,
+                        "audio_content_version": audio_version.version,
                         "raw_sha256": gt.raw_sha256, "transcript": gt.normalized_json.get("transcript", ""),
-                        "created_at": gt.created_at.isoformat()} for gt, audio in rows]}
+                        "created_at": gt.created_at.isoformat()} for gt, audio, audio_version in rows]}
 
 
 def _validate_search_policies(parameters: dict[str, Any], allowed: dict[str, dict[str, Any]]) -> None:

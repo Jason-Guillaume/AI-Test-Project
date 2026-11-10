@@ -32,3 +32,6 @@ playwright==1.64.0
 
 # 测试
 pytest>=8.0,<10
+
+# Text PDF knowledge extraction
+pypdf>=5,<7

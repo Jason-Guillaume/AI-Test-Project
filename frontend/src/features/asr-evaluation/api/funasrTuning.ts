@@ -22,7 +22,7 @@ export interface FunAsrBinding {
   parameter_seed_warnings: string[];
 }
 export interface FunAsrGroundTruth {
-  id: number; audio_id: number; audio_name: string; audio_version_id: number; version: number;
+  id: number; audio_id: number; audio_name: string; audio_version_id: number; audio_content_version: number; version: number;
   raw_sha256: string; transcript: string; created_at: string;
 }
 export interface FunAsrTuningItem {

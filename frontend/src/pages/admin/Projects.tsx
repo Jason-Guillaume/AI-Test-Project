@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { projectsApi } from '@/features/projects/api/projects';
-import type { ProjectCreate } from '@/features/projects/contracts';
+import type { ProjectCreate, ProjectUpdate } from '@/features/projects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 import type { Project, ProjectMember, ProjectRole } from '@/features/projects/contracts';
 
@@ -60,6 +60,8 @@ export function AdminProjectsPage() {
   const [detailId, setDetailId] = useState<number | null>(null);
   // 新建项目弹窗开关
   const [creating, setCreating] = useState(false);
+  // 编辑项目弹窗目标
+  const [editing, setEditing] = useState<Project | null>(null);
 
   // 拼装查询参数：keyword 空串归一为 undefined
   const query = useMemo(
@@ -92,9 +94,10 @@ export function AdminProjectsPage() {
       {
         title: '操作',
         key: 'actions',
-        width: 160,
+        width: 220,
         render: (_: unknown, row: Project) => (
           <Space>
+            <Button size="small" onClick={() => setEditing(row)}>编辑</Button>
             <Button size="small" onClick={() => setDetailId(row.id)}>
               详情
             </Button>
@@ -113,6 +116,16 @@ export function AdminProjectsPage() {
       setCreating(false);
     },
     onError: (e) => message.error(getErrorMessage(e)),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: ProjectUpdate }) => projectsApi.update(id, body),
+    onSuccess: () => {
+      message.success('项目信息已更新');
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditing(null);
+    },
+    onError: (e) => message.error(getErrorMessage(e, '项目信息更新失败')),
   });
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
@@ -171,6 +184,13 @@ export function AdminProjectsPage() {
         onCancel={() => setCreating(false)}
         onSubmit={(body) => createMutation.mutate(body)}
       />
+      {editing && <EditProjectModal
+        key={editing.id}
+        project={editing}
+        loading={updateMutation.isPending}
+        onCancel={() => setEditing(null)}
+        onSubmit={(body) => updateMutation.mutate({ id: editing.id, body })}
+      />}
     </PageContainer>
   );
 }
@@ -229,6 +249,69 @@ function CreateProjectModal({
             options={(orgsData?.items ?? []).map((o) => ({
               value: o.id,
               label: o.name,
+            }))}
+          />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
+/** 编辑项目名称、备注和所属组织。 */
+function EditProjectModal({
+  project,
+  loading,
+  onCancel,
+  onSubmit,
+}: {
+  project: Project;
+  loading: boolean;
+  onCancel: () => void;
+  onSubmit: (body: ProjectUpdate) => void;
+}) {
+  const [form] = Form.useForm<ProjectUpdate>();
+  const { data: orgsData } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => organizationsApi.list(),
+  });
+  return (
+    <Modal
+      title={`编辑项目「${project.name}」`}
+      open
+      confirmLoading={loading}
+      onCancel={onCancel}
+      destroyOnClose
+      onOk={() => form.validateFields().then((values) => onSubmit({
+        ...values,
+        description: values.description ?? null,
+        organization_id: values.organization_id ?? null,
+      }))}
+    >
+      <Form layout="vertical" form={form} initialValues={{
+        name: project.name,
+        description: project.description ?? '',
+        organization_id: project.organization_id ?? undefined,
+      }}>
+        <Form.Item
+          name="name"
+          label="项目名称"
+          rules={[
+            { required: true, message: '请输入项目名称' },
+            { min: 2, max: 100 },
+          ]}
+        >
+          <Input />
+        </Form.Item>
+        <Form.Item name="description" label="备注">
+          <Input.TextArea rows={3} maxLength={500} />
+        </Form.Item>
+        <Form.Item name="organization_id" label="所属组织">
+          <Select
+            allowClear
+            placeholder="选择组织（可选）"
+            options={(orgsData?.items ?? []).map((organization) => ({
+              value: organization.id,
+              label: organization.name,
             }))}
           />
         </Form.Item>

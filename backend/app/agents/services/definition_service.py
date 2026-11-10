@@ -18,6 +18,8 @@ def agent_snapshot(row: AgentDefinition) -> dict[str, Any]:
         "name": row.name,
         "description": row.description,
         "workflow_template": row.workflow_template,
+        "test_types": row.test_types or ["general"],
+        "purpose": row.purpose,
         "instruction": row.instruction,
         "model_config_id": row.model_config_id,
         "skill_keys": row.skill_keys or [],
@@ -38,7 +40,7 @@ def create_agent(db: Session, body: AgentDefinitionCreate, actor_id: int) -> Age
     """创建智能体。"""
     validate_agent_links(
         db, body.skill_keys, body.tool_keys, body.model_config_id,
-        agent_enabled=body.is_enabled, child_agent_ids=body.child_agent_ids,
+        agent_enabled=body.is_enabled, child_agent_ids=body.child_agent_ids, workflow_template=body.workflow_template,
     )
     row = AgentDefinition(
         key=str(uuid.uuid4()),
@@ -96,7 +98,7 @@ def update_agent(db: Session, agent_id: int, body: AgentDefinitionUpdate, actor_
         changes.get("model_config_id", row.model_config_id),
         agent_enabled=changes.get("is_enabled", row.is_enabled),
         child_agent_ids=changes.get("child_agent_ids", row.child_agent_ids or []) or [],
-        agent_id=row.id,
+        agent_id=row.id, workflow_template=changes.get("workflow_template", row.workflow_template),
     )
     if changes:
         for key, value in changes.items():
@@ -144,7 +146,7 @@ def restore_agent_version(db: Session, agent_id: int, version: int, actor_id: in
     if revision is None:
         raise not_found("Agent 历史版本不存在")
     allowed = {
-        "name", "description", "workflow_template", "instruction", "model_config_id",
+        "name", "description", "workflow_template", "test_types", "purpose", "instruction", "model_config_id",
         "skill_keys", "tool_keys", "child_agent_ids", "is_enabled", "settings_json", "triggers_json",
     }
     body = AgentDefinitionUpdate.model_validate({key: value for key, value in revision.snapshot_json.items() if key in allowed})

@@ -125,6 +125,14 @@ class TaskInboxResponse(BaseModel):
     page_size: int
 
 
+class AvailableChildAgentResponse(BaseModel):
+    id: int
+    name: str
+    version: int
+    model_config_id: int | None = None
+    model_label: str | None = None
+
+
 class AvailableTaskAgentResponse(BaseModel):
     """当前项目与执行类型可选择的 Agent 摘要，不返回内部指令或 Skill 内容。"""
 
@@ -133,6 +141,9 @@ class AvailableTaskAgentResponse(BaseModel):
     description: str
     workflow_template: str
     version: int
+    model_config_id: int | None = None
+    model_label: str | None = None
+    child_agents: list[AvailableChildAgentResponse] = Field(default_factory=list)
 
 
 class TaskRunResponse(BaseModel):

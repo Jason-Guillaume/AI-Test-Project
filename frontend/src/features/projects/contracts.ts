@@ -19,9 +19,9 @@ export interface ProjectCreate {
 /** 修改项目的请求体，对应 PATCH /projects/{id}；字段全部可选，只提交要改的项。 */
 export interface ProjectUpdate {
   name?: string; // 新的项目名称
-  description?: string; // 新的项目描述
+  description?: string | null; // 新的项目描述；null 清空备注
   owner_id?: number; // 新的项目负责人用户 ID
-  organization_id?: number; // 把项目挪到另一个组织
+  organization_id?: number | null; // 把项目挪到另一个组织；null 表示取消归属
 }
 
 /** 授予项目成员权限的写入载荷，新增成员与转让负责人共用这一个结构。 */

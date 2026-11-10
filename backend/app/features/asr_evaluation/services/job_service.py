@@ -367,12 +367,21 @@ def list_audio_recent_runs(db: Session, project_id: int, audio_ids: list[int], a
     rows = db.query(AsrModelRun).filter(
         AsrModelRun.project_id == project_id, AsrModelRun.audio_id.in_(ids or [-1]),
     ).order_by(AsrModelRun.audio_id, AsrModelRun.created_at.desc(), AsrModelRun.id.desc()).all()
+    version_ids = {row.audio_version_id for row in rows if row.audio_version_id is not None}
+    versions = {row.id: row for row in db.query(AsrAudioVersion).filter(
+        AsrAudioVersion.id.in_(version_ids or [-1]),
+    ).all()}
+    job_ids = {row.job_id for row in rows}
+    jobs = {row.id: row for row in db.query(AsrJob).filter(AsrJob.id.in_(job_ids or [-1])).all()}
     latest: dict[int, dict] = {}
     for row in rows:
         if row.audio_id not in latest:
             latest[row.audio_id] = {
                 "audio_id": row.audio_id, "run_id": row.id, "job_id": row.job_id,
-                "audio_version_id": row.audio_version_id, "status": row.status,
+                "audio_version_id": row.audio_version_id,
+                "audio_version": versions[row.audio_version_id].version if row.audio_version_id in versions else None,
+                "status": jobs[row.job_id].status if row.job_id in jobs else row.status,
+                "run_status": row.status,
                 "created_at": row.created_at,
             }
     return list(latest.values())

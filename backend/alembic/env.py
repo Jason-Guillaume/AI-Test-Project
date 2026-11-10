@@ -18,6 +18,7 @@ from app.core.database.base import Base
 # 确保所有 ORM 模型被导入并注册进 Base.metadata。
 import app.core.models  # noqa: F401
 # 领域 ORM 模型由 Alembic 明确发现，不反向扩展 app.core.models/__init__.py。
+from app.knowledge import models as knowledge_models
 from app.agents import models as agent_models  # noqa: F401
 from app.mcp import models as mcp_models  # noqa: F401
 from app.skills import models as skill_models  # noqa: F401

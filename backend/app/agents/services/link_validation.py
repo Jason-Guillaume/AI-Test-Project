@@ -11,6 +11,7 @@ from app.tools.catalog import TOOL_BY_KEY
 from app.tools.models import ToolDefinitionOverride
 from app.core.models.configuration import ModelConfiguration
 from app.core.http.errors import bad_request
+from app.tools.builtin.case_generation.contracts import allowed_generation_tools
 
 
 def validate_agent_links(
@@ -22,6 +23,7 @@ def validate_agent_links(
     agent_enabled: bool,
     child_agent_ids: list[int],
     agent_id: int | None = None,
+    workflow_template: str | None = None,
 ) -> None:
     """校验 Agent 关联的 Skill、内置/MCP 工具和最多一层的叶子子 Agent。"""
     if len(set(skill_keys)) != len(skill_keys) or len(set(tool_keys)) != len(tool_keys):
@@ -71,10 +73,12 @@ def validate_agent_links(
         child_by_id = {item.id: item for item in children}
         if len(child_by_id) != len(child_ids):
             raise bad_request("所选子 Agent 不存在")
+        if workflow_template == "case_generation" and any(item.workflow_template != "case_generation" or not allowed_generation_tools(item.tool_keys or []) for item in children):
+            raise bad_request("用例生成主 Agent 只能关联配置了单个专项生成工具的用例生成子 Agent")
         if any(item.child_agent_ids for item in children):
             raise bad_request("子 Agent 目前只支持叶子节点，不能继续嵌套")
-        if any(item.tool_keys for item in children):
-            raise bad_request("子 Agent 当前只承担分析职责，请移除其工具授权后再关联")
+        if any(item.tool_keys and not (workflow_template == "case_generation" and item.workflow_template == "case_generation" and allowed_generation_tools(item.tool_keys)) for item in children):
+            raise bad_request("普通子 Agent 只承担分析职责；用例生成子 Agent 仅允许对应的专项生成工具")
         if agent_enabled and any(not item.is_enabled for item in children):
             raise bad_request("启用父 Agent 前，请先启用全部子 Agent")
     if agent_id is not None and child_agent_ids and any(
@@ -82,11 +86,16 @@ def validate_agent_links(
         for item in db.query(AgentDefinition).filter(AgentDefinition.id != agent_id).all()
     ):
         raise bad_request("已被其他 Agent 作为子节点引用的配置不能再嵌套子 Agent")
-    if agent_id is not None and tool_keys and any(
+    if agent_id is not None and tool_keys and not (workflow_template == "case_generation" and allowed_generation_tools(tool_keys)) and any(
         agent_id in (item.child_agent_ids or [])
         for item in db.query(AgentDefinition).filter(AgentDefinition.id != agent_id).all()
     ):
         raise bad_request("作为子 Agent 的配置只承担分析职责，不能授权工具")
+    if agent_id is not None and any(
+        item.workflow_template == "case_generation" and agent_id in (item.child_agent_ids or [])
+        for item in db.query(AgentDefinition).filter(AgentDefinition.id != agent_id).all()
+    ) and (workflow_template != "case_generation" or not allowed_generation_tools(tool_keys)):
+        raise bad_request("该配置已被用例生成主 Agent 引用，须保留对应工作流和专项生成工具")
     if model_config_id is not None:
         model = db.get(ModelConfiguration, model_config_id)
         if model is None:

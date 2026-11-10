@@ -72,8 +72,8 @@ def _asr_resource(project_ids: list[int]) -> ModelResourceCreate:
     )
 
 
-def test_platform_model_grant_is_project_scoped_and_role_is_a_task_slot(center_sandbox):
-    """共享 ASR 需显式授权；同一模型资源可以分别担任不同实验角色。"""
+def test_platform_models_need_no_grant_and_role_is_a_task_slot(center_sandbox):
+    """共享 ASR 启用即全项目可用；实验角色仍是任务槽位。"""
     db, admin, owner_a, owner_b, project_a, project_b = center_sandbox
     created = create_resource(db, _asr_resource([project_a.id]), admin)
     resource = db.query(ModelResource).filter_by(id=created["id"]).one()
@@ -93,7 +93,7 @@ def test_platform_model_grant_is_project_scoped_and_role_is_a_task_slot(center_s
     available_a = list_available_models(db, project_id=project_a.id, category="ASR", actor=owner_a)
     available_b = list_available_models(db, project_id=project_b.id, category="ASR", actor=owner_b)
     assert [item["id"] for item in available_a["items"]] == [resource.id]
-    assert available_b["items"] == []
+    assert [item["id"] for item in available_b["items"]] == [resource.id]
 
     selected_test = resolve_task_slots(db, project_a.id, [ModelTaskSlotInput(
         slot="TEST", resource_id=resource.id, revision_id=revision, profile_id=baseline.id,
@@ -134,12 +134,12 @@ def test_unregistered_adapter_is_rejected_instead_of_advertised(center_sandbox):
 def test_siliconflow_resource_projects_multipart_config_and_encrypted_credential(center_sandbox):
     db, admin, owner, _, project, _ = center_sandbox
     body = ModelResourceCreate(
-        category="ASR", visibility="PROJECT", project_id=project.id,
+        category="ASR", visibility="PLATFORM",
         display_name="星辰 ASR", provider="siliconflow", adapter_key="siliconflow-audio-transcriptions",
         model_name="XingChenAGI/XingChenASR-V3.2", endpoint="https://api.siliconflow.cn/v1/audio/transcriptions",
         credential="synthetic-key", credential_header="Authorization", config={}, capabilities=["transcription"],
     )
-    created = create_resource(db, body, owner)
+    created = create_resource(db, body, admin)
     revision = created["current_revision"]
     assert revision["config"]["request_encoding"] == "multipart"
     assert revision["has_credential"]
@@ -159,9 +159,12 @@ def test_model_center_connection_can_queue_single_model_transcription(center_san
     from app.features.asr_evaluation.services.job_service import create_connection_check
 
     db, admin, owner, _, project, _ = center_sandbox
-    body = _asr_resource([]).model_copy(update={"visibility": "PROJECT", "project_id": project.id})
-    created = create_resource(db, body, owner)
-    connection = db.query(AsrConnection).filter_by(project_id=project.id).one()
+    body = _asr_resource([])
+    created = create_resource(db, body, admin)
+    revision = created['current_revision']
+    connection = resolve_task_slots(db, project.id, [ModelTaskSlotInput(
+        slot='TEST', resource_id=created['id'], revision_id=revision['id'], profile_id=revision['profiles'][0]['id'],
+    )], owner)[0]['connection']
     assert connection.role is None
     audio = create_audio(db, project.id, AudioItemInput(name="识别音频", url="https://audio.example.test/probe.wav"), owner)
     job = create_connection_check(db, connection.id, ConnectionCheck(audio_id=audio["id"]), owner)

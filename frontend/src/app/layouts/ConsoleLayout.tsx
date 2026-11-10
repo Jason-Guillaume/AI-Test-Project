@@ -86,6 +86,7 @@ const BASE_MENU_ITEMS: MenuSection[] = [
       { key: '/console/api-catalog', icon: <ApiOutlined />, label: '接口管理' },
       { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' },
       { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
+      { key: '/console/knowledge', icon: <FileTextOutlined />, label: '项目知识库' },
       { key: '/console/asr/audio', icon: <AudioOutlined />, label: 'ASR 评测' },
       { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
       { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },

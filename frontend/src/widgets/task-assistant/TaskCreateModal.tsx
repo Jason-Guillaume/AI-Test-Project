@@ -133,6 +133,7 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
   const projectId = Form.useWatch('project_id', form);
   const environmentId = Form.useWatch('environment_id', form);
   const targetType = Form.useWatch('target_type', form) ?? 'API';
+  const selectedAgentId = Form.useWatch('agent_definition_id', form);
   const selectedCaseIds = Form.useWatch('case_ids', form) ?? [];
   const selectedCaseIdsKey = selectedCaseIds.join(',');
   const PAGE_SIZE = 100;
@@ -779,12 +780,15 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
                       disabled={projectId == null || (agents.length === 0 && !agentsQuery.isError)}
                       options={agents.map((agent: AvailableTaskAgent) => ({
                         value: agent.id,
-                        label: `${agent.name} · ${WORKFLOW_NAMES[agent.workflow_template] ?? agent.workflow_template}`,
+                        label: `${agent.name} · ${WORKFLOW_NAMES[agent.workflow_template] ?? agent.workflow_template} · ${agent.model_label ?? '全局默认模型'}${agent.child_agents?.length ? ` · 子 Agent ${agent.child_agents.length}` : ''}`,
                         title: agent.description || undefined,
                       }))}
                       placeholder={agentsQuery.isError ? 'Agent 列表加载失败' : agents.length ? '留空使用平台默认编排' : '当前项目暂无满足权限的 Agent，留空使用平台默认编排'}
                     />
                   </Form.Item>
+                  {agents.find((agent) => agent.id === selectedAgentId)?.child_agents?.map((child) => <Typography.Paragraph key={child.id} type="secondary" style={{ marginBottom: 4 }}>
+                    主 Agent → {child.name} · v{child.version} · {child.model_label ?? '继承主 Agent 模型'}
+                  </Typography.Paragraph>)}
                   {agentsQuery.isError ? (
                     <Alert type="error" showIcon message="读取可用 Agent 失败" action={<Button size="small" onClick={() => void agentsQuery.refetch()}>重试</Button>} />
                   ) : agents.length > 0 && (

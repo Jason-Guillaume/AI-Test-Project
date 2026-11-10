@@ -22,13 +22,14 @@ def public_agent_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any] | N
     if not snapshot:
         return None
     return {
+        "knowledge": deepcopy(snapshot.get("knowledge")),
         "name": snapshot.get("name"),
         "version": snapshot.get("version"),
         "workflow_template": snapshot.get("workflow_template"),
         "tool_keys": list(snapshot.get("tool_keys") or []),
         "child_agent_ids": list(snapshot.get("child_agent_ids") or []),
         "child_agents": [
-            {"id": child.get("id"), "name": child.get("name"), "version": child.get("version")}
+            {"id": child.get("id"), "name": child.get("name"), "version": child.get("version"), "knowledge": deepcopy(child.get("knowledge"))}
             for child in (snapshot.get("child_agents") or [])
         ],
         "mcp_tools": [

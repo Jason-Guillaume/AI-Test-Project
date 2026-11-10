@@ -116,7 +116,12 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if settings.ZAP_ENABLED:
             started_workers.append(scan_worker)
             scan_worker.start()
-        yield
+        from app.knowledge.worker import start as start_knowledge_worker
+        knowledge_stop = start_knowledge_worker()
+        try:
+            yield
+        finally:
+            knowledge_stop.set()
     finally:
         # 反向关闭可避免退出阶段仍有任务调度器提交新的扫描任务。
         for worker in reversed(started_workers):
@@ -215,6 +220,8 @@ def create_app() -> FastAPI:
     application.include_router(auth_router, prefix=API_PREFIX)
     application.include_router(users_admin_router, prefix=API_PREFIX)
     application.include_router(organizations_router, prefix=API_PREFIX)
+    from app.knowledge.router import router as knowledge_router
+    application.include_router(knowledge_router, prefix=API_PREFIX)
     application.include_router(projects_router, prefix=API_PREFIX)
     application.include_router(defects_router, prefix=API_PREFIX)
     application.include_router(api_catalog_router, prefix=API_PREFIX)

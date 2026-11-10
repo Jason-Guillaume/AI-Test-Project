@@ -13,6 +13,18 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def database_url_for_compose(database_url: str) -> str:
+    """把宿主机 loopback 数据库地址映射为 Compose 内部 PostgreSQL 服务名。"""
+    parsed = urlsplit(database_url)
+    if parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
+        return database_url
+
+    user_info = parsed.netloc.rsplit("@", 1)[0] + "@"
+    return urlunsplit((
+        parsed.scheme, f"{user_info}postgres:5432", parsed.path, parsed.query, parsed.fragment,
+    ))
+
+
 def read_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw_line in path.read_text(encoding="utf-8").splitlines():
@@ -40,15 +52,7 @@ def main() -> int:
         print("DATABASE_URL must include a PostgreSQL host, user, and password.", file=sys.stderr)
         return 2
 
-    container_database_url = database_url
-    if parsed.hostname in {"127.0.0.1", "localhost"}:
-        user_info = parsed.netloc.rsplit("@", 1)[0] + "@"
-        authority = f"{user_info}host.docker.internal"
-        if parsed.port is not None:
-            authority += f":{parsed.port}"
-        container_database_url = urlunsplit((
-            parsed.scheme, authority, parsed.path, parsed.query, parsed.fragment,
-        ))
+    container_database_url = database_url_for_compose(database_url)
 
     env = os.environ.copy()
     env.update(

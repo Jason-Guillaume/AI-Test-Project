@@ -22,7 +22,8 @@ export interface AsrContentReview {
 
 export interface AsrAudio {
   id: number; project_id: number; name: string; url_display: string;
-  duration_seconds: number | null; content_version: number; availability: string; tags: string[];
+  duration_seconds: number | null; content_version: number; current_audio_version_id?: number | null;
+  availability: string; tags: string[];
 }
 
 export interface AsrConnection {

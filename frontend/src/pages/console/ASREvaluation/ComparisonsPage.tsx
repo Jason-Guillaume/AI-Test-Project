@@ -8,7 +8,7 @@ import {
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/asrEvaluation';
 import { confirmDraftDiscard, useDraftNavigationGuard } from '@/features/asr-evaluation/useDraftNavigationGuard';
@@ -79,6 +79,8 @@ export function ComparisonsPage() {
 export function ComparisonDetailPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnToAudio = (location.state as { returnTo?: string } | null)?.returnTo;
   const queryClient = useQueryClient();
   const { comparisonId: rawId } = useParams();
   const comparisonId = Number(rawId);
@@ -301,6 +303,7 @@ export function ComparisonDetailPage() {
     <AsrFrame title={`${comparison.audio?.name ?? '识别结果'} · 对比 v${comparison.version}`} projectId={comparison.project_id}>
       <Space direction="vertical" size="middle" style={{ display: 'flex' }}>
         <Space wrap>
+          {returnToAudio && <Button onClick={() => navigate(returnToAudio)}>返回音频列表</Button>}
           <Tag color={comparison.status === 'COMPLETE' ? 'blue' : 'orange'}>{comparison.status === 'COMPLETE' ? '三方结果齐备' : '结果不完整'}</Tag>
           <Typography.Text>批次 ASR-{comparison.job_id}</Typography.Text>
           {comparison.audio && <Typography.Text type="secondary">音频版本 v{comparison.audio.content_version}</Typography.Text>}
@@ -315,7 +318,7 @@ export function ComparisonDetailPage() {
             <Button size="small" icon={<DownloadOutlined />} loading={exportMutation.isPending}>导出 <DownOutlined /></Button>
           </Dropdown>
           {comparison.models.map((model) => (
-            <Link key={model.run_id} to={`/console/asr/runs/${model.run_id}`}>
+            <Link key={model.run_id} to={`/console/asr/runs/${model.run_id}`} state={returnToAudio ? { returnTo: returnToAudio } : undefined}>
               <Button size="small">{model.name} · 单模型工作台</Button>
             </Link>
           ))}

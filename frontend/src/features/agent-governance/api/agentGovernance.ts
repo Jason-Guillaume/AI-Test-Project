@@ -5,6 +5,8 @@ import type { AgentDefinition, AgentDefinitionInput, AgentDefinitionPatch, Skill
 
 
 export const agentGovernanceApi = {
+  generateCases: (id: number, body: { project_id: number; requirements: string; modules: string[]; cases_per_module: number; model_config_id?: number | null }) => api.post<unknown>(`/agent-governance/agents/${id}/generate-cases`, body, { timeout: 600000 }),
+  invokeEvaluation: (id: number, key: string, project_id: number, args: Record<string, unknown>) => api.post<unknown>(`/agent-governance/agents/${id}/evaluation-tools/${encodeURIComponent(key)}/invoke`, { project_id, arguments: args }),
   workflows: () => api.get<WorkflowTemplate[]>('/agent-governance/workflows'),
   tools: () => api.get<GovernanceTool[]>('/agent-governance/tools'),
   updateTool: (key: string, body: GovernanceToolUpdate) => api.put<GovernanceTool>(`/agent-governance/tools/${encodeURIComponent(key)}`, body),

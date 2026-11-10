@@ -89,12 +89,16 @@ def load_model_for_provider(
     model_config_id: int | None,
 ) -> ModelProviderConfiguration | None:
     """按既有 enabled/default 规则加载 Provider 配置并在内存中解密密钥。"""
-    query = db.query(ModelConfiguration).filter(ModelConfiguration.is_enabled.is_(True))
+    query = db.query(ModelConfiguration).populate_existing().filter(ModelConfiguration.is_enabled.is_(True))
     if model_config_id is not None:
         row = query.filter(ModelConfiguration.id == model_config_id).first()
     else:
         row = query.filter(ModelConfiguration.is_default.is_(True)).first()
     if row is None:
+        return None
+    from app.platform.model_configuration.models import ModelResource
+    resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).populate_existing().first()
+    if resource is not None and (resource.status != 'ACTIVE' or resource.visibility != 'PLATFORM'):
         return None
     return ModelProviderConfiguration(
         id=row.id,

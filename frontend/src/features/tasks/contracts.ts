@@ -201,6 +201,9 @@ export interface TaskSummary {
 }
 
 export interface AvailableTaskAgent {
+  model_config_id?: number | null;
+  model_label?: string | null;
+  child_agents?: { id: number; name: string; version: number; model_config_id: number | null; model_label?: string | null }[];
   id: number;
   name: string;
   description: string;

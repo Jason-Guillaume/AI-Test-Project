@@ -20,6 +20,7 @@ def build_agent_profile(
     model_snapshot: Callable[[Any], dict[str, Any]],
 ) -> dict[str, Any] | None:
     """解析已启用 Agent 及依赖，并构建不含模型凭据的运行快照。"""
+    from app.knowledge.service import freeze
     if agent_definition_id is None:
         return None
     definition = db.get(AgentDefinition, agent_definition_id)
@@ -78,6 +79,7 @@ def build_agent_profile(
         )
         child_model_snapshot = model_snapshot(child_model)
         child_snapshots.append({
+            "knowledge": freeze(db, project_id, child.id, actor),
             "id": child.id,
             "key": child.key,
             "name": child.name,
@@ -128,6 +130,7 @@ def build_agent_profile(
         "definition": definition,
         "model": model,
         "snapshot": {
+            "knowledge": freeze(db, project_id, definition.id, actor),
             "id": definition.id,
             "key": definition.key,
             "name": definition.name,

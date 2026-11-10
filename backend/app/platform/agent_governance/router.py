@@ -2,6 +2,11 @@
 
 from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
 from sqlalchemy.orm import Session
+from app.tools.builtin.case_generation.contracts import GenerationRequest
+from app.agents.services.case_generation_service import generate_case_suite
+from pydantic import BaseModel, Field
+from typing import Any
+from app.platform.agent_governance.services.evaluation_service import invoke_evaluation
 
 from app.agents import services as agent_services
 from app.agents.workflows.catalog import WORKFLOW_TEMPLATES
@@ -190,3 +195,25 @@ def discover_mcp_tools(server_id: int, db: Session = Depends(get_db), actor: Use
 def update_mcp_approvals(server_id: int, body: MCPApprovalUpdate, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """更新MCP`approvals`。"""
     return mcp_services.update_mcp_approvals(db, server_id, body, actor.id)
+
+
+class EvaluationInvocation(BaseModel):
+    project_id: int = Field(gt=0)
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/agents/{agent_id}/evaluation-tools/{tool_key}/invoke")
+def invoke_evaluation_tool(
+    agent_id: int, tool_key: str, body: EvaluationInvocation,
+    db: Session = Depends(get_db), actor: User = Depends(require_platform_admin),
+):
+    """显式执行只读评测工具；项目、Agent 与全局工具启停状态均重新校验。"""
+    return invoke_evaluation(db, actor, agent_id, body.project_id, tool_key, body.arguments)
+
+
+
+@router.post("/agents/{agent_id}/generate-cases")
+def generate_cases_by_module(agent_id: int, body: GenerationRequest,
+    db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """主 Agent 按明确选择的模块调度子 Agent，调用模型生成待审核草稿。"""
+    return generate_case_suite(db, actor, agent_id, body)

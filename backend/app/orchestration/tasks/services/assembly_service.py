@@ -30,8 +30,6 @@ def list_available_agents(db: Session, project_id: int, *, actor: User, target_t
         ).first()
         if membership is None or not membership.agent_enabled:
             return []
-        allowed_ids = {str(item) for item in (membership.allowed_model_ids or [])}
-        models = [model for model in models if model.domain_id in allowed_ids]
     allowed_model_ids = {model.id for model in models}
     if not allowed_model_ids:
         return []
@@ -77,6 +75,7 @@ def list_available_agents(db: Session, project_id: int, *, actor: User, target_t
         if len(set(skill_keys)) != len(skill_keys) or not set(skill_keys).issubset(enabled_skill_keys):
             continue
         child_ids = row.child_agent_ids or []
+        children = []
         if child_ids:
             children = db.query(AgentDefinition).filter(AgentDefinition.id.in_(child_ids)).all()
             if len(children) != len(set(child_ids)) or any(not item.is_enabled or item.child_agent_ids or item.tool_keys for item in children):
@@ -95,6 +94,14 @@ def list_available_agents(db: Session, project_id: int, *, actor: User, target_t
             "description": row.description,
             "workflow_template": row.workflow_template,
             "version": row.version,
+            "model_config_id": row.model_config_id,
+            "model_label": next((item.label for item in models if item.id == row.model_config_id), None),
+            "child_agents": [
+                {"id": child.id, "name": child.name, "version": child.version,
+                 "model_config_id": child.model_config_id,
+                 "model_label": next((item.label for item in models if item.id == child.model_config_id), None)}
+                for child_id in child_ids for child in children if child.id == child_id
+            ],
         })
     return options
 
@@ -177,7 +184,9 @@ def role_tools_for_agent(role: str, baseline: list[str], snapshot: dict[str, Any
 def resolve_authorized_model(
     db: Session, project_id: int, actor: User, *, requested_model_id: int | None = None,
 ) -> ModelConfiguration:
-    """按现有组织智能体开关与模型白名单选择任务模型。"""
+    """检查项目与智能体使用权，从平台启用模型中选择任务模型。"""
+    from app.platform.projects.services.access_service import get_project_or_404
+    get_project_or_404(db, project_id, actor)
     project = db.get(Project, project_id)
     if project is None:
         raise not_found("项目不存在")
@@ -199,18 +208,12 @@ def resolve_authorized_model(
         ).first()
         if membership is None or not membership.agent_enabled:
             raise forbidden("当前组织未向你开放智能体能力")
-        allowed_ids = [str(item) for item in (membership.allowed_model_ids or [])]
-        if not allowed_ids:
-            raise forbidden("当前组织未向你分配智能体模型")
         if requested_model_id is not None:
-            model = query.filter(
-                ModelConfiguration.id == requested_model_id,
-                ModelConfiguration.domain_id.in_(allowed_ids),
-            ).first()
+            model = query.filter(ModelConfiguration.id == requested_model_id).first()
             if model is None:
-                raise forbidden("Agent 绑定的模型未获当前组织授权")
+                raise bad_request("Agent 绑定的模型配置不存在或已停用")
             return model
-        model = query.filter(ModelConfiguration.domain_id.in_(allowed_ids)).order_by(
+        model = query.order_by(
             ModelConfiguration.is_default.desc(), ModelConfiguration.sort_order.asc(), ModelConfiguration.id.asc(),
         ).first()
     if model is None:
@@ -227,6 +230,8 @@ def assert_agent_model_access(
     model = db.get(ModelConfiguration, model_config_id)
     if model is None or not model.is_enabled:
         raise RuntimeError("任务模型配置已删除或停用，已停止智能体调用")
+    from app.platform.projects.services.access_service import get_project_or_404
+    get_project_or_404(db, project_id, actor)
     project = db.get(Project, project_id)
     if project is None:
         raise RuntimeError("任务项目不存在")
@@ -238,9 +243,8 @@ def assert_agent_model_access(
         OrganizationMember.organization_id == project.organization_id,
         OrganizationMember.user_id == actor.id,
     ).first()
-    allowed_ids = {str(item) for item in (membership.allowed_model_ids or [])} if membership else set()
-    if membership is None or not membership.agent_enabled or model.domain_id not in allowed_ids:
-        raise RuntimeError("任务发起人的智能体模型授权已撤销，已停止新的智能体调用")
+    if membership is None or not membership.agent_enabled:
+        raise RuntimeError("任务发起人的智能体使用权限已撤销，已停止新的智能体调用")
     return model
 
 
