@@ -9,7 +9,8 @@ const routeCount = [...app.matchAll(/<Route\b/g)].length;
 const currentPaths = new Set([...app.matchAll(/\bpath=\"([^\"]+)\"/g)].map((match) => match[1]));
 
 test('all original route declarations remain registered after relocation and new task, ASR and model-center pages are additive', () => {
-  assert.equal(routeCount, routes.length + 14);
+  // 5d3171b 用例管理中心新增 2 条路由（test-cases 等），基线由 +14 调为 +16。
+  assert.equal(routeCount, routes.length + 16);
   for (const item of routes) {
     if (!item.route.path) continue;
     const path = JSON.parse(item.route.path);

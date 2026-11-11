@@ -15,13 +15,13 @@ from app.orchestration.tasks.services.state_service import enqueue_work
 
 
 def queue_report(db: Session, run: TaskRun, work: TaskWorkItem, agent: TaskAgentInstance, attempt: TaskAttempt, result: dict) -> None:
-    """执行回执持久化后登记依赖该执行结果的报告工作项。"""
+    """先登记报告依赖，再标记当前结果，避免提前 flush 终态使收尾 fencing 误拒。"""
+    enqueue_report_after(db, run, work, agent, int(result["id"]))
     work.status = "SUCCEEDED"
     work.output_json = {"test_run_id": result.get("id"), "status": result.get("status")}
     work.finished_at = datetime.now()
     attempt.status = "SUCCEEDED"
     attempt.finished_at = datetime.now()
-    enqueue_report_after(db, run, work, agent, int(result["id"]))
 
 
 def enqueue_report_after(db: Session, run: TaskRun, dependency_work: TaskWorkItem, agent: TaskAgentInstance, test_run_id: int) -> None:

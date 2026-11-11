@@ -633,42 +633,57 @@ def test_retryable_llm_failure_requeues_task_instead_of_failing(api, admin, db, 
     events = api.get(f"/task-runs/{run_id}/events", username=admin).json()
     assert any(event["event_type"] == "llm.retry_scheduled" for event in events)
 
-    # 通过同一生产 fail_work 状态转换再耗尽有限重试预算，验证真实 PAUSED/WAITING_MODEL。
+    # 真实领取新的 RUNNING Attempt 后耗尽预算；终态 Attempt 不得重放。
+    from app.main import task_worker
     from app.core.database.session import SessionLocal
-    from app.orchestration.tasks.models import TaskAttempt, TaskRun, TaskWorkItem
+    from app.orchestration.tasks.models import TaskRun, TaskWorkItem
     from app.orchestration.tasks.runtime.completion_service import fail_work
-    from app.orchestration.tasks.runtime.contracts import ClaimedWork
+    from app.orchestration.tasks.runtime.lease_service import claim_work
 
-    work = db.query(TaskWorkItem).filter(TaskWorkItem.task_run_id == run_id, TaskWorkItem.kind == "PLAN").one()
-    attempt = db.query(TaskAttempt).filter(TaskAttempt.work_item_id == work.id).order_by(TaskAttempt.attempt_number.desc()).first()
-    run = db.get(TaskRun, run_id)
-    assert attempt is not None and run is not None
-    work.max_attempts = work.attempt_count
-    work.available_at = None
-    run.lease_owner = attempt.owner
-    run.lease_expires_at = datetime.now() + timedelta(minutes=2)
-    db.commit()
-    fail_work(
-        ClaimedWork(work_item_id=work.id, run_id=run.id, attempt_id=attempt.id, owner=attempt.owner),
-        LLMError("LLM_FALLBACK_EXHAUSTED", "模型路由仍不可用", retryable=True),
-        db_factory=SessionLocal,
-    )
-    db.expire_all()
-    detail = api.get(f"/task-runs/{run_id}", username=admin).json()
-    assert detail["run"]["status"] == "PAUSED"
-    assert detail["run"]["stage"] == "WAITING_MODEL"
-    inbox = api.get("/tasks/inbox", username=admin, params={"project_id": project_id, "category": "model_blocked"})
-    assert inbox.status_code == 200, inbox.text
-    assert inbox.json()["total"] == 1
-    assert inbox.json()["counts"]["model_blocked"] == 1
-    assert inbox.json()["items"][0]["run_id"] == run_id
-    resumed = api.post(
-        f"/task-runs/{run_id}/commands", username=admin,
-        json={"command_type": "RESUME", "idempotency_key": unique("resume-model")},
-    )
-    assert resumed.status_code == 200, resumed.text
-    inbox_after_resume = api.get("/tasks/inbox", username=admin, params={"project_id": project_id, "category": "model_blocked"})
-    assert inbox_after_resume.json()["total"] == 0
+    was_running = task_worker.is_running
+    task_worker.stop()
+    delayed = []
+    try:
+        db.expire_all()
+        work = db.query(TaskWorkItem).filter(TaskWorkItem.task_run_id == run_id, TaskWorkItem.kind == "PLAN").one()
+        work.max_attempts = work.attempt_count + 1
+        work.available_at = datetime.now() - timedelta(seconds=1)
+        # 暂缓其他夹具遗留待办，只验证本测试的真实领取，finally 恢复原时间。
+        for other in db.query(TaskWorkItem).filter(TaskWorkItem.status == "PENDING", TaskWorkItem.id != work.id).all():
+            delayed.append((other.id, other.available_at))
+            other.available_at = datetime.now() + timedelta(hours=1)
+        db.commit()
+        claim = claim_work(db_factory=SessionLocal, owner=unique("model-exhaustion"), lease_seconds=120)
+        assert claim is not None and claim.work_item_id == work.id
+        fail_work(claim, LLMError("LLM_FALLBACK_EXHAUSTED", "模型路由仍不可用", retryable=True), db_factory=SessionLocal)
+        db.expire_all()
+        detail = api.get(f"/task-runs/{run_id}", username=admin).json()
+        assert detail["run"]["status"] == "PAUSED"
+        assert detail["run"]["stage"] == "WAITING_MODEL"
+        inbox = api.get("/tasks/inbox", username=admin, params={"project_id": project_id, "category": "model_blocked"})
+        assert inbox.status_code == 200, inbox.text
+        assert inbox.json()["total"] == 1
+        assert inbox.json()["counts"]["model_blocked"] == 1
+        assert inbox.json()["items"][0]["run_id"] == run_id
+        resumed = api.post(
+            f"/task-runs/{run_id}/commands", username=admin,
+            json={"command_type": "RESUME", "idempotency_key": unique("resume-model")},
+        )
+        assert resumed.status_code == 200, resumed.text
+        inbox_after_resume = api.get("/tasks/inbox", username=admin, params={"project_id": project_id, "category": "model_blocked"})
+        assert inbox_after_resume.json()["total"] == 0
+    finally:
+        db.rollback()
+        for work_id, available_at in delayed:
+            other = db.get(TaskWorkItem, work_id)
+            if other is not None:
+                other.available_at = available_at
+        db.commit()
+        # 测试已验证恢复命令；取消专属任务，避免故障注入遗留影响后续测试。
+        api.post(f"/task-runs/{run_id}/commands", username=admin,
+                 json={"command_type": "CANCEL", "idempotency_key": unique("cleanup-model")})
+        if was_running:
+            task_worker.start()
 
 
 def test_task_web_authoring_creates_isolated_worker_plan(api, admin, db, monkeypatch):

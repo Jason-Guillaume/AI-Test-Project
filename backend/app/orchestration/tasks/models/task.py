@@ -9,6 +9,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     JSON,
@@ -79,6 +80,11 @@ class TaskRun(Base):
     __tablename__ = "task_run"
     __table_args__ = (
         UniqueConstraint("task_id", "run_number", name="uq_task_run_number"),
+        UniqueConstraint("id", "task_id", name="uq_task_run_id_task"),
+        ForeignKeyConstraint(
+            ["execution_root_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_task_run_execution_root", deferrable=True, initially="DEFERRED",
+        ),
         Index("ix_task_run_status_lease", "status", "lease_expires_at"),
         {"comment": "统一任务运行与恢复状态"},
     )
@@ -86,6 +92,9 @@ class TaskRun(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=False, index=True)
     run_number = Column(Integer, nullable=False)
+    execution_root_run_id = Column(Integer, nullable=True, index=True)
+    trace_id = Column(String(32), nullable=True, index=True)
+    deadline_at = Column(DateTime, nullable=True)
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
     stage = Column(String(40), nullable=False, default="PLANNING", server_default=text("'PLANNING'"))
@@ -134,6 +143,8 @@ class TaskAgentInstance(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_definition_revision_id = Column(Integer, ForeignKey("agent_definition_revision.id", name="fk_task_agent_revision", deferrable=True, initially="DEFERRED"), nullable=True)
+    parent_agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", name="fk_task_agent_parent", ondelete="SET NULL"), nullable=True)
     instance_key = Column(String(80), nullable=False)
     role = Column(String(32), nullable=False)
     display_name = Column(String(120), nullable=False)
@@ -204,6 +215,7 @@ class TaskAttempt(Base):
     work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False, index=True)
     attempt_number = Column(Integer, nullable=False)
     lease_generation = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    deadline_at = Column(DateTime, nullable=True)
     owner = Column(String(160), nullable=False)
     status = Column(String(24), nullable=False, default="RUNNING", server_default=text("'RUNNING'"))
     checkpoint_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))

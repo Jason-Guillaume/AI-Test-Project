@@ -1,0 +1,111 @@
+== 1/6 建隔离库并迁移到 head ==
+[e2e] 隔离库已创建
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, 第一阶段基线表结构。
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, 新增缺陷表 bug。
+INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, 新增接口管理 8 张表（api_catalog feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, 新增业务管理 10 张表（business feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, 业务管理第二阶段：执行引擎基础。
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, 新增测试管理 13 张表（test_management feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, 新增接口测试 Agent 会话表 + 测试资产追溯列（agent feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, 新增测试报告 + 飞书通知渠道 + 通知发送记录三表（Phase 2，feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, 新增测试数据中心 + Data Factory 全部表（Phase A，feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0009 -> 0010, 新增 Mock Management Phase 1 全部表（feature-local）。
+INFO  [alembic.runtime.migration] Running upgrade 0010 -> 0011, 新增 Security Testing Phase 1 全部表（feature-local）+ 系统内置策略。
+INFO  [alembic.runtime.migration] Running upgrade 0011 -> 0012, Web UI 自动化一期：独立扩展表，不修改已有测试执行和安全模块表结构。
+INFO  [alembic.runtime.migration] Running upgrade 0012 -> 0013, 新增 Security Testing Phase 2（OWASP ZAP 集成）全部表 + 平台内置扫描策略。
+INFO  [alembic.runtime.migration] Running upgrade 0013 -> 0014, UI 智能体二轮：受控浏览器会话与已执行步骤留痕表，不改既有用例/执行表。
+INFO  [alembic.runtime.migration] Running upgrade 0014 -> 0015, 统一任务、角色会话、持久化调度与业务资源回链。
+INFO  [alembic.runtime.migration] Running upgrade 0015 -> 0016, 任务内 ZAP 关联与外部扫描轮询。
+INFO  [alembic.runtime.migration] Running upgrade 0016 -> 0017, 模型配置增加有序备用模型路由。
+INFO  [alembic.runtime.migration] Running upgrade 0017 -> 0018, 项目级环境绑定与目标配置。
+INFO  [alembic.runtime.migration] Running upgrade 0018 -> 0019, 新增 Agent、Skill 与 MCP 管理配置。
+INFO  [alembic.runtime.migration] Running upgrade 0019 -> 0020, 将 Agent 配置绑定到任务。
+INFO  [alembic.runtime.migration] Running upgrade 0020 -> 0021, 支持受控子 Agent 组合。
+INFO  [alembic.runtime.migration] Running upgrade 0021 -> 0022, Add self-designed security assessment inputs to tasks.
+INFO  [alembic.runtime.migration] Running upgrade 0022 -> 0023, Seed governed security assessment skills.
+INFO  [alembic.runtime.migration] Running upgrade 0023 -> 0024, Seed platform-adapted QA skills.
+INFO  [alembic.runtime.migration] Running upgrade 0024 -> 0025, Seed a broader, dimension-based QA skill catalog.
+INFO  [alembic.runtime.migration] Running upgrade 0025 -> 0026, Seed platform workflow and security testing skills.
+INFO  [alembic.runtime.migration] Running upgrade 0026 -> 0027, 为缺陷与真实测试结果或安全疑似问题建立可追溯关系。
+INFO  [alembic.runtime.migration] Running upgrade 0027 -> 0028, 将交互式 Web 编写会话真实绑定到任务运行和 UI Worker。
+INFO  [alembic.runtime.migration] Running upgrade 0028 -> 0029, 扩展 Agent 详情、Skill 文件和工具治理配置。
+INFO  [alembic.runtime.migration] Running upgrade 0029 -> 0030, Add versioned project task templates.
+INFO  [alembic.runtime.migration] Running upgrade 0030 -> 0031, Store canonical task creation request digests for safe retries.
+INFO  [alembic.runtime.migration] Running upgrade 0031 -> 0032, 建立 ASR 音频资产、夜间任务、对比复核及参数实验表。
+INFO  [alembic.runtime.migration] Running upgrade 0032 -> 0033, 增加 ASR 音频版本、分段、独立处理任务及说话人工作台数据。
+INFO  [alembic.runtime.migration] Running upgrade 0033 -> 0034, 建立统一模型资源目录并兼容映射旧模型、ASR 连接与任务角色。
+INFO  [alembic.runtime.migration] Running upgrade 0034 -> 0035, Track ASR worker readiness and preserve candidate rerun failure details.
+INFO  [alembic.runtime.migration] Running upgrade 0035 -> 0036, Persist idempotent ASR suggestion requests as background jobs.
+INFO  [alembic.runtime.migration] Running upgrade 0036 -> 0037, 创建 ASR 评测产物索引；正文保存在 API 与 Worker 共享的受控持久卷。
+INFO  [alembic.runtime.migration] Running upgrade 0037 -> 0038, 新增独立内容评审任务和分块，不更改既有调参建议。
+INFO  [alembic.runtime.migration] Running upgrade 0038 -> 0039, 为失败项重试与完整重跑增加批次级幂等键。
+INFO  [alembic.runtime.migration] Running upgrade 0039 -> 0040, Add API-bound FunASR ground truth and durable tuning sessions.
+INFO  [alembic.runtime.migration] Running upgrade 0040 -> 0041, Document all database tables and columns; clarify string-backed enums.
+INFO  [alembic.runtime.migration] Running upgrade 0041 -> 0042, Correct table context and enum meanings in the schema documentation.
+INFO  [alembic.runtime.migration] Running upgrade 0042 -> 0043, Seed six governed testing agents and ASR / AI evaluation skills.
+INFO  [alembic.runtime.migration] Running upgrade 0043 -> 0044, Seed module-specific case generation skills and a LangGraph supervisor with five children.
+INFO  [alembic.runtime.migration] Running upgrade 0044 -> 0045, Separate agent test type from its purpose without changing workflow keys.
+INFO  [alembic.runtime.migration] Running upgrade 0045 -> 0046, Project knowledge and safe retirement of private model configuration.
+INFO  [alembic.runtime.migration] Running upgrade 0046 -> 0047, 测试范围表，并把存量用例挂到导航节点上。
+INFO  [alembic.runtime.migration] Running upgrade 0047 -> 0048, 用例生成批次迁移。草稿表独立于 AgentSession。
+INFO  [alembic.runtime.migration] Running upgrade 0048 -> 0049, 用例生成审核闭环增量：审计表、草稿审核留痕、质量检查、原始内容与入库幂等。
+INFO  [alembic.runtime.migration] Running upgrade 0049 -> 0050, 关联用例生成批次与统一任务，增加模块草稿幂等约束。
+INFO  [alembic.runtime.migration] Running upgrade 0050 -> 0051, 为现有任务补充执行根、Trace、截止时间及 Agent 修订引用，不新建任务体系。
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+数据库已存在：testplatform_e2e_gen_65391
+迁移完成，当前版本：0051
+内置环境写入完成（新增 4 条）
+管理员已创建：e2e-admin（id=1，组织 id=1）
+初始化完成
+== 2/6 起 LLM 桩服务器 :8799 ==
+[llm-stub] listening on 127.0.0.1:8799
+[llm-stub] unknown ok
+== 3/6 起后端 :8101 ==
+== 4/6 通过真实 API 种入指向桩的默认模型配置 ==
+== 5/6 起前端 Vite :5174 ==
+== 6/6 Playwright 验收 ==
+
+Running 15 tests using 1 worker
+
+(node:65559) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[llm-stub] security:fail-once
+[llm-stub] api ok
+[llm-stub] review ok
+  ✓   1 e2e/case-generation.spec.ts:86:1 › 01 创建生成批次：失败模块保留成功草稿并真实持久化 (5.6s)
+  ✓   2 e2e/case-generation.spec.ts:114:1 › 02 刷新后历史批次与草稿恢复 (4.1s)
+  ✓   3 e2e/case-generation.spec.ts:126:1 › 03 编辑草稿并同步到数据库 (4.4s)
+  ✓   4 e2e/case-generation.spec.ts:147:1 › 04 单条接受入库：TestCase 为 DRAFT 且重复接受幂等 (3.8s)
+  ✓   5 e2e/case-generation.spec.ts:171:1 › 05 项目内重名入库返回 409 并标明原因 (3.1s)
+  ✓   6 e2e/case-generation.spec.ts:191:1 › 06 拒绝附原因并可恢复待审核 (5.2s)
+  ✓   7 e2e/case-generation.spec.ts:210:1 › 07 批量审核：二次确认、部分失败可见、重复执行不产生重复资产 (3.5s)
+[llm-stub] security ok
+[llm-stub] review ok
+  ✓   8 e2e/case-generation.spec.ts:235:1 › 08 仅失败模块重新生成且不覆盖已审核草稿 (5.3s)
+  ✓   9 e2e/case-generation.spec.ts:261:1 › 09 批次审计时间线完整 (3.1s)
+[llm-stub] api ok
+[llm-stub] review ok
+  ✓  10 e2e/case-generation.spec.ts:278:1 › 10 并发接受同一草稿只入库一次 (472ms)
+[llm-stub] api ok
+[llm-stub] review ok
+  ✓  11 e2e/case-generation.spec.ts:300:1 › 11 入库请求中断不产生残留，恢复后可重试 (4.0s)
+  ✓  12 e2e/case-generation.spec.ts:324:1 › 12 跨项目隔离与非法资源访问 (525ms)
+[llm-stub] api ok
+[llm-stub] review ok
+  ✓  13 e2e/case-generation.spec.ts:344:1 › 13 与正式用例重名的草稿给出疑似重复质量提示 (3.4s)
+[llm-stub] security ok
+[llm-stub] api ok
+[llm-stub] review ok
+  ✓  14 e2e/generation-async.spec.ts:49:1 › P6 HTTP立即返回、并发幂等、刷新恢复与模块并行 (8.8s)
+[llm-stub] api ok
+[llm-stub] security ok
+  ✓  15 e2e/generation-async.spec.ts:78:1 › P6 运行中取消保留已完成草稿，刷新后取消状态可恢复 (10.1s)
+
+  15 passed (1.1m)
+== E2E 结果：通过 ==
+[e2e] 隔离库已删除

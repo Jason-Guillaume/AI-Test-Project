@@ -192,7 +192,7 @@ backend/
 └── tests/                           # pytest 用例
 ```
 
-当前代码尚无 `app/knowledge/`；知识库按重构文档中的 K 阶段单独开发，不提前创建空目录或占位实现。
+当前 `app/knowledge/` 已提供项目知识库、文档版本、解析切片和授权检索；后续混合检索与 Agent 范围治理复用这些实现，按 `docs/p6/super-agent-runtime-unification-plan.md` 分期扩展。
 
 **Feature 目录的内部规范**：
 
@@ -220,7 +220,7 @@ backend/
 - `execution/browser/` 只持有浏览器契约与进程资源，不查询业务 ORM；目标白名单由 Web 服务构造后注入，空闲回收后的会话状态通过 Web 服务回调持久化
 - `tools/`、`skills/`、`mcp/` 不反向依赖 Agent 图、任务 Worker 或治理聚合服务；工具 key 与目录名是不同兼容面
 - ORM 模型归属唯一；确需跨域只读查询时，显式导入所属包的模型，不复制模型定义
-- 尚未实现的知识库不创建空目录或占位服务；规划路径见 Agent 集群重构文档中的 K 阶段
+- 知识文档、版本和 Chunk 归 `knowledge/` 唯一所有；Agent 装配只通过授权检索接口获取必要片段，不复制文档管理或消息存储
 
 ### 2.2 分层规则
 

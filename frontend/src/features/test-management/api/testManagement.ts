@@ -13,7 +13,7 @@
 // 不带分页信封；仅 list_runs / list_case_executions 返回 {items,total,page,page_size} 信封。
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
-import type { CaseExecutionListResponse, GenerationAgentOption, GenerationBatch, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
+import type { BatchReviewResponse, CaseExecutionListResponse, GenerationAgentOption, GenerationAudit, GenerationBatch, GenerationTaskStatus, GenerationBatchListResponse, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
 
@@ -117,11 +117,29 @@ export const testManagementApi = {
     api.get<GenerationAgentOption[]>(`/projects/${projectId}/case-generation-agents`),
   startGeneration: (projectId: number, body: { agent_id: number; direction: string; scope_node_id?: number | null; requirements: string; include_security: boolean; cases_per_module: number; model_config_id?: number | null }) =>
     api.post<GenerationBatch>(`/projects/${projectId}/case-generation-batches`, body, { timeout: 600000 }),
+  submitGenerationTask: (projectId: number, body: { agent_id: number; direction: string; scope_node_id?: number | null; requirements: string; include_security: boolean; cases_per_module: number; model_config_id?: number | null; request_key: string }) =>
+    api.post<GenerationBatch>(`/projects/${projectId}/case-generation-tasks`, body),
+  getGenerationTask: (batchId: number) => api.get<GenerationTaskStatus>(`/case-generation-batches/${batchId}/task`),
+  cancelGenerationTask: (batchId: number) => api.post<GenerationBatch>(`/case-generation-batches/${batchId}/cancel`),
+  retryGenerationTask: (batchId: number) => api.post<GenerationBatch>(`/case-generation-batches/${batchId}/retry`),
   getGenerationBatch: (batchId: number) => api.get<GenerationBatch>(`/case-generation-batches/${batchId}`),
-  updateDraft: (draftId: number, body: { title?: string; priority?: string; requirement?: string; steps?: string[]; expected_results?: string[] }) =>
+  /** 批次分页列表：状态/方向/模块/关键字筛选，带状态统计。 */
+  listGenerationBatches: (projectId: number, params: { page?: number; page_size?: number; direction?: string; status?: string; module?: string; keyword?: string }) =>
+    api.get<GenerationBatchListResponse>(`/projects/${projectId}/case-generation-batches`, { params }),
+  /** 批量审核（接受=入库），必须 confirm=true。 */
+  reviewGenerationBatch: (batchId: number, body: { action: 'accept' | 'reject'; scope: 'all' | 'module' | 'drafts'; module?: string; draft_ids?: number[]; comment?: string; confirm: boolean }) =>
+    api.post<BatchReviewResponse>(`/case-generation-batches/${batchId}/review`, body),
+  /** 只重新生成失败模块。 */
+  regenerateGenerationBatch: (batchId: number, body: { cases_per_module?: number; model_config_id?: number | null }) =>
+    api.post<GenerationBatch>(`/case-generation-batches/${batchId}/regenerate`, body, { timeout: 600000 }),
+  /** 批次维度审计记录。 */
+  listGenerationAudits: (batchId: number) => api.get<GenerationAudit[]>(`/case-generation-batches/${batchId}/audits`),
+  updateDraft: (draftId: number, body: { title?: string; priority?: string; requirement?: string; preconditions?: string[]; test_data?: string[]; steps?: string[]; expected_results?: string[] }) =>
     api.patch<GenerationBatch['drafts'][number]>(`/case-drafts/${draftId}`, body),
   acceptDraft: (draftId: number) => api.post<{ draft_id: number; status: string; test_case_id: number | null }>(`/case-drafts/${draftId}/accept`),
-  rejectDraft: (draftId: number) => api.post<{ draft_id: number; status: string; test_case_id: number | null }>(`/case-drafts/${draftId}/reject`),
+  rejectDraft: (draftId: number, body?: { comment?: string }) => api.post<{ draft_id: number; status: string; test_case_id: number | null }>(`/case-drafts/${draftId}/reject`, body ?? {}),
+  /** 已拒绝草稿恢复为待审核。 */
+  reopenDraft: (draftId: number) => api.post<GenerationBatch['drafts'][number]>(`/case-drafts/${draftId}/reopen`),
 
   // ---- 用例子实体：前置条件 ----
   listPreconditions: (caseId: number) =>

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from app.orchestration.tasks.services import assembly_service
 from app.orchestration.tasks.services import state_service
+from concurrent.futures import ThreadPoolExecutor
+from app.core.config import settings
 import logging
 import os
 import platform
@@ -97,10 +99,13 @@ class TaskWorker:
         self._stop_event.set()
         with self._lock:
             thread = self._thread
-            self._thread = None
         if thread is not None and thread.is_alive():
             thread.join(timeout=max(0.1, timeout_seconds))
-        log.info("统一任务调度器已停止")
+        with self._lock:
+            # 在途请求尚未返回时保留线程身份，禁止 start() 清除停止标记并复制执行池。
+            if self._thread is thread and (thread is None or not thread.is_alive()):
+                self._thread = None
+        log.info("统一任务调度器%s", "正在等待安全停止" if thread is not None and thread.is_alive() else "已停止")
 
     def tick(self) -> int:
         """执行一轮过期租约恢复与工作项领取，供定向验证直接调用。"""
@@ -114,13 +119,27 @@ class TaskWorker:
 
     def _loop(self) -> None:
         """主循环；单轮数据库或工具异常不会永久打挂调度线程。"""
-        while not self._stop_event.is_set():
-            try:
-                if self.tick() == 0:
+        slots = min(settings.TASK_WORKER_CONCURRENCY, max(1, settings.DB_POOL_SIZE // 2))
+        with ThreadPoolExecutor(max_workers=slots, thread_name_prefix="task-work") as pool:
+            pending = set()
+            while not self._stop_event.is_set():
+                try:
+                    for future in list(pending):
+                        if future.done():
+                            pending.remove(future)
+                            future.result()
+                    if len(pending) >= slots:
+                        self._stop_event.wait(self._poll_interval)
+                        continue
+                    recover_expired(db_factory=self._db_factory)
+                    claim = claim_work(db_factory=self._db_factory, owner=self._owner, lease_seconds=self._lease_seconds)
+                    if claim is None:
+                        self._stop_event.wait(self._poll_interval)
+                    else:
+                        pending.add(pool.submit(self._run_claimed, claim))
+                except Exception:  # noqa: BLE001
+                    log.exception("统一任务调度轮询失败")
                     self._stop_event.wait(self._poll_interval)
-            except Exception:  # noqa: BLE001
-                log.exception("统一任务调度轮询失败")
-                self._stop_event.wait(self._poll_interval)
 
     def _run_claimed(self, claim: ClaimedWork) -> None:
         """运行已领取的工作项并启动独立心跳，避免长模型调用租约过期。"""
@@ -141,11 +160,17 @@ class TaskWorker:
             if work is None or run is None or attempt is None:
                 return
             if (run.lease_owner != self._owner or attempt.owner != self._owner
-                    or work.attempt_count != attempt.lease_generation):
+                    or work.attempt_count != attempt.lease_generation or work.status != 'RUNNING'
+                    or attempt.status != 'RUNNING' or not run.lease_expires_at
+                    or run.lease_expires_at <= datetime.now()):
                 return
             task = db.get(Task, run.task_id)
             actor = db.get(User, task.created_by) if task and task.created_by else None
             agent = db.get(TaskAgentInstance, work.agent_instance_id) if work.agent_instance_id else None
+            if work.kind in {"CASE_GENERATE", "CASE_REVIEW"}:
+                from app.orchestration.tasks.runtime.handlers.case_generation import execute
+                execute(db, task, run, work, attempt, actor)
+                return
             if task is None or actor is None or not actor.is_active:
                 raise RuntimeError("任务发起账号不可用，已停止新的业务操作")
             assert_current_project_write(db, task.project_id, actor)
@@ -198,7 +223,10 @@ class TaskWorker:
         except Exception as exc:  # noqa: BLE001
             db.rollback()
             fail_work(claim, exc, db_factory=self._db_factory)
-            log.exception("任务工作项执行失败 run_id=%s work_item_id=%s", claim.run_id, claim.work_item_id)
+            if 'work' in locals() and work is not None and work.kind in {"CASE_GENERATE", "CASE_REVIEW"}:
+                log.error("生成工作项失败 run_id=%s work_item_id=%s error_type=%s", claim.run_id, claim.work_item_id, type(exc).__name__)
+            else:
+                log.exception("任务工作项执行失败 run_id=%s work_item_id=%s", claim.run_id, claim.work_item_id)
         finally:
             heartbeat_stop.set()
             heartbeat.join(timeout=2.0)
@@ -238,6 +266,11 @@ class TaskWorker:
             attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "model_attempts": history}
 
         def recheck_access():
+            """复核运行者和来源授权，并在真实网络请求前结束数据库事务。"""
+            from app.orchestration.tasks.runtime.fencing import has_live_claim
+            if not has_live_claim(db, run.id, work.id, attempt.id, attempt.owner, attempt.lease_generation):
+                db.rollback()
+                raise LLMError('STALE_EXECUTION', '任务执行租约已失效')
             # Provider reloads the actual candidate immediately before each request.
             # A disabled primary must not block an explicitly configured live fallback.
             for candidate_id in candidate_ids:
@@ -251,4 +284,6 @@ class TaskWorker:
             profile = (run.input_snapshot or {}).get('agent_definition') or {}
             if profile.get('knowledge'):
                 search(db, profile['knowledge'], actor, '', limit=0)
+            # Provider 已读取模型配置；授权/配置查询不能跨长模型请求持有事务。
+            db.commit()
         return ProductionLLMProvider(db, model_config_ids=candidate_ids, attempt_callback=record_model_attempt, before_request=recheck_access)
