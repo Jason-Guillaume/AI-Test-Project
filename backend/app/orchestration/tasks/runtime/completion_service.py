@@ -19,6 +19,7 @@ from app.orchestration.tasks.models import (
     TaskWorkItem,
 )
 from app.orchestration.tasks.runtime.contracts import ClaimedWork
+from app.orchestration.tasks.runtime.fencing import has_live_claim
 
 
 log = logging.getLogger(__name__)
@@ -28,10 +29,7 @@ def complete_work(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, att
     """在工作项安全边界应用暂停/取消，并按实际待办决定是否继续派发。"""
     now = datetime.now()
     # 禁止旧代次在失去租约后刷新/提交新尝试的状态。先锁定权威行，再落收敛结果。
-    with db.no_autoflush:
-        current_owner = db.query(TaskRun.lease_owner).filter(TaskRun.id == run.id).with_for_update().scalar()
-        current_generation = db.query(TaskWorkItem.attempt_count).filter(TaskWorkItem.id == work.id).scalar()
-    if current_owner != attempt.owner or current_generation != attempt.lease_generation:
+    if not has_live_claim(db, run.id, work.id, attempt.id, attempt.owner, attempt.lease_generation):
         db.rollback()
         return
     db.flush()
@@ -98,13 +96,22 @@ def fail_work(claim: ClaimedWork, error: Exception, *, db_factory: Callable[[], 
     """落失败尝试；API 副作用回执不明时阻止重放并转待核对。"""
     db = db_factory()
     try:
+        generation_work = db.get(TaskWorkItem, claim.work_item_id)
+        if generation_work is not None and generation_work.kind in {"CASE_GENERATE", "CASE_REVIEW"}:
+            from app.orchestration.tasks.runtime.handlers.case_generation import finish
+            generation_run = db.get(TaskRun, claim.run_id)
+            generation_attempt = db.get(TaskAttempt, claim.attempt_id)
+            identity = (claim.run_id, claim.work_item_id, claim.attempt_id, claim.owner,
+                        generation_attempt.lease_generation, generation_run.input_snapshot['batch_id'])
+            db.rollback()
+            finish(db, identity, {}, error)
+            return
         run = db.query(TaskRun).filter(TaskRun.id == claim.run_id).with_for_update().first()
         work = db.query(TaskWorkItem).filter(TaskWorkItem.id == claim.work_item_id).with_for_update().first()
         attempt = db.get(TaskAttempt, claim.attempt_id)
         if work is None or run is None or attempt is None:
             return
-        if (run.lease_owner != claim.owner or attempt.owner != claim.owner
-                or work.attempt_count != attempt.lease_generation):
+        if not has_live_claim(db, run.id, work.id, attempt.id, claim.owner, attempt.lease_generation):
             # 旧线程的迟到异常不得覆盖恢复后重新领取的工作与运行。
             db.rollback()
             return
@@ -127,7 +134,7 @@ def fail_work(claim: ClaimedWork, error: Exception, *, db_factory: Callable[[], 
         # 只有纯模型调用且尚未开始业务副作用时才能自动重试，避免重复创建 TestRun。
         can_retry_model = isinstance(error, LLMError) and error.retryable and (
             work.kind not in {"EXECUTE_API", "EXECUTE_WEB", "EXECUTE_SECURITY"} or invocation is None
-        )
+        ) and run.status != 'CANCEL_REQUESTED'
         if can_retry_model:
             attempts = list(getattr(error, "attempts", []) or [])
             attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "model_attempts": attempts}
@@ -187,6 +194,13 @@ def fail_work(claim: ClaimedWork, error: Exception, *, db_factory: Callable[[], 
             if agent is not None:
                 agent.status = "NEEDS_RECONCILIATION"
             state_service.append_event(db, run, "run.reconciliation_required", {"work_item_id": work.id})
+        elif run.status == 'CANCEL_REQUESTED':
+            # 取消优先于失败重排；已开始且回执未知的副作用仍由上面的待核对分支处理。
+            work.status = run.status = 'CANCELLED'
+            run.finished_at = now
+            if agent is not None:
+                agent.status = 'CANCELLED'
+            state_service.append_event(db, run, 'run.cancelled', {'safe_boundary_reached': True})
         elif work.kind == "CHAT":
             previous = attempt.checkpoint_json.get("run_status_before_claim")
             run.status = previous if previous not in {None, "RUNNING", "QUEUED"} else "QUEUED"

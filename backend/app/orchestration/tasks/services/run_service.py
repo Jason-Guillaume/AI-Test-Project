@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 from sqlalchemy.orm import Session
 from app.agents.assembly.snapshot import build_agent_run_snapshot
 from app.orchestration.tasks.models import Task, TaskAgentInstance, TaskRun
@@ -34,6 +35,7 @@ def create_run(db: Session, task: Task, actor: User, *, run_number: int, target_
     agent_snapshot = build_agent_run_snapshot(agent_bundle)
     run = TaskRun(
         task_id=task.id,
+        trace_id=uuid4().hex,
         run_number=run_number,
         created_by=actor.id,
         status="QUEUED",

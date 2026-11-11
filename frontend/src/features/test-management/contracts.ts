@@ -505,6 +505,8 @@ export interface DraftQualityIssue {
 
 export interface GenerationBatch {
   id: number;
+  task_id?: number | null;
+  task_run_id?: number | null;
   project_id: number;
   direction: string;
   scope_node_id: number | null;
@@ -750,4 +752,21 @@ export interface RunCompareResponse {
   total: number;
   page: number;
   page_size: number;
+}
+
+
+export interface GenerationTaskStatus {
+  task_id: number;
+  task_run_id: number;
+  batch_id: number;
+  status: string;
+  run_status: string;
+  execution_root_run_id?: number;
+  trace_id?: string | null;
+  observability_status?: string;
+  deadline_at?: string | null;
+  completed: number;
+  total: number;
+  modules: { work_item_id: number; task_run_id: number; module: string; status: string; started_at: string | null; finished_at: string | null; duration_ms: number | null; attempts: number; error_code: string | null; error: string | null; trace_id: string | null; agent_run_id?: number | null; agent_session_id?: number | null; agent_id: number; agent_version: number; model_config_id: number; model_revision: string }[];
+  events: { id: number; run_id: number; type: string; created_at: string; detail: Record<string, unknown> }[];
 }

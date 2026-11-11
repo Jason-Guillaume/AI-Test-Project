@@ -4,7 +4,7 @@
 本表不替代 AgentSession：现有会话服务的是执行工作流，存不下这批待审核草稿。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
@@ -14,10 +14,11 @@ class CaseGenerationBatch(Base):
     """一次 Super Agent 生成。单模块失败时批次仍保留其他模块的草稿。"""
 
     __tablename__ = "case_generation_batch"
-    __table_args__ = ({"comment": "用例生成批次：待人工审核，不自动执行"},)
+    __table_args__ = (UniqueConstraint("task_run_id", name="uq_generation_batch_run"), {"comment": "用例生成批次：待人工审核，不自动执行"})
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", deferrable=True, initially="DEFERRED"), nullable=True)
     direction = Column(String(10), nullable=False, comment="API/UI/AI")
     scope_node_id = Column(Integer, ForeignKey("test_scope_node.id", ondelete="SET NULL"), nullable=True)
     supervisor_agent_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="SET NULL"), nullable=True)
@@ -41,9 +42,11 @@ class CaseDraft(Base):
     """一条待审核草稿。接受后写入 test_case_id；拒绝后不产生用例。"""
 
     __tablename__ = "case_draft"
-    __table_args__ = ({"comment": "用例生成草稿，接受前不是正式用例"},)
+    __table_args__ = (UniqueConstraint("work_item_id", "result_ordinal", name="uq_generation_draft_work_ordinal"), {"comment": "用例生成草稿，接受前不是正式用例"})
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", deferrable=True, initially="DEFERRED"), nullable=True)
+    result_ordinal = Column(Integer, nullable=True)
     batch_id = Column(Integer, ForeignKey("case_generation_batch.id", ondelete="CASCADE"), nullable=False, index=True)
     module = Column(String(20), nullable=False)
     child_agent_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="SET NULL"), nullable=True)

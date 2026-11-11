@@ -7,6 +7,9 @@ export interface TaskRun {
   id: number;
   task_id: number;
   run_number: number;
+  execution_root_run_id?: number | null;
+  trace_id?: string | null;
+  deadline_at?: string | null;
   status: string;
   stage: string;
   goal_snapshot: string;
@@ -29,7 +32,7 @@ export interface Task {
   environment_id: number | null;
   input_case_ids: number[];
   status: string;
-  task_mode: 'TEST_EXECUTION' | 'WEB_AUTHORING';
+  task_mode: 'TEST_EXECUTION' | 'WEB_AUTHORING' | 'CASE_GENERATION';
   archived: boolean;
   created_at: string;
   updated_at: string;

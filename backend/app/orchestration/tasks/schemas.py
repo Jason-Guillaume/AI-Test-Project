@@ -152,6 +152,9 @@ class TaskRunResponse(BaseModel):
     id: int
     task_id: int
     run_number: int
+    execution_root_run_id: int | None = None
+    trace_id: str | None = None
+    deadline_at: datetime | None = None
     status: str
     stage: str
     goal_snapshot: str

@@ -179,7 +179,26 @@ def test_main_flow_exception_marked_error_and_reraised(monkeypatch):
         with llm_generation(name="agent.chat", model="m", input_messages=[]) as gen:
             raise _Boom("模型服务请求失败")
     assert client.generation.updates[-1]["level"] == "ERROR"
-    assert "模型服务请求失败" in client.generation.updates[-1]["status_message"]
+    assert client.generation.updates[-1]["status_message"] == '_Boom'
+
+
+def test_task_metadata_hides_output_and_error_body(monkeypatch):
+    """任务元数据模式禁止响应和异常正文通过 generation 回写外泄。"""
+    _install_fake_langfuse(monkeypatch)
+    _enable(monkeypatch)
+    client = get_langfuse_client()
+    token = langfuse_tracer.task_trace_metadata.set({'task_id': 42})
+    try:
+        with pytest.raises(RuntimeError):
+            with llm_generation(name='task', model='stub', input_messages=[{'content': 'private-input'}]) as gen:
+                update_generation(gen, output='private-output', usage={'total_tokens': 3})
+                raise RuntimeError('private-error-body')
+        assert client.observations[0]['input'] == {'redacted': True}
+        assert client.generation.updates[0]['output'] == {'redacted': True}
+        assert client.generation.updates[0]['usage_details'] == {'total': 3}
+        assert 'private-' not in str(client.observations) + str(client.generation.updates)
+    finally:
+        langfuse_tracer.task_trace_metadata.reset(token)
 
 
 def test_tracer_failure_never_blocks_main_flow(monkeypatch):

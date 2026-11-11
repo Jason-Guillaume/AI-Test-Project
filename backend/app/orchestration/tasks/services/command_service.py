@@ -33,6 +33,8 @@ def create_command(db: Session, run_id: int, body: TaskCommandCreate, *, actor: 
     if body.command_type != "APPROVE_PLAN" and body.security_risk_confirmed:
         raise bad_request("高风险安全用例确认只能用于方案确认命令")
     run, task = TaskAccessService.get_run_for_write(db, run_id, actor, lock=True)
+    if task.task_mode == "CASE_GENERATION":
+        raise conflict("请在用例生成工作台取消或重试生成任务")
     prior = db.query(TaskCommand).filter(
         TaskCommand.task_run_id == run.id,
         TaskCommand.idempotency_key == body.idempotency_key,

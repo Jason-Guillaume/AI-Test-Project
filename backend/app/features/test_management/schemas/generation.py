@@ -20,6 +20,11 @@ class GenerationStartRequest(BaseModel):
     model_config_id: int | None = Field(default=None, gt=0)
 
 
+class GenerationTaskRequest(GenerationStartRequest):
+    """异步提交要求显式幂等键，网络重试复用同一个键。"""
+    request_key: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class DraftUpdateRequest(BaseModel):
     """人工修改仍处于待审核状态的草稿。"""
 
@@ -145,6 +150,8 @@ class CaseGenerationAuditResponse(BaseModel):
 
 class GenerationBatchResponse(BaseModel):
     id: int
+    task_id: int | None = None
+    task_run_id: int | None = None
     project_id: int
     direction: str
     scope_node_id: int | None = None

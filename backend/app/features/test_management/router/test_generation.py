@@ -20,6 +20,7 @@ from app.features.test_management.schemas.generation import (
     GenerationBatchListResponse,
     GenerationBatchResponse,
     GenerationStartRequest,
+    GenerationTaskRequest,
     RegenerateRequest,
 )
 from app.features.test_management.services.generation_service import GenerationService
@@ -45,7 +46,8 @@ def list_generation_agents(
 @router.post(
     "/projects/{project_id}/case-generation-batches",
     response_model=GenerationBatchResponse,
-    summary="按测试方向生成用例草稿",
+    summary="按测试方向生成用例草稿（同步兼容）",
+    deprecated=True,
 )
 def start_generation(
     project_id: int,
@@ -104,7 +106,8 @@ def batch_review(
 @router.post(
     "/case-generation-batches/{batch_id}/regenerate",
     response_model=GenerationBatchResponse,
-    summary="重新生成失败模块",
+    summary="重新生成失败模块（同步兼容）",
+    deprecated=True,
 )
 def regenerate_batch(
     batch_id: int,
@@ -158,3 +161,31 @@ def reject_draft(
 def reopen_draft(draft_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """仅已拒绝的草稿可恢复；已入库草稿不能回退。"""
     return _GENERATION.reopen_draft(db, draft_id, actor=user)
+
+
+@router.post("/projects/{project_id}/case-generation-tasks", response_model=GenerationBatchResponse, status_code=202)
+def submit_generation_task(project_id: int, body: GenerationTaskRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """创建持久化任务并立即返回，不执行模型调用。"""
+    from app.features.test_management.services.generation_tasks import submit
+    return submit(db, project_id, body, user)
+
+
+@router.get("/case-generation-batches/{batch_id}/task")
+def generation_task_status(batch_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """查看各模块进度和任务事件时间线。"""
+    from app.features.test_management.services.generation_tasks import task_status
+    return task_status(db, batch_id, user)
+
+
+@router.post("/case-generation-batches/{batch_id}/cancel", response_model=GenerationBatchResponse)
+def cancel_generation_task(batch_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """协作取消并保留已生成草稿。"""
+    from app.features.test_management.services.generation_tasks import control
+    return control(db, batch_id, user, 'cancel')
+
+
+@router.post("/case-generation-batches/{batch_id}/retry", response_model=GenerationBatchResponse)
+def retry_generation_task(batch_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """仅重试失败模块或独立失败的 Supervisor Review。"""
+    from app.features.test_management.services.generation_tasks import control
+    return control(db, batch_id, user, 'retry')

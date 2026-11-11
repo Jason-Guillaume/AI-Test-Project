@@ -30,6 +30,8 @@ class TaskMessageService:
         """向主 Agent 或明确指定的 Worker 投递消息；目标更新沿用新运行版本语义。"""
         # 同一运行行锁串行化事件游标和去重键，避免并发重复创建工作项或新运行。
         run, task = TaskAccessService.get_run_for_write(db, run_id, actor, lock=True)
+        if task.task_mode == "CASE_GENERATION":
+            raise conflict("用例生成任务请在生成工作台操作")
         prior = db.query(TaskMessage).filter(
             TaskMessage.task_run_id == run.id,
             TaskMessage.client_message_id == body.client_message_id,

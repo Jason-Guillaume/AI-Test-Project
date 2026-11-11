@@ -36,6 +36,12 @@ class TaskSerializers:
     def run_response(run: TaskRun) -> dict[str, Any]:
         """保留可审计 Agent 版本信息，并从响应中移除指令和 Skill 正文。"""
         input_snapshot = dict(run.input_snapshot or {})
+        if input_snapshot.get('batch_id') and run.stage in {'CASE_GENERATION', 'CASE_REVIEW'}:
+            input_snapshot = {
+                'batch_id': input_snapshot['batch_id'],
+                'agent': {key: value for key, value in (input_snapshot.get('agent') or {}).items()
+                          if key in {'id', 'name', 'version', 'module', 'model_config_id', 'model_name', 'model_revision'}},
+            }
         projected_agent = public_agent_snapshot(input_snapshot.get("agent_definition"))
         if projected_agent is not None:
             input_snapshot["agent_definition"] = projected_agent
@@ -43,6 +49,9 @@ class TaskSerializers:
             "id": run.id,
             "task_id": run.task_id,
             "run_number": run.run_number,
+            "execution_root_run_id": run.execution_root_run_id or run.id,
+            "trace_id": run.trace_id,
+            "deadline_at": run.deadline_at,
             "status": run.status,
             "stage": run.stage,
             "goal_snapshot": run.goal_snapshot,

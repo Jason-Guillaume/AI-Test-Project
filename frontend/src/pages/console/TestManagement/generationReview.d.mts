@@ -36,3 +36,6 @@ export function hasFailedModule(moduleErrors: ModuleErrorLike[] | null | undefin
 export function buildReviewBody(input: { action: 'accept' | 'reject'; scope: 'all' | 'module'; module?: string; comment?: string }): ReviewBody;
 export function summarizeQuality(quality: { level: string }[] | null | undefined): QualitySummary;
 export function formatMetric(item: MetricLike): string;
+
+export function isGenerationActive(status: string | undefined): boolean;
+export function generationStorageKey(userId: string, projectId: number, direction: string): string;

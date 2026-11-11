@@ -14,7 +14,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from dotenv import load_dotenv
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
@@ -94,6 +94,18 @@ class Settings(BaseSettings):
 
     # PostgreSQL 连接串，格式：postgresql+psycopg://用户:<数据库密码>@主机:端口/库名
     DATABASE_URL: str | None = None
+
+    # 生成策略可由部署配置覆盖；现有数据库全局调度额度优先。
+    TASK_WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=16)
+    CASE_GENERATION_MODULE_CONCURRENCY: int = Field(default=2, ge=1, le=5)
+    CASE_GENERATION_PROJECT_CONCURRENCY: int = Field(default=2, ge=1, le=20)
+    CASE_GENERATION_USER_CONCURRENCY: int = Field(default=2, ge=1, le=20)
+    CASE_GENERATION_MAX_ATTEMPTS: int = Field(default=3, ge=1, le=5)
+    CASE_GENERATION_TOTAL_ATTEMPTS: int = Field(default=6, ge=1, le=20)
+    CASE_GENERATION_RETRY_SECONDS: int = Field(default=30, ge=1, le=300)
+    CASE_GENERATION_MODULE_TIMEOUT_SECONDS: int = Field(default=120, ge=1, le=600)
+    CASE_GENERATION_TASK_TIMEOUT_SECONDS: int = Field(default=1800, ge=1, le=86400)
+    CASE_GENERATION_TOKEN_BUDGET: int = Field(default=65536, ge=1024, le=1000000)
 
     # 主库连接池参数。
     DB_POOL_SIZE: int = 10

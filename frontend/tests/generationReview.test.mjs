@@ -55,3 +55,12 @@ test('指标文本含耗时与 token，缺省有兜底', () => {
   );
   assert.equal(formatMetric({ module: 'web', status: 'FAILED' }), 'web · FAILED · - · token 未上报');
 });
+
+test('P6 活跃任务轮询，终态停止且存储按账号项目方向隔离', async () => {
+  const { isGenerationActive, generationStorageKey } = await import('../src/pages/console/TestManagement/generationReview.mjs');
+  for (const status of ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED']) assert.equal(isGenerationActive(status), true);
+  for (const status of ['COMPLETED', 'PARTIAL_FAILED', 'FAILED', 'CANCELLED', undefined]) assert.equal(isGenerationActive(status), false);
+  assert.notEqual(generationStorageKey('1', 2, 'API'), generationStorageKey('2', 2, 'API'));
+  assert.notEqual(generationStorageKey('1', 2, 'API'), generationStorageKey('1', 3, 'API'));
+  assert.notEqual(generationStorageKey('1', 2, 'API'), generationStorageKey('1', 2, 'UI'));
+});

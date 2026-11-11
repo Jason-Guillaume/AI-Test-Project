@@ -246,7 +246,14 @@ class GenerationService:
         batch = db.get(CaseGenerationBatch, draft.batch_id)
         if batch is None:
             raise not_found("生成批次不存在")
-        case = self._import_draft(db, batch, draft, actor)
+        try:
+            with db.begin_nested():
+                case = self._import_draft(db, batch, draft, actor)
+        except HTTPException as exc:
+            draft.import_error = str(exc.detail)[:500]
+            self._audit(db, batch, draft, "IMPORT_FAILED", actor, {"error": draft.import_error})
+            db.commit()
+            raise
         draft.status = "ACCEPTED"
         draft.test_case_id = case.id
         draft.import_error = None
@@ -410,6 +417,8 @@ class GenerationService:
     def regenerate(self, db: Session, batch_id: int, body: RegenerateRequest, *, actor: User, provider_factory=None) -> GenerationBatchResponse:
         """只重新生成失败模块。已成功与已审核草稿保持原样。"""
         batch = self._writable_batch(db, batch_id, actor)
+        if batch.task_run_id:
+            raise conflict("异步生成批次请使用 retry 接口")
         failed = [item["module"] for item in (batch.module_errors_json or []) if item.get("status") == "FAILED"]
         if not failed:
             raise bad_request("本批次没有失败模块需要重新生成")
@@ -649,7 +658,7 @@ class GenerationService:
             module_has_boundary=has_boundary,
         )
 
-    def _refresh_quality(self, db: Session, batch: CaseGenerationBatch) -> None:
+    def _refresh_quality(self, db: Session, batch: CaseGenerationBatch, *, preserve_reviewed: bool = False) -> None:
         """批次内全部草稿重算规则校验。生成与再生成落库前调用。"""
         drafts = db.query(CaseDraft).filter(CaseDraft.batch_id == batch.id).all()
         module_has_boundary: dict[str, bool] = {}
@@ -659,6 +668,8 @@ class GenerationService:
                 module_has_boundary[draft.module] = True
         titles = [draft.title for draft in drafts]
         for index, draft in enumerate(drafts):
+            if preserve_reviewed and draft.status != "PENDING":
+                continue
             # 按位置排除自身，同值标题仍然互相可见，才能发现批内重复。
             siblings = [title for offset, title in enumerate(titles) if offset != index]
             draft.quality_json = check_draft(
@@ -716,8 +727,12 @@ class GenerationService:
 
     def _batch_response(self, db: Session, batch: CaseGenerationBatch) -> GenerationBatchResponse:
         drafts = db.query(CaseDraft).filter(CaseDraft.batch_id == batch.id).order_by(CaseDraft.id.asc()).all()
+        from app.orchestration.tasks.models import TaskRun
+        parent = db.get(TaskRun, batch.task_run_id) if batch.task_run_id else None
         return GenerationBatchResponse(
             id=batch.id,
+            task_run_id=batch.task_run_id,
+            task_id=parent.task_id if parent else None,
             project_id=batch.project_id,
             direction=batch.direction,
             scope_node_id=batch.scope_node_id,

@@ -19,12 +19,15 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import Any, Iterator
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+# 异步生成任务只向追踪服务发送身份元数据，不上传完整敏感 Prompt。
+task_trace_metadata: ContextVar[dict | None] = ContextVar("task_trace_metadata", default=None)
 
 
 @lru_cache
@@ -60,7 +63,7 @@ def _build_client() -> Any | None:
         )
         return client
     except Exception as exc:  # noqa: BLE001 —— no-throw：客户端构建失败不阻塞启动
-        logger.warning("Langfuse 客户端初始化失败（埋点关闭）：%s", exc)
+        logger.warning("Langfuse 客户端初始化失败（埋点关闭）：%s", type(exc).__name__)
         return None
 
 
@@ -107,13 +110,14 @@ def llm_generation(
         cm = client.start_as_current_observation(
             name=name,
             as_type="generation",
-            input=input_messages,
+            input={"redacted": True} if task_trace_metadata.get() else input_messages,
+            metadata=task_trace_metadata.get() or {},
             model=model,
             model_parameters=model_parameters or {},
         )
         gen = cm.__enter__()
     except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
-        logger.warning("Langfuse span 创建失败（忽略）：%s", exc)
+        logger.warning("Langfuse span 创建失败（忽略）：%s", type(exc).__name__)
         yield None
         return
     try:
@@ -121,7 +125,7 @@ def llm_generation(
     except Exception as exc:
         # 主流程异常：先尽力标记 ERROR，再原样抛出，不改变调用方语义。
         try:
-            gen.update(level="ERROR", status_message=str(exc)[:500])
+            gen.update(level="ERROR", status_message=type(exc).__name__)
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -132,7 +136,7 @@ def llm_generation(
     try:
         cm.__exit__(None, None, None)
     except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
-        logger.warning("Langfuse span 结束失败（忽略）：%s", exc)
+        logger.warning("Langfuse span 结束失败（忽略）：%s", type(exc).__name__)
 
 
 def update_generation(
@@ -152,7 +156,8 @@ def update_generation(
     if gen is None:
         return
     try:
-        kwargs: dict[str, Any] = {"output": output}
+        # metadata-only 同时隐藏输入和输出，不能把完整敏感响应经回写重新上传。
+        kwargs: dict[str, Any] = {"output": {"redacted": True} if task_trace_metadata.get() else output}
         if usage:
             # OpenAI 字段名 → Langfuse usage_details 字段名。
             details = {
@@ -163,7 +168,7 @@ def update_generation(
             kwargs["usage_details"] = {k: v for k, v in details.items() if v is not None}
         gen.update(**kwargs)
     except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
-        logger.warning("Langfuse 回写失败（忽略）：%s", exc)
+        logger.warning("Langfuse 回写失败（忽略）：%s", type(exc).__name__)
 
 
 def flush_langfuse() -> None:
@@ -174,4 +179,4 @@ def flush_langfuse() -> None:
     try:
         client.flush()
     except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
-        logger.warning("Langfuse flush 失败（忽略）：%s", exc)
+        logger.warning("Langfuse flush 失败（忽略）：%s", type(exc).__name__)

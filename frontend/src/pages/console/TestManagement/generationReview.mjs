@@ -47,3 +47,13 @@ export function formatMetric(item) {
     : 'token 未上报';
   return `${item?.module ?? '模块'} · ${item?.status ?? '-'} · ${seconds} · ${usage}`;
 }
+
+/** 活跃状态继续轮询，未知状态不盲目轮询。 */
+export function isGenerationActive(status) {
+  return ['QUEUED', 'RUNNING', 'CANCEL_REQUESTED'].includes(status);
+}
+
+/** 只保存账号/项目/方向范围内的任务引用，避免刷新后展示其他范围的结果。 */
+export function generationStorageKey(userId, projectId, direction) {
+  return `generation-task:${userId}:${projectId}:${direction}`;
+}
