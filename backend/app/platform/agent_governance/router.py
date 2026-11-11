@@ -1,6 +1,8 @@
 """平台级 Agent、MCP、Skill 与内置工具治理接口（仅平台管理员）。"""
 
-from fastapi import APIRouter, Depends, File, Form, Response, UploadFile, status
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 from app.tools.builtin.case_generation.contracts import GenerationRequest
 from app.agents.services.case_generation_service import generate_case_suite
@@ -36,8 +38,21 @@ from app.core.models.identity import User
 from app.core.security.auth import require_platform_admin
 from app.core.database.session import get_db
 from app.platform.agent_governance.services import usage_query_service
+from app.orchestration.tasks.services.runtime_fact_service import runtime_overview
 
 router = APIRouter(prefix="/agent-governance", tags=["Agent 治理"])
+
+
+@router.get("/runtime/overview")
+def agent_runtime_overview(
+    project_id: int | None = Query(default=None, gt=0),
+    from_at: datetime | None = Query(default=None),
+    to_at: datetime | None = Query(default=None),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_platform_admin),
+):
+    """按明确统计口径汇总 Agent、任务、模型、工具与资源运行事实。"""
+    return runtime_overview(db, project_id=project_id, from_at=from_at, to_at=to_at)
 
 
 @router.get("/workflows")

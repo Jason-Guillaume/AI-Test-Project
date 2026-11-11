@@ -3,20 +3,23 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any
 from sqlalchemy.orm import Session
 from app.agents.models.session import AgentSession
 from app.agents.workflows.legacy.state import AgentState, make_initial_state
 from app.core.security.crypto import decrypt_secret
 from app.agents.services.message_store import list_messages
+from app.agents.services.context_manager import assemble_history
+from app.core.config import settings
 
 
-def load_state(db: Session, session: AgentSession) -> AgentState:
+def load_state(db: Session, session: AgentSession, *, query: str | None = None) -> AgentState:
     """从 agent_session + agent_message 重建 AgentState（刷新 / 续轮恢复，§15）。
 
     重建口径：current_stage 取会话行；各产物取**该类型最新一条** ASSISTANT 消息的
-    metadata_json（再生成会追加新消息，旧消息保留在历史中）。消息历史取最近 8 条
-    供 prompt 使用（脱敏，已在上游 sanitize）。
+    metadata_json（再生成会追加新消息，旧消息保留在历史中）。消息历史由 Context Manager
+    按会话权限、查询相关性和预算装配（脱敏，已在上游 sanitize）。
     """
     msgs = list_messages(db, session.id)
     state = make_initial_state(session.project_id, session.user_id, session.id)
@@ -121,9 +124,40 @@ def load_state(db: Session, session: AgentSession) -> AgentState:
         state["notification_record_id"] = notif_meta.get("record_id")
         state["notification_brief"] = notif_meta.get("notification")
 
-    # prompt 消息历史：只保留 role + content（已脱敏），最近 8 条控制 token。
-    state["messages"] = [
-        {"role": m.role, "content": m.content}
-        for m in msgs if m.content
-    ][-8:]
+    # Prompt 只接收本 AgentSession 被 Context Manager 选中的脱敏历史消息。
+    context_started = time.monotonic()
+    state["messages"], state["context_manifest"] = assemble_history(
+        session=session,
+        messages=msgs,
+        query=query,
+        token_budget=settings.AGENT_CONTEXT_TOKEN_BUDGET,
+        max_messages=settings.AGENT_CONTEXT_MAX_HISTORY_MESSAGES,
+    )
+    from app.orchestration.tasks.models import Task, TaskAgentInstance, TaskRun
+    from app.orchestration.tasks.services.runtime_fact_service import record_runtime_event
+    run = db.get(TaskRun, session.task_run_id) if session.task_run_id else None
+    task = db.get(Task, run.task_id) if run else None
+    instance = db.get(TaskAgentInstance, session.task_agent_instance_id) if session.task_agent_instance_id else None
+    manifest = state["context_manifest"]
+    record_runtime_event(
+        project_id=session.project_id,
+        task_id=task.id if task else None,
+        task_run_id=run.id if run else None,
+        execution_root_run_id=(run.execution_root_run_id or run.id) if run else None,
+        agent_session_id=session.id,
+        agent_instance_id=instance.id if instance else None,
+        agent_definition_id=(instance.config_snapshot or {}).get("id") if instance else None,
+        agent_definition_revision_id=instance.agent_definition_revision_id if instance else None,
+        trace_id=run.trace_id if run else None,
+        event_type="CONTEXT_ASSEMBLY", event_name=manifest["version"], status="SUCCEEDED",
+        duration_ms=int((time.monotonic() - context_started) * 1000),
+        event_metadata={
+            "query_sha256": manifest["query_sha256"],
+            "context_token_budget": manifest["token_budget"],
+            "estimated_tokens": manifest["estimated_tokens"],
+            "history_count": len(state["messages"]),
+            "omitted_message_count": manifest["omitted_message_count"],
+            "message_ids": [source["id"] for source in manifest["source_refs"]],
+        },
+    )
     return state

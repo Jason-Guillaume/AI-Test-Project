@@ -4,9 +4,13 @@
 写入、命令和事务提交继续由原业务服务负责。
 """
 
+import base64
+import binascii
+import json
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, literal, or_
 from sqlalchemy.orm import Session
 
 from app.core.models.identity import User
@@ -20,10 +24,15 @@ from app.orchestration.tasks.models import (
     TaskRun,
     TaskToolInvocation,
     TaskWorkItem,
+    TaskAttempt,
+    RuntimeCallFact,
+    RuntimeEventFact,
 )
-from app.orchestration.tasks.schemas import TaskWorkItemResponse
+from app.orchestration.tasks.schemas import TaskTraceEventResponse, TaskTracePageResponse, TaskWorkItemResponse
 from app.orchestration.tasks.services.access import TaskAccessService
 from app.orchestration.tasks.services.serializers import TaskSerializers
+from app.core.http.errors import bad_request
+from app.features.test_management.models.case_generation import CaseGenerationBatch
 
 
 RETRYABLE_RUN_STATUSES = frozenset({"FAILED", "RECONCILIATION_REQUIRED", "SUCCEEDED_WITH_ISSUES"})
@@ -180,6 +189,166 @@ class TaskQueryService:
             .filter(TaskEvent.task_run_id == run.id, TaskEvent.event_seq > after_seq)
             .order_by(TaskEvent.event_seq.asc()).limit(min(max(limit, 1), 200)).all()
         )
+
+    @staticmethod
+    def trace_timeline(
+        db: Session, run_id: int, user: User, *, cursor: str | None = None, limit: int = 100,
+    ) -> dict[str, Any]:
+        """按任务权限聚合 Langfuse 关联索引与运行事实，并以 keyset 游标返回时间线。"""
+        run, task = TaskAccessService.get_run_for_read(db, run_id, user)
+        root_id = run.execution_root_run_id or run.id
+        related_runs = db.query(TaskRun).filter(
+            TaskRun.task_id == task.id,
+            or_(TaskRun.id == root_id, TaskRun.execution_root_run_id == root_id),
+        ).all()
+        run_ids = [related.id for related in related_runs]
+        if run.id not in run_ids:
+            run_ids.append(run.id)
+        traces_by_run = {related.id: related.trace_id for related in related_runs}
+        traces_by_run.setdefault(run.id, run.trace_id)
+        generation_batch_id = db.query(CaseGenerationBatch.id).filter(
+            CaseGenerationBatch.project_id == task.project_id,
+            CaseGenerationBatch.task_run_id == root_id,
+        ).scalar()
+
+        cursor_key: tuple[datetime, str, int] | None = None
+        if cursor:
+            try:
+                decoded = json.loads(base64.urlsafe_b64decode(cursor.encode() + b"=" * (-len(cursor) % 4)))
+                cursor_at = datetime.fromisoformat(decoded["at"])
+                if cursor_at.tzinfo is not None:
+                    cursor_at = cursor_at.astimezone().replace(tzinfo=None)
+                cursor_key = (cursor_at, str(decoded["kind"]), int(decoded["id"]))
+            except (ValueError, TypeError, KeyError, binascii.Error, json.JSONDecodeError):
+                raise bad_request("Trace 游标无效")
+
+        def keyset_filter(time_col: Any, kind_col: Any, id_col: Any) -> Any:
+            if cursor_key is None:
+                return None
+            at, kind, source_id = cursor_key
+            return or_(
+                time_col < at,
+                and_(time_col == at, kind_col < kind),
+                and_(time_col == at, kind_col == kind, id_col < source_id),
+            )
+
+        def apply_filter(query: Any, predicate: Any) -> Any:
+            return query.filter(predicate) if predicate is not None else query
+
+        root_filter = or_(
+            RuntimeCallFact.execution_root_run_id == root_id,
+            RuntimeCallFact.task_run_id.in_(run_ids),
+        )
+        call_time = func.coalesce(RuntimeCallFact.started_at, RuntimeCallFact.finished_at)
+        calls = apply_filter(
+            db.query(RuntimeCallFact).filter(RuntimeCallFact.task_id == task.id, root_filter),
+            keyset_filter(call_time, literal("MODEL_CALL"), RuntimeCallFact.id),
+        ).order_by(call_time.desc(), RuntimeCallFact.id.desc()).limit(limit + 1).all()
+
+        event_root_filter = or_(
+            RuntimeEventFact.execution_root_run_id == root_id,
+            RuntimeEventFact.task_run_id.in_(run_ids),
+        )
+        events = apply_filter(
+            db.query(RuntimeEventFact).filter(RuntimeEventFact.task_id == task.id, event_root_filter),
+            keyset_filter(RuntimeEventFact.occurred_at, RuntimeEventFact.event_type, RuntimeEventFact.id),
+        ).order_by(
+            RuntimeEventFact.occurred_at.desc(), RuntimeEventFact.event_type.desc(), RuntimeEventFact.id.desc(),
+        ).limit(limit + 1).all()
+
+        attempt_time = func.coalesce(TaskAttempt.finished_at, TaskAttempt.heartbeat_at, TaskAttempt.started_at)
+        attempts_query = db.query(TaskAttempt, TaskWorkItem).join(
+            TaskWorkItem, TaskWorkItem.id == TaskAttempt.work_item_id,
+        ).filter(TaskWorkItem.task_run_id.in_(run_ids))
+        attempts_query = apply_filter(
+            attempts_query,
+            keyset_filter(attempt_time, literal("AGENT_ATTEMPT"), TaskAttempt.id),
+        )
+        attempts = attempts_query.order_by(attempt_time.desc(), TaskAttempt.id.desc()).limit(limit + 1).all()
+
+        agent_ids = {row.agent_instance_id for row in calls if row.agent_instance_id}
+        agent_ids.update(row.agent_instance_id for row in events if row.agent_instance_id)
+        agent_ids.update(work.agent_instance_id for _, work in attempts if work.agent_instance_id)
+        agents = {
+            agent.id: agent for agent in db.query(TaskAgentInstance).filter(TaskAgentInstance.id.in_(agent_ids)).all()
+        } if agent_ids else {}
+
+        items: list[dict[str, Any]] = []
+        for row in calls:
+            agent = agents.get(row.agent_instance_id)
+            items.append({
+                "id": f"call:{row.id}", "occurred_at": row.started_at or row.finished_at,
+                "event_type": "MODEL_CALL", "event_name": row.model_name, "status": row.status,
+                "task_run_id": row.task_run_id, "work_item_id": row.work_item_id, "attempt_id": row.attempt_id,
+                "agent_session_id": row.agent_session_id, "agent_instance_id": row.agent_instance_id,
+                "parent_agent_instance_id": agent.parent_agent_instance_id if agent else None,
+                "agent_definition_id": row.agent_definition_id,
+                "agent_name": agent.display_name if agent else None, "agent_role": agent.role if agent else None,
+                "agent_definition_revision_id": row.agent_definition_revision_id,
+                "trace_id": row.trace_id, "span_id": row.span_id, "duration_ms": row.duration_ms,
+                "error_code": row.error_code, "model_config_id": row.model_config_id,
+                "model_name": row.model_name, "model_revision": row.model_revision,
+                "input_tokens": row.input_tokens, "output_tokens": row.output_tokens,
+                "total_tokens": row.total_tokens,
+                "cost_amount": str(row.cost_amount) if row.cost_amount is not None else None,
+                "cost_currency": row.cost_currency, "metadata": {},
+                "_sort_kind": "MODEL_CALL", "_sort_id": row.id,
+            })
+        for row in events:
+            agent = agents.get(row.agent_instance_id)
+            items.append({
+                "id": f"event:{row.id}", "occurred_at": row.occurred_at,
+                "event_type": row.event_type, "event_name": row.event_name, "status": row.status,
+                "task_run_id": row.task_run_id, "work_item_id": row.work_item_id, "attempt_id": row.attempt_id,
+                "agent_session_id": row.agent_session_id, "agent_instance_id": row.agent_instance_id,
+                "parent_agent_instance_id": agent.parent_agent_instance_id if agent else None,
+                "agent_definition_id": row.agent_definition_id,
+                "agent_name": agent.display_name if agent else None, "agent_role": agent.role if agent else None,
+                "agent_definition_revision_id": row.agent_definition_revision_id,
+                "trace_id": row.trace_id, "span_id": row.span_id, "duration_ms": row.duration_ms,
+                "error_code": row.error_code, "metadata": row.event_metadata or {},
+                "_sort_kind": row.event_type, "_sort_id": row.id,
+            })
+        for attempt, work in attempts:
+            agent = agents.get(work.agent_instance_id)
+            checkpoint = attempt.checkpoint_json if isinstance(attempt.checkpoint_json, dict) else {}
+            items.append({
+                "id": f"attempt:{attempt.id}", "occurred_at": attempt.finished_at or attempt.heartbeat_at or attempt.started_at,
+                "event_type": "AGENT_ATTEMPT", "event_name": work.kind, "status": attempt.status,
+                "task_run_id": work.task_run_id, "work_item_id": work.id, "attempt_id": attempt.id,
+                "agent_instance_id": work.agent_instance_id,
+                "parent_agent_instance_id": agent.parent_agent_instance_id if agent else None,
+                "agent_definition_id": agent.config_snapshot.get("agent_definition_id") if agent and isinstance(agent.config_snapshot, dict) else None,
+                "agent_name": agent.display_name if agent else None, "agent_role": agent.role if agent else None,
+                "agent_definition_revision_id": agent.agent_definition_revision_id if agent else None,
+                "trace_id": traces_by_run.get(work.task_run_id),
+                "span_id": checkpoint.get("agent_span_id"), "duration_ms": max(0, int((
+                    (attempt.finished_at or attempt.heartbeat_at or attempt.started_at) - attempt.started_at
+                ).total_seconds() * 1000)) if attempt.started_at else 0,
+                "error_code": attempt.error_code, "metadata": {"attempt_number": attempt.attempt_number},
+                "_sort_kind": "AGENT_ATTEMPT", "_sort_id": attempt.id,
+            })
+
+        items.sort(key=lambda item: (item["occurred_at"], item["_sort_kind"], item["_sort_id"]), reverse=True)
+        has_more = len(items) > limit
+        page_items = items[:limit]
+        next_cursor = None
+        if has_more and page_items:
+            last = page_items[-1]
+            payload = json.dumps({
+                "at": last["occurred_at"].isoformat(), "kind": last["_sort_kind"], "id": last["_sort_id"],
+            }, separators=(",", ":")).encode()
+            next_cursor = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+        serialized = []
+        for item in page_items:
+            item.pop("_sort_kind", None)
+            item.pop("_sort_id", None)
+            serialized.append(TaskTraceEventResponse.model_validate(item).model_dump())
+        return TaskTracePageResponse(
+            task_id=task.id, run_id=run.id, execution_root_run_id=root_id,
+            generation_batch_id=generation_batch_id,
+            trace_id=run.trace_id, items=serialized, next_cursor=next_cursor,
+        ).model_dump()
 
     @staticmethod
     def latest_runs(db: Session, task_ids: list[int]) -> dict[int, TaskRun]:

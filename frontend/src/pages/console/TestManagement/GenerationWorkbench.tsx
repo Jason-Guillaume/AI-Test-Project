@@ -387,7 +387,11 @@ export function BatchDetail({ batch: initialBatch, onChanged }: { batch: Generat
           {taskQuery.data?.trace_id ? (
             <Typography.Paragraph type="secondary">
               Trace <Typography.Text copyable code>{taskQuery.data.trace_id}</Typography.Text>
-              {taskQuery.data.observability_status === 'DISABLED' ? ' · 追踪上报未启用' : ' · 追踪投影待核验'}
+              {taskQuery.data.observability_status === 'DISABLED'
+                ? ' · 追踪上报未启用'
+                : taskQuery.data.observability_status === 'UNVERIFIED'
+                  ? ' · Trace 已关联，Langfuse 投影状态未核验'
+                  : ' · 追踪投影状态未知'}
             </Typography.Paragraph>
           ) : null}
           <Progress percent={taskQuery.data?.total ? Math.round(100 * taskQuery.data.completed / taskQuery.data.total) : 0} />

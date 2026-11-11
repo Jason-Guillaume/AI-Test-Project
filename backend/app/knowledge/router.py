@@ -23,10 +23,13 @@ class BindingInput(BaseModel):
     revision: int = 0
     enabled: bool = True
     required: bool = False
+    access_mode: str | None = Field(default=None, pattern='^(PROJECT_SHARED|AGENT_SCOPED)$')
     scopes: list[Scope] = Field(default_factory=list, max_length=100)
 
 class SearchInput(BaseModel):
     query: str = Field(max_length=4000)
+    top_k: int = Field(default=8, ge=1, le=50)
+    minimum_score: float = Field(default=0.0, ge=0.0, le=100.0)
 
 class Command(BaseModel):
     action: str
@@ -90,7 +93,8 @@ def command(project_id: int, version_id: int, body: Command, background: Backgro
 def binding(project_id: int, agent_id: int, db: Session = Depends(get_db), actor=Depends(get_current_user)):
     service.access(db, project_id, actor)
     row = db.query(KnowledgeBinding).filter_by(project_id=project_id, agent_id=agent_id).first()
-    return dump(row) if row else {'revision': 0, 'enabled': True, 'required': False, 'scopes': []}
+    return dump(row) if row else {'revision': 0, 'enabled': True, 'required': False,
+                                  'access_mode': 'PROJECT_SHARED', 'scopes': []}
 
 @router.put('/agents/{agent_id}/knowledge-binding')
 def put_binding(project_id: int, agent_id: int, body: BindingInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
@@ -98,26 +102,21 @@ def put_binding(project_id: int, agent_id: int, body: BindingInput, db: Session 
 
 @router.post('/knowledge-search')
 def project_search(project_id: int, body: SearchInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
-    # 检索范围是整个项目的已启用知识，不接收 Agent。
+    # 项目检索管理入口可查看项目内全部启用知识；运行时应使用 Agent 级检索入口。
     snapshot = service.freeze(db, project_id, 0, actor)
-    return {'items': service.search(db, snapshot, actor, body.query)}
+    return {'items': service.search(db, snapshot, actor, body.query, limit=body.top_k,
+                                    minimum_score=body.minimum_score)}
 
 @router.post('/agents/{agent_id}/knowledge-search')
 def search(project_id: int, agent_id: int, body: SearchInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
-    # 兼容旧调用：agent_id 不缩小范围，实际仍返回该项目的知识。
+    # Agent 检索按显式知识绑定过滤；尚未配置范围的旧 Agent 维持项目默认范围。
     snapshot = service.freeze(db, project_id, agent_id, actor)
-    return {'snapshot': snapshot, 'items': service.search(db, snapshot, actor, body.query)}
+    return {'snapshot': snapshot, 'items': service.search(db, snapshot, actor, body.query,
+        limit=body.top_k, minimum_score=body.minimum_score)}
 
 @router.get('/agents/{agent_id}/knowledge-sources/{chunk_id}')
 def source(project_id: int, agent_id: int, chunk_id: int, db: Session = Depends(get_db), actor=Depends(get_current_user)):
-    from app.knowledge.models import KnowledgeChunk
-    snapshot = service.freeze(db, project_id, agent_id, actor)
-    chunk = db.get(KnowledgeChunk, chunk_id)
-    version = db.get(KnowledgeVersion, chunk.version_id) if chunk else None
-    allowed_documents = {db.get(KnowledgeVersion, ident).document_id for ident in snapshot['version_ids']}
-    if version is None or version.status != 'READY' or version.document_id not in allowed_documents:
-        raise not_found('来源不在当前 Agent 知识范围')
-    return dump(chunk)
+    return dump(service.source(db, project_id, agent_id, actor, chunk_id))
 
 @router.post('/knowledge-bases/{base_id}/commands')
 def base_command(project_id: int, base_id: int, body: Command, db: Session = Depends(get_db), actor=Depends(get_current_user)):

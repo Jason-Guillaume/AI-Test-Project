@@ -545,6 +545,10 @@ def test_production_provider_falls_back_after_primary_http_error(db, monkeypatch
     assert provider.last_model_config_id == backup.id
     assert [event["status"] for event in events] == ["FAILED", "SUCCEEDED"]
     assert events[0]["error_code"] == "LLM_PROVIDER_ERROR"
+    assert events[0]["request_count"] == events[1]["request_count"] == 1
+    assert events[1]["usage"] == {"prompt_tokens": 8, "completion_tokens": 5}
+    assert events[1]["duration_ms"] >= 0
+    assert events[1]["call_id"] and events[1]["model_revision"]
 
 
 def test_production_provider_exhaustion_is_retryable_and_redacts_response(db, monkeypatch):

@@ -198,9 +198,10 @@ def task_status(db: Session, batch_id: int, actor: User) -> dict:
     events = db.query(TaskEvent).filter(TaskEvent.task_run_id.in_(run_ids)).order_by(TaskEvent.created_at, TaskEvent.id).all()
     return {"task_id": parent.task_id, "task_run_id": parent.id, "batch_id": batch.id, "status": batch.status,
         "execution_root_run_id": parent.execution_root_run_id or parent.id, "trace_id": parent.trace_id,
-        "observability_status": 'DISABLED' if not settings.LANGFUSE_ENABLED else 'PENDING',
+        # 尚无投影回执表时不把“配置启用”误报为“已经投影”。
+        "observability_status": 'DISABLED' if not settings.LANGFUSE_ENABLED else 'UNVERIFIED',
         "deadline_at": parent.deadline_at,
-        "run_status": db.get(Task, parent.task_id).status, "trace_id": parent.trace_id, "execution_root_run_id": parent.execution_root_run_id,
+        "run_status": db.get(Task, parent.task_id).status,
         "completed": sum(work.status in TERMINAL for work in works), "total": len(works),
         "modules": [{"work_item_id": work.id, "task_run_id": work.task_run_id, "module": work.work_key,
             "status": work.status, "started_at": work.claimed_at, "finished_at": work.finished_at,

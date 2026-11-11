@@ -123,6 +123,7 @@ def test_submit_idempotent_and_review_import(setup):
     status = detail(setup, batch)
     assert status['status'] == 'COMPLETED' and status['run_status'] == 'SUCCEEDED'
     assert status['completed'] == status['total'] == 3
+    assert status['observability_status'] in {'DISABLED', 'UNVERIFIED'}
     assert status['modules'][0]['model_revision']
     assert len(status['trace_id']) == 32
     assert status['execution_root_run_id'] == batch['task_run_id']

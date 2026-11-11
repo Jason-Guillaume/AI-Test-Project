@@ -97,6 +97,7 @@ class Settings(BaseSettings):
 
     # 生成策略可由部署配置覆盖；现有数据库全局调度额度优先。
     TASK_WORKER_CONCURRENCY: int = Field(default=2, ge=1, le=16)
+    TASK_SUBAGENT_MAX_CONCURRENCY: int = Field(default=3, ge=1, le=16)
     CASE_GENERATION_MODULE_CONCURRENCY: int = Field(default=2, ge=1, le=5)
     CASE_GENERATION_PROJECT_CONCURRENCY: int = Field(default=2, ge=1, le=20)
     CASE_GENERATION_USER_CONCURRENCY: int = Field(default=2, ge=1, le=20)
@@ -106,6 +107,10 @@ class Settings(BaseSettings):
     CASE_GENERATION_MODULE_TIMEOUT_SECONDS: int = Field(default=120, ge=1, le=600)
     CASE_GENERATION_TASK_TIMEOUT_SECONDS: int = Field(default=1800, ge=1, le=86400)
     CASE_GENERATION_TOKEN_BUDGET: int = Field(default=65536, ge=1024, le=1000000)
+
+    # 交互式 Agent 仅从自身会话装配有预算的历史消息。
+    AGENT_CONTEXT_TOKEN_BUDGET: int = Field(default=4096, ge=256, le=1000000)
+    AGENT_CONTEXT_MAX_HISTORY_MESSAGES: int = Field(default=8, ge=1, le=100)
 
     # 主库连接池参数。
     DB_POOL_SIZE: int = 10

@@ -1,19 +1,32 @@
-<!-- 本文给出当前工作区的运行底座审计、统一架构、接口与分期验收方案；与现有 P6 设计协作，仅为待确认方案，不代表功能已交付。 -->
+<!-- 本文记录 Super Agent 运行底座审计、已确认架构与分阶段实施状态；未标记完成的能力仍属于后续研发。 -->
 # Super Agent 统一运行底座：审计与分阶段研发方案
 
-审计日期：2026-11-11（Asia/Shanghai）。状态：**待方案确认；本轮仅核对并更新架构设计文档，不实施业务代码或数据库变更。**
+审计日期：2026-11-11（Asia/Shanghai）。状态：**方案已确认；当前开发分支 `codex/super-agent-runtime-unification` 正在分批实施。**
 
 范围：P6 异步调度、P8 全链路可观测、P9 RAG 与上下文、P10 运行质量与版本治理。不建设 P7 标准数据集、离线评测平台或 LLM-as-a-Judge；现有业务审核、结构校验及 ASR 功能保持原边界。
 
+### 实施进度（2026-11-11）
+
+- 开发基线为 `origin/develop` 的 `3a3718e`；当前分支 `codex/super-agent-runtime-unification` 承载本轮实现，`.idea/` 工作区文件不纳入变更。
+- 已交付首批增量：通用 TaskRun 自关联执行根；Worker Attempt Trace 身份、span ID 检查点和 P6 子 span 关联；Tool/Skill/RAG 运行 span；任务状态响应去重并将未核验状态标为 `UNVERIFIED`。
+- RAG 首步已有 BM25、Top-K/最低分、chunk 与文档版本来源字段；Alembic 0052 为 KnowledgeBinding 增加 `PROJECT_SHARED | AGENT_SCOPED`，历史默认仍共享，严格 Agent 范围需显式 opt-in。0054 起运行事件事实记录检索哈希、chunk/version 来源和延迟；Embedding/Hybrid、Reranker、索引任务与 pgvector 选型压测仍未交付。
+- Context Manager 已按 AgentSession 隔离历史，优先保留最新消息、按相关性召回历史并在 Token 预算内截断，记录来源/权限清单；长期记忆、摘要持久化、冲突治理、RAG/消息统一预算尚未交付。
+- Alembic 0053-0056 已建立 `runtime_call_fact` 与 `runtime_event_fact`，并为 `TaskAgentInstance` 增加成功输出检查点；记录模型调用、工具、Skill、BM25 检索和上下文装配的关联 ID、AgentSession/Revision、状态、时延、Token 与来源引用，不复制 Langfuse 正文。运行概览 API 与“Agent 运行质量”管理页已接入；未知用量/成本保留为空值。
+- 任务详情已加入权限校验后的 Trace 时间线 API/UI，聚合 Attempt、模型、工具、Skill、RAG 与上下文索引，支持游标翻页并关联生成批次；Langfuse 继续持有 Trace 正文，暂无投影回执/收敛状态。
+- 质量概览已输出口径版本、各数据源水位和指标定义；任务指标只统计执行根，取消纳入终态比例，核对中/排队/已替代状态单列。子 Agent 失败率按实例终态计算，尝试事件与 TaskWorkItem 统计分开。
+- 本轮定向校验通过：后端隔离单测 22 passed；编译与应用导入通过（33 routes）；前端 TypeScript 与指定 ESLint 通过；0055→0056 及 0056→0055 的 Alembic 离线 SQL 生成通过。7 项依赖 PostgreSQL fixture 或本环境缺少 `pypdf` 的测试未运行。
+- 通用 Planner 的叶子 SubAgent 已改为 LangGraph 有界并行 fan-out/fan-in；每个节点使用独立 SQLAlchemy Session、在模型请求前结束只读事务、独立记录 Agent Revision/模型调用事实、Agent Span 和终态事件，单节点失败不丢弃其他节点结果。成功结果现在按任务 Agent 实例持久化，并用输入指纹校验后供 Worker 恢复复用；最大并发由 `TASK_SUBAGENT_MAX_CONCURRENCY` 控制。子 Agent 仍未拆为独立 TaskWorkItem，因此不支持独立租约与重试；模型已返回但检查点提交前 Worker 崩溃仍可能重复请求，完整任务级原子预算也未完成。
+- 仍待实施：Embedding/Hybrid 与 Reranker，跨 Provider 原子预算与价格版本，跨 Agent 的人工反馈接入，版本准入/回滚指标，通用 Supervisor/SubAgent 独立工作项调度。质量页首版已比较等长时间窗口，告警样本门槛较低，后续需基于实测调优。依赖测试 PostgreSQL 的 P6/迁移集成测试尚未运行。
+
 ## 1. 当前架构审计报告
 
-### 1.1 基线、证据等级与工作区
+### 1.1 初始审计快照、证据等级与工作区
 
-- 分支 `feature/case-generation-closed-loop`，HEAD `aa46bf1`（用例生成审核闭环）。本次读取到 31 个已跟踪修改文件、17 个未跟踪顶层路径；以**当前工作区源码（含未提交 P6）**为依据，不把历史文档或未提交草稿当作已合并能力。
-- 未提交范围包括生成服务/API/Schema/模型、任务 Worker/租约/命令与收尾、Langfuse tracing、两条 Alembic 草稿、P6 专项测试、前端工作台及合同、Playwright 配置/E2E、验收脚本，以及 `.idea/`。这些既有改动均予保留；本次没有修改业务代码。
-- 已跟踪迁移脚本截至 `0049`；当前工作区另有 `0050_case_generation_tasks.py` 与 `0051_runtime_execution_identity.py` 草稿，因此**工作区 Alembic head 为 0051，尚未提交**。0051 草稿补充执行根、Trace、Run/Attempt deadline、Agent Revision/父实例，并仅对可证明的单一生成批次回填根关系。
+- 以下分支、文件数和迁移基线是本方案首次审计时记录的快照；当前实现状态以本文顶部“实施进度”和 Git 工作区为准。初始审计分支为 `feature/case-generation-closed-loop`、HEAD `aa46bf1`。
+- 首次审计时的未提交范围包括生成服务/API/Schema/模型、任务 Worker/租约/命令与收尾、Langfuse tracing、两条 Alembic 草稿、P6 专项测试、前端工作台及合同、Playwright 配置/E2E、验收脚本，以及 `.idea/`；后续实现不覆盖该快照证据。
+- 首次审计时已跟踪迁移脚本截至 `0049`，工作区含 `0050`、`0051` 草稿；当前实现追加 `0052` 至 `0056`，以 Alembic 当前 head 为准。0051 补充执行根、Trace、Run/Attempt deadline、Agent Revision/父实例，并仅对可证明的单一生成批次回填根关系；0056 增加可空子 Agent 成功结果检查点。
 - `docs/p6/verification-snapshot.json` 与 `docs/p6/acceptance-report.md` 记录了 2026-11-10 冻结版本在隔离库上的 P6 验收：后端 1149 passed、前端 41 passed、TypeScript/构建通过、Playwright 15 passed。当前复核未重跑测试；选取的 0051、生成服务、租约、tracing 文件哈希与该快照记录一致。该记录不证明生产数据库或外部服务状态。
-- 本次为源码、迁移草稿和文档证据的静态复核；未连接运行数据库，无法确认部署 schema、pgvector 扩展、Langfuse 服务或生产 Worker 配置。
+- 初始审计为源码、迁移草稿和文档证据的静态复核；未连接运行数据库，无法确认部署 schema、pgvector 扩展、Langfuse 服务或生产 Worker 配置。
 
 ### 1.2 现有能力及复用结论
 
@@ -24,18 +37,18 @@
 | 任务唯一事实源 | `backend/app/orchestration/tasks/models/task.py`：Task、TaskRun、TaskWorkItem、Dependency、Attempt、Command、Event、ResourceRef、ToolInvocation、SchedulerControl；工作区草稿增加 `execution_root_run_id`、`trace_id`、deadline | 原表与状态机继续使用，不新增任务队列；提交 0051 前仍属工作区草稿 |
 | 领取与租约 | `runtime/lease_service.py::claim_work/heartbeat_loop/recover_expired`：全局控制行锁、SKIP LOCKED、Run 级租约、Attempt 代次、独立心跳 | 保留 Run 单执行者语义，不能直接让同一 Run 的工作项并行覆盖租约 |
 | P6 异步生成 | `features/test_management/services/generation_tasks.py::submit`：202 提交，一个模块一个 Run/WorkItem，Review Run 作协调根并以依赖等待；每个 Run 建 TaskAgentInstance/AgentSession，记录 Agent Revision 和父子实例 | 已是专项持久化 Fan-out/Fan-in；仍未把通用 SubAgent 图编排迁入 TaskWorkItem |
-| 并发与资源 | `runtime/worker.py::_loop`：有界线程池，槽位受连接池限制；领取时全局与模块并发检查；提交时项目/用户活跃任务额度；生成 Provider 按 `call_id` 在 Attempt 检查点预留/结算 usage，未知用量保留预算 | 复用现有闸门与 P6 专项调用账本；尚无跨 Provider/RAG 的标准化调用/成本事实表，公平老化策略仍需设计 |
+| 并发与资源 | `runtime/worker.py::_loop`：有界线程池，槽位受连接池限制；领取时全局与模块并发检查；提交时项目/用户活跃任务额度；P6 按 `call_id` 在 Attempt 检查点预留/结算，0053 新增 RuntimeCallFact 供通用模型调用沉淀数值事实 | 复用现有闸门；通用原子预算、RAG 调用计量与定价事实仍未完成，成本未知保持 null，公平老化策略仍需设计 |
 | 恢复和幂等 | 生成 `finish` 与通用 `has_live_claim` 检查 owner、代次、状态、未过期租约及 deadline；0050 草稿 `(work_item_id,result_ordinal)` 唯一；请求摘要+幂等键 | 保留并扩展调用外的副作用回执；不复制 TaskRun/队列 |
 | 控制和重试 | `generation_tasks.py::control/recover_generation`；通用 Command/Completion 服务；未知 API 回执进入 RECONCILIATION_REQUIRED | 复用安全边界；不同模式的恢复及终态语义需契约化 |
-| LangGraph | `agents/runtime/subagents.py::run_subagent_graph` 将子节点依次串联，`compile().invoke()` 无持久化 checkpointer；`case_generation_service.py` 保留同步图 | 复用节点/业务逻辑；图负责推理与局部编排，DB 负责跨进程调度和恢复 |
-| Trace | P6 为批次创建共享 `trace_id`，写入各 Run/事件；`generation_trace` 显式传递 Langfuse `trace_context` 并创建工作项 span；任务 Trace 模式下 LLM 输入/输出均脱敏 | 已具备批次级关联雏形；仍缺统一根/父子 span、通用 Agent/Tool/Skill/RAG spans、提交事件投影和可收敛 Trace 状态 |
+| LangGraph | `agents/runtime/subagents.py::run_subagent_graph` 使用有界并行节点与 fan-in reducer；没有持久化 checkpointer；`case_generation_service.py` 保留同步图 | 复用节点/业务逻辑；局部图负责并行推理，DB 负责跨进程调度和恢复；独立子 Agent WorkItem/检查点仍需补齐 |
+| Trace | P6 为批次创建共享 `trace_id`，写入各 Run/事件；`generation_trace` 显式传递 Langfuse `trace_context` 并创建工作项 span；任务 Trace 模式下 LLM 输入/输出均脱敏 | 现有 Run 根、Attempt、Agent实例、会话、模型及运行事件形成可查时间线，并从 Run 根关联生成批次；仍缺投影回执与可收敛 Trace 状态 |
 | Agent 版本 | `agents/models/definition.py`：Definition/Revision；`definition_service.py::restore_agent_version` 已有恢复入口 | 不再建设 Agent 版本表或第二套回滚服务 |
 | Skill/MCP/Tool | `skills/models/definition.py`：Skill Revision、UsageEvent；`skill_service.py::restore_skill_version`；`agents/assembly` 和 `tools/`、`mcp/` 管理受控能力 | 复用授权/快照；区分 Skill 装载和真实可执行工具调用 |
 | 模型治理 | `platform/model_configuration/models.py` 已有 Resource/Revision/Profile/Grant/TaskSlot/LegacyBinding；运行 Provider 仍加载旧 ModelConfiguration | 复用模型中心，补运行路由桥接；旧配置 digest 不等于 ModelRevision 主键或供应商模型版本 |
 | 知识库 | `knowledge/models.py/service.py/worker.py`：库、文档、版本、原文件、解析、切片、来源、持久化 QUEUED 解析任务 | 复用文档与解析生命周期，不再建文档管理 |
 | 知识检索 | `service.py::search` 全量加载选定版本 chunk，按词频排序取 8；未实现 BM25/向量/重排/阈值；零命中仍可能返回片段 | 需要检索升级，当前分数不能称为相关性概率 |
 | 向量基础设施 | 仓库后端依赖、运行代码和部署文件中未检出 pgvector 或独立向量检索服务引用；未检查部署数据库扩展清单 | 按“当前没有可复用向量后端”规划；先测 PostgreSQL pgvector 与 BM25，不新增数据库服务，部署能力需上线前确认 |
-| 知识权限 | `freeze` 明确忽略 KnowledgeBinding，冻结项目全部启用版本；已有测试 `test_binding_does_not_limit_project_knowledge`、`test_agents_share_project_knowledge` | 项目隔离已有；Agent 范围治理尚未生效，必须显式迁移，不能悄然恢复旧绑定语义 |
+| 知识权限 | 审计时 `freeze` 忽略 KnowledgeBinding；本轮 0052 增加默认 `PROJECT_SHARED` 与显式 `AGENT_SCOPED`，范围仅在 opt-in 后生效 | 旧 Agent 行为保留；严格范围逐 Agent 启用，旧客户端未传 access_mode 时保留既有策略 |
 | 会话与上下文 | AgentSession/AgentMessage、TaskMessage 已持久化；`message_store.py::list_messages` 读取全部会话消息；`session_state.py` 重建状态 | 复用原存储，增加选择/预算/摘要/来源引用层 |
 | 当前上下文隔离 | Planner 已按子 Agent 检索知识并传入任务数据；未看到统一 Context Manager、Token 预算或长期记忆治理 | 保留现有隔离路径，不把所有历史统一广播 |
 | 前端 | React18/TS/Ant Design/React Query；Tasks 详情已有 metrics 入口；AgentGovernance、Knowledge、ModelCenter、生成工作台均存在 | 扩展现有页面和领域 API，不建设第二个管理台 |
@@ -50,7 +63,7 @@
 | 仍需验收 | P6 有 Run/Attempt deadline，领取/心跳/调用前限制剩余 timeout，收尾 fencing 拒绝过期写入 | 网络库取消不保证远端立即停止；deadline 到期后的尝试应由恢复器收敛，需对慢请求和迟到回执做故障注入 |
 | 部分已收口 | 通用 `complete_work`、`fail_work` 与生成 `finish` 共用有效 Claim 校验，覆盖 owner/代次/状态/租约/deadline；通用恢复有尝试上限 | 保持该 fencing 契约，检查所有直接状态写入路径及取消/过期边界；不得为旧测试放宽生产校验 |
 | 已在工作区修复 | `claim_work` 在 SQL 中排除未就绪依赖后再取首个可运行项，不再只扫描前 20 项 | 为修复增加回归；静态 FIFO 仍无显式 aging/fairness 策略 |
-| 必须补齐 | P6 传入显式 trace_context，异常 span 写 ERROR；`llm_generation` 在任务 Trace 范围内对输入和输出正文脱敏 | 还没有 DB 提交事实驱动的 Trace 投影、根状态收敛及 Agent/Tool/Skill/RAG 统一时间线 |
+| 部分完成 | P6 传入显式 trace_context，异常 span 写 ERROR；模型调用、Tool/Skill/RAG/Context 有 Langfuse span 与最小事实索引；任务详情按权限展示全量分页时间线 | Trace 投影回执、事件重放与根状态收敛仍未实现；当前事件事实是分析索引，不替代 Langfuse |
 | 可见接口风险 | `generation_tasks.task_status` 在 dict 中重复定义 `trace_id`/`execution_root_run_id`，后项会覆盖前项回退值；`observability_status` 在 Langfuse 开启时固定返回 `PENDING` | 清理重复字段并让 Trace 投影回执驱动状态；历史任务/禁用/失败/延迟状态均需明确返回 |
 | 脱敏边界仍需全链路核验 | P6 任务 Trace 下 LLM 输入/输出已置为 redacted，生成错误写受控摘要；其他 Provider、Tool/MCP 参数、应用日志仍须分别审计 | 在 Provider/Tool/MCP/Trace 出站统一策略，覆盖异常/headers/凭据，保留白名单身份与数值指标 |
 | 分期补齐 | Provider 有 before_request 回调，但为可选；配置查询会开启事务 | P6 路径已显式结束事务，不能据此宣称所有调用都满足要求；逐入口验证网络前无活动 DB 事务 |
@@ -74,7 +87,7 @@ flowchart TB
   SYNC --> LLM[ProductionLLMProvider]
   MOD --> LLM
   LLM --> LF[Langfuse generation / 局部工作项 Trace]
-  SYNC --> K[项目知识词频检索]
+  SYNC --> K[项目知识 BM25 检索]
   MOD --> K
   K --> KD[(现有文档 / 版本 / Chunk)]
   API --> MSG[(AgentMessage / TaskMessage)]
@@ -168,16 +181,17 @@ erDiagram
 | 模型 | 拟增量字段/职责 | 约束 |
 |---|---|---|
 | TaskRun（扩展） | execution_root_run_id、parent_run_id、trace_id、deadline_at、policy_version、预算配置快照 | 同 Task 根关系；根 trace_id 唯一，子 Run 可不存并经根取值；不改变旧 run_number 排序 API |
-| TaskAgentInstance（扩展） | agent_definition_revision_id、parent_agent_instance_id；模型/Skill 版本引用放现有快照并标准化 | id 即 agent_run_id；子实例权限不继承扩大；历史快照不强行猜 Revision |
+| TaskAgentInstance（扩展） | agent_definition_revision_id、parent_agent_instance_id、result_json 成功输出检查点；模型/Skill 版本引用放现有快照并标准化 | id 即 agent_run_id；检查点以输入指纹校验；子实例权限不继承扩大；历史快照不强行猜 Revision |
 | TaskAttempt（扩展） | agent_span_id；checkpoint_json 继续存恢复检查点 | 与 work/代次一致；跨崩溃可重建 span 关联 |
 | TaskToolInvocation（扩展） | tool_call_id、attempt_id、span_id，复用副作用回执 | 旧调用可空；只读调用事实进入下表，不能把所有 Span 都变成回执 |
-| runtime_call_fact（新增） | call_id、kind、项目/根/Run/Instance/Attempt、trace/span、模型 Revision 或 Skill/Tool/MCP 标识、起止时间、状态、error_code、tokens、usage_status、成本与计价版本 | call_id 唯一；只存数值/引用/脱敏摘要；LLM 状态拆 provider_status 和 contract_status |
+| runtime_call_fact（已增量实现） | call_id、项目/根/Run/Instance/Attempt/AgentSession、trace/span、Agent/模型 Revision、状态、error_code、tokens、usage_status、时延与预留成本字段 | call_id 唯一；只存数值和关联字段；成本尚未配置价格时为 null；provider/结构化契约失败仍待拆分 |
+| runtime_event_fact（已增量实现） | event_id、项目/根/Run/Work/Attempt/AgentSession、trace/span、事件类型/名称、状态、耗时、白名单 metadata | 记录工具输入字段名、检索哈希及来源 ID、上下文预算/消息 ID；Langfuse 持有详细 Trace |
 | runtime_budget / budget_reservation（新增） | 根预算、已结算/已预留/未知消耗、call_id、额度、状态、货币、定价版本 | 原子预留；call_id 唯一结算；不是第二套任务队列 |
 | knowledge_chunk_index（新增派生索引） | chunk_id、index_generation、tokenizer_version、Embedding Revision、dimension、text_hash、索引状态；向量列与倒排数据按选型落表 | 按 chunk+索引版本唯一；原 Chunk 是来源，不复制文档生命周期 |
-| retrieval_record（新增） | 调用关联、query_hash/可选脱敏摘要、检索策略版本、候选量、过滤范围摘要、chunk/version 引用、分数类型、排名/耗时/降级原因 | 不存正文；查询全文默认不持久化；权限变化后页面隐藏不可读来源 |
+| retrieval_record（由 runtime_event_fact 承载首版） | `KNOWLEDGE_RETRIEVAL` 记录 query_hash、BM25、Top-K、候选/命中量及 chunk/version ID；分数明细留在 Langfuse | 先以统一事件索引交付；混合检索后按查询性能决定是否拆专表；不存查询正文 |
 | context_manifest/source_ref（新增） | attempt、Agent、预算、输入 Token 估算、来源 kind/id/version/hash、scope、选择/裁剪/冲突原因、摘要版本 | 原消息与原文只引用，不重复保存完整历史 |
 | context_summary / memory_fact（按需新增） | 摘要或已确认长期事实、源引用、范围、版本、有效期、确认人和失效状态 | 是派生摘要/业务事实治理，不是第二份消息存储；关键事实必须有来源 |
-| 质量聚合（后期按需） | 按日/项目/Agent Revision/模型 Revision 的指标读模型、样本量、口径版本、水位 | 可由事实重建；先 SQL 聚合，达到查询性能瓶颈再物化 |
+| 质量聚合（已交付首版查询 API） | 从 TaskRun、WorkItem、RuntimeCallFact、RuntimeEventFact 聚合任务/项目/Agent Revision/模型/工具指标 | SQL 按窗口查询；返回口径与样本量；异常基线、增量读模型和水位仍待实施 |
 
 模型价格复用模型中心配置扩展为不可变计价版本（币种、输入/输出/缓存/推理 Token 单价与生效时间）；未知计价成本为 null。供应商不暴露真实模型版本时记录 `provider_version=unknown`，保留 model_name、配置 Revision 和 endpoint 指纹，不能称精确复现。
 
@@ -298,7 +312,7 @@ flowchart LR
 
 ### 6.3 Agent 权限迁移
 
-当前产品允许同项目 Agent 共享知识，且有测试保护。新增显式 `knowledge_access_mode=PROJECT_SHARED | AGENT_SCOPED`：旧项目迁移为 PROJECT_SHARED，保留原行为；新配置可选择 AGENT_SCOPED 并引用现有 KnowledgeBinding.scopes/revision。AGENT_SCOPED 无绑定时拒绝/空结果，不能回退项目全量。
+当前产品允许同项目 Agent 共享知识，且有测试保护。已在 `KnowledgeBinding.access_mode` 增加 `PROJECT_SHARED | AGENT_SCOPED`；Alembic 0052 以 PROJECT_SHARED 回填全部既有绑定，维持原行为。API 允许显式启用 AGENT_SCOPED 并引用现有 scopes/revision；旧客户端不传 access_mode 时保留现有策略。现有知识库页已加入共享/按 Agent 文档范围配置。AGENT_SCOPED 的空范围返回空结果，不能回退项目全量。
 
 有效范围取“调用人当前项目权限 ∩ 项目启用文档 ∩ 显式 Agent 策略 ∩ 任务冻结版本”。固定旧文档版本可继续读，前提是来源文档仍启用且当前授权允许；撤权/停用立即阻止新的检索、Context 装配和来源查看。切严格模式前输出影响预览（运行任务/Agent/文档），排空或取消不兼容任务后切换，禁止静默扩权或自动复活历史停用绑定。
 
@@ -371,7 +385,9 @@ flowchart LR
 
 ### 8.4 异常分析（规则，不是评测引擎）
 
-可配置初值：当前15分钟对比过去7天同类时段；至少30次Agent/工具调用，失败率上升≥10个百分点且≥基线2倍触发；模型P95延迟≥基线2倍且超绝对SLO；版本单任务已知成本中位数≥基线1.5倍；至少30个已审草稿后，拒绝/修改率连续3个窗口抬升。低流量用更长窗口，不够样本显示“数据不足”。
+首版 API：当前 7/30/90 天窗口与前一段等长窗口对比；当前、基线各至少 5 个样本时，任务/模型/Agent Revision/工具/Skill 及用例草稿拒绝/编辑率上升 15 个百分点告警；模型平均延迟至少翻倍且增加 1000ms 告警；已知价格下 Agent Revision 单次成本至少翻倍告警。此为初版规则，尚未接入规则版本、冷却和通知。
+
+后续调优目标：用最近时段对比过去同类时段，按 30 次以上的稳定样本设置阈值；模型重点使用 P95 延迟与绝对 SLO，版本成本用有明确币种的中位数，人工拒绝/修改率仅对可审计人工决策数据计算。样本不足显示“数据不足”，不能扩写为模型正确率。
 
 阈值、样本门槛和基线算法都版本化；分项目/版本/模型/Skill归因，记录触发样本与排除项。缺失usage、投影延迟、未知账单比例高时降低结论可信度并提示数据异常。冷却去重、恢复事件和现有通知集成后再启用告警，不因单次错误轰炸用户。
 
@@ -437,13 +453,13 @@ flowchart LR
 
 ## 11. Alembic 迁移、兼容与发布规划
 
-迁移编号以仓库脚本为准，不得改写已部署历史迁移。当前已跟踪 head 是 `0049`，工作区含未提交 `0050` 与 `0051` 草稿；下面先审核并冻结这两条，再为后续能力从真实 head 顺序分配新编号。
+迁移编号以仓库脚本为准，不得改写已部署历史迁移。下表记录首次审计时的分批建议；当前实现已追加 `0052`-`0056`，部署前仍需核对目标数据库真实版本并从现有 head 升级。
 
 | 批次 | 结构与回填 | 发布/回滚 |
 |---|---|---|
 | M0 P6基线 | 验证0049→0050→0051与空库base→0051；审核0050草稿唯一约束及0051可空FK/同 Task 根约束/单批次回填 | 使用现有任务体系；不新建队列或 TaskRun |
 | M1 关联与调度 | 复核已加的 Run 根/trace/deadline、Attempt deadline、Instance Revision/父引用；只补目标确认后仍缺的 parent_run_id、Attempt/span 关联或依赖 join 策略 | P6 新任务已有 Instance/Session；历史与歧义记录保留 unknown，不伪造 Session、Revision 或实际 span |
-| M2 调用/预算/投影 | 最小call_fact、预算与reservation、TaskEvent投递游标及索引 | 先写后读；开关按项目，旧usage只显示legacy，不与新call_id累计重复 |
+| M2 调用/预算/投影 | 最小call_fact、子 Agent 成功结果检查点已增量；预算与reservation、TaskEvent投递游标及索引仍待补 | 先写后读；开关按项目，旧usage只显示legacy，不与新call_id累计重复 |
 | M3 检索 | Agent模式、chunk来源元数据、索引generation、posting/BM25统计、可选pgvector、retrieval_record | 扩展预检查；异步建索引、灰度切读；回退旧检索必须维持当前授权过滤 |
 | M4 上下文 | manifest/source refs、summary、按需memory_fact | 原消息不变；关闭新装配可回退旧受控窗口，不能绕过撤权/预算 |
 | M5 质量治理 | Revision准入/价格版本/异常规则，必要时可重建聚合 | 原Revision/restore保留；禁用新看板不影响执行 |
@@ -460,7 +476,7 @@ flowchart LR
 
 | 阶段 | 任务 | 前置/交付门槛 |
 |---|---|---|
-| 0 方案确认 | 固定工作区快照；确认根Run语义、agent_run复用、Trace投影、知识权限迁移、预算范围与SLO | 本文确认后才实施；pgvector/BM25选型实验结论单独记录 |
+| 0 方案确认 | 固定工作区快照；确认根Run语义、agent_run复用、Trace投影、知识权限迁移、预算范围与SLO | 已由用户确认；本分支进入分阶段实施，pgvector/BM25扩展选型仍需记录 |
 | 1A P6收口 | 审核现有隔离验收记录；修复任务状态响应重复字段和静态 Trace 状态，复核迁移/取消/恢复/幂等/并发/deadline/fencing；验证领取公平性 | M0通过；保留生成审核与旧同步 API 兼容 |
 | 1B 公共运行契约 | M1/M2；统一身份、根聚合、原子预算、跨 Provider 逐调用计量；将持久化 SubAgent 调度扩展到通用 Supervisor/SubAgent | 同 Run 仍单租约；无第二队列；事务/预算故障测试通过 |
 | 2 全链路可观测 | trace_context恢复、Agent/Tool/Skill/RAG span、事件投影、统一脱敏、现有任务详情时间线 | 依赖1B；Langfuse故障不影响任务，状态投影可收敛 |
@@ -475,7 +491,7 @@ flowchart LR
 | 范围 | 已有资产与必须增加的验证 |
 |---|---|
 | P6闭环 | 复用test_51_generation_tasks、test_52_generation_task_migration、test_35_tasks、task模块/消息/Session测试、现有生成Playwright；增加同键并发、跨项目幂等、失败模块独立重试、Review-only重试、已审核草稿不变 |
-| 调度故障 | 双Worker竞争、杀进程、过期心跳、旧代次迟到成功/失败、写回提交前/后崩溃、取消与提交竞争；前20个候选阻塞但后面可执行、DAG环、join_policy、尝试上限、关闭超时 |
+| 调度故障 | 双Worker竞争、杀进程、过期心跳、旧代次迟到成功/失败、写回提交前/后崩溃、取消与提交竞争；前20个候选阻塞但后面可执行、DAG环、join_policy、尝试上限、关闭超时；test_58_subagent_parallel 覆盖 LangGraph 子节点并发与有序 fan-in |
 | 副作用 | STARTED后断线必须待核对；供应商同幂等键只执行一次；回执未知不盲重放；数据库提交失败后重启不重复业务写入 |
 | 预算 | 并发同时读剩余额度、重复结算、失败计费、usage缺失、fallback/工具循环/摘要/Embedding/Rerank、deadline；平台不放行超过预留额度调用 |
 | 事务 | 在真实网络stub边界断言所有相关Session无活动事务；延迟模型时DB连接池仍可服务心跳/取消/查询；不跨线程共享Session |

@@ -21,6 +21,7 @@ from app.orchestration.tasks.schemas import (
     TaskResourceRefResponse,
     TaskResponse,
     TaskRunDetailResponse,
+    TaskTracePageResponse,
     TaskWebAuthoringTurn,
     TaskTemplateCreate,
     TaskTemplateResponse,
@@ -295,6 +296,18 @@ def list_events(
 ) -> list:
     """按运行事件序号增量读取，前端断线后可从游标继续。"""
     return service.list_events(db, run_id, user, after_seq=after_seq, limit=limit)
+
+
+@router.get("/task-runs/{run_id}/trace", response_model=TaskTracePageResponse, summary="读取运行 Agent Trace 时间线")
+def get_trace_timeline(
+    run_id: int,
+    cursor: str | None = Query(None, max_length=500),
+    limit: int = Query(100, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """返回经项目权限过滤的 Trace 索引事实；请求与工具正文仍由 Langfuse 保存。"""
+    return service.trace_timeline(db, run_id, user, cursor=cursor, limit=limit)
 
 
 @router.get("/task-runs/{run_id}/resources", response_model=list[TaskResourceRefResponse], summary="运行资源与产物")

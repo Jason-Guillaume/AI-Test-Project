@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy.sql import text
 from app.core.database.base import Base
 
 class KnowledgeBase(Base):
@@ -47,5 +48,6 @@ class KnowledgeBinding(Base):
     agent_id = Column(Integer, ForeignKey('agent_definition.id'), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
     required = Column(Boolean, nullable=False, default=False)
+    access_mode = Column(String(24), nullable=False, default='PROJECT_SHARED', server_default=text("'PROJECT_SHARED'"))
     revision = Column(Integer, nullable=False, default=1)
     scopes = Column(JSON, nullable=False, default=list)

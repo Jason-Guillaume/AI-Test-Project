@@ -2,7 +2,7 @@
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.agents.models import AgentDefinition
+from app.agents.models import AgentDefinition, AgentDefinitionRevision
 from app.core.http.errors import bad_request, not_found
 from app.core.models.identity import User
 from app.platform.projects.services.access_service import get_project_or_404
@@ -31,7 +31,13 @@ def invoke_evaluation(db: Session, actor: User, agent_id: int, project_id: int, 
         raise bad_request("参数不符合工具契约，请检查字段、类型和长度限制") from None
     context = None
     if tool_key in {"asr.get_job_summary", "asr.get_comparison_summary"}:
-        context = ToolCallContext(actor=actor, project_id=project_id, trusted_arguments={"db": db})
+        revision = db.query(AgentDefinitionRevision.id).filter_by(
+            agent_definition_id=agent.id, version=agent.version,
+        ).scalar()
+        context = ToolCallContext(
+            actor=actor, project_id=project_id, agent_definition_id=agent.id,
+            agent_definition_revision_id=revision, db=db, trusted_arguments={"db": db},
+        )
     result = dispatch_tool(tool_key, channel="fixed", context=context, **parameters)
     return {"agent_id": agent.id, "agent_version": agent.version, "project_id": project_id,
             "tool_key": tool_key, "result": result}

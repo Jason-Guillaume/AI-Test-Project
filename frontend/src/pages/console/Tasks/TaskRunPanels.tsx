@@ -8,7 +8,8 @@ import { PlayCircleOutlined, SendOutlined } from '@ant-design/icons';
 import type { Task, TaskAgentInstance, TaskEvent, TaskMessage, TaskPlan, TaskResourceRef, TaskRun, TaskRunDetail, TaskToolInvocation, TaskWorkItem } from '@/features/tasks/contracts';
 import { fmtTime } from '@/shared/lib/format';
 import { EventTimeline, MessageRow, ResourceList } from './TaskDetailActivity';
-import { ROLE_LABEL, STATUS_LABEL, TERMINAL, TOOL_CALL_STATUS } from './taskLabels';
+import { ROLE_LABEL, STATUS_LABEL, STOP_POLLING, TERMINAL, TOOL_CALL_STATUS } from './taskLabels';
+import { TaskTraceTimeline } from './TaskTraceTimeline';
 import type { TaskSecurityAssessmentPreview, TaskSecurityAssessmentSelection } from './taskTypes';
 
 type TaskMessageType = 'TEXT' | 'GOAL_UPDATE' | 'REQUIREMENT';
@@ -298,7 +299,12 @@ export function TaskRunPanels(props: TaskRunPanelsProps) {
               },
               {
                 key: 'events', label: '运行记录',
-                children: <EventTimeline events={events} />,
+                children: (
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <EventTimeline events={events} />
+                    <TaskTraceTimeline runId={run.id} traceId={run.trace_id} active={!STOP_POLLING.has(run.status)} />
+                  </Space>
+                ),
               },
             ]}
           />

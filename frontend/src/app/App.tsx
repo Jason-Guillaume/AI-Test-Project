@@ -74,6 +74,7 @@ const AdminProjectsPage = lazyNamedPage(() => import('@/pages/admin/Projects'), 
 const AdminModelConfigsPage = lazyNamedPage(() => import('@/pages/admin/ModelConfigs'), 'AdminModelConfigsPage');
 const AdminEnvironmentsPage = lazyNamedPage(() => import('@/pages/admin/Environments'), 'AdminEnvironmentsPage');
 const AdminAgentGovernancePage = lazyNamedPage(() => import('@/pages/admin/AgentGovernance'), 'AdminAgentGovernancePage');
+const AdminAgentRuntimePage = lazyNamedPage(() => import('@/pages/admin/AgentRuntime'), 'AdminAgentRuntimePage');
 const AdminKnowledgePage = lazyNamedPage(() => import('@/pages/admin/Knowledge'), 'AdminKnowledgePage');
 const ConsoleWorkbenchPage = lazyNamedPage(() => import('@/pages/console/Workbench'), 'ConsoleWorkbenchPage');
 const ConsoleProjectsPage = lazyNamedPage(() => import('@/pages/console/Projects'), 'ConsoleProjectsPage');
@@ -220,6 +221,7 @@ function AppRoutes() {
           <Route path="model-configs" element={<AdminModelConfigsPage />} />
           <Route path="environments" element={<AdminEnvironmentsPage />} />
           <Route path="agents" element={<AdminAgentGovernancePage />} />
+          <Route path="agent-runtime" element={<AdminAgentRuntimePage />} />
           <Route path="mcp" element={<AdminAgentGovernancePage />} />
           <Route path="skills" element={<AdminAgentGovernancePage />} />
           <Route path="tools" element={<AdminAgentGovernancePage />} />

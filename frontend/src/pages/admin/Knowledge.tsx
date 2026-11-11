@@ -1,10 +1,9 @@
 // 管理后台的项目知识库。
 //
-// 资料只挂在项目上，供后续处理该项目的 Agent 直接读取。
-// 本页不配置 Agent，也不保存 Agent 绑定。
+// 资料只挂在项目上；默认项目共享，也可在本页为 Agent 显式限定文档范围。
 // 平台管理员通过项目下拉选择目标项目；上传后的解析在后台异步完成。
-import { useState } from 'react';
-import { App, Button, Card, Input, Select, Space, Table, Upload } from 'antd';
+import { useEffect, useState } from 'react';
+import { Alert, App, Button, Card, Checkbox, Input, InputNumber, Radio, Select, Space, Table, Upload } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/features/projects/api/projects';
 import { api, getErrorMessage } from '@/shared/api/client';
@@ -15,7 +14,10 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 type Base = { id: number; name: string; enabled: boolean };
 type Doc = { id: number; name: string; category: string; enabled: boolean };
 type Version = { id: number; version: number; status: string; error: string | null };
-type SearchResult = { items: { chunk_id: number; version_id: number; page: number | null; text: string }[] };
+type AgentOption = { id: number; name: string };
+type KnowledgeScope = { base_id: number; mode: string; document_ids: number[]; categories: string[] };
+type KnowledgeBinding = { revision: number; enabled: boolean; required: boolean; access_mode: 'PROJECT_SHARED' | 'AGENT_SCOPED'; scopes: KnowledgeScope[] };
+type SearchResult = { items: { chunk_id: number; version_id: number; version: number; document_id: number; document_name: string; score: number; score_type: string; page: number | null; text: string }[] };
 
 const CATEGORIES = [
   { value: '项目情况', label: '项目情况' },
@@ -37,6 +39,13 @@ export function AdminKnowledgePage() {
   const [document, setDocument] = useState<Doc>();
   const [query, setQuery] = useState('');
   const [sources, setSources] = useState<SearchResult>();
+  const [agentId, setAgentId] = useState<number>();
+  const [accessMode, setAccessMode] = useState<'PROJECT_SHARED' | 'AGENT_SCOPED'>('PROJECT_SHARED');
+  const [scopeMode, setScopeMode] = useState<'ALL' | 'DOCUMENTS' | 'CATEGORIES'>('DOCUMENTS');
+  const [scopedDocumentIds, setScopedDocumentIds] = useState<number[]>([]);
+  const [scopedCategories, setScopedCategories] = useState<string[]>([]);
+  const [topK, setTopK] = useState(8);
+  const [minimumScore, setMinimumScore] = useState(0);
   const [saving, setSaving] = useState(false);
   const projectsQuery = useQuery({
     queryKey: ['projects', 'knowledge-admin'],
@@ -44,6 +53,16 @@ export function AdminKnowledgePage() {
   });
   const project = selectedProjectId ?? projectsQuery.data?.items[0]?.id;
   const root = `/projects/${project}`;
+  const agents = useQuery({
+    queryKey: ['knowledge-agents', project],
+    enabled: project != null,
+    queryFn: () => api.get<AgentOption[]>(`${root}/knowledge-agent-options`),
+  });
+  const binding = useQuery({
+    queryKey: ['knowledge-binding', project, agentId],
+    enabled: project != null && agentId != null,
+    queryFn: () => api.get<KnowledgeBinding>(`${root}/agents/${agentId}/knowledge-binding`),
+  });
   const bases = useQuery({
     queryKey: ['knowledge', project],
     enabled: project != null,
@@ -61,6 +80,16 @@ export function AdminKnowledgePage() {
     queryFn: () => api.get<{ items: Version[] }>(`${root}/knowledge-documents/${document!.id}/versions`),
   });
 
+  useEffect(() => {
+    setAccessMode(binding.data?.access_mode ?? 'PROJECT_SHARED');
+    const selectedScope = (binding.data?.scopes ?? []).find((scope) => scope.base_id === base);
+    setScopeMode(selectedScope?.mode === 'ALL' || selectedScope?.mode === 'CATEGORIES'
+      ? selectedScope.mode
+      : 'DOCUMENTS');
+    setScopedDocumentIds(selectedScope?.mode === 'DOCUMENTS' ? selectedScope.document_ids : []);
+    setScopedCategories(selectedScope?.mode === 'CATEGORIES' ? selectedScope.categories : []);
+  }, [binding.data, base]);
+
   /** 执行写操作。保存中禁止再次点击，避免同一名称连续入库却看不到结果。 */
   const execute = async (fn: () => Promise<unknown>) => {
     if (saving) return;
@@ -77,7 +106,7 @@ export function AdminKnowledgePage() {
 
   return (
     <PageContainer>
-      <PageHeader title="项目知识库" subtitle="按项目维护项目情况和用例编写规则，处理该项目的 Agent 会直接读取" />
+      <PageHeader title="项目知识库" subtitle="按项目管理资料，并为 Agent 配置共享或限定文档范围" />
       <Space direction="vertical" style={{ width: '100%' }}>
         <Select
           placeholder="选择项目"
@@ -89,6 +118,11 @@ export function AdminKnowledgePage() {
             setBase(undefined);
             setDocument(undefined);
             setSources(undefined);
+            setAgentId(undefined);
+            setAccessMode('PROJECT_SHARED');
+            setScopeMode('DOCUMENTS');
+            setScopedDocumentIds([]);
+            setScopedCategories([]);
           }}
         />
         <Card title="资料">
@@ -208,20 +242,111 @@ export function AdminKnowledgePage() {
             />
           )}
         </Card>
+        <Card title="Agent 知识范围">
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Space wrap>
+              <Select
+                placeholder="选择 Agent"
+                style={{ width: 280 }}
+                value={agentId}
+                options={agents.data?.map((item) => ({ value: item.id, label: item.name }))}
+                onChange={(value) => setAgentId(value)}
+              />
+              <Radio.Group
+                value={accessMode}
+                disabled={agentId == null}
+                onChange={(event) => setAccessMode(event.target.value)}
+                options={[
+                  { value: 'PROJECT_SHARED', label: '共享项目知识' },
+                  { value: 'AGENT_SCOPED', label: '限定 Agent 范围' },
+                ]}
+              />
+              <Button
+                disabled={agentId == null || saving || (accessMode === 'AGENT_SCOPED' && base == null)}
+                onClick={() => execute(async () => {
+                  const scopes = (binding.data?.scopes ?? []).filter((scope) => scope.base_id !== base);
+                  if (accessMode === 'AGENT_SCOPED' && base != null) {
+                    scopes.push({
+                      base_id: base,
+                      mode: scopeMode,
+                      document_ids: scopeMode === 'DOCUMENTS' ? scopedDocumentIds : [],
+                      categories: scopeMode === 'CATEGORIES' ? scopedCategories : [],
+                    });
+                  }
+                  await api.put(`${root}/agents/${agentId}/knowledge-binding`, {
+                    revision: binding.data?.revision ?? 0,
+                    enabled: true,
+                    required: binding.data?.required ?? false,
+                    access_mode: accessMode,
+                    scopes,
+                  });
+                  await binding.refetch();
+                })}
+              >
+                保存 Agent 范围
+              </Button>
+            </Space>
+            {accessMode === 'PROJECT_SHARED' ? (
+              <Alert type="info" showIcon message="该 Agent 可读取当前项目内所有启用资料；这是旧配置的兼容默认值。" />
+            ) : (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Select
+                  placeholder="选择要授权的知识库"
+                  style={{ width: 280 }}
+                  value={base}
+                  options={bases.data?.items.map((item) => ({ value: item.id, label: item.name }))}
+                  onChange={(value) => setBase(value)}
+                />
+                {base == null ? <Alert type="warning" message="选择知识库后，再勾选该 Agent 可以读取的文档。" /> : (
+                  <Space direction="vertical">
+                    <Radio.Group
+                      value={scopeMode}
+                      onChange={(event) => setScopeMode(event.target.value)}
+                      options={[
+                        { value: 'ALL', label: '该库内所有启用文档' },
+                        { value: 'DOCUMENTS', label: '仅选择的文档' },
+                        { value: 'CATEGORIES', label: '按资料分类授权' },
+                      ]}
+                    />
+                    {scopeMode === 'DOCUMENTS' && (
+                      <Checkbox.Group
+                        value={scopedDocumentIds}
+                        options={(docs.data?.items ?? []).map((item) => ({ label: `${item.name}${item.enabled ? '' : '（已停用）'}`, value: item.id, disabled: !item.enabled }))}
+                        onChange={(values) => setScopedDocumentIds(values as number[])}
+                      />
+                    )}
+                    {scopeMode === 'CATEGORIES' && (
+                      <Checkbox.Group
+                        value={scopedCategories}
+                        options={CATEGORIES}
+                        onChange={(values) => setScopedCategories(values as string[])}
+                      />
+                    )}
+                  </Space>
+                )}
+                <Alert type="warning" showIcon message="保存会替换所选知识库的范围；未选文档或分类时，该库不会向此 Agent 提供内容。" />
+              </Space>
+            )}
+          </Space>
+        </Card>
         <Card title="当前项目检索">
           <Space>
             <Input placeholder="试查项目资料" value={query} onChange={(event) => setQuery(event.target.value)} />
+            <InputNumber min={1} max={50} value={topK} onChange={(value) => setTopK(value ?? 8)} addonBefore="Top‑K" />
+            <InputNumber min={0} max={100} step={0.1} value={minimumScore} onChange={(value) => setMinimumScore(value ?? 0)} addonBefore="最低分" />
             <Button
               disabled={project == null}
               onClick={() => execute(async () => {
-                setSources(await api.post<SearchResult>(`${root}/knowledge-search`, { query }));
+                setSources(await api.post<SearchResult>(`${root}/knowledge-search`, {
+                  query, top_k: topK, minimum_score: minimumScore,
+                }));
               })}
             >
               检索
             </Button>
           </Space>
           {sources?.items.map((item) => (
-            <Card key={item.chunk_id} style={{ marginTop: 12 }} title={`片段 ${item.chunk_id}${item.page ? ` · 第 ${item.page} 页` : ''}`}>
+            <Card key={item.chunk_id} style={{ marginTop: 12 }} title={`${item.document_name} · v${item.version} · 片段 ${item.chunk_id}${item.page ? ` · 第 ${item.page} 页` : ''} · BM25 ${item.score}`}>
               <div style={{ whiteSpace: 'pre-wrap' }}>{item.text}</div>
             </Card>
           ))}

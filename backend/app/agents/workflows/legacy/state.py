@@ -92,6 +92,7 @@ class AgentState(TypedDict, total=False):
     current_stage: str
     error: dict[str, Any] | None  # 错误响应格式：{"code": ..., "message": ...}
     messages: list[dict[str, Any]]  # 供 prompt 的消息历史（脱敏，截断）
+    context_manifest: dict[str, Any]  # 本次消息选择的来源、权限范围与 Token 预算记录
 
 
 def make_initial_state(project_id: int, user_id: int | None, session_id: int | None = None) -> AgentState:

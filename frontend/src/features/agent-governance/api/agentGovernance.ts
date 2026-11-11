@@ -1,10 +1,11 @@
 import { api } from '@/shared/api/client';
-import type { AgentDefinition, AgentDefinitionInput, AgentDefinitionPatch, SkillDefinition, SkillInput, SkillPatch, MCPServer, MCPServerInput, MCPServerPatch, GovernanceTool, GovernanceToolUpdate, SkillUsage, WorkflowTemplate, DefinitionVersion } from '../contracts';
+import type { AgentDefinition, AgentDefinitionInput, AgentDefinitionPatch, AgentRuntimeOverview, SkillDefinition, SkillInput, SkillPatch, MCPServer, MCPServerInput, MCPServerPatch, GovernanceTool, GovernanceToolUpdate, SkillUsage, WorkflowTemplate, DefinitionVersion } from '../contracts';
 
 
 
 
 export const agentGovernanceApi = {
+  runtimeOverview: (params: { project_id?: number; from_at?: string; to_at?: string } = {}) => api.get<AgentRuntimeOverview>('/agent-governance/runtime/overview', { params }),
   generateCases: (id: number, body: { project_id: number; requirements: string; modules: string[]; cases_per_module: number; model_config_id?: number | null }) => api.post<unknown>(`/agent-governance/agents/${id}/generate-cases`, body, { timeout: 600000 }),
   invokeEvaluation: (id: number, key: string, project_id: number, args: Record<string, unknown>) => api.post<unknown>(`/agent-governance/agents/${id}/evaluation-tools/${encodeURIComponent(key)}/invoke`, { project_id, arguments: args }),
   workflows: () => api.get<WorkflowTemplate[]>('/agent-governance/workflows'),

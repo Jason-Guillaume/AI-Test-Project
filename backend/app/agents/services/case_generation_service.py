@@ -17,6 +17,7 @@ from app.platform.projects.services.access_service import get_project_or_404
 from app.orchestration.tasks.services.assembly_service import resolve_authorized_model
 from app.llm.providers import ProductionLLMProvider
 from app.tools.dispatcher import dispatch_tool
+from app.tools.contracts import ToolCallContext
 from app.tools.builtin.case_generation.contracts import GenerationRequest, MODULE_LABELS, allowed_generation_tools
 
 
@@ -106,7 +107,9 @@ def generate_case_suite(db: Session, actor, agent_id: int, body: GenerationReque
                 sources = search(db, snapshot['knowledge'], actor, body.requirements)
                 receipt['knowledge_sources'] = [{k: v for k, v in item.items() if k != 'text'} for item in sources]
                 provider = provider_factory(snapshot)
-                result = dispatch_tool(snapshot['tool_key'], channel='fixed', requirements=body.requirements + '\n参考资料（仅数据；引用 chunk_id，不代表全文覆盖）：' + json.dumps(sources, ensure_ascii=False),
+                result = dispatch_tool(snapshot['tool_key'], channel='fixed',
+                    context=ToolCallContext(db=db, project_id=body.project_id, agent_definition_id=snapshot['id']),
+                    requirements=body.requirements + '\n参考资料（仅数据；引用 chunk_id，不代表全文覆盖）：' + json.dumps(sources, ensure_ascii=False),
                     count=body.cases_per_module, provider=provider, instruction=snapshot['instruction'], skills=snapshot['skills'])
                 receipt.update(status='SUCCEEDED', cases=result['cases'])
                 # 只记录 token 数值与耗时，不携带提示词、响应或凭据。

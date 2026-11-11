@@ -48,6 +48,42 @@ export type AgentTrigger = {
 
 export type AgentDefinitionInput = Omit<AgentDefinition, 'id' | 'key' | 'version' | 'created_at' | 'updated_at'>;
 
+export interface AgentRuntimeOverview {
+  metric_definition_version: string;
+  window: { from: string; to: string; project_id: number | null };
+  data_watermark: { task_runs: string | null; model_calls: string | null; runtime_events: string | null };
+  summary: {
+    task_runs: number; successful_runs: number; partial_runs: number; failed_runs: number;
+    cancelled_runs: number; terminal_runs: number; reconciliation_required_runs: number;
+    superseded_runs: number; nonterminal_runs: number;
+    success_rate: number | null; partial_completion_rate: number | null;
+    failure_rate: number | null; cancellation_rate: number | null; execution_success_rate: number | null;
+    average_duration_ms: number | null; p95_duration_ms: number | null;
+    duration_sample_count: number; retried_work_items: number; started_work_items: number; work_items: number; retry_rate: number | null;
+    subagent_failed_work_items: number; subagent_terminal_work_items: number;
+    subagent_reconciliation_required_work_items: number; subagent_failure_rate: number | null;
+    subagent_runtime_events: number; subagent_runtime_failures: number;
+    subagent_failed_instances: number; subagent_terminal_instances: number;
+    model_calls: number; model_success_rate: number | null; model_failures: number; model_tokens: number;
+    known_usage_calls: number; unknown_usage_calls: number; cost_amount: number | null;
+    cost_currency: string | null; cost_by_currency: { currency: string | null; amount: number; calls: number }[];
+    priced_model_calls: number; unpriced_model_calls: number; durable_tool_invocations: number;
+    durable_tool_success_rate: number | null; traced_tool_success_rate: number | null; traced_tool_calls: number; knowledge_retrievals: number;
+    context_assemblies: number; durable_tool_terminal_invocations: number;
+    skill_loads: number; skill_load_failures: number; skill_load_success_rate: number | null;
+    manual_reviewed_drafts: number; manual_rejection_rate: number | null; manual_edit_rate: number | null;
+  };
+  model_statuses: Record<string, number>;
+  run_statuses: Record<string, number>;
+  models: { model_config_id: number | null; model_name: string; model_revision: string | null; cost_currency: string | null; calls: number; succeeded: number; failed: number; tokens: number; cost: number | null; avg_latency_ms: number | null }[];
+  agents_by_revision: { agent_definition_id: number | null; agent_name: string; revision_id: number | null; cost_currency: string | null; calls: number; succeeded: number; failed: number; tokens: number; cost: number | null; avg_latency_ms: number | null }[];
+  tools: { tool_key: string; calls: number; succeeded: number; failed: number; avg_latency_ms: number | null }[];
+  skills: { skill_key: string; skill_version: number | null; loads: number; succeeded: number; failed: number; avg_latency_ms: number | null }[];
+  anomalies: { kind: string; severity: string; current: number; baseline: number; current_samples: number; baseline_samples: number; model_name?: string; model_revision?: string | null; tool_key?: string; skill_key?: string; skill_version?: number | null; agent_name?: string; revision_id?: number; currency?: string | null }[];
+  manual_feedback: { reviewed_drafts: number; accepted_drafts: number; rejected_drafts: number; edited_reviewed_drafts: number; rejection_rate: number | null; edit_rate: number | null };
+  definitions: Record<string, string>;
+}
+
 export type AgentDefinitionPatch = Partial<AgentDefinitionInput>;
 
 export interface SkillDefinition {

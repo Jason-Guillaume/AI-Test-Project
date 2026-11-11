@@ -56,6 +56,8 @@ def create_run(db: Session, task: Task, actor: User, *, run_number: int, target_
     )
     db.add(run)
     db.flush()
+    # 独立 TaskRun 也是默认执行根；后续扩展子 Run 时仍可沿同 Task 根聚合。
+    run.execution_root_run_id = run.id
     if agent_snapshot and agent_snapshot.get("skills"):
         skill_keys = [item["key"] for item in agent_snapshot["skills"]]
         skill_ids = db.query(SkillDefinition.id, SkillDefinition.key).filter(SkillDefinition.key.in_(skill_keys)).all()
@@ -105,17 +107,21 @@ def create_run(db: Session, task: Task, actor: User, *, run_number: int, target_
             role=role,
             display_name=name,
             status=state,
+            agent_definition_revision_id=(agent_snapshot.get("revision_id") if role == "PLANNER" and agent_snapshot else None),
             model_config_id=model.id if model else None,
             config_snapshot={
                 **frozen_model,
                 "agent_version": agent_snapshot["version"] if agent_snapshot else None,
                 "agent_name": agent_snapshot["name"] if agent_snapshot else None,
+                "agent_definition_id": agent_snapshot["id"] if role == "PLANNER" and agent_snapshot else None,
+                "agent_revision_id": agent_snapshot.get("revision_id") if role == "PLANNER" and agent_snapshot else None,
             },
             skills_json=[skill["key"] for skill in agent_snapshot["skills"]] if agent_snapshot else [],
             tool_allowlist_json=role_tools,
         )
         db.add(instance)
         agents[role] = instance
+    db.flush()
     for child in (agent_snapshot or {}).get("child_agents", []):
         db.add(TaskAgentInstance(
             task_run_id=run.id,
@@ -123,8 +129,14 @@ def create_run(db: Session, task: Task, actor: User, *, run_number: int, target_
             role="SUB_AGENT",
             display_name=child["name"],
             status="WAITING_DEPENDENCY",
+            agent_definition_revision_id=child.get("revision_id"),
+            parent_agent_instance_id=agents["PLANNER"].id,
             model_config_id=child["model_config_id"],
-            config_snapshot={"agent_version": child["version"], "agent_name": child["name"]},
+            config_snapshot={
+                "agent_definition_id": child["id"], "agent_revision_id": child.get("revision_id"),
+                "agent_version": child["version"], "agent_name": child["name"],
+                "model_config_id": child["model_config_id"],
+            },
             skills_json=[item["key"] for item in child.get("skills", [])],
             tool_allowlist_json=[],
         ))

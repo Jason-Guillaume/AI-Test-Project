@@ -13,6 +13,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -153,6 +154,7 @@ class TaskAgentInstance(Base):
     config_snapshot = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
     skills_json = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
     tool_allowlist_json = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    result_json = Column(JSON, nullable=True, comment="可恢复子 Agent 的成功输出检查点及输入指纹")
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
@@ -346,3 +348,102 @@ class TaskSchedulerControl(Base):
     id = Column(Integer, primary_key=True)
     max_concurrent_runs = Column(Integer, nullable=False, default=1, server_default=text("1"))
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class RuntimeCallFact(Base):
+    """可重建的模型调用事实；只存关联、状态、时延与用量，不复制 Trace 正文。"""
+
+    __tablename__ = "runtime_call_fact"
+    __table_args__ = (
+        UniqueConstraint("call_id", name="uq_runtime_call_fact_call_id"),
+        ForeignKeyConstraint(
+            ["task_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_call_fact_run_task", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["execution_root_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_call_fact_root_task", ondelete="CASCADE",
+        ),
+        Index("ix_runtime_call_fact_project_created", "project_id", "created_at"),
+        Index("ix_runtime_call_fact_run_created", "task_run_id", "created_at"),
+        Index("ix_runtime_call_fact_root", "execution_root_run_id"),
+        Index("ix_runtime_call_fact_model_created", "model_config_id", "created_at"),
+        {"comment": "模型调用数值事实与任务/Trace/Agent 关联"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    call_id = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_run_id = Column(Integer, nullable=False)
+    execution_root_run_id = Column(Integer, nullable=False)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False)
+    attempt_id = Column(Integer, ForeignKey("task_attempt.id", ondelete="CASCADE"), nullable=False)
+    agent_session_id = Column(Integer, ForeignKey("agent_session.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_revision_id = Column(Integer, ForeignKey("agent_definition_revision.id", ondelete="SET NULL"), nullable=True)
+    model_config_id = Column(Integer, ForeignKey("model_configuration.id", ondelete="SET NULL"), nullable=True)
+    model_name = Column(String(160), nullable=False)
+    model_revision = Column(String(80), nullable=True)
+    trace_id = Column(String(32), nullable=True, index=True)
+    span_id = Column(String(64), nullable=True)
+    request_count = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    status = Column(String(24), nullable=False)
+    error_code = Column(String(80), nullable=True)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    usage_status = Column(String(20), nullable=False, default="UNKNOWN", server_default=text("'UNKNOWN'"))
+    duration_ms = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    cost_amount = Column(Numeric(18, 8), nullable=True)
+    cost_currency = Column(String(3), nullable=True)
+    pricing_revision = Column(String(80), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class RuntimeEventFact(Base):
+    """工具、检索与上下文事件索引；Trace 正文仍由 Langfuse 持有。"""
+
+    __tablename__ = "runtime_event_fact"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_runtime_event_fact_event_id"),
+        ForeignKeyConstraint(
+            ["task_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_event_fact_run_task", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["execution_root_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_event_fact_root_task", ondelete="CASCADE",
+        ),
+        Index("ix_runtime_event_fact_project_time", "project_id", "occurred_at"),
+        Index("ix_runtime_event_fact_run_time", "task_run_id", "occurred_at"),
+        Index("ix_runtime_event_fact_root_time", "execution_root_run_id", "occurred_at"),
+        Index("ix_runtime_event_fact_type_time", "event_type", "occurred_at"),
+        {"comment": "工具调用、检索与上下文事件索引，不复制 Langfuse Trace 正文"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=True)
+    task_run_id = Column(Integer, nullable=True)
+    execution_root_run_id = Column(Integer, nullable=True)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=True)
+    attempt_id = Column(Integer, ForeignKey("task_attempt.id", ondelete="CASCADE"), nullable=True)
+    agent_session_id = Column(Integer, ForeignKey("agent_session.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_revision_id = Column(Integer, ForeignKey("agent_definition_revision.id", ondelete="SET NULL"), nullable=True)
+    trace_id = Column(String(32), nullable=True, index=True)
+    span_id = Column(String(64), nullable=True)
+    event_type = Column(String(32), nullable=False)
+    event_name = Column(String(160), nullable=False)
+    status = Column(String(24), nullable=False)
+    error_code = Column(String(80), nullable=True)
+    duration_ms = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    event_metadata = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    occurred_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, nullable=False, server_default=func.now())

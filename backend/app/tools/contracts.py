@@ -20,8 +20,17 @@ class ToolCallContext:
     actor: Any | None = None
     project_id: int | None = None
     task_run_id: int | None = None
+    task_id: int | None = None
+    execution_root_run_id: int | None = None
+    work_item_id: int | None = None
     attempt_id: int | None = None
+    agent_session_id: int | None = None
+    agent_instance_id: int | None = None
+    agent_definition_id: int | None = None
+    agent_definition_revision_id: int | None = None
+    trace_id: str | None = None
     confirmation_id: int | None = None
+    db: Any | None = None
     trusted_arguments: dict[str, Any] = field(default_factory=dict)
 
 

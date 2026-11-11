@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import lru_cache
@@ -28,6 +29,158 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 # 异步生成任务只向追踪服务发送身份元数据，不上传完整敏感 Prompt。
 task_trace_metadata: ContextVar[dict | None] = ContextVar("task_trace_metadata", default=None)
+current_generation_span_id: ContextVar[str | None] = ContextVar("current_generation_span_id", default=None)
+# Worker 线程以数据库中的可信身份恢复父 Span；子模块不从客户端参数取父级。
+task_trace_parent_span_id: ContextVar[str | None] = ContextVar("task_trace_parent_span_id", default=None)
+
+
+@contextmanager
+def runtime_agent_context(metadata: dict[str, Any], *, parent_span_id: str | None = None) -> Iterator[None]:
+    """在 LangGraph 并行节点内显式恢复子 Agent 关联，避免依赖线程 ContextVar 继承。"""
+    inherited = task_trace_metadata.get() or {}
+    metadata_token = task_trace_metadata.set({**inherited, **metadata})
+    parent_token = task_trace_parent_span_id.set(parent_span_id or task_trace_parent_span_id.get())
+    try:
+        yield
+    finally:
+        task_trace_parent_span_id.reset(parent_token)
+        task_trace_metadata.reset(metadata_token)
+
+
+@contextmanager
+def runtime_attempt_observation(metadata: dict[str, Any]) -> Iterator[str | None]:
+    """为一次 TaskAttempt 建立可恢复的 Langfuse Span，并传播脱敏关联元数据。
+
+    Args:
+        metadata: Worker 从 Task/Run/WorkItem/Attempt/AgentSession 装配的白名单字段。
+
+    Yields:
+        Langfuse Span ID；埋点关闭或失败时为 None。
+    """
+    metadata_token = task_trace_metadata.set(metadata)
+    parent_token = task_trace_parent_span_id.set(None)
+    client = get_langfuse_client()
+    cm = None
+    span = None
+    try:
+        if client is not None:
+            trace_id = metadata.get("trace_id")
+            trace_context = {"trace_id": trace_id} if trace_id else None
+            cm = client.start_as_current_observation(
+                name="task.attempt",
+                as_type="span",
+                metadata=metadata,
+                trace_context=trace_context,
+            )
+            span = cm.__enter__()
+            span_id = getattr(span, "id", None)
+            task_trace_parent_span_id.set(span_id)
+        else:
+            span_id = None
+    except Exception as exc:  # noqa: BLE001 —— Trace 故障不能阻塞任务
+        logger.warning("TaskAttempt Trace 创建失败（忽略）：%s", type(exc).__name__)
+        cm = None
+        span = None
+        span_id = None
+    try:
+        yield span_id
+    except Exception as exc:
+        if span is not None:
+            try:
+                span.update(level="ERROR", status_message=type(exc).__name__)
+            except Exception:  # noqa: BLE001
+                pass
+        if cm is not None:
+            try:
+                cm.__exit__(type(exc), exc, exc.__traceback__)
+            except Exception:  # noqa: BLE001 —— 保持 no-throw
+                pass
+            cm = None
+        raise
+    finally:
+        if cm is not None:
+            try:
+                cm.__exit__(None, None, None)
+            except Exception as exc:  # noqa: BLE001 —— 保持 no-throw
+                logger.warning("TaskAttempt Trace 结束失败（忽略）：%s", type(exc).__name__)
+        task_trace_parent_span_id.reset(parent_token)
+        task_trace_metadata.reset(metadata_token)
+
+
+def record_runtime_span(*, name: str, metadata: dict[str, Any], output: dict[str, Any] | None = None) -> str | None:
+    """把不含正文的运行事实追加为当前 Agent Attempt 的子 Span，并返回 Span ID。"""
+    client = get_langfuse_client()
+    if client is None:
+        return None
+    try:
+        correlation = task_trace_metadata.get() or {}
+        safe_correlation = {key: correlation[key] for key in (
+            "project_id", "task_id", "task_run_id", "execution_root_run_id", "trace_id", "work_item_id",
+            "attempt_id", "agent_session_id", "agent_run_id", "parent_agent_run_id", "agent_id",
+            "agent_revision_id", "agent_version", "model_config_id", "batch_id",
+        ) if correlation.get(key) is not None}
+        with client.start_as_current_observation(
+            name=name, as_type="span", metadata={**safe_correlation, **metadata}
+        ) as span:
+            if output is not None:
+                span.update(output=output)
+            return getattr(span, "id", None)
+    except Exception as exc:  # noqa: BLE001 —— 观测故障不能阻塞检索或业务执行
+        logger.warning("运行 Span 写入失败（忽略）：%s", type(exc).__name__)
+        return None
+
+
+@contextmanager
+def runtime_call_observation(*, name: str, metadata: dict[str, Any]) -> Iterator[Any | None]:
+    """记录工具/上下文执行耗时与错误类型，不记录调用正文或返回内容。"""
+    client = get_langfuse_client()
+    if client is None:
+        yield None
+        return
+    correlation = task_trace_metadata.get() or {}
+    safe_correlation = {key: correlation[key] for key in (
+        "project_id", "task_id", "task_run_id", "execution_root_run_id", "trace_id", "work_item_id",
+        "attempt_id", "agent_session_id", "agent_run_id", "parent_agent_run_id", "agent_id",
+        "agent_revision_id", "agent_version", "model_config_id", "batch_id",
+    ) if correlation.get(key) is not None}
+    started = time.monotonic()
+    cm = None
+    span = None
+    try:
+        cm = client.start_as_current_observation(
+            name=name, as_type="span", metadata={**safe_correlation, **metadata}
+        )
+        span = cm.__enter__()
+    except Exception as exc:  # noqa: BLE001 —— tracing 不可阻断业务
+        logger.warning("运行 Span 创建失败（忽略）：%s", type(exc).__name__)
+        cm = None
+        span = None
+    try:
+        yield span
+    except Exception as exc:
+        if span is not None:
+            try:
+                span.update(level="ERROR", status_message=type(exc).__name__)
+            except Exception:  # noqa: BLE001
+                pass
+        if cm is not None:
+            try:
+                cm.__exit__(type(exc), exc, exc.__traceback__)
+            except Exception:  # noqa: BLE001
+                pass
+            cm = None
+        raise
+    finally:
+        if span is not None:
+            try:
+                span.update(metadata={"duration_ms": int((time.monotonic() - started) * 1000)})
+            except Exception:  # noqa: BLE001
+                pass
+        if cm is not None:
+            try:
+                cm.__exit__(None, None, None)
+            except Exception as exc:  # noqa: BLE001 —— tracing 故障不能改写业务结果
+                logger.warning("运行 Span 结束失败（忽略）：%s", type(exc).__name__)
 
 
 @lru_cache
@@ -84,6 +237,7 @@ def llm_generation(
     model: str,
     input_messages: list[dict[str, str]],
     model_parameters: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Iterator[Any | None]:
     """LLM 调用的 generation 埋点上下文；埋点关闭时 yield None。
 
@@ -96,6 +250,7 @@ def llm_generation(
         model: 模型名（来自 ModelConfiguration，不含任何密钥）。
         input_messages: 实际发送的消息列表（已过 sanitizer 脱敏）。
         model_parameters: temperature / max_tokens 等采样参数。
+        metadata: 已脱敏的模型配置、版本与调用路由标识。
 
     Yields:
         Iterator[Any | None]: ``LangfuseGeneration`` 句柄，或 None（埋点关闭）。
@@ -111,7 +266,7 @@ def llm_generation(
             name=name,
             as_type="generation",
             input={"redacted": True} if task_trace_metadata.get() else input_messages,
-            metadata=task_trace_metadata.get() or {},
+            metadata={**(task_trace_metadata.get() or {}), **(metadata or {})},
             model=model,
             model_parameters=model_parameters or {},
         )
@@ -120,6 +275,7 @@ def llm_generation(
         logger.warning("Langfuse span 创建失败（忽略）：%s", type(exc).__name__)
         yield None
         return
+    span_token = current_generation_span_id.set(getattr(gen, "id", None))
     try:
         yield gen
     except Exception as exc:
@@ -133,10 +289,13 @@ def llm_generation(
         except Exception:  # noqa: BLE001
             pass
         raise
-    try:
-        cm.__exit__(None, None, None)
-    except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
-        logger.warning("Langfuse span 结束失败（忽略）：%s", type(exc).__name__)
+    else:
+        try:
+            cm.__exit__(None, None, None)
+        except Exception as exc:  # noqa: BLE001 —— 此处捕获异常后不向外抛出
+            logger.warning("Langfuse span 结束失败（忽略）：%s", type(exc).__name__)
+    finally:
+        current_generation_span_id.reset(span_token)
 
 
 def update_generation(

@@ -6,7 +6,7 @@
 from __future__ import annotations
 from typing import Any, Callable
 from sqlalchemy.orm import Session
-from app.agents.models import AgentDefinition
+from app.agents.models import AgentDefinition, AgentDefinitionRevision
 from app.mcp.models import MCPServer
 from app.skills.models import SkillDefinition
 from app.core.http.errors import bad_request, not_found
@@ -28,6 +28,9 @@ def build_agent_profile(
         raise not_found("Agent 配置不存在")
     if not definition.is_enabled:
         raise bad_request("所选 Agent 已停用")
+    definition_revision = db.query(AgentDefinitionRevision).filter_by(
+        agent_definition_id=definition.id, version=definition.version,
+    ).first()
     if not workflow_matches(definition.workflow_template, target_type):
         raise bad_request("所选 Agent 工作流与任务执行类型不匹配")
     required_tools = required_tool_keys(target_type)
@@ -78,9 +81,13 @@ def build_agent_profile(
             requested_model_id=child.model_config_id if child.model_config_id is not None else model.id,
         )
         child_model_snapshot = model_snapshot(child_model)
+        child_revision = db.query(AgentDefinitionRevision).filter_by(
+            agent_definition_id=child.id, version=child.version,
+        ).first()
         child_snapshots.append({
             "knowledge": freeze(db, project_id, child.id, actor),
             "id": child.id,
+            "revision_id": child_revision.id if child_revision else None,
             "key": child.key,
             "name": child.name,
             "version": child.version,
@@ -132,6 +139,7 @@ def build_agent_profile(
         "snapshot": {
             "knowledge": freeze(db, project_id, definition.id, actor),
             "id": definition.id,
+            "revision_id": definition_revision.id if definition_revision else None,
             "key": definition.key,
             "name": definition.name,
             "version": definition.version,

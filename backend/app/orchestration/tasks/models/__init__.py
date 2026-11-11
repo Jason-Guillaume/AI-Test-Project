@@ -18,10 +18,13 @@ from app.orchestration.tasks.models.task import (
     TaskTemplate,
     TaskWorkItem,
     TaskWorkItemDependency,
+    RuntimeCallFact,
+    RuntimeEventFact,
 )
 
 __all__ = [
     "Task", "TaskRun", "TaskPlan", "TaskAgentInstance", "TaskWorkItem",
     "TaskWorkItemDependency", "TaskAttempt", "TaskMessage", "TaskCommand",
     "TaskEvent", "TaskResourceRef", "TaskToolInvocation", "TaskSchedulerControl", "TaskTemplate",
+    "RuntimeCallFact", "RuntimeEventFact",
 ]

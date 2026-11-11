@@ -100,6 +100,47 @@ export interface TaskRunDetail {
   tool_invocations: TaskToolInvocation[];
 }
 
+export interface TaskTraceEvent {
+  id: string;
+  occurred_at: string;
+  event_type: string;
+  event_name: string;
+  status: string;
+  task_run_id: number | null;
+  work_item_id: number | null;
+  attempt_id: number | null;
+  agent_session_id: number | null;
+  agent_instance_id: number | null;
+  parent_agent_instance_id: number | null;
+  agent_definition_id: number | null;
+  agent_name: string | null;
+  agent_role: string | null;
+  agent_definition_revision_id: number | null;
+  trace_id: string | null;
+  span_id: string | null;
+  duration_ms: number;
+  error_code: string | null;
+  model_config_id?: number | null;
+  model_name?: string | null;
+  model_revision?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  cost_amount?: string | null;
+  cost_currency?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface TaskTracePage {
+  task_id: number;
+  run_id: number;
+  execution_root_run_id: number;
+  generation_batch_id: number | null;
+  trace_id: string | null;
+  items: TaskTraceEvent[];
+  next_cursor: string | null;
+}
+
 export interface TaskMessage {
   id: number;
   task_run_id: number;

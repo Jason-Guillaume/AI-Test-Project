@@ -11,6 +11,7 @@ import {
   LogoutOutlined,
   UserOutlined,
   RobotOutlined,
+  BarChartOutlined,
   BulbOutlined,
   ToolOutlined,
   FileTextOutlined,
@@ -37,6 +38,7 @@ const MENU_ITEMS = [
   { key: '/admin/model-configs', icon: <ApiOutlined />, label: '模型中心' }, // 统一模型中心
   { key: '/admin/environments', icon: <CloudOutlined />, label: '环境配置' }, // 环境配置
   { key: '/admin/agents', icon: <RobotOutlined />, label: 'Agent' },
+  { key: '/admin/agent-runtime', icon: <BarChartOutlined />, label: 'Agent 运行质量' },
   { key: '/admin/mcp', icon: <ApiOutlined />, label: 'MCP' },
   { key: '/admin/skills', icon: <BulbOutlined />, label: 'Skill' },
   { key: '/admin/tools', icon: <ToolOutlined />, label: '工具' },

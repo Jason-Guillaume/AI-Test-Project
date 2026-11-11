@@ -1,4 +1,7 @@
 """Real SQLite persistence; access is substituted only to model project membership."""
+import math
+from types import SimpleNamespace
+
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -8,6 +11,17 @@ import app.core.models
 from app.agents.models import AgentDefinition
 from app.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeVersion, KnowledgeChunk, KnowledgeBinding
 from app.knowledge import service
+
+
+def test_bm25_uses_document_frequency_and_declared_parameters():
+    """BM25 uses k1=1.2/b=0.75 and ranks repeated terms deterministically."""
+    row = SimpleNamespace(id=1, text="api api")
+    scores = service._bm25_scores([row], "api")
+    expected = math.log(1 + (1 - 1 + 0.5) / (1 + 0.5)) * (2.2 * 2 / 3.2)
+    assert scores[1] == pytest.approx(expected)
+    assert service._BM25_K1 == 1.2
+    assert service._BM25_B == 0.75
+    assert service._TOKENIZER_VERSION == "unicode-bigram-v1"
 
 @pytest.fixture
 def db(monkeypatch):
@@ -64,13 +78,18 @@ def test_pinned_version_failed_update_and_revocation(db):
         service.search(db, snapshot, {1}, '')
 
 
-def test_binding_does_not_limit_project_knowledge(db):
+def test_explicit_agent_scope_filters_project_knowledge(db):
     prepared(db)
     binding = db.query(KnowledgeBinding).filter_by(project_id=1).one()
-    binding.scopes = [{'base_id': 1, 'mode': 'DOCUMENTS', 'document_ids': []}]
+    doc = db.query(KnowledgeDocument).filter_by(project_id=1).one()
+    other = service.upload(db, 1, 1, {1}, 'extra.md', '单独授权的内容'.encode())
+    service.parse_version(db, other.id)
+    binding.access_mode = 'AGENT_SCOPED'
+    binding.scopes = [{'base_id': 1, 'mode': 'DOCUMENTS', 'document_ids': [doc.id]}]
     binding.required = True
     db.commit()
-    assert service.freeze(db, 1, 1, {1})['version_ids']
+    snapshot = service.freeze(db, 1, 1, {1})
+    assert snapshot['version_ids'] == [doc.current_version_id]
 
 
 def test_text_docx_and_scanned_pdf():
@@ -95,9 +114,44 @@ def test_agents_share_project_knowledge(db):
     service.parse_version(db, extra.id)
     binding = db.query(KnowledgeBinding).filter_by(project_id=1, agent_id=1).one()
     binding.scopes = [{'base_id': 1, 'mode': 'DOCUMENTS', 'document_ids': [first_doc.id]}]
-    db.add(KnowledgeBinding(project_id=1, agent_id=2, scopes=[{'base_id': 1, 'mode': 'DOCUMENTS', 'document_ids': [extra.document_id]}]))
+    binding.access_mode = 'AGENT_SCOPED'
+    db.add(KnowledgeBinding(project_id=1, agent_id=2, access_mode='AGENT_SCOPED',
+        scopes=[{'base_id': 1, 'mode': 'DOCUMENTS', 'document_ids': [extra.document_id]}]))
     db.commit()
     first = service.search(db, service.freeze(db, 1, 1, {1}), {1}, '')
     second = service.search(db, service.freeze(db, 1, 2, {1}), {1}, '')
-    assert {s['document_id'] for s in first} == {first_doc.id, extra.document_id}
-    assert {s['document_id'] for s in second} == {s['document_id'] for s in first}
+    assert {s['document_id'] for s in first} == {first_doc.id}
+    assert {s['document_id'] for s in second} == {extra.document_id}
+
+
+def test_bm25_top_k_and_relevance_threshold(db):
+    """BM25 排序返回可追溯版本，并遵守 Top-K 与最低分阈值。"""
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    version = db.get(KnowledgeVersion, snapshot['version_ids'][0])
+    db.add(KnowledgeChunk(version_id=version.id, position=1, page=None, text='支付流程的支付步骤'))
+    db.commit()
+    results = service.search(db, snapshot, {1}, '支付', limit=1)
+    assert len(results) == 1
+    assert results[0]['score_type'] == 'BM25'
+    assert results[0]['score'] > 0
+    assert results[0]['version'] == version.version
+    assert service.search(db, snapshot, {1}, '支付', minimum_score=100.0) == []
+
+
+def test_source_requires_exactly_authorized_version(db):
+    """同一文档的新版本可见时，不能通过旧 Chunk ID 绕过当前版本范围。"""
+    prepared(db)
+    old_version = db.query(KnowledgeVersion).join(KnowledgeDocument).filter(
+        KnowledgeDocument.project_id == 1,
+    ).one()
+    old_chunk = db.query(KnowledgeChunk).filter_by(version_id=old_version.id).one()
+    assert service.source(db, 1, 1, {1}, old_chunk.id).id == old_chunk.id
+
+    service.upload(db, 1, 1, {1}, '规范新版本.md', '更新后的商城规范'.encode(), document_id=old_version.document_id)
+    new_version = db.query(KnowledgeVersion).filter_by(document_id=old_version.document_id).order_by(
+        KnowledgeVersion.version.desc(),
+    ).first()
+    service.parse_version(db, new_version.id)
+    with pytest.raises(HTTPException):
+        service.source(db, 1, 1, {1}, old_chunk.id)

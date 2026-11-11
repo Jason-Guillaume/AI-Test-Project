@@ -340,7 +340,7 @@ def run_agent(
     返回 (final_state, emitted_messages)。final_state 供路由层序列化 AgentTurnResponse；
     emitted_messages 是本轮新增的 ASSISTANT/SYSTEM 消息。
     """
-    initial: AgentState = session_service.load_state(db, session)
+    initial: AgentState = session_service.load_state(db, session, query=content)
 
     # 只允许在本会话当前快照内确认/执行资产。执行已确认阶段时还要限制在此前
     # 确认过的范围内；缺省 None 留给旧客户端兼容，新的 UI 始终发送显式非空 ID。

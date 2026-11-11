@@ -2,7 +2,7 @@
 import { api } from '@/shared/api/client';
 import type { AgentTurnResponse } from '@/features/agent/contracts';
 
-import type { Task, TaskRunDetail, TaskMessage, TaskEvent, TaskResourceRef, TaskCreateRequest, AvailableTaskAgent, TaskMessageRequest, TaskCommandRequest, TaskWebAuthoringWorkspace, TaskTemplate, TaskInboxResponse, TaskSummary } from '../contracts';
+import type { Task, TaskRunDetail, TaskMessage, TaskEvent, TaskTracePage, TaskResourceRef, TaskCreateRequest, AvailableTaskAgent, TaskMessageRequest, TaskCommandRequest, TaskWebAuthoringWorkspace, TaskTemplate, TaskInboxResponse, TaskSummary } from '../contracts';
 
 
 
@@ -39,6 +39,8 @@ export const tasksApi = {
     api.post<{ id: number; status: string; response_json: Record<string, unknown> }>(`/task-runs/${runId}/commands`, body),
   events: (runId: number, afterSeq = 0) =>
     api.get<TaskEvent[]>(`/task-runs/${runId}/events`, { params: { after_seq: afterSeq } }),
+  trace: (runId: number, cursor?: string | null) =>
+    api.get<TaskTracePage>(`/task-runs/${runId}/trace`, { params: cursor ? { cursor } : {} }),
   resources: (runId: number) => api.get<TaskResourceRef[]>(`/task-runs/${runId}/resources`),
   webAuthoring: (runId: number) => api.get<TaskWebAuthoringWorkspace>(`/task-runs/${runId}/web-authoring`),
   restartWebAuthoring: (runId: number) => api.post<TaskWebAuthoringWorkspace>(`/task-runs/${runId}/web-authoring/restart`, {}),

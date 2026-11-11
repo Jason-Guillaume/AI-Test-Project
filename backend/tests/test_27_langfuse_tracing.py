@@ -18,6 +18,8 @@ from app.llm.tracing import (
     flush_langfuse,
     get_langfuse_client,
     llm_generation,
+    runtime_call_observation,
+    runtime_attempt_observation,
     update_generation,
 )
 from app.core.config import settings
@@ -52,6 +54,7 @@ class _FakeGeneration:
     def __init__(self):
         """初始化对象状态。"""
         self.updates: list[dict] = []
+        self.id = "span-test-id"
 
     def update(self, **kwargs):
         """更新对应数据。"""
@@ -152,8 +155,10 @@ def test_generation_records_model_input_and_usage(monkeypatch):
         model="qwen-plus",
         input_messages=messages,
         model_parameters={"temperature": 0.2},
+        metadata={"model_config_id": 17, "model_revision": "r2"},
     ) as gen:
         assert gen is client.generation
+        assert langfuse_tracer.current_generation_span_id.get() == gen.id
         update_generation(
             gen,
             output='{"intent":"GENERATE_TEST_POINTS"}',
@@ -163,7 +168,9 @@ def test_generation_records_model_input_and_usage(monkeypatch):
     assert obs["as_type"] == "generation"
     assert obs["model"] == "qwen-plus"
     assert obs["input"] == messages
+    assert obs["metadata"]["model_config_id"] == 17
     assert gen.updates[-1]["usage_details"] == {"input": 10, "output": 5, "total": 15}
+    assert langfuse_tracer.current_generation_span_id.get() is None
 
 
 def test_main_flow_exception_marked_error_and_reraised(monkeypatch):
@@ -199,6 +206,35 @@ def test_task_metadata_hides_output_and_error_body(monkeypatch):
         assert 'private-' not in str(client.observations) + str(client.generation.updates)
     finally:
         langfuse_tracer.task_trace_metadata.reset(token)
+
+
+def test_runtime_attempt_observation_propagates_and_restores_parent(monkeypatch):
+    """Attempt Span 使用可信 Trace 身份，退出后清理线程上下文。"""
+    _install_fake_langfuse(monkeypatch)
+    _enable(monkeypatch)
+    client = get_langfuse_client()
+    metadata = {"task_id": 7, "task_run_id": 8, "trace_id": "a" * 32, "attempt_id": 9}
+    with runtime_attempt_observation(metadata) as span_id:
+        assert span_id == "span-test-id"
+        assert langfuse_tracer.task_trace_metadata.get() == metadata
+        assert langfuse_tracer.task_trace_parent_span_id.get() == span_id
+    assert client.observations[0]["name"] == "task.attempt"
+    assert client.observations[0]["trace_context"] == {"trace_id": "a" * 32}
+    assert langfuse_tracer.task_trace_metadata.get() is None
+    assert langfuse_tracer.task_trace_parent_span_id.get() is None
+
+
+def test_runtime_call_observation_inherits_agent_correlation(monkeypatch):
+    """工具调用 span 自动继承任务/Agent 身份且不需要复制完整 Trace。"""
+    _install_fake_langfuse(monkeypatch)
+    _enable(monkeypatch)
+    client = get_langfuse_client()
+    metadata = {"task_id": 7, "task_run_id": 8, "trace_id": "b" * 32, "attempt_id": 9}
+    with runtime_attempt_observation(metadata):
+        with runtime_call_observation(name="tool.call", metadata={"tool_key": "safe.read"}) as span:
+            span.update(output={"status": "SUCCEEDED"})
+    assert client.observations[1]["metadata"]["task_id"] == 7
+    assert client.observations[1]["metadata"]["tool_key"] == "safe.read"
 
 
 def test_tracer_failure_never_blocks_main_flow(monkeypatch):

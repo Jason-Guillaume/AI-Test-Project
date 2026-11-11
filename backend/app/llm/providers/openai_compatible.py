@@ -11,6 +11,8 @@
 from __future__ import annotations
 
 import json
+import time
+from uuid import uuid4
 from typing import Any, Callable
 
 import httpx
@@ -75,6 +77,12 @@ class ProductionLLMProvider:
         for index, model_id in enumerate(self._candidate_model_ids()):
             cfg = None
             messages: list[dict[str, Any]] = [dict(item) for item in base_messages]
+            request_started: float | None = None
+            call_id = uuid4().hex
+            request_count = 0
+            span_id = None
+            usage_totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            usage_seen = False
             try:
                 cfg = self._load_config(model_id)
                 if self.expected_revision is not None and cfg.revision != self.expected_revision:
@@ -91,7 +99,9 @@ class ProductionLLMProvider:
                     model=cfg.model_name,
                     input_messages=base_messages,
                     model_parameters={"temperature": float(cfg.temperature or 0.2), "max_tokens": int(cfg.max_tokens or 4096)},
+                    metadata={"model_config_id": cfg.id, "model_revision": cfg.revision, "call_id": call_id},
                 ) as gen:
+                    span_id = getattr(gen, "id", None)
                     for _ in range(6):
                         body = {
                             "model": cfg.model_name,
@@ -102,6 +112,11 @@ class ProductionLLMProvider:
                             "tool_choice": "auto",
                         }
                         try:
+                            if self.before_request is not None:
+                                self.before_request()
+                            if request_started is None:
+                                request_started = time.monotonic()
+                            request_count += 1
                             response = self._post(
                                 f"{cfg.api_base.rstrip('/')}/chat/completions",
                                 json=body,
@@ -123,7 +138,13 @@ class ProductionLLMProvider:
                             message = data["choices"][0]["message"]
                         except (ValueError, KeyError, IndexError, TypeError) as exc:
                             raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应格式无法解析", retryable=True) from exc
-                        usage = data.get("usage")
+                        response_usage = data.get("usage")
+                        if isinstance(response_usage, dict):
+                            usage_seen = True
+                            for key in usage_totals:
+                                value = response_usage.get(key)
+                                if isinstance(value, int) and value >= 0:
+                                    usage_totals[key] += value
                         calls = message.get("tool_calls") or []
                         if not calls:
                             final_content = str(message.get("content") or "")
@@ -161,14 +182,24 @@ class ProductionLLMProvider:
                             validator(output)
                         except ValidationError as exc:
                             raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型输出未通过任务结构校验", retryable=True) from exc
+                    usage = usage_totals if usage_seen else None
+                    self.last_usage = usage
                     update_generation(gen, output=final_content, usage=usage)
-                self._record_attempt(failures, model_id, cfg.model_name, index, "SUCCEEDED", None)
+                self._record_attempt(failures, model_id, cfg.model_name, index, "SUCCEEDED", None,
+                                     usage=usage, duration_ms=self._duration_ms(request_started),
+                                     call_id=call_id, request_count=request_count, span_id=span_id,
+                                     model_revision=cfg.revision)
                 self.last_attempts = failures
                 self.last_model_config_id = cfg.id
                 return output
             except LLMError as exc:
                 last_error = exc
-                self._record_attempt(failures, model_id, cfg.model_name if cfg else None, index, "FAILED", exc.code)
+                usage = usage_totals if usage_seen else None
+                self._record_attempt(failures, model_id, cfg.model_name if cfg else None, index,
+                                     "FAILED", exc.code, usage=usage,
+                                     duration_ms=self._duration_ms(request_started),
+                                     call_id=call_id, request_count=request_count, span_id=span_id,
+                                     model_revision=cfg.revision if cfg else None)
         self.last_attempts = failures
         if not self.explicit_route and last_error is not None:
             raise last_error
@@ -192,6 +223,11 @@ class ProductionLLMProvider:
         candidates = self._candidate_model_ids()
         for index, model_id in enumerate(candidates):
             cfg = None
+            request_started: float | None = None
+            candidate_usage = None
+            call_id = uuid4().hex
+            request_count = 0
+            span_id = None
             try:
                 cfg = self._load_config(model_id)
                 if self.expected_revision is not None and cfg.revision != self.expected_revision:
@@ -212,11 +248,16 @@ class ProductionLLMProvider:
                 with llm_generation(
                     name=f"agent.{kind}", model=cfg.model_name, input_messages=messages,
                     model_parameters={"temperature": body["temperature"], "max_tokens": body["max_tokens"]},
+                    metadata={"model_config_id": cfg.id, "model_revision": cfg.revision,
+                              "candidate_index": index, "call_id": call_id},
                 ) as gen:
+                    span_id = getattr(gen, "id", None)
                     try:
                         # 可选调用方在真实网络请求前结束只读事务，避免长模型调用占用数据库连接事务。
                         if self.before_request is not None:
                             self.before_request()
+                        request_started = time.monotonic()
+                        request_count += 1
                         resp = self._post(
                             f"{cfg.api_base.rstrip('/')}/chat/completions", json=body, headers=headers,
                             timeout=float(cfg.timeout or 60),
@@ -237,6 +278,7 @@ class ProductionLLMProvider:
                     except (ValueError, KeyError, IndexError, TypeError) as exc:
                         raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型响应格式无法解析", retryable=True) from exc
                     self.last_usage = data.get("usage") if isinstance(data.get("usage"), dict) else None
+                    candidate_usage = self.last_usage
                     output = self._parse_json_content(content) if structured else content
                     if structured and validator is not None:
                         try:
@@ -244,13 +286,20 @@ class ProductionLLMProvider:
                         except ValidationError as exc:
                             raise LLMError("STRUCTURED_OUTPUT_INVALID", "模型输出未通过任务结构校验", retryable=True) from exc
                     update_generation(gen, output=content, usage=data.get("usage"))
-                self._record_attempt(failures, model_id, cfg.model_name, index, "SUCCEEDED", None)
+                self._record_attempt(failures, model_id, cfg.model_name, index, "SUCCEEDED", None,
+                                     usage=candidate_usage, duration_ms=self._duration_ms(request_started),
+                                     call_id=call_id, request_count=request_count, span_id=span_id,
+                                     model_revision=cfg.revision)
                 self.last_attempts = failures
                 self.last_model_config_id = cfg.id
                 return output
             except LLMError as exc:
                 last_error = exc
-                self._record_attempt(failures, model_id, cfg.model_name if cfg else None, index, "FAILED", exc.code)
+                self._record_attempt(failures, model_id, cfg.model_name if cfg else None, index,
+                                     "FAILED", exc.code, usage=candidate_usage,
+                                     duration_ms=self._duration_ms(request_started),
+                                     call_id=call_id, request_count=request_count, span_id=span_id,
+                                     model_revision=cfg.revision if cfg else None)
 
         self.last_attempts = failures
         # 显式任务路由只在所有候选均失败后返回可恢复错误，由持久化调度器安排下一轮。
@@ -262,15 +311,32 @@ class ProductionLLMProvider:
     def _record_attempt(
         self, failures: list[dict[str, Any]], model_id: int, model_name: str | None,
         index: int, status: str, error_code: str | None,
+        *, usage: dict[str, Any] | None = None, duration_ms: int | None = None,
+        call_id: str | None = None, request_count: int = 0,
+        span_id: str | None = None, model_revision: str | None = None,
     ) -> None:
         """只记录模型身份、顺序和结果，避免把提示词或密钥写入任务事件。"""
         item = {
             "model_config_id": model_id, "model_name": model_name,
             "candidate_index": index, "status": status, "error_code": error_code,
+            "call_id": call_id or uuid4().hex,
+            "request_count": max(0, request_count),
+            "span_id": span_id,
+            "model_revision": model_revision,
+            "usage": {
+                key: usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                if usage and isinstance(usage.get(key), int) and usage[key] >= 0
+            },
+            "duration_ms": max(0, duration_ms or 0),
         }
         failures.append(item)
         if self.attempt_callback is not None:
             self.attempt_callback(item)
+
+    @staticmethod
+    def _duration_ms(request_started: float | None) -> int:
+        """仅统计实际模型请求开始后的耗时，不把模型配置查询算入延迟。"""
+        return max(0, int((time.monotonic() - request_started) * 1000)) if request_started else 0
 
     def _candidate_model_ids(self) -> list[int | None]:
         """返回调用方筛选并授权的模型顺序；兼容旧 Agent 的单模型绑定。"""

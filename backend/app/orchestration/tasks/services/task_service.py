@@ -387,6 +387,12 @@ class TaskService:
         """兼容入口：委托只读查询服务按事件游标读取事件。"""
         return TaskQueryService.list_events(db, run_id, user, after_seq=after_seq, limit=limit)
 
+    def trace_timeline(
+        self, db: Session, run_id: int, user: User, *, cursor: str | None = None, limit: int = 100,
+    ) -> dict[str, Any]:
+        """兼容入口：委托 Trace 只读索引查询，不复制 Langfuse 正文。"""
+        return TaskQueryService.trace_timeline(db, run_id, user, cursor=cursor, limit=limit)
+
     def list_resources(self, db: Session, run_id: int, user: User) -> list[dict[str, Any]]:
         """兼容入口：委托资源服务读取批量命名后的运行资源。"""
         return TaskResourceService.list_resources(db, run_id, user)

@@ -290,6 +290,49 @@ class TaskRunDetailResponse(BaseModel):
     tool_invocations: list[TaskToolInvocationResponse]
 
 
+class TaskTraceEventResponse(BaseModel):
+    """Trace 时间线索引；不包含模型提示词、工具参数或响应正文。"""
+
+    id: str
+    occurred_at: datetime
+    event_type: str
+    event_name: str
+    status: str
+    task_run_id: int | None = None
+    work_item_id: int | None = None
+    attempt_id: int | None = None
+    agent_session_id: int | None = None
+    agent_instance_id: int | None = None
+    parent_agent_instance_id: int | None = None
+    agent_definition_id: int | None = None
+    agent_name: str | None = None
+    agent_role: str | None = None
+    agent_definition_revision_id: int | None = None
+    trace_id: str | None = None
+    span_id: str | None = None
+    duration_ms: int = 0
+    error_code: str | None = None
+    model_config_id: int | None = None
+    model_name: str | None = None
+    model_revision: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    cost_amount: str | None = None
+    cost_currency: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class TaskTracePageResponse(BaseModel):
+    task_id: int
+    run_id: int
+    execution_root_run_id: int
+    generation_batch_id: int | None = None
+    trace_id: str | None = None
+    items: list[TaskTraceEventResponse]
+    next_cursor: str | None = None
+
+
 class TaskMessageCreate(BaseModel):
     """向任务主 Agent 调目标，或向指定 Worker 发送补充要求。"""
 

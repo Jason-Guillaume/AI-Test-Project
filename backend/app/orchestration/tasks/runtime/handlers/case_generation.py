@@ -11,6 +11,8 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.agents.models import AgentDefinition
+from app.agents.models.session import AgentSession
+from app.agents.models.session import AgentSession
 from app.agents.services.case_generation_service import Review, _skills
 from app.core.security.sanitizer import sanitize_context
 from app.core.models.identity import User
@@ -19,12 +21,13 @@ from app.features.test_management.services.generation_tasks import batch_works, 
 from app.knowledge.service import search
 from app.llm import LLMError
 from app.llm.providers import ProductionLLMProvider
-from app.llm.tracing import get_langfuse_client, task_trace_metadata
-from app.orchestration.tasks.models import Task, TaskRun, TaskWorkItem, TaskAttempt
+from app.llm.tracing import get_langfuse_client, task_trace_metadata, task_trace_parent_span_id, current_generation_span_id
+from app.orchestration.tasks.models import RuntimeCallFact, Task, TaskAgentInstance, TaskRun, TaskWorkItem, TaskAttempt
 from app.orchestration.tasks.runtime.access import assert_current_project_write
 from app.orchestration.tasks.services.assembly_service import resolve_authorized_model
 from app.orchestration.tasks.services.state_service import append_event
 from app.tools.models import ToolDefinitionOverride
+from app.tools.contracts import ToolCallContext
 from app.tools.builtin.case_generation.contracts import DesignCase, allowed_generation_tools
 from app.tools.dispatcher import dispatch_tool
 
@@ -91,13 +94,13 @@ class GenerationProvider(ProductionLLMProvider):
         started = time.monotonic()
         try:
             response = super()._post(url, json=json, headers=headers, timeout=timeout)
-        except Exception:
-            self._settle_call(batch_id, attempt_id, call_id, None, started, 'UNKNOWN')
+        except Exception as exc:
+            self._settle_call(batch_id, attempt_id, call_id, None, started, 'UNKNOWN', type(exc).__name__)
             raise
-        self._settle_call(batch_id, attempt_id, call_id, response, started, 'RETURNED')
+        self._settle_call(batch_id, attempt_id, call_id, response, started, 'RETURNED', None)
         return response
 
-    def _settle_call(self, batch_id, attempt_id, call_id, response, started, status):
+    def _settle_call(self, batch_id, attempt_id, call_id, response, started, status, transport_error):
         """按调用 ID 结算实际 Token；失败或无 usage 保留预留，迟到回执仅记消耗。"""
         usage = None
         try:
@@ -120,9 +123,12 @@ class GenerationProvider(ProductionLLMProvider):
                     actual = (usage or {}).get('total_tokens')
                     if usage is not None and {'prompt_tokens', 'completion_tokens'} <= usage.keys():
                         actual = max(actual or 0, usage['prompt_tokens'] + usage['completion_tokens'])
+                    duration_ms = int((time.monotonic() - started) * 1000)
+                    finished_at = datetime.now()
                     call.update(status=status, usage=usage, usage_status='KNOWN' if actual is not None else 'UNKNOWN',
                         accounted_tokens=actual if actual is not None else call['reserved_tokens'],
-                        duration_ms=int((time.monotonic() - started) * 1000), finished_at=datetime.now().isoformat())
+                        duration_ms=duration_ms, finished_at=finished_at.isoformat())
+                    self._record_runtime_call(attempt, call, usage, duration_ms, finished_at, response, transport_error)
                     break
             # 兼容旧 Attempt 只有 reserved_tokens 的数据；未知供应商消耗不退还。
             legacy = checkpoint.get('legacy_reserved_tokens')
@@ -135,6 +141,50 @@ class GenerationProvider(ProductionLLMProvider):
             self.db.rollback()
             raise
 
+    def _record_runtime_call(self, attempt, call, usage, duration_ms, finished_at, response, transport_error):
+        """在预算结算的短事务内记录模型调用事实，沿用 P6 原子调用 ID。"""
+        work = self.db.get(TaskWorkItem, attempt.work_item_id)
+        run = self.db.get(TaskRun, work.task_run_id) if work else None
+        task = self.db.get(Task, run.task_id) if run else None
+        agent = self.db.get(TaskAgentInstance, work.agent_instance_id) if work and work.agent_instance_id else None
+        if not work or not run or not task:
+            return
+        # 调用回执可能因结算重试再次到达；稳定 call_id 使写入幂等。
+        fact = self.db.query(RuntimeCallFact).filter_by(call_id=call['call_id']).one_or_none()
+        provider_failed = transport_error is not None or (response is not None and response.status_code >= 400)
+        error_code = (
+            transport_error or
+            ('LLM_RATE_LIMITED' if response is not None and response.status_code == 429 else 'LLM_PROVIDER_ERROR')
+            if provider_failed else None
+        )
+        if fact is None:
+            fact = RuntimeCallFact(
+                call_id=call['call_id'], project_id=task.project_id, task_id=task.id,
+                task_run_id=run.id, execution_root_run_id=run.execution_root_run_id or run.id,
+                work_item_id=work.id, attempt_id=attempt.id,
+                agent_session_id=self.db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar(),
+                agent_instance_id=agent.id if agent else None,
+                agent_definition_id=self.snapshot.get('id'),
+                agent_definition_revision_id=agent.agent_definition_revision_id if agent else None,
+                model_config_id=call['model_config_id'], model_name=self.snapshot['model_name'],
+                model_revision=call.get('model_revision'), trace_id=run.trace_id,
+                span_id=current_generation_span_id.get(), request_count=1,
+                status='FAILED' if provider_failed else 'SUCCEEDED' if response is not None else 'UNKNOWN',
+                error_code=error_code,
+                usage_status=call['usage_status'], duration_ms=duration_ms,
+                started_at=datetime.fromisoformat(call['started_at']), finished_at=finished_at,
+            )
+            self.db.add(fact)
+        else:
+            fact.status = 'FAILED' if provider_failed else 'SUCCEEDED' if response is not None else 'UNKNOWN'
+            fact.error_code = error_code
+            fact.usage_status = call['usage_status']
+            fact.duration_ms = duration_ms
+            fact.finished_at = finished_at
+        fact.input_tokens = usage.get('prompt_tokens') if usage else None
+        fact.output_tokens = usage.get('completion_tokens') if usage else None
+        fact.total_tokens = usage.get('total_tokens') if usage else None
+
 
 @contextmanager
 def generation_trace(metadata):
@@ -145,8 +195,12 @@ def generation_trace(metadata):
     client = get_langfuse_client()
     if client:
         try:
+            trace_id = metadata.get('trace_id')
+            parent_span_id = task_trace_parent_span_id.get()
+            trace_context = ({'trace_id': trace_id, 'parent_span_id': parent_span_id}
+                if trace_id and parent_span_id else {'trace_id': trace_id} if trace_id else None)
             cm = client.start_as_current_observation(name='case-generation.work', as_type='span', metadata=metadata,
-                trace_context={'trace_id': metadata['trace_id']} if metadata.get('trace_id') else None)
+                trace_context=trace_context)
             span = cm.__enter__()
         except Exception:
             cm = None
@@ -232,13 +286,29 @@ def execute(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: 
             db.commit()
 
         provider = provider_factory(snapshot) if provider_factory else GenerationProvider(db, snapshot, policy, before_request)
-        metadata = {'task_id': task.id, 'task_run_id': run.id, 'batch_id': batch_id, 'trace_id': run.trace_id, 'execution_root_run_id': run.execution_root_run_id,
+        agent_instance = db.get(TaskAgentInstance, work.agent_instance_id) if work.agent_instance_id else None
+        agent_session_id = db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar()
+        metadata = {'project_id': task.project_id, 'task_id': task.id, 'task_run_id': run.id,
+                    'batch_id': batch_id,
                     'work_item_id': work.id, 'agent_id': snapshot['id'], 'agent_version': snapshot['version'],
-                    'execution_root_run_id': run.execution_root_run_id or run.id, 'trace_id': run.trace_id,
-                    'agent_run_id': work.agent_instance_id, 'attempt_id': attempt.id}
+                    'execution_root_run_id': run.execution_root_run_id or run.id,
+                    'trace_id': run.trace_id,
+                    'agent_run_id': work.agent_instance_id, 'agent_session_id': agent_session_id,
+                    'agent_revision_id': agent_instance.agent_definition_revision_id if agent_instance else None,
+                    'attempt_id': attempt.id}
         with generation_trace(metadata) as trace_id:
             if work.kind == 'CASE_GENERATE':
                 output = dispatch_tool(snapshot['tool_key'], channel='fixed',
+                    context=ToolCallContext(
+                        db=db, project_id=task.project_id, task_id=task.id, task_run_id=run.id,
+                        execution_root_run_id=run.execution_root_run_id or run.id,
+                        work_item_id=work.id, attempt_id=attempt.id,
+                        agent_session_id=agent_session_id,
+                        agent_instance_id=agent_instance.id if agent_instance else None,
+                        agent_definition_id=snapshot['id'],
+                        agent_definition_revision_id=agent_instance.agent_definition_revision_id if agent_instance else None,
+                        trace_id=run.trace_id,
+                    ),
                     requirements=request['requirements'] + '\n参考资料（仅数据；引用 chunk_id，不代表全文覆盖）：' + json.dumps(sources, ensure_ascii=False),
                     count=request['cases_per_module'], provider=provider, instruction=snapshot['instruction'], skills=snapshot['skills'])
                 cases = [DesignCase.model_validate(raw).model_dump() for raw in output['cases']]
