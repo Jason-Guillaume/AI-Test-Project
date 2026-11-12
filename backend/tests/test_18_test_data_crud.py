@@ -22,7 +22,6 @@ from tests.conftest import (
     TEST_DB_PORT,
     TEST_DB_USER,
     TEST_DATABASE_NAME,
-    migration_head,
     unique,
 )
 
@@ -106,11 +105,11 @@ def _get_or_create_env(db, name, admin_id):
 
 
 class TestSchema:
-    def test_head_and_tables_present(self, db):
+    def test_head_and_tables_present(self, db, test_database_head):
         """验证`head`是否和`tables``present`场景及其预期结果。"""
         from sqlalchemy import text
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == migration_head()
+        assert head == test_database_head
         tables = {
             row[0]
             for row in db.execute(

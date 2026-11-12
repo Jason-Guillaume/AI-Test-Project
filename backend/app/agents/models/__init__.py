@@ -4,8 +4,10 @@ from app.agents.models.definition import AgentDefinition, AgentDefinitionRevisio
 from app.agents.models.message import AgentMessage
 from app.agents.models.session import AgentSession
 from app.agents.models.browser_authoring import WebAgentSession, WebAgentStep
+from app.agents.models.context_summary import AgentSessionSummary
+from app.agents.models.long_term_memory import AgentLongTermMemory
 
 __all__ = [
     "AgentDefinition", "AgentDefinitionRevision", "AgentSession", "AgentMessage",
-    "WebAgentSession", "WebAgentStep",
+    "WebAgentSession", "WebAgentStep", "AgentSessionSummary", "AgentLongTermMemory",
 ]

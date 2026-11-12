@@ -1,9 +1,12 @@
 // 选中模块后展示模块内的接口清单；点击接口行切换到接口详情。
 import { useEffect, useState } from 'react';
-import { Button, Space, Tag, Typography } from 'antd';
+import { App, Button, Space, Tag, Typography } from 'antd';
 import { FolderOpenOutlined, RightOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
+import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { API_STATUS_COLOR, METHOD_COLOR } from './constants';
@@ -25,11 +28,17 @@ export function ModuleApiList({
   status: ApiStatus | undefined;
   onSelectApi: (id: number) => void;
 }) {
+  const { message, modal } = App.useApp();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [pagination, setPagination] = useState<PaginationState>({ page: 1, page_size: 20 });
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   useEffect(() => {
     setPagination((current) => ({ ...current, page: 1 }));
   }, [module.id, keyword, method, status]);
+
+  useEffect(() => setSelectedIds([]), [module.id, keyword, method, status]);
 
   const query = useQuery({
     queryKey: ['api-catalog', projectId, 'module-apis', module.id, pagination, keyword, method, status],
@@ -40,6 +49,33 @@ export function ModuleApiList({
       method,
       status,
     }),
+  });
+
+  const deleteMany = useMutation({
+    mutationFn: () => dataLifecycleApi.deleteMany('api_interface', projectId, selectedIds),
+    onSuccess: (receipt) => {
+      setSelectedIds([]);
+      queryClient.invalidateQueries({ queryKey: ['api-catalog', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      if (receipt.failed > 0) {
+        modal.info({
+          title: `批量删除完成：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
+          width: 620,
+          content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => (
+            <Typography.Text key={item.id} type="danger">接口 #{item.id}：{item.error}</Typography.Text>
+          ))}</Space>,
+          onOk: () => navigate('/console/recycle-bin'),
+        });
+      } else {
+        modal.success({
+          title: `已将 ${receipt.succeeded} 个接口移入回收站`,
+          content: '请求参数、响应定义和变更历史保留在原始接口记录中。',
+          okText: '查看回收站',
+          onOk: () => navigate('/console/recycle-bin'),
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
   });
 
   if (query.isPending) return <LoadingState tip={`正在加载「${module.name}」接口...`} />;
@@ -106,6 +142,18 @@ export function ModuleApiList({
           </div>
         </div>
         <Tag color="blue" className="api-module-interfaces-count">{query.data.total} 个接口</Tag>
+        <Button
+          danger
+          disabled={!selectedIds.length}
+          loading={deleteMany.isPending}
+          onClick={() => modal.confirm({
+            title: `删除选中的 ${selectedIds.length} 个接口？`,
+            content: '仍被测试用例引用的接口会逐条拒绝删除，其余接口可部分成功。',
+            okButtonProps: { danger: true },
+            okText: `删除 ${selectedIds.length} 个`,
+            onOk: () => deleteMany.mutateAsync(),
+          })}
+        >批量删除</Button>
       </div>
 
       <ResourceTable<ApiInterface>
@@ -119,6 +167,11 @@ export function ModuleApiList({
         emptyText={keyword || method || status ? '当前筛选条件下没有接口' : '此模块暂无接口'}
         onRowClick={(row) => onSelectApi(row.id)}
         rowStyle={{ cursor: 'pointer' }}
+        rowSelection={{
+          selectedRowKeys: selectedIds,
+          preserveSelectedRowKeys: true,
+          onChange: (keys) => setSelectedIds(keys.map(Number)),
+        }}
       />
       <Space className="api-module-interfaces-hint" size={6}>
         <Typography.Text type="secondary">点击接口行可查看详情</Typography.Text>

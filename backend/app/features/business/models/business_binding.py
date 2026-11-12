@@ -14,10 +14,10 @@ feature-local 表，由迁移 0004 显式建立。
 from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessBinding(Base):
+class BusinessBinding(SoftDeleteBase):
     """业务绑定：业务动作与 API 接口或 Web 用例的关系。"""
 
     __tablename__ = "business_binding"
@@ -29,7 +29,8 @@ class BusinessBinding(Base):
             "ix_business_binding_action_default",
             "action_id", "binding_type",
             unique=True,
-            postgresql_where=text("is_default = true"),
+            postgresql_where=text("is_default = true AND deleted_at IS NULL"),
+            sqlite_where=text("is_default = true AND deleted_at IS NULL"),
         ),
         {"comment": "业务绑定：业务动作与具体执行接口的关系"},
     )

@@ -13,15 +13,18 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JS
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TargetDatabaseConnection(Base):
+class TargetDatabaseConnection(SoftDeleteBase):
     """被测库连接（非平台库）。第一阶段只支持 PostgreSQL。"""
 
     __tablename__ = "target_database_connection"
     __table_args__ = (
-        UniqueConstraint(
-            "project_id", "environment_id", "name", name="uq_target_db_conn"
+        Index(
+            "uq_target_db_conn_live", "project_id", "environment_id", "name", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
         ),
         {"comment": "被测库连接（非平台库），password 只存 encrypt_secret 结果"},
     )

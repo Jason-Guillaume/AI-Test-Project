@@ -98,16 +98,10 @@ def _bind_environment(db, project_id, environment_id, admin_id):
     db.commit()
 
 
-def test_p4_migration_adds_scan_polling_and_idempotency_contract(db):
+def test_p4_migration_adds_scan_polling_and_idempotency_contract(db, test_database_head):
     """0016 的调度字段与 0017 的备用路由字段均已持久化。"""
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    from tests.conftest import BACKEND_DIR
-
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     inspector = inspect(db.bind)
-    assert db.execute(text("select version_num from alembic_version")).scalar() == ScriptDirectory.from_config(config).get_current_head()
+    assert db.execute(text("select version_num from alembic_version")).scalar() == test_database_head
     assert "security_scan_json" in {item["name"] for item in inspector.get_columns("task")}
     assert "available_at" in {item["name"] for item in inspector.get_columns("task_work_item")}
     assert "idempotency_key" in {item["name"] for item in inspector.get_columns("security_scan_job")}
@@ -760,7 +754,7 @@ def task_browser_registry():
 def test_task_web_authoring_browser_approval_draft_and_reverse_trace(api, admin, db, monkeypatch, web_authoring_web_setup, task_browser_registry):
     """任务内真实受控浏览器遵守人工步骤门禁，草稿未确认且双向追溯到本次运行。"""
     from app.agents.models.session import AgentSession
-    from app.orchestration.tasks.models import TaskAgentInstance
+    from app.orchestration.tasks.models import RuntimeEventFact, TaskAgentInstance
     from app.orchestration.tasks.router import web_authoring_service
     from app.orchestration.tasks.runtime import worker as task_worker_module
     from app.features.web_testing.models import WebAgentSession, WebAgentStep
@@ -874,6 +868,11 @@ def test_task_web_authoring_browser_approval_draft_and_reverse_trace(api, admin,
     assert any(item["task_id"] == task_id and item["task_run_id"] == run_id for item in reverse.json())
     db.refresh(browser_row)
     assert browser_row.status == "CLOSED"
+    assert db.query(RuntimeEventFact).filter(
+        RuntimeEventFact.task_run_id == run_id,
+        RuntimeEventFact.event_type == "CONTEXT_ASSEMBLY",
+        RuntimeEventFact.status == "SUCCEEDED",
+    ).count() >= 1
     registry.close_all()
 
 

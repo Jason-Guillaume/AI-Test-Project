@@ -321,15 +321,19 @@ class ProviderService:
         return _response(provider, db)
 
     def delete_provider(self, db: Session, provider_id: int, *, actor: User) -> None:
-        """删除提供器。"""
-        provider = self._get_writable_or_404(db, provider_id, actor)
+        """将 Provider 移入回收站；数据库型 Provider 保留管理员删除权限。"""
+        from app.lifecycle.service import delete_resource
+
+        provider = (
+            db.query(DataProvider).execution_options(include_deleted=True)
+            .filter(DataProvider.id == provider_id).first()
+        )
+        if provider is None:
+            raise not_found("数据 Provider 不存在")
+        require_writable_project(db, provider.project_id, actor)
         if _requires_admin(provider.provider_type):
             require_admin(db, actor)
-        used = _usage_count(db, provider.id)
-        if used:
-            raise conflict(f"该 Provider 正被 {used} 条 Fixture 步骤引用，请先移除引用")
-        db.delete(provider)
-        db.commit()
+        delete_resource(db, "data_provider", provider_id, actor=actor, project_id=provider.project_id)
 
     def _get_or_404(self, db: Session, provider_id: int, user: User) -> DataProvider:
         """获取或。"""

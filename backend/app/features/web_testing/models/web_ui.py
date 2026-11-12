@@ -2,9 +2,10 @@
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class PageObject(Base):
+class PageObject(SoftDeleteBase):
     """项目内页面对象：命名元素仅保存声明式定位器。"""
     __tablename__ = "web_page_object"
     __table_args__ = (UniqueConstraint("project_id", "name", name="uq_web_page_project_name"),)
@@ -17,7 +18,7 @@ class PageObject(Base):
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
-class WebAuthProfile(Base):
+class WebAuthProfile(SoftDeleteBase):
     """加密测试账号或人工完成扫码后的 storage_state；API 永不返回明文。"""
     __tablename__ = "web_auth_profile"
     id = Column(Integer, primary_key=True)

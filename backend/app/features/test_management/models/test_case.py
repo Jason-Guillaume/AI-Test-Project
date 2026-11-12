@@ -13,18 +13,19 @@ case_type ∈ {FUNCTIONAL, BUSINESS, NEGATIVE, BOUNDARY, PERMISSION, SECURITY, E
 status ∈ {DRAFT, ACTIVE, DEPRECATED}。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestCase(Base):
+class TestCase(SoftDeleteBase):
     """测试用例：可执行、可断言、可复用的测试资产核心实体。"""
 
     __tablename__ = "test_case"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_test_case_project_name"),
+        Index("uq_test_case_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_case_project_status", "project_id", "status"),
         Index("ix_test_case_project_target", "project_id", "target_type"),
         {"comment": "测试用例：可执行、可断言、可复用的测试资产核心实体"},

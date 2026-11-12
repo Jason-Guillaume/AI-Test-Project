@@ -29,6 +29,7 @@ export function ResourceTable<T>({
   expandedRowRender,
   onRowClick,
   rowStyle,
+  rowSelection,
   scroll = { x: 'max-content' },
 }: {
   rowKey: (row: T) => string | number; // 每行唯一键，优先用后端主键 id
@@ -42,6 +43,7 @@ export function ResourceTable<T>({
   expandedRowRender?: (row: T) => ReactNode; // 可选的展开行渲染函数
   onRowClick?: (row: T) => void; // 可选的行点击回调（打开详情抽屉等）
   rowStyle?: CSSProperties; // 可选的行样式（如 cursor: pointer）
+  rowSelection?: TableProps<T>['rowSelection']; // 可选的当前页或跨页选择
   scroll?: TableProps<T>['scroll'];
 }) {
   return (
@@ -50,6 +52,7 @@ export function ResourceTable<T>({
       columns={columns}
       dataSource={dataSource}
       loading={loading}
+      rowSelection={rowSelection}
       className="resource-table"
       scroll={scroll}
       locale={{ emptyText }}

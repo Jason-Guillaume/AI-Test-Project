@@ -209,7 +209,7 @@ def accessible_organization_ids(db: Session, user: User) -> list[int] | None:
     return [row[0] for row in rows]
 
 
-def accessible_project_ids(db: Session, user: User) -> list[int] | None:
+def accessible_project_ids(db: Session, user: User, *, include_deleted: bool = False) -> list[int] | None:
     """返回用户可见的项目 ID 列表；平台管理员返回 None 表示不过滤。
 
     口径与旧项目 ``accessible_project_ids`` 一致，两个条件叠加：
@@ -223,8 +223,11 @@ def accessible_project_ids(db: Session, user: User) -> list[int] | None:
     if is_platform_admin(user):
         return None
     org_ids = accessible_organization_ids(db, user) or []
+    query = db.query(Project.id)
+    if include_deleted:
+        query = query.execution_options(include_deleted=True)
     rows = (
-        db.query(Project.id)
+        query
         .outerjoin(
             ProjectMember,
             and_(

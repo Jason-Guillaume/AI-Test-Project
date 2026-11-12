@@ -22,6 +22,7 @@ from app.core.models.identity import User
 from app.core.http.errors import bad_request, conflict, not_found
 from app.core.notifications.notify import notify
 from app.core.http.pagination import DEFAULT_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 
 def _response(s: TestStrategy) -> TestStrategyResponse:
@@ -118,10 +119,9 @@ class StrategyService:
         return _response(strategy)
 
     def delete_strategy(self, db: Session, strategy_id: int, *, actor: User) -> None:
-        """删除策略。"""
+        """软删除无测试点引用的策略，支持从回收站恢复。"""
         strategy = self._get_writable_or_404(db, strategy_id, actor)
-        db.delete(strategy)
-        db.commit()
+        delete_resource(db, "test_strategy", strategy.id, actor=actor)
 
     def _get_or_404(self, db: Session, strategy_id: int, user: User) -> TestStrategy:
         """获取或。"""

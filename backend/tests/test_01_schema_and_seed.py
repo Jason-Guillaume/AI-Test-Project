@@ -21,7 +21,6 @@ from tests.conftest import (
     TEST_DATABASE_NAME,
     TEST_DSN,
     TEST_DB_PASSWORD,
-    migration_head,
     psycopg,
 )
 
@@ -31,7 +30,7 @@ SEED_USER = "seed-admin-001"
 SEED_PASSWORD = "Seed-Password-789"
 
 
-def test_alembic_upgrades_empty_database_to_head(db):
+def test_alembic_upgrades_empty_database_to_head(db, test_database_head):
     """不变量：表结构唯一来源是 Alembic 迁移，而不是应用启动期 create_all。
 
     验收点：
@@ -40,7 +39,7 @@ def test_alembic_upgrades_empty_database_to_head(db):
     - 连接对象是全新 Session（db fixture），说明写进的是数据库而不是内存。
     """
     head = db.execute(text("select version_num from alembic_version")).scalar()
-    assert head == migration_head()
+    assert head == test_database_head
 
     tables = {
         row[0]

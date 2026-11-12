@@ -40,6 +40,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { getErrorMessage } from '@/shared/api/client';
 import { mockManagementApi } from '@/features/mocking/api/mockManagement';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import type { MockScenario } from '@/features/mocking/contracts';
 
@@ -52,13 +53,14 @@ export function ConsoleMockEndpointPage() {
   const id = Number(endpointId);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { message: msg } = App.useApp();
+  const { message: msg, modal } = App.useApp();
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<MockScenario | null>(null);
   // 复制场景：后端要求显式给出新的 scenario_key（同接口唯一），故弹框让用户确认。
   const [dupRow, setDupRow] = useState<MockScenario | null>(null);
   const [dupKey, setDupKey] = useState('');
+  const [selectedScenarioIds, setSelectedScenarioIds] = useState<number[]>([]);
 
   const endpointQuery = useQuery({
     queryKey: ['mock-endpoint', id],
@@ -100,9 +102,33 @@ export function ConsoleMockEndpointPage() {
     mutationFn: (targetId: number) => mockManagementApi.removeScenario(targetId),
     onSuccess: () => {
       invalidate();
-      msg.success('场景已删除');
+      msg.success('场景已移入回收站；调用历史保留');
     },
     onError: (e) => msg.error(getErrorMessage(e, '删除场景失败')),
+  });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => dataLifecycleApi.deleteMany('mock_scenario', endpoint!.project_id, ids),
+    onSuccess: async (receipt) => {
+      setSelectedScenarioIds([]);
+      invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      const failures = receipt.items.filter((item) => !item.succeeded);
+      modal.info({
+        title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+        width: 620,
+        content: failures.length ? (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {failures.map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`Mock 场景 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>
+        ) : '成功项已移入回收站。',
+        okText: '查看回收站',
+        onOk: () => navigate('/console/recycle-bin'),
+      });
+    },
+    onError: (error) => msg.error(getErrorMessage(error, '批量删除 Mock 场景失败')),
   });
 
   if (endpointQuery.isLoading) return <LoadingState />;
@@ -212,7 +238,7 @@ export function ConsoleMockEndpointPage() {
           </Button>
           <Popconfirm
             title="确认删除该场景？"
-            description="已被用例声明为 Mock 依赖的场景会阻止删除，需先在用例上移除引用；执行不会自动退回默认场景。"
+            description="被用例引用或作为服务默认场景时会拒绝删除；执行历史保留。"
             onConfirm={() => deleteMutation.mutate(row.id)}
           >
             <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending}>
@@ -240,6 +266,9 @@ export function ConsoleMockEndpointPage() {
           {endpoint.enabled ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>}
         </Flex>
         <Space wrap>
+          <Link to="/console/recycle-bin">
+            <Button>回收站</Button>
+          </Link>
           <Link to="/console/mock-management/executions">
             <Button icon={<HistoryOutlined />}>调用记录</Button>
           </Link>
@@ -276,9 +305,37 @@ export function ConsoleMockEndpointPage() {
           size="middle"
           columns={columns}
           dataSource={scenarios}
+          rowSelection={{
+            selectedRowKeys: selectedScenarioIds,
+            onChange: (keys) => setSelectedScenarioIds(keys.map(Number)),
+          }}
           scroll={{ x: 1500 }}
           pagination={false}
         />
+      )}
+
+      {selectedScenarioIds.length > 0 && (
+        <Flex justify="space-between" align="center" style={{ marginTop: 12 }}>
+          <Typography.Text>已选择 {selectedScenarioIds.length} 个 Mock 场景</Typography.Text>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={batchDeleteMutation.isPending}
+            onClick={() => {
+              const ids = [...selectedScenarioIds];
+              modal.confirm({
+                title: `确认删除选中的 ${ids.length} 个 Mock 场景？`,
+                content: '被用例引用或作为服务默认场景的记录会逐条拒绝；成功项可从回收站恢复。',
+                okText: '删除并移入回收站',
+                okType: 'danger',
+                cancelText: '取消',
+                onOk: () => batchDeleteMutation.mutateAsync(ids),
+              });
+            }}
+          >
+            批量删除
+          </Button>
+        </Flex>
       )}
 
       <ScenarioEditor

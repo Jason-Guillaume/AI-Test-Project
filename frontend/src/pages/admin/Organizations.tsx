@@ -320,7 +320,6 @@ export function AdminOrganizationsPage() {
 function MemberDrawer({
   open,
   editing,
-  models: _models,
   loading,
   onCancel,
   onSubmit,

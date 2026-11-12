@@ -26,6 +26,7 @@ from app.core.models.identity import User
 from app.core.http.errors import bad_request, conflict, not_found
 from app.core.notifications.notify import notify
 from app.core.http.pagination import DEFAULT_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 
 def _response(s: TestSuite) -> TestSuiteResponse:
@@ -126,8 +127,7 @@ class SuiteService:
     def delete_suite(self, db: Session, suite_id: int, *, actor: User) -> None:
         """删除套件。"""
         suite = self._get_writable_or_404(db, suite_id, actor)
-        db.delete(suite)
-        db.commit()
+        delete_resource(db, "test_suite", suite.id, actor=actor)
 
     # -------------------------------------------------------------- 套件-用例关联
 
@@ -167,12 +167,14 @@ class SuiteService:
 
     def remove_suite_case(self, db: Session, suite_case_id: int, *, actor: User) -> None:
         """移除套件用例。"""
-        row = db.get(TestSuiteCase, suite_case_id)
+        from app.lifecycle.service import delete_resource
+
+        row = db.query(TestSuiteCase).execution_options(include_deleted=True).filter(TestSuiteCase.id == suite_case_id).first()
         if row is None:
             raise not_found("套件用例关联不存在")
-        require_writable_project(db, resolve_suite_project_id(db, row.suite_id), actor)
-        db.delete(row)
-        db.commit()
+        project_id = resolve_suite_project_id(db, row.suite_id)
+        require_writable_project(db, project_id, actor)
+        delete_resource(db, "test_suite_case", suite_case_id, actor=actor, project_id=project_id)
 
     def _get_or_404(self, db: Session, suite_id: int, user: User) -> TestSuite:
         """获取或。"""

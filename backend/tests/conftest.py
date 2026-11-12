@@ -61,6 +61,8 @@ os.environ["AUTO_CREATE_SCHEMA"] = "false"
 # 测试进程绝不启动 ZAP 扫描 Worker；需要验证 job_service 的用例会在应用 lifespan
 # 启动后单独切换设置，因此不会对外部扫描器发出网络请求。
 os.environ["ZAP_ENABLED"] = "false"
+# 自动化轮询会访问云效，测试进程默认关闭；需要同步行为的用例直接调用服务方法。
+os.environ["AUTOMATION_POLL_ENABLED"] = "false"
 os.environ["SECRET_KEY"] = os.environ.get(
     "TEST_SECRET_KEY", "unit-test-secret-not-for-production"
 )
@@ -182,6 +184,54 @@ def test_database():
         with connection.cursor() as cursor:
             _terminate_connections(TEST_DATABASE_NAME)
             cursor.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE_NAME}"')
+
+
+@pytest.fixture(scope="session")
+def test_database_head(test_database):
+    """Capture the isolated database revision after its startup migration.
+
+    Migration-head assertions must compare against this session snapshot instead of
+    rescanning Alembic files during tests, because another checkout may add a revision
+    while the suite is running.
+    """
+    psycopg_dsn = TEST_DSN.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(psycopg_dsn) as connection:
+        return connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+
+
+@pytest.fixture()
+def isolated_migration_database(test_database, test_database_head, monkeypatch):
+    """Provide a disposable clean schema for tests that downgrade across revisions.
+
+    Lifecycle downgrade guards intentionally refuse to erase recoverable rows. Migration
+    shape tests therefore run on a separate empty database rather than the shared test
+    database, where preceding API tests may have created recycle-bin records.
+    """
+    # Initialize the application engine against the session test database before
+    # temporarily redirecting Alembic's environment variable to the scratch database.
+    assert test_database == TEST_DATABASE_NAME
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    database_name = f"testplatform_migration_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
+        connection.execute(f'CREATE DATABASE "{database_name}"')
+    dsn = TEST_DSN.replace(f"/{TEST_DATABASE_NAME}", f"/{database_name}")
+    monkeypatch.setenv("DATABASE_URL", dsn)
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", dsn.replace("%", "%%"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    engine = create_engine(dsn)
+    try:
+        command.stamp(config, "base")
+        command.upgrade(config, test_database_head)
+        yield config, engine
+    finally:
+        engine.dispose()
+        with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
+            _terminate_connections(database_name)
+            connection.execute(f'DROP DATABASE IF EXISTS "{database_name}"')
 
 
 @pytest.fixture(scope="session")

@@ -10,18 +10,22 @@ value_type ∈ {STRING, INTEGER, NUMBER, BOOLEAN, OBJECT, ARRAY}。
 required=True 时缺失将导致用例执行失败。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestCaseData(Base):
+class TestCaseData(SoftDeleteBase):
     """测试用例数据项。"""
 
     __tablename__ = "test_case_data"
     __table_args__ = (
-        UniqueConstraint("test_case_id", "name", name="uq_test_case_data_case_name"),
+        Index(
+            "uq_test_case_data_case_name_live", "test_case_id", "name", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "测试用例数据项"},
     )
 

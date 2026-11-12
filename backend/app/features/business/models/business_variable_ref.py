@@ -11,10 +11,10 @@ source_action_id / target_action_id 都带 ondelete=CASCADE：任一动作被删
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.sql import func
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessVariableRef(Base):
+class BusinessVariableRef(SoftDeleteBase):
     """业务动作之间的变量引用关系（一个动作输出 → 另一动作输入）。"""
 
     __tablename__ = "business_variable_ref"

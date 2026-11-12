@@ -55,7 +55,7 @@ def get_session_for_write(db: Session, session_id: int, actor: User) -> AgentSes
 
 
 def delete_session(db: Session, session_id: int, actor: User) -> None:
-    """删会话（连带消息，agent_message.session_id 外键 ON DELETE CASCADE）。"""
-    session = get_session_for_write(db, session_id, actor)
-    db.delete(session)
-    db.commit()
+    """Move a user-managed session to the recycle bin, preserving its messages."""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "agent_session", session_id, actor=actor)

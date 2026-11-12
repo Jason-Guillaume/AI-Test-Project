@@ -35,6 +35,7 @@ from app.platform.projects.services.access_service import get_project_or_404, re
 from app.core.models.identity import User
 from app.core.http.errors import bad_request, conflict, not_found
 from app.core.notifications.notify import notify
+from app.lifecycle.service import delete_resource
 
 # OUTPUT 映射只能取 RESPONSE；INPUT 映射取 BODY/HEADER/QUERY/PATH（不含 RESPONSE）。
 _INPUT_LOCATIONS = {"BODY", "HEADER", "QUERY", "PATH"}
@@ -268,8 +269,7 @@ class BindingService:
         """删除绑定。"""
         binding = self._get_writable_binding_or_404(db, binding_id, actor)
         # 级联：删除绑定 → 其下 api_mapping 由外键 ondelete=CASCADE 一并清理。
-        db.delete(binding)
-        db.commit()
+        delete_resource(db, "business_binding", binding.id, actor=actor)
 
     # ---------------------------------------------------------------- 映射
 
@@ -351,8 +351,7 @@ class BindingService:
     def delete_mapping(self, db: Session, mapping_id: int, *, actor: User) -> None:
         """删除映射。"""
         mapping = self._get_writable_mapping_or_404(db, mapping_id, actor)
-        db.delete(mapping)
-        db.commit()
+        delete_resource(db, "business_api_mapping", mapping.id, actor=actor)
 
     # ---------------------------------------------------------------- 取实体
 

@@ -5,9 +5,11 @@
 // 新增/编辑走 TestDataModal；删除用 Popconfirm 二次确认（资产删除非数据库直写，
 // 但仍保留确认，避免误删被引用数据）。
 import { useState } from 'react';
-import { App, Button, Input, Popconfirm, Select, Space, Tag } from 'antd';
+import { Alert, App, Button, Input, Popconfirm, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { testDataApi } from '@/features/test-data/api/testData';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
@@ -26,8 +28,9 @@ import type { AssetSource, AssetStatus, FixtureScope, TestDataAsset } from '@/fe
  * 测试数据资产列表。
  */
 export function TestDataTab({ projectId }: { projectId: number }) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [keyword, setKeyword] = useState('');
   const [source, setSource] = useState<string | undefined>(undefined);
@@ -39,6 +42,7 @@ export function TestDataTab({ projectId }: { projectId: number }) {
   });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TestDataAsset | null>(null);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<number[]>([]);
 
   const query = useQuery({
     queryKey: ['test-data', 'assets', projectId, { keyword, source, scope, status, pagination }],
@@ -57,11 +61,46 @@ export function TestDataTab({ projectId }: { projectId: number }) {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => testDataApi.removeAsset(id),
     onSuccess: () => {
-      message.success('已删除');
+      message.success('测试数据已移入回收站');
       queryClient.invalidateQueries({ queryKey: ['test-data', 'assets'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
   });
+
+  const batchDelete = () => {
+    if (!selectedAssetIds.length) return;
+    if (selectedAssetIds.length > 100) { void message.warning('每批最多删除 100 个测试数据资产，请分批操作'); return; }
+    const ids = [...selectedAssetIds];
+    modal.confirm({
+      title: `确认删除选中的 ${ids.length} 个测试数据资产？`,
+      content: '仍被数据池引用的项目会逐条拒绝；值数据会按敏感字段脱敏后在回收站详情展示。',
+      okText: '删除并移入回收站',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const receipt = await dataLifecycleApi.deleteMany('test_data_asset', projectId, ids);
+        setSelectedAssetIds([]);
+        await queryClient.invalidateQueries({ queryKey: ['test-data', 'assets'] });
+        await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+        const failures = receipt.items.filter((item) => !item.succeeded);
+        if (failures.length) {
+          modal.info({
+            title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {failures.map((item) => <Alert key={item.id} type="error" showIcon message={`数据资产 #${item.id}`} description={item.error ?? '删除失败'} />)}
+            </Space>,
+          });
+        } else {
+          modal.success({
+            title: `已将 ${receipt.succeeded} 个测试数据资产移入回收站`,
+            okText: '查看回收站',
+            onOk: () => navigate('/console/recycle-bin'),
+          });
+        }
+      },
+    });
+  };
 
   const rows = query.data?.items ?? [];
 
@@ -108,6 +147,10 @@ export function TestDataTab({ projectId }: { projectId: number }) {
         >
           新增
         </Button>
+        <Button danger disabled={!selectedAssetIds.length} onClick={batchDelete}>
+          批量删除已选（{selectedAssetIds.length}）
+        </Button>
+        <Button disabled={!selectedAssetIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
       </Space>
 
       {query.isPending ? (
@@ -123,6 +166,11 @@ export function TestDataTab({ projectId }: { projectId: number }) {
           loading={query.isFetching}
           total={query.data.total}
           pagination={pagination}
+          rowSelection={{
+            selectedRowKeys: selectedAssetIds,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => setSelectedAssetIds(keys.map(Number)),
+          }}
           onPaginationChange={setPagination}
           columns={[
             { title: '名称', dataIndex: 'name' },

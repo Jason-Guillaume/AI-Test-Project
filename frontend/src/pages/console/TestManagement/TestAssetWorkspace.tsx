@@ -4,7 +4,7 @@
 // 权限（服务端为准）：读 = 项目可见（viewer+）；写 = 项目成员（member+）。
 // 列表接口返回裸数组。策略和测试点数量不大，一次取 100 条后在页面内搜索。
 import { useState } from 'react';
-import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
+import { Alert, App, Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
@@ -15,6 +15,7 @@ import { EmptyState, PageContainer } from '@/shared/ui/PageState';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_PRIORITY_OPTIONS, TEST_STATUS_OPTIONS, TEST_STRATEGY_CATEGORY_OPTIONS, TEST_TARGET_TYPE_OPTIONS } from './constants';
 import type { TestPoint, TestPointCreate, TestPointUpdate, TestStrategy, TestStrategyCreate, TestStrategyUpdate } from '@/features/test-management/contracts';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 
 interface StrategyFormValues {
   name: string;
@@ -34,7 +35,7 @@ interface PointFormValues {
 
 /** 测试资产页。进入页面时拉取当前项目的策略和测试点。 */
 export function TestAssetWorkspace() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { currentProjectId } = useConsoleScope();
@@ -45,6 +46,8 @@ export function TestAssetWorkspace() {
   const [pointEditing, setPointEditing] = useState<TestPoint | null>(null);
   const [pointOpen, setPointOpen] = useState(false);
   const [strategyKeyword, setStrategyKeyword] = useState('');
+  const [selectedStrategyIds, setSelectedStrategyIds] = useState<number[]>([]);
+  const [selectedPointIds, setSelectedPointIds] = useState<number[]>([]);
   const [pointKeyword, setPointKeyword] = useState('');
 
   const strategiesQuery = useQuery({
@@ -84,9 +87,40 @@ export function TestAssetWorkspace() {
     onSuccess: () => {
       message.success('测试策略已删除');
       queryClient.invalidateQueries({ queryKey: ['test-strategies'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
     },
     onError: (error) => message.error(getErrorMessage(error, '删除策略失败')),
   });
+  function batchDeleteStrategies() {
+    if (!currentProjectId || !selectedStrategyIds.length) return;
+    if (selectedStrategyIds.length > 100) { void message.warning('每批最多删除 100 个策略，请分批操作'); return; }
+    const ids = [...selectedStrategyIds];
+    modal.confirm({
+      title: `确认删除选中的 ${ids.length} 个测试策略？`,
+      content: '仍被测试点引用的策略会逐条拒绝删除；成功项可从项目回收站恢复。',
+      okText: '删除并移入回收站',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const receipt = await dataLifecycleApi.deleteMany('test_strategy', currentProjectId, ids);
+        setSelectedStrategyIds([]);
+        await queryClient.invalidateQueries({ queryKey: ['test-strategies', currentProjectId] });
+        await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+        const failures = receipt.items.filter(item => !item.succeeded);
+        if (failures.length) {
+          message.warning(`已删除 ${receipt.succeeded} 个策略，${receipt.failed} 个未删除`);
+          modal.info({
+            title: '批量删除结果',
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {failures.map(item => <Alert key={item.id} type="error" showIcon message={`测试策略 #${item.id}`} description={item.error ?? '删除失败'} />)}
+            </Space>,
+          });
+        } else {
+          message.success(`已删除 ${receipt.succeeded} 个测试策略，可在回收站恢复`);
+        }
+      },
+    });
+  }
   const savePoint = useMutation({
     mutationFn: async (values: PointFormValues) => {
       const body: TestPointCreate = {
@@ -110,11 +144,47 @@ export function TestAssetWorkspace() {
   const removePoint = useMutation({
     mutationFn: (id: number) => testManagementApi.removePoint(id),
     onSuccess: () => {
-      message.success('测试点已删除');
+      message.success('测试点已移入回收站');
       queryClient.invalidateQueries({ queryKey: ['test-points'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
     },
     onError: (error) => message.error(getErrorMessage(error, '删除测试点失败')),
   });
+
+  function batchDeletePoints() {
+    if (!currentProjectId || !selectedPointIds.length) return;
+    if (selectedPointIds.length > 100) { void message.warning('每批最多删除 100 个测试点，请分批操作'); return; }
+    const ids = [...selectedPointIds];
+    modal.confirm({
+      title: `确认删除选中的 ${ids.length} 个测试点？`,
+      content: '仍被测试用例引用的测试点会逐条拒绝；成功项进入当前项目回收站。',
+      okText: '删除并移入回收站',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const receipt = await dataLifecycleApi.deleteMany('test_point', currentProjectId, ids);
+        setSelectedPointIds([]);
+        await queryClient.invalidateQueries({ queryKey: ['test-points', currentProjectId] });
+        await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+        const failures = receipt.items.filter((item) => !item.succeeded);
+        if (failures.length) {
+          modal.info({
+            title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {failures.map((item) => <Alert key={item.id} type="error" showIcon message={`测试点 #${item.id}`} description={item.error ?? '删除失败'} />)}
+            </Space>,
+          });
+        } else {
+          modal.success({
+            title: `已将 ${receipt.succeeded} 个测试点移入回收站`,
+            content: '原始 ID 和策略关联已保留。',
+            okText: '查看回收站',
+            onOk: () => navigate('/console/recycle-bin'),
+          });
+        }
+      },
+    });
+  }
 
   if (currentProjectId == null) {
     return <PageContainer><EmptyState description="请先在顶部选择一个项目" /></PageContainer>;
@@ -182,7 +252,7 @@ export function TestAssetWorkspace() {
       render: (_, row) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openPoint(row)}>编辑</Button>
-          <Popconfirm title="删除这个测试点？" onConfirm={() => removePoint.mutate(row.id)}>
+          <Popconfirm title="将这个测试点移入回收站？" description="仍被用例引用时会拒绝删除。" onConfirm={() => removePoint.mutate(row.id)}>
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -206,8 +276,10 @@ export function TestAssetWorkspace() {
                 <Space style={{ marginBottom: 12 }} wrap>
                   <Input.Search allowClear placeholder="搜索策略" style={{ width: 240 }} onSearch={setStrategyKeyword} />
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => openStrategy()}>新建策略</Button>
+                  <Button danger disabled={!selectedStrategyIds.length} onClick={batchDeleteStrategies}>批量删除已选（{selectedStrategyIds.length}）</Button>
+                  <Button disabled={!selectedStrategyIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
                 </Space>
-                <Table rowKey="id" columns={strategyColumns} dataSource={visibleStrategies} loading={strategiesQuery.isFetching} pagination={false} locale={{ emptyText: strategiesQuery.isError ? '策略加载失败' : '还没有测试策略' }} />
+                <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedStrategyIds, onChange: keys => setSelectedStrategyIds(keys.map(Number)) }} columns={strategyColumns} dataSource={visibleStrategies} loading={strategiesQuery.isFetching} pagination={false} locale={{ emptyText: strategiesQuery.isError ? '策略加载失败' : '还没有测试策略' }} />
               </>
             ),
           },
@@ -219,8 +291,10 @@ export function TestAssetWorkspace() {
                 <Space style={{ marginBottom: 12 }} wrap>
                   <Input.Search allowClear placeholder="搜索测试点" style={{ width: 240 }} onSearch={setPointKeyword} />
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => openPoint()}>新建测试点</Button>
+                  <Button danger disabled={!selectedPointIds.length} onClick={batchDeletePoints}>批量删除已选（{selectedPointIds.length}）</Button>
+                  <Button disabled={!selectedPointIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
                 </Space>
-                <Table rowKey="id" columns={pointColumns} dataSource={visiblePoints} loading={pointsQuery.isFetching} pagination={false} locale={{ emptyText: pointsQuery.isError ? '测试点加载失败' : '还没有测试点' }} />
+                <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedPointIds, onChange: keys => setSelectedPointIds(keys.map(Number)) }} columns={pointColumns} dataSource={visiblePoints} loading={pointsQuery.isFetching} pagination={false} locale={{ emptyText: pointsQuery.isError ? '测试点加载失败' : '还没有测试点' }} />
               </>
             ),
           },

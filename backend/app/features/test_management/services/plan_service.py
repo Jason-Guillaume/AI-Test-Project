@@ -29,6 +29,7 @@ from app.core.models.identity import User
 from app.core.http.errors import bad_request, conflict, not_found
 from app.core.notifications.notify import notify
 from app.core.http.pagination import DEFAULT_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 
 def _response(p: TestPlan) -> TestPlanResponse:
@@ -136,8 +137,7 @@ class PlanService:
     def delete_plan(self, db: Session, plan_id: int, *, actor: User) -> None:
         """删除计划。"""
         plan = self._get_writable_or_404(db, plan_id, actor)
-        db.delete(plan)
-        db.commit()
+        delete_resource(db, "test_plan", plan.id, actor=actor)
 
     # -------------------------------------------------------------- 计划-套件关联
 
@@ -174,12 +174,14 @@ class PlanService:
 
     def remove_plan_suite(self, db: Session, plan_suite_id: int, *, actor: User) -> None:
         """移除计划套件。"""
-        row = db.get(TestPlanSuite, plan_suite_id)
+        from app.lifecycle.service import delete_resource
+
+        row = db.query(TestPlanSuite).execution_options(include_deleted=True).filter(TestPlanSuite.id == plan_suite_id).first()
         if row is None:
             raise not_found("计划套件关联不存在")
-        require_writable_project(db, resolve_plan_project_id(db, row.plan_id), actor)
-        db.delete(row)
-        db.commit()
+        project_id = resolve_plan_project_id(db, row.plan_id)
+        require_writable_project(db, project_id, actor)
+        delete_resource(db, "test_plan_suite", plan_suite_id, actor=actor, project_id=project_id)
 
     def _get_or_404(self, db: Session, plan_id: int, user: User) -> TestPlan:
         """获取或。"""

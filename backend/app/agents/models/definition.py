@@ -4,9 +4,10 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, Str
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class AgentDefinition(Base):
+class AgentDefinition(SoftDeleteBase):
     """由受控工作流模板构成的 Agent 配置。"""
 
     __tablename__ = "agent_definition"

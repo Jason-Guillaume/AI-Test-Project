@@ -13,10 +13,10 @@
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class Bug(Base):
+class Bug(SoftDeleteBase):
     """测试缺陷及其处理状态。"""
 
     __tablename__ = "bug"

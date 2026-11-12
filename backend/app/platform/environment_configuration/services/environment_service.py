@@ -516,14 +516,9 @@ def set_default_environment(db: Session, name: str, *, actor) -> Environment:
 
 
 def delete_environment(db: Session, name: str, *, actor) -> None:
-    """删除未被项目引用的环境类型；项目正在使用时只能停用具体项目绑定。"""
+    """把未被配置引用的环境类型移入回收站；停用仍使用 is_active。"""
     _require_admin(actor)
     row = get_or_404(db, name)
-    if db.query(ProjectEnvironment.id).filter(ProjectEnvironment.environment_id == row.id).first() is not None:
-        raise conflict("该环境类型已被项目引用，请在项目环境配置中停用对应环境")
-    if row.is_default:
-        raise bad_request("默认环境不能删除，请先指定新的默认环境")
-    db.delete(row)
-    # 删除后补一个默认项，保证执行链路始终有兜底环境。
-    _normalize_default(db, None)
-    db.commit()
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "environment", row.id, actor=actor)

@@ -322,14 +322,22 @@ def test_generation_provider_budget_timeout_and_no_transaction(setup, monkeypatc
         config = provider._load_config(snapshot['model_config_id'])
         assert config.timeout <= policy['module_timeout'] and config.max_tokens == 100
         db.commit()
+        class ControlledResponse:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {'usage': {}}
+
+        controlled_response = ControlledResponse()
 
         def post(self, url, *, json, headers, timeout):
             """HTTP 替身验证调用边界，绝不发送真实模型请求。"""
             assert not db.in_transaction()
-            return 'controlled'
+            return controlled_response
 
         monkeypatch.setattr(ProductionLLMProvider, '_post', post)
-        assert provider._post('http://127.0.0.1:1', json={'messages': [{'content': 'data'}], 'max_tokens': 100}, headers={}, timeout=1) == 'controlled'
+        assert provider._post('http://127.0.0.1:1', json={'messages': [{'content': 'data'}], 'max_tokens': 100}, headers={}, timeout=1) is controlled_response
         attempt = db.get(TaskAttempt, claim.attempt_id, populate_existing=True)
         assert attempt.checkpoint_json['reserved_tokens'] > 100
         db.commit()

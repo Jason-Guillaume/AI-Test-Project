@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from app.agents.models.session import AgentSession
 from app.agents.workflows.legacy.state import AgentState, make_initial_state
 from app.core.security.crypto import decrypt_secret
-from app.agents.services.message_store import list_messages
+from app.agents.services.message_store import list_context_candidates, list_latest_state_messages
 from app.agents.services.context_manager import assemble_history
+from app.agents.services.context_memory import load_valid_session_summary
 from app.core.config import settings
 
 
@@ -21,7 +22,25 @@ def load_state(db: Session, session: AgentSession, *, query: str | None = None) 
     metadata_json（再生成会追加新消息，旧消息保留在历史中）。消息历史由 Context Manager
     按会话权限、查询相关性和预算装配（脱敏，已在上游 sanitize）。
     """
-    msgs = list_messages(db, session.id)
+    # 结构化状态只读每种类型最新一条；对话上下文另走有界最近窗口 + 相关旧消息查询。
+    msgs = list_latest_state_messages(db, session.id)
+    history_limit = max(32, min(int(settings.AGENT_CONTEXT_MAX_HISTORY_MESSAGES) * 4, 128))
+    context_msgs, total_message_count = list_context_candidates(
+        db, session.id, query=query, recent_limit=history_limit, related_limit=96,
+    )
+    context_summary = load_valid_session_summary(db, session.id)
+    from app.orchestration.tasks.models import Task, TaskAgentInstance, TaskRun
+    run = db.get(TaskRun, session.task_run_id) if session.task_run_id else None
+    task = db.get(Task, run.task_id) if run else None
+    instance = db.get(TaskAgentInstance, session.task_agent_instance_id) if session.task_agent_instance_id else None
+    agent_config = (instance.config_snapshot or {}) if instance else {}
+    agent_definition_id = agent_config.get("agent_definition_id") or agent_config.get("id")
+    long_term_memories = []
+    if agent_definition_id:
+        from app.agents.services.long_term_memory import retrieve_agent_memories
+        long_term_memories = retrieve_agent_memories(
+            db, session.project_id, int(agent_definition_id), query,
+        )
     state = make_initial_state(session.project_id, session.user_id, session.id)
     state["current_stage"] = session.current_stage
 
@@ -128,25 +147,25 @@ def load_state(db: Session, session: AgentSession, *, query: str | None = None) 
     context_started = time.monotonic()
     state["messages"], state["context_manifest"] = assemble_history(
         session=session,
-        messages=msgs,
+        messages=context_msgs,
         query=query,
         token_budget=settings.AGENT_CONTEXT_TOKEN_BUDGET,
         max_messages=settings.AGENT_CONTEXT_MAX_HISTORY_MESSAGES,
+        total_message_count=total_message_count,
+        summary=context_summary,
+        long_term_memories=long_term_memories,
     )
-    from app.orchestration.tasks.models import Task, TaskAgentInstance, TaskRun
     from app.orchestration.tasks.services.runtime_fact_service import record_runtime_event
-    run = db.get(TaskRun, session.task_run_id) if session.task_run_id else None
-    task = db.get(Task, run.task_id) if run else None
-    instance = db.get(TaskAgentInstance, session.task_agent_instance_id) if session.task_agent_instance_id else None
     manifest = state["context_manifest"]
     record_runtime_event(
+        db=db,
         project_id=session.project_id,
         task_id=task.id if task else None,
         task_run_id=run.id if run else None,
         execution_root_run_id=(run.execution_root_run_id or run.id) if run else None,
         agent_session_id=session.id,
         agent_instance_id=instance.id if instance else None,
-        agent_definition_id=(instance.config_snapshot or {}).get("id") if instance else None,
+        agent_definition_id=agent_config.get("agent_definition_id") or agent_config.get("id"),
         agent_definition_revision_id=instance.agent_definition_revision_id if instance else None,
         trace_id=run.trace_id if run else None,
         event_type="CONTEXT_ASSEMBLY", event_name=manifest["version"], status="SUCCEEDED",
@@ -157,6 +176,14 @@ def load_state(db: Session, session: AgentSession, *, query: str | None = None) 
             "estimated_tokens": manifest["estimated_tokens"],
             "history_count": len(state["messages"]),
             "omitted_message_count": manifest["omitted_message_count"],
+            "unsearched_message_count": manifest["unsearched_message_count"],
+            "candidate_message_count": manifest["candidate_message_count"],
+            "summary_used": manifest["summary_used"],
+            "summary_version": manifest["summary_version"],
+            "summary_source_count": manifest["summary_source_count"],
+            "summary_message_ids": [source["id"] for source in manifest["summary_source_refs"]],
+            "memory_count": manifest["memory_count"],
+            "memory_ids": manifest["memory_ids"],
             "message_ids": [source["id"] for source in manifest["source_refs"]],
         },
     )

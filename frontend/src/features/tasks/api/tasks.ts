@@ -41,6 +41,8 @@ export const tasksApi = {
     api.get<TaskEvent[]>(`/task-runs/${runId}/events`, { params: { after_seq: afterSeq } }),
   trace: (runId: number, cursor?: string | null) =>
     api.get<TaskTracePage>(`/task-runs/${runId}/trace`, { params: cursor ? { cursor } : {} }),
+  replayTrace: (runId: number) =>
+    api.post<{ registered: number; requeued: number }>(`/task-runs/${runId}/trace/replay`, {}),
   resources: (runId: number) => api.get<TaskResourceRef[]>(`/task-runs/${runId}/resources`),
   webAuthoring: (runId: number) => api.get<TaskWebAuthoringWorkspace>(`/task-runs/${runId}/web-authoring`),
   restartWebAuthoring: (runId: number) => api.post<TaskWebAuthoringWorkspace>(`/task-runs/${runId}/web-authoring/restart`, {}),

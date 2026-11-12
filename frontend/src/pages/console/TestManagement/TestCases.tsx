@@ -30,9 +30,10 @@ import {
   Typography,
 } from 'antd';
 import type { DataNode, TreeProps } from 'antd/es/tree';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { GenerationWorkbench } from '@/pages/console/TestManagement/GenerationWorkbench';
 import type { GenerationBatch, ScopeNode, TestCaseDetail } from '@/features/test-management/contracts';
 import { getErrorMessage } from '@/shared/api/client';
@@ -112,6 +113,7 @@ function toTreeData(nodes: ScopeNode[]): DataNode[] {
 
 /** 用例管理中心页面。 */
 export function ConsoleTestCasesPage() {
+  const navigate = useNavigate();
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
@@ -177,7 +179,7 @@ export function ConsoleTestCasesPage() {
     enabled: currentProjectId != null && generateOpen,
   });
 
-  const nodes = treeQuery.data?.items ?? [];
+  const nodes = useMemo(() => treeQuery.data?.items ?? [], [treeQuery.data?.items]);
   const visible = useMemo(() => filterNodes(nodes, treeKeyword), [nodes, treeKeyword]);
   const treeData = useMemo(() => toTreeData(visible), [visible]);
 
@@ -235,6 +237,35 @@ export function ConsoleTestCasesPage() {
     mutationFn: () => testManagementApi.archiveScopeCases(currentProjectId!, { case_ids: selectedCaseIds }),
     onSuccess: () => { message.success('用例已归档'); setSelectedCaseIds([]); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '归档失败')),
+  });
+  const deleteCases = useMutation({
+    mutationFn: () => dataLifecycleApi.deleteMany('test_case', currentProjectId!, selectedCaseIds),
+    onSuccess: (receipt) => {
+      setSelectedCaseIds([]);
+      refresh();
+      if (receipt.failed > 0) {
+        modal.info({
+          title: `批量删除完成：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
+          width: 620,
+          content: (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {receipt.items.filter((item) => !item.succeeded).map((item) => (
+                <Alert key={item.id} type="error" showIcon message={`用例 #${item.id}`} description={item.error ?? '删除失败'} />
+              ))}
+            </Space>
+          ),
+          onOk: () => navigate('/console/recycle-bin'),
+        });
+      } else {
+        modal.success({
+          title: `已将 ${receipt.succeeded} 条用例移入回收站`,
+          content: '原始用例 ID、步骤、断言、数据和套件引用均保留。',
+          okText: '查看回收站',
+          onOk: () => navigate('/console/recycle-bin'),
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
   });
   const createCase = useMutation({
     mutationFn: (values: { name: string; priority: 'P0' | 'P1' | 'P2' | 'P3'; case_type: string }) => testManagementApi.createCase(currentProjectId!, {
@@ -334,7 +365,7 @@ export function ConsoleTestCasesPage() {
                   <Button size="small" disabled={selected.is_system} onClick={() => setNodeModal({ mode: 'edit', node: selected })}>编辑</Button>
                   <Button size="small" danger disabled={selected.is_system} onClick={() => modal.confirm({
                     title: '删除这个范围？',
-                    content: '子节点需要先移走。当前节点上的用例会改挂到父级或待整理。',
+                    content: '范围下有子节点或测试用例时需要先移动。删除只会移除当前目录入口，原有数据关联保留在回收站记录中。',
                     onOk: () => testManagementApi.removeScope(selected.id).then(() => { message.success('已删除'); setSelectedNodeId(undefined); refresh(); }).catch((error) => message.error(getErrorMessage(error, '删除失败'))),
                   })}>删除</Button>
                   <Button size="small" onClick={() => setCreateOpen(true)}>手工用例</Button>
@@ -360,13 +391,20 @@ export function ConsoleTestCasesPage() {
                   <Input.Search allowClear placeholder="搜索用例" onSearch={(value) => { setKeyword(value); setPage(1); }} style={{ width: 220 }} />
                   <Button disabled={selectedCaseIds.length === 0} onClick={() => setMoveOpen(true)}>批量移动</Button>
                   <Button disabled={selectedCaseIds.length === 0} onClick={() => archiveCases.mutate()}>批量归档</Button>
+                  <Button danger loading={deleteCases.isPending} disabled={selectedCaseIds.length === 0} onClick={() => modal.confirm({
+                    title: `删除选中的 ${selectedCaseIds.length} 条测试用例？`,
+                    content: '用例将软删除并进入当前项目回收站。正在执行的用例会逐条拒绝，其他用例可部分成功。',
+                    okText: `删除 ${selectedCaseIds.length} 条`,
+                    okButtonProps: { danger: true },
+                    onOk: () => deleteCases.mutateAsync(),
+                  })}>批量删除</Button>
                 </Space>
                 <Table
                   size="small"
                   rowKey="id"
                   loading={casesQuery.isFetching}
                   dataSource={casesQuery.data?.items ?? []}
-                  rowSelection={{ selectedRowKeys: selectedCaseIds, onChange: (keys) => setSelectedCaseIds(keys.map(Number)) }}
+                  rowSelection={{ selectedRowKeys: selectedCaseIds, preserveSelectedRowKeys: true, onChange: (keys) => setSelectedCaseIds(keys.map(Number)) }}
                   pagination={{ current: page, pageSize: 10, total: casesQuery.data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
                   onRow={(row) => ({ onClick: () => setDetailId(row.id) })}
                   columns={[

@@ -1,5 +1,6 @@
 // 用户管理：列表、搜索、分页、状态管理、角色调整。
 import {
+  Alert,
   App,
   Avatar,
   Button,
@@ -19,7 +20,10 @@ import { PlusOutlined, ReloadOutlined, TeamOutlined, UserSwitchOutlined } from '
 import dayjs from 'dayjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/app/providers/AuthProvider';
 import { usersApi } from '@/features/users/api/users';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { UserListQuery, UserUpdate } from '@/features/users/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 import type { PlatformRole, User } from '@/features/identity/contracts';
@@ -49,7 +53,9 @@ type UserStatusFilter = 'all' | 'active' | 'inactive';
  * 空态：无搜索结果时表格空态由 antd 默认展示。
  */
 export function AdminUsersPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
+  const { user: currentUser } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   // 分页初值：第一页，每页 10 条
   const [pagination, setPagination] = useState<PaginationState>({
@@ -64,6 +70,7 @@ export function AdminUsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
   // 新建弹窗开关
   const [creating, setCreating] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
 
   // 拼装查询参数：keyword 空串归一为 undefined，避免后端把它当作「空字符串过滤」
   const query: UserListQuery = useMemo(
@@ -102,6 +109,44 @@ export function AdminUsersPage() {
       setCreating(false);
     },
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
+  });
+
+  const deleteUser = (row: User) => modal.confirm({
+    title: `将用户「${row.username}」移入回收站？`,
+    content: '账号会立即失效；个人组织、项目归属、成员关系和历史记录保留，可在回收站恢复。',
+    okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        await usersApi.remove(row.id);
+        message.success('用户账号已移入回收站');
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      } catch (error) { message.error(getErrorMessage(error, '删除失败')); }
+    },
+  });
+
+  const deleteSelectedUsers = () => modal.confirm({
+    title: `将选中的 ${selectedUserIds.length} 个用户账号移入回收站？`,
+    content: '系统会逐个校验权限并返回成功或失败原因；管理员账号与当前登录账号受保护。',
+    okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        const receipt = await dataLifecycleApi.deleteMany('user', null, selectedUserIds);
+        setSelectedUserIds([]);
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+        queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+        if (receipt.failed) {
+          modal.info({
+            title: `成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {receipt.items.filter((item) => !item.succeeded).map((item) => (
+                <Alert key={item.id} type="error" showIcon message={`用户 #${item.id}`} description={item.error ?? '删除失败'} />
+              ))}
+            </Space>,
+          });
+        } else message.success(`已将 ${receipt.succeeded} 个用户账号移入回收站`);
+      } catch (error) { message.error(getErrorMessage(error, '批量删除失败')); }
+    },
   });
 
   // 表格列：memo 依赖为空数组（columns 内不引用闭包外状态），仅首次构建
@@ -149,15 +194,18 @@ export function AdminUsersPage() {
       {
         title: '操作',
         key: 'actions',
-        width: 100,
+        width: 140,
         render: (_: unknown, row: User) => (
-          <Button type="link" size="small" onClick={() => setEditing(row)}>
-            编辑
-          </Button>
+          <Space size={4}>
+            <Button type="link" size="small" onClick={() => setEditing(row)}>编辑</Button>
+            {row.role !== 'admin' && row.id !== currentUser?.id && (
+              <Button type="link" size="small" danger onClick={() => deleteUser(row)}>删除</Button>
+            )}
+          </Space>
         ),
       },
     ],
-    [],
+    [currentUser?.id],
   );
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
@@ -250,6 +298,10 @@ export function AdminUsersPage() {
             }}
           />
           <Space className="admin-users-filters" wrap>
+            <Button danger disabled={!selectedUserIds.length} onClick={deleteSelectedUsers}>
+              批量删除（{selectedUserIds.length}）
+            </Button>
+            <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
             <Select<UserStatusFilter>
               aria-label="账号状态筛选"
               value={statusFilter}
@@ -278,6 +330,15 @@ export function AdminUsersPage() {
           rowKey={(row) => row.id}
           columns={columns}
           dataSource={data.items}
+          rowSelection={{
+            selectedRowKeys: selectedUserIds,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => {
+              if (keys.length > 100) { message.warning('一次最多选择 100 个用户账号'); return; }
+              setSelectedUserIds(keys.map(Number));
+            },
+            getCheckboxProps: (row) => ({ disabled: row.role === 'admin' || row.id === currentUser?.id }),
+          }}
           loading={listQuery.isFetching}
           total={data.total}
           pagination={pagination}

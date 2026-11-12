@@ -24,6 +24,7 @@ from app.platform.projects.services.access_service import get_project_or_404, re
 from app.core.models.identity import User
 from app.core.http.errors import bad_request, not_found
 from app.core.http.pagination import DEFAULT_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 
 def _rule_response(rule: BusinessRule) -> BusinessRuleResponse:
@@ -125,8 +126,7 @@ class RuleService:
     def delete_rule(self, db: Session, rule_id: int, *, actor: User) -> None:
         """删除规则。"""
         rule = self._get_writable_rule_or_404(db, rule_id, actor)
-        db.delete(rule)
-        db.commit()
+        delete_resource(db, "business_rule", rule.id, actor=actor)
 
     def _get_writable_rule_or_404(
         self, db: Session, rule_id: int, actor: User

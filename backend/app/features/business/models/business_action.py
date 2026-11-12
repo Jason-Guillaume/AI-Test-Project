@@ -7,18 +7,19 @@ action_key 是稳定业务标识（LOGIN/CREATE_TASK 等），不依赖具体接
 sort 决定在流程中的顺序；当前执行器只支持普通顺序动作。feature-local 表，由迁移 0004 建立。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessAction(Base):
+class BusinessAction(SoftDeleteBase):
     """业务动作：业务流程中一个不可分割的业务步骤。"""
 
     __tablename__ = "business_action"
     __table_args__ = (
-        UniqueConstraint("flow_id", "action_key", name="uq_business_action_flow_key"),
+        Index("uq_business_action_flow_key", "flow_id", "action_key", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_business_action_flow_sort", "flow_id", "sort"),
         {"comment": "业务动作：业务流程中一个不可分割的业务步骤"},
     )

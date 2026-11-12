@@ -6,13 +6,14 @@
 - organization_member：组织成员角色（owner / admin / member）与模型授权
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class User(Base):
+class User(SoftDeleteBase):
     """平台登录用户、角色及账号状态。"""
 
     __tablename__ = "user"
@@ -53,12 +54,16 @@ class Organization(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
 
-class OrganizationMember(Base):
+class OrganizationMember(SoftDeleteBase):
     """组织成员、Agent 开放权限及模型分配。"""
 
     __tablename__ = "organization_member"
     __table_args__ = (
-        UniqueConstraint("organization_id", "user_id", name="uq_organization_member_user"),
+        Index(
+            "uq_organization_member_user_live", "organization_id", "user_id", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "组织成员、Agent 开放权限及模型分配"},
     )
     # 同一 (organization_id, user_id) 只允许一行：既是防重复授权的唯一约束，

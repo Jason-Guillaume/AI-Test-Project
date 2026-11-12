@@ -696,8 +696,8 @@ class TestPersistence:
         assert rebuilt["test_plan"] is not None
         # 消息历史
         assert len(rebuilt["messages"]) > 0
-        assert any(m["role"] == "USER" for m in rebuilt["messages"])
-        assert any(m["role"] == "ASSISTANT" for m in rebuilt["messages"])
+        assert any(m["role"] == "user" for m in rebuilt["messages"])
+        assert any(m["role"] == "assistant" for m in rebuilt["messages"])
 
     def test_stage_persistence_across_requests(self, api, admin, db):
         """会话阶段在多次请求间正确持久化。"""

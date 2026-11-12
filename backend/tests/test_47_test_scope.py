@@ -81,6 +81,14 @@ def test_tree_move_count_and_rehome(api, admin):
     cycle = api.post(f"/test-scopes/{parent_id}/move", username=admin, json={"parent_id": child_id, "sort_order": 0})
     assert cycle.status_code == 400, cycle.text
 
+    rejected = api.delete(f"/test-scopes/{child_id}", username=admin)
+    assert rejected.status_code == 409, rejected.text
+    moved_out = api.post(
+        f"/projects/{project_id}/test-scope-cases/move", username=admin,
+        json={"case_ids": [created["id"]], "scope_node_id": parent_id},
+    )
+    assert moved_out.status_code == 200, moved_out.text
+
     removed = api.delete(f"/test-scopes/{child_id}", username=admin)
     assert removed.status_code == 204, removed.text
     listing = api.get(

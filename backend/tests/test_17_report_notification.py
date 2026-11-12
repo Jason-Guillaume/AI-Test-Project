@@ -487,7 +487,7 @@ class TestNotificationChannel:
         assert api.post(f"/reports/{rid}/notify", username=admin, json={"channel_id": cid}).status_code == 200
         assert db.query(NotificationRecord).filter(NotificationRecord.channel_id == cid).count() == 1
         assert api.delete(f"/notification-channels/{cid}", username=admin).status_code == 204
-        assert db.query(NotificationRecord).filter(NotificationRecord.channel_id == cid).count() == 0
+        assert db.query(NotificationRecord).filter(NotificationRecord.channel_id == cid).count() == 1
         assert db.get(TestReport, rid) is not None
 
     def test_cross_project_channel_is_404(self, api, admin):

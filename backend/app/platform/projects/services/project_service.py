@@ -187,12 +187,13 @@ class ProjectAdminService:
         return project
 
     def delete_project(self, db: Session, project: Project, *, actor: User) -> None:
-        """删除项目；仅负责人或平台管理员可操作。"""
+        """把项目根记录移入回收站；其业务资产与原关联保持原状。"""
         role = project_role_for(db, project, actor)
         if not has_project_role(role, "owner"):
             raise forbidden("只有项目负责人或管理员可以删除项目")
-        db.delete(project)
-        db.commit()
+        from app.lifecycle.service import delete_resource
+
+        delete_resource(db, "project", project.id, actor=actor)
 
     # ---------------------------------------------------------------- 成员
 
@@ -228,11 +229,14 @@ class ProjectAdminService:
             raise forbidden("成员必须是项目所属组织的成员")
 
         row = (
-            db.query(ProjectMember)
+            db.query(ProjectMember).execution_options(include_deleted=True)
             .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == target.id)
             .first()
         )
-        if row is None:
+        if row is not None and row.deleted_at is not None:
+            from app.lifecycle.service import clear_soft_delete
+            clear_soft_delete(db, "project_member", row, actor)
+        elif row is None:
             row = ProjectMember(project_id=project.id, user_id=target.id, created_by=actor.id)
             db.add(row)
         row.role = body.role
@@ -249,15 +253,16 @@ class ProjectAdminService:
             raise forbidden("需要项目编辑权限")
         if project.owner_id == user_id:
             raise bad_request("项目负责人不能移除；如需变更请使用负责人转移接口")
+        from app.lifecycle.service import delete_resource
+
         row = (
-            db.query(ProjectMember)
+            db.query(ProjectMember).execution_options(include_deleted=True)
             .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user_id)
             .first()
         )
         if row is None:
             raise not_found("项目成员不存在")
-        db.delete(row)
-        db.commit()
+        delete_resource(db, "project_member", row.id, actor=actor, project_id=project.id)
 
     def transfer_owner(self, db: Session, project: Project, new_owner_id: int, *, actor: User) -> Project:
         """把项目负责人转移给另一名成员。"""
@@ -367,5 +372,6 @@ class ProjectAdminService:
         role = project_role_for(db, project, actor)
         if not has_project_role(role, PROJECT_ROLE_EDITOR):
             raise forbidden("需要项目编辑权限")
-        db.delete(target)
-        db.commit()
+        from app.lifecycle.service import delete_resource
+
+        delete_resource(db, "project_outbound_target", target.id, actor=actor, project_id=project.id)

@@ -171,9 +171,16 @@ def delete_notification(
 ):
     """删除单条通知。"""
     # 先做归属校验再删：他人通知一律按 404 处理，不暴露通知是否存在。
-    row = _owned_or_404(db, notification_id, user)
-    db.delete(row)
-    db.commit()
+    from app.core.models.notification import Notification
+    from app.lifecycle.service import delete_resource
+
+    row = (
+        db.query(Notification).execution_options(include_deleted=True)
+        .filter(Notification.id == notification_id).first()
+    )
+    if row is None or row.user_id != user.id:
+        _owned_or_404(db, notification_id, user)
+    delete_resource(db, "notification", notification_id, actor=user, project_id=row.project_id)
     return None
 
 

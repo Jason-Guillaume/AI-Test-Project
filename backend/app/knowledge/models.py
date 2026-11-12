@@ -1,15 +1,16 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.sql import text
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
-class KnowledgeBase(Base):
+class KnowledgeBase(SoftDeleteBase):
     __tablename__ = 'knowledge_base'
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, ForeignKey('project.id'), nullable=False, index=True)
     name = Column(String(160), nullable=False)
     enabled = Column(Boolean, nullable=False, default=True)
 
-class KnowledgeDocument(Base):
+class KnowledgeDocument(SoftDeleteBase):
     __tablename__ = 'knowledge_document'
     id = Column(Integer, primary_key=True)
     project_id = Column(Integer, ForeignKey('project.id'), nullable=False, index=True)

@@ -212,36 +212,10 @@ class ScopeService:
         return self._node_response(node, counts)
 
     def delete_node(self, db: Session, node_id: int, *, actor: User) -> None:
-        """删除空目录。有子节点时拒绝；直接挂载的用例改挂到父节点或待整理，避免用例丢失。"""
-        node = self._writable_node(db, node_id, actor)
-        if node.is_system:
-            raise bad_request("待整理节点不能删除")
-        child = (
-            db.query(TestScopeNode.id)
-            .filter(TestScopeNode.parent_id == node.id)
-            .first()
-        )
-        if child is not None:
-            raise bad_request("请先移动或删除子节点")
-        target_id = node.parent_id
-        if target_id is None:
-            target_id = self._inbox(db, node.project_id, node.direction).id
-        if target_id == node.id:
-            raise bad_request("无法为用例找到新的目录")
-        links = db.query(TestCaseScope).filter(TestCaseScope.scope_node_id == node.id).all()
-        already = {
-            row.test_case_id
-            for row in db.query(TestCaseScope.test_case_id).filter(TestCaseScope.scope_node_id == target_id).all()
-        }
-        for link in links:
-            if link.test_case_id in already:
-                db.delete(link)
-            else:
-                link.scope_node_id = target_id
-                already.add(link.test_case_id)
-        db.flush()
-        db.delete(node)
-        db.commit()
+        """Soft-delete an empty user node; its original associations remain recoverable."""
+        from app.lifecycle.service import delete_resource
+
+        delete_resource(db, "test_scope", node_id, actor=actor)
 
     def list_cases(
         self, db: Session, project_id: int, user: User, *,

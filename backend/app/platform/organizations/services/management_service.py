@@ -308,8 +308,7 @@ def delete_member(
     """
     require_organization_admin(db, organization_id, user)  # 权限判定：只有组织管理员可以移除成员
     organization = get_organization_or_404(db, organization_id)
-    remove_member(db, organization=organization, member_user_id=member_id)  # 具体规则（负责人/项目归属）见 service
-    db.commit()  # 事务提交点
+    remove_member(db, organization=organization, member_user_id=member_id, actor=user)
     return None
 
 

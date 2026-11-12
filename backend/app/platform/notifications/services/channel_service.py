@@ -111,11 +111,18 @@ class ChannelService:
         )
 
     def delete_channel(self, db: Session, channel_id: int, user: User) -> None:
-        """删除渠道。"""
-        channel = self.get_channel_orm(db, channel_id, user)
+        """将通知渠道移入回收站，发送记录保留。"""
+        from app.lifecycle.service import delete_resource
+
+        channel = (
+            db.query(NotificationChannel).execution_options(include_deleted=True)
+            .filter(NotificationChannel.id == channel_id).first()
+        )
+        if channel is None:
+            raise not_found("通知渠道不存在")
+        get_project_or_404(db, channel.project_id, user)
         require_writable_project(db, channel.project_id, user)
-        db.delete(channel)
-        db.commit()
+        delete_resource(db, "notification_channel", channel_id, actor=user, project_id=channel.project_id)
 
     # ---------------------------------------------------------------- 连通性测试
 

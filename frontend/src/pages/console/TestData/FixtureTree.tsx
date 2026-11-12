@@ -57,16 +57,21 @@ export function FixtureTree({
   onSelect,
   keyword,
   setKeyword,
+  checkedIds,
+  onCheckedIds,
 }: {
   briefs: FixtureBrief[];
   selectedId: number | null;
   onSelect: (id: number) => void;
   keyword: string;
   setKeyword: (v: string) => void;
+  checkedIds: number[];
+  onCheckedIds: (ids: number[]) => void;
 }) {
   const treeData = useMemo(() => buildTreeData(briefs, keyword), [briefs, keyword]);
 
   const selectedKeys = selectedId != null ? [`f:${selectedId}`] : [];
+  const checkedKeys = checkedIds.map((id) => `f:${id}`);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -81,9 +86,15 @@ export function FixtureTree({
         <Empty description="暂无 Fixture" style={{ marginTop: 32 }} />
       ) : (
         <Tree
+          checkable
           treeData={treeData}
           selectedKeys={selectedKeys}
+          checkedKeys={checkedKeys}
           defaultExpandAll
+          onCheck={(keys) => {
+            const list = (Array.isArray(keys) ? keys : keys.checked).map(String);
+            onCheckedIds(list.filter((key) => key.startsWith('f:')).map((key) => Number(key.slice(2))));
+          }}
           onSelect={(keys) => {
             const k = keys[0] as string | undefined;
             if (k && k.startsWith('f:')) onSelect(Number(k.slice(2)));

@@ -15,10 +15,10 @@ feature-local 表，由迁移 0004 建立。
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessPrecondition(Base):
+class BusinessPrecondition(SoftDeleteBase):
     """业务动作前置条件：执行动作前需满足的业务前提。"""
 
     __tablename__ = "business_precondition"

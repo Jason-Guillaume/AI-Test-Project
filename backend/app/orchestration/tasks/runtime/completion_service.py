@@ -70,6 +70,8 @@ def complete_work(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, att
     run.lease_owner = None
     run.lease_expires_at = None
     state_service.sync_task_status(db, task, run)
+    from app.orchestration.tasks.services.trace_projection_service import enqueue_attempt_projection
+    enqueue_attempt_projection(db, task=task, run=run, work=work, attempt=attempt, agent=agent)
     db.commit()
 
 
@@ -178,6 +180,9 @@ def fail_work(claim: ClaimedWork, error: Exception, *, db_factory: Callable[[], 
             run.lease_expires_at = None
             if task is not None:
                 state_service.sync_task_status(db, task, run)
+            if task is not None:
+                from app.orchestration.tasks.services.trace_projection_service import enqueue_attempt_projection
+                enqueue_attempt_projection(db, task=task, run=run, work=work, attempt=attempt, agent=agent)
             db.commit()
             return
         if invocation is not None and invocation.status == "STARTED":
@@ -249,6 +254,9 @@ def fail_work(claim: ClaimedWork, error: Exception, *, db_factory: Callable[[], 
         run.lease_expires_at = None
         if task is not None:
             state_service.sync_task_status(db, task, run)
+        if task is not None:
+            from app.orchestration.tasks.services.trace_projection_service import enqueue_attempt_projection
+            enqueue_attempt_projection(db, task=task, run=run, work=work, attempt=attempt, agent=agent)
         db.commit()
     except Exception:  # noqa: BLE001
         db.rollback()

@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     # 交互式 Agent 仅从自身会话装配有预算的历史消息。
     AGENT_CONTEXT_TOKEN_BUDGET: int = Field(default=4096, ge=256, le=1000000)
     AGENT_CONTEXT_MAX_HISTORY_MESSAGES: int = Field(default=8, ge=1, le=100)
+    # 0 表示不启用硬额度。启用后按当日已记录的正 Token 拦截新的模型请求。
+    AGENT_PROJECT_DAILY_TOKEN_QUOTA: int = Field(default=0, ge=0, le=100_000_000)
+    AGENT_USER_DAILY_TOKEN_QUOTA: int = Field(default=0, ge=0, le=100_000_000)
+    # 外部工具与任务截止时间共用这一上限；本地数据库工具只在开始前拒绝，避免中途打断事务。
+    TOOL_CALL_TIMEOUT_SECONDS: int = Field(default=18, ge=1, le=120)
 
     # 主库连接池参数。
     DB_POOL_SIZE: int = 10
@@ -195,6 +200,14 @@ class Settings(BaseSettings):
     ASR_ARTIFACT_MAX_BYTES: int = 20000000
     ASR_ARTIFACT_RECOVERY_GRACE_SECONDS: int = 900
     ASR_CONTENT_REVIEW_ENABLED: bool = True
+
+    # 云效自动化报告落在服务器持久目录，不进数据库。API 与轮询进程必须指向同一目录。
+    AUTOMATION_REPORT_DIR: str = "./var/automation-reports"
+    AUTOMATION_REPORT_MAX_BYTES: int = 200_000_000
+    AUTOMATION_POLL_ENABLED: bool = True
+    AUTOMATION_POLL_SECONDS: float = 20.0
+    # 飞书卡片里的报告入口。留空时卡片只提示登录平台查看，不生成可猜测的外链。
+    PUBLIC_APP_BASE_URL: str = ""
 
     # 大小写敏感：环境变量名必须与字段名完全一致，避免 DATABASE_URL / database_url 双写歧义；
     # extra="ignore" 让 .env 里的历史遗留变量不报错，便于从旧项目平滑迁移。

@@ -94,7 +94,7 @@ def update_interface(
     return _API.update_interface(db, api_id, body, actor=user)
 
 
-@router.delete("/apis/{api_id}", status_code=status.HTTP_204_NO_CONTENT, summary="删除接口（级联子表）")
+@router.delete("/apis/{api_id}", status_code=status.HTTP_204_NO_CONTENT, summary="软删除接口（保留请求定义与变更记录）")
 def delete_interface(api_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """删除接口。"""
     _API.delete_interface(db, api_id, actor=user)

@@ -129,25 +129,10 @@ def move_module(db: Session, module_id: int, body: ApiModuleMove, *, actor: User
 
 
 def delete_module(db: Session, module_id: int, *, actor: User) -> None:
-    """删除`module`。"""
-    mod = get_writable_module_or_404(db, module_id, actor)
-    if mod.is_default:
-        raise bad_request("未分类模块不可删除")
-    children = (
-        db.query(ApiModule)
-        .filter(ApiModule.parent_id == mod.id)
-        .count()
-    )
-    if children:
-        raise bad_request("请先删除或移动子模块")
-    # 子接口归入未分类。
-    default = _resolver.ensure_default_module(db, mod.project_id)
-    db.flush()
-    db.query(ApiInterface).filter(ApiInterface.module_id == mod.id).update(
-        {ApiInterface.module_id: default.id}
-    )
-    db.delete(mod)
-    db.commit()
+    """软删除空模块；接口与子模块必须先显式移动到其他位置。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "api_module", module_id, actor=actor)
 
 
 def resolve_parent_for_create(db: Session, project: Project, parent_id: int | None

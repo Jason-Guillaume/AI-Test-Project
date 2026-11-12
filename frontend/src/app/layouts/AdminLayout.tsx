@@ -15,6 +15,7 @@ import {
   BulbOutlined,
   ToolOutlined,
   FileTextOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import { useMemo } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -34,6 +35,7 @@ const MENU_ITEMS = [
   { key: '/admin/users', icon: <TeamOutlined />, label: '用户管理' }, // 用户管理
   { key: '/admin/organizations', icon: <AppstoreOutlined />, label: '组织管理' }, // 组织管理
   { key: '/admin/projects', icon: <ProjectOutlined />, label: '项目管理' }, // 项目管理
+  { key: '/admin/recycle-bin', icon: <DeleteOutlined />, label: '数据管理 · 回收站' },
   { key: '/admin/knowledge', icon: <FileTextOutlined />, label: '项目知识库' },
   { key: '/admin/model-configs', icon: <ApiOutlined />, label: '模型中心' }, // 统一模型中心
   { key: '/admin/environments', icon: <CloudOutlined />, label: '环境配置' }, // 环境配置

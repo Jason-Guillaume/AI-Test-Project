@@ -96,6 +96,9 @@ def load_model_for_provider(
         row = query.filter(ModelConfiguration.is_default.is_(True)).first()
     if row is None:
         return None
+    from app.orchestration.tasks.services.runtime_fact_service import model_revision_admitted
+    if not model_revision_admitted(db, row.id):
+        return None
     from app.platform.model_configuration.models import ModelResource
     resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).populate_existing().first()
     if resource is not None and (resource.status != 'ACTIVE' or resource.visibility != 'PLATFORM'):
@@ -366,20 +369,30 @@ def update_configuration(
 
 
 def delete_configuration(db: Session, config_id: int, *, actor: User) -> None:
-    """删除模型配置。"""
+    """将模型配置移入回收站，并解除它在模型中心的当前绑定。"""
+    from app.lifecycle.service import delete_resource
+
     _require_admin(actor)
-    row = get_or_404(db, config_id)
-    if row.is_default:
+    row = (
+        db.query(ModelConfiguration).execution_options(include_deleted=True)
+        .filter(ModelConfiguration.id == config_id).first()
+    )
+    if row is None:
+        from app.core.http.errors import not_found
+        raise not_found("模型配置不存在")
+    already_deleted = row.deleted_at is not None
+    if not already_deleted and row.is_default:
         raise bad_request("默认模型不能删除，请先指定新的默认模型")
-    resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).first()
-    if resource is not None:
-        resource.legacy_model_id = None
-        resource.status = "ARCHIVED"
-    db.delete(row)
-    # 删除后重新分配默认位，保证未显式指定模型的调用总有兜底。
-    _normalize_defaults(db, None)
-    sync_legacy_text_default(db, actor.id)
-    db.commit()
+    if not already_deleted:
+        resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).first()
+        if resource is not None:
+            resource.legacy_model_id = None
+            resource.status = "ARCHIVED"
+    delete_resource(db, "model_configuration", config_id, actor=actor)
+    if not already_deleted:
+        _normalize_defaults(db, None)
+        sync_legacy_text_default(db, actor.id)
+        db.commit()
 
 
 def set_default(db: Session, config_id: int, *, actor: User) -> ModelConfiguration:

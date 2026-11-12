@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.agents.models import AgentDefinition
 from app.core.database.session import SessionLocal
 from app.core.http.errors import bad_request, not_found
+from app.core.models.configuration import ModelConfiguration
 from app.core.models.project import Project
 from app.features.test_management.models.case_generation import CaseDraft, CaseGenerationAudit, CaseGenerationBatch
 from app.orchestration.tasks.models import (
@@ -30,9 +31,13 @@ logger = logging.getLogger(__name__)
 _SAFE_EVENT_METADATA_KEYS = frozenset({
     "tool_call_id", "channel", "input_field_names", "query_sha256", "strategy",
     "bm25_k1", "bm25_b", "tokenizer_version",
-    "candidate_count", "result_count", "minimum_score", "top_k", "chunk_ids",
-    "version_ids", "source_count", "context_token_budget", "estimated_tokens",
-    "history_count", "compressed_history_count", "omitted_message_count", "message_ids",
+    "candidate_count", "candidate_limit", "candidate_truncated", "vector_candidate_count",
+    "fusion", "result_count",
+    "minimum_score", "top_k", "duration_ms", "vector_status", "reranker_status",
+    "chunk_ids", "version_ids", "source_count", "context_token_budget", "estimated_tokens",
+    "history_count", "compressed_history_count", "candidate_message_count",
+    "unsearched_message_count", "omitted_message_count", "message_ids", "summary_message_ids",
+    "summary_used", "summary_version", "summary_source_count", "memory_count", "memory_ids",
     "skill_keys", "skill_versions",
     "file_count", "model_config_id", "model_name", "model_revision", "request_count",
 })
@@ -94,6 +99,134 @@ def _task_run_status_metrics(statuses: dict[str, int]) -> dict[str, int | float 
     }
 
 
+def _provider_health(db: Session, call_query) -> list[dict[str, Any]]:
+    """按供应商汇总真实调用事实，不把未终态调用算进健康率。"""
+    rows = call_query.outerjoin(
+        ModelConfiguration, ModelConfiguration.id == RuntimeCallFact.model_config_id,
+    ).with_entities(
+        ModelConfiguration.provider,
+        RuntimeCallFact.cost_currency,
+        RuntimeCallFact.status,
+        func.count(RuntimeCallFact.id),
+        func.sum(RuntimeCallFact.total_tokens),
+        func.sum(RuntimeCallFact.cost_amount),
+    ).group_by(
+        ModelConfiguration.provider,
+        RuntimeCallFact.cost_currency,
+        RuntimeCallFact.status,
+    ).all()
+    config_rows = db.query(
+        ModelConfiguration.provider, ModelConfiguration.is_enabled, func.count(ModelConfiguration.id),
+    ).group_by(ModelConfiguration.provider, ModelConfiguration.is_enabled).all()
+    configs: dict[str, dict[str, int]] = {}
+    for provider, enabled, count in config_rows:
+        row = configs.setdefault(provider, {"enabled_configs": 0, "disabled_configs": 0})
+        key = "enabled_configs" if enabled else "disabled_configs"
+        row[key] += int(count)
+    grouped: dict[str, dict[str, Any]] = {}
+    for provider_name, currency, status, count, tokens, cost in rows:
+        provider = provider_name or "UNKNOWN"
+        row = grouped.setdefault(provider, {
+            "provider": provider,
+            "calls": 0, "succeeded": 0, "failed": 0, "unknown_calls": 0,
+            "known_calls": 0, "tokens": 0, "success_rate": None, "status": "INSUFFICIENT_SAMPLE",
+            "enabled_configs": configs.get(provider, {}).get("enabled_configs", 0),
+            "disabled_configs": configs.get(provider, {}).get("disabled_configs", 0),
+            "cost_by_currency": [],
+            "_costs": {},
+        })
+        row["calls"] += int(count)
+        row["tokens"] += int(tokens or 0)
+        if status == "SUCCEEDED":
+            row["succeeded"] += int(count)
+            row["known_calls"] += int(count)
+        elif status == "FAILED":
+            row["failed"] += int(count)
+            row["known_calls"] += int(count)
+        else:
+            row["unknown_calls"] += int(count)
+        if cost is not None and currency:
+            row["_costs"][currency] = row["_costs"].get(currency, 0.0) + float(cost)
+    providers = []
+    for row in grouped.values():
+        known = row["known_calls"]
+        row["success_rate"] = round(row["succeeded"] / known, 4) if known else None
+        failure_rate = row["failed"] / known if known else None
+        if row["enabled_configs"] == 0 and row["disabled_configs"] > 0:
+            row["status"] = "DISABLED"
+        elif known < 5 or failure_rate is None:
+            row["status"] = "INSUFFICIENT_SAMPLE"
+        elif failure_rate >= 0.5:
+            row["status"] = "UNHEALTHY"
+        elif failure_rate >= 0.2:
+            row["status"] = "DEGRADED"
+        else:
+            row["status"] = "HEALTHY"
+        row["cost_by_currency"] = [
+            {"currency": currency, "amount": round(amount, 8)}
+            for currency, amount in sorted(row.pop("_costs").items())
+        ]
+        providers.append(row)
+    providers.sort(key=lambda item: (-item["calls"], item["provider"]))
+    return providers
+
+
+def _positive_token_average(query) -> tuple[int, float | None]:
+    """只统计已记录的正 Token，避免用空用量冒充消耗。"""
+    count, average = query.filter(RuntimeCallFact.total_tokens > 0).with_entities(
+        func.count(RuntimeCallFact.id), func.avg(RuntimeCallFact.total_tokens),
+    ).one()
+    return int(count or 0), (float(average) if average is not None else None)
+
+
+def model_revision_admitted(db: Session, model_config_id: int) -> bool:
+    """有模型中心修订时，停用修订不再因为旧配置行仍启用而被调用。"""
+    from app.platform.model_configuration.models import ModelLegacyBinding, ModelRevision
+
+    binding = db.query(ModelLegacyBinding).filter(
+        ModelLegacyBinding.legacy_kind == "MODEL_CONFIGURATION",
+        ModelLegacyBinding.legacy_id == model_config_id,
+    ).first()
+    if binding is None:
+        return True
+    revision = db.get(ModelRevision, binding.revision_id)
+    return revision is not None and bool(revision.enabled)
+
+
+def assert_token_quota(db: Session, *, project_id: int, user_id: int | None) -> None:
+    """按当日已落库 Token 拦截超额调用。未配置额度时不改变现有调用。"""
+    from app.core.config import settings
+    from app.llm.contracts import LLMError
+
+    project_limit = int(settings.AGENT_PROJECT_DAILY_TOKEN_QUOTA)
+    user_limit = int(settings.AGENT_USER_DAILY_TOKEN_QUOTA)
+    if project_limit <= 0 and user_limit <= 0:
+        return
+    start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if project_limit > 0:
+        used = db.query(func.coalesce(func.sum(RuntimeCallFact.total_tokens), 0)).filter(
+            RuntimeCallFact.project_id == project_id,
+            RuntimeCallFact.created_at >= start,
+        ).scalar()
+        if int(used or 0) >= project_limit:
+            raise LLMError("TOKEN_QUOTA_EXCEEDED", "项目当日模型 Token 额度已用完", retryable=False)
+    if user_limit > 0 and user_id is not None:
+        used = db.query(func.coalesce(func.sum(RuntimeCallFact.total_tokens), 0)).join(
+            Task, Task.id == RuntimeCallFact.task_id,
+        ).filter(
+            Task.created_by == user_id,
+            RuntimeCallFact.created_at >= start,
+        ).scalar()
+        if int(used or 0) >= user_limit:
+            raise LLMError("TOKEN_QUOTA_EXCEEDED", "当前用户当日模型 Token 额度已用完", retryable=False)
+
+
+def _model_success_rate(succeeded: int, failed: int) -> float | None:
+    """UNKNOWN 等非终态调用不进入模型成功率分母。"""
+    known_calls = succeeded + failed
+    return round(succeeded / known_calls, 4) if known_calls else None
+
+
 def _execution_root_filter():
     """只统计自指协调根或未建立根关系的历史 Run，避免 Fan-out 子 Run 重复计任务。"""
     return or_(TaskRun.execution_root_run_id == TaskRun.id, TaskRun.execution_root_run_id.is_(None))
@@ -148,6 +281,7 @@ def _manual_feedback(db: Session, project_id: int | None, start: datetime, end: 
 
 def record_runtime_event(
     *,
+    db: Session | None = None,
     project_id: int,
     event_id: str | None = None,
     event_type: str,
@@ -168,17 +302,24 @@ def record_runtime_event(
     error_code: str | None = None,
     event_metadata: dict[str, Any] | None = None,
 ) -> None:
-    """用独立短事务记录无正文事实；失败不能改变工具或检索结果。"""
+    """记录无正文事实；有调用方 Session 时随该事务原子提交，避免 FK 锁自阻塞。"""
     if not project_id or event_type not in {
         "AGENT_RUN", "TOOL_CALL", "KNOWLEDGE_RETRIEVAL", "CONTEXT_ASSEMBLY", "SKILL_LOAD",
     }:
         return
-    session = SessionLocal()
+    owns_session = db is None
+    session = SessionLocal() if owns_session else db
+    savepoint = None
     try:
+        if not owns_session:
+            # SAVEPOINT 隔离唯一约束等事实写入错误，不回滚调用方的业务事务。
+            savepoint = session.begin_nested()
         normalized_event_id = (event_id or uuid4().hex)[:64]
         if event_id and session.query(RuntimeEventFact.id).filter(
             RuntimeEventFact.event_id == normalized_event_id,
         ).first():
+            if savepoint is not None:
+                savepoint.commit()
             return
         session.add(RuntimeEventFact(
             event_id=normalized_event_id,
@@ -202,12 +343,27 @@ def record_runtime_event(
             event_metadata=_safe_metadata(event_metadata),
             occurred_at=datetime.now(),
         ))
-        session.commit()
+        session.flush()
+        from app.orchestration.tasks.services.trace_projection_service import enqueue_projection
+        enqueue_projection(
+            session, source_type="RUNTIME_EVENT", source_key=normalized_event_id,
+            project_id=project_id, task_id=task_id or 0, task_run_id=task_run_id or 0,
+            execution_root_run_id=execution_root_run_id or task_run_id or 0,
+            trace_id=trace_id, span_id=span_id,
+        )
+        if owns_session:
+            session.commit()
+        elif savepoint is not None:
+            savepoint.commit()
     except Exception as exc:  # noqa: BLE001 —— 指标写入不可改变业务结果
-        session.rollback()
+        if owns_session:
+            session.rollback()
+        elif savepoint is not None and savepoint.is_active:
+            savepoint.rollback()
         logger.warning("运行事实写入失败（忽略）：%s", type(exc).__name__)
     finally:
-        session.close()
+        if owns_session:
+            session.close()
 
 
 def runtime_overview(
@@ -275,7 +431,11 @@ def runtime_overview(
         RuntimeCallFact.status, func.count(RuntimeCallFact.id),
     ).group_by(RuntimeCallFact.status).all()}
     model_total = sum(call_statuses.values())
-    known_model_calls = call_statuses.get("SUCCEEDED", 0) + call_statuses.get("FAILED", 0)
+    model_latency_sample = call_query.filter(RuntimeCallFact.duration_ms > 0).with_entities(
+        func.count(RuntimeCallFact.id), func.avg(RuntimeCallFact.duration_ms),
+        func.percentile_cont(0.50).within_group(RuntimeCallFact.duration_ms),
+        func.percentile_cont(0.95).within_group(RuntimeCallFact.duration_ms),
+    ).first() or (0, None, None, None)
     usage_known_count = int(call_query.filter(RuntimeCallFact.usage_status == "KNOWN").count())
     token_total = call_query.with_entities(func.sum(RuntimeCallFact.total_tokens)).scalar()
     cost_rows = call_query.filter(and_(
@@ -366,31 +526,57 @@ def runtime_overview(
         RuntimeCallFact.model_config_id, RuntimeCallFact.model_name, RuntimeCallFact.model_revision,
         RuntimeCallFact.cost_currency,
         RuntimeCallFact.status, func.count(RuntimeCallFact.id), func.sum(RuntimeCallFact.total_tokens),
-        func.sum(RuntimeCallFact.cost_amount), func.avg(RuntimeCallFact.duration_ms),
+        func.sum(RuntimeCallFact.cost_amount),
     ).group_by(
         RuntimeCallFact.model_config_id, RuntimeCallFact.model_name, RuntimeCallFact.model_revision,
         RuntimeCallFact.cost_currency, RuntimeCallFact.status,
     ).all()
     models: dict[tuple[Any, ...], dict[str, Any]] = {}
-    for model_id, name, revision, currency, status, count, tokens, cost, avg_ms in model_rows:
+    for model_id, name, revision, currency, status, count, tokens, cost in model_rows:
         key = (model_id, name, revision, currency)
         row = models.setdefault(key, {
             "model_config_id": model_id, "model_name": name, "model_revision": revision,
             "cost_currency": currency,
-            "calls": 0, "succeeded": 0, "failed": 0, "tokens": 0, "cost": None,
-            "_cost_known": False, "_latency_sum": 0.0,
+            "calls": 0, "succeeded": 0, "failed": 0, "known_calls": 0,
+            "unknown_calls": 0, "success_rate": None, "tokens": 0, "cost": None,
+            "latency_sample_count": 0, "avg_latency_ms": None,
+            "p50_latency_ms": None, "p95_latency_ms": None,
+            "_cost_known": False,
         })
         row["calls"] += int(count)
         row["succeeded"] += int(count) if status == "SUCCEEDED" else 0
         row["failed"] += int(count) if status == "FAILED" else 0
+        row["known_calls"] += int(count) if status in {"SUCCEEDED", "FAILED"} else 0
         row["tokens"] += int(tokens or 0)
-        row["_latency_sum"] += float(avg_ms or 0) * int(count)
         if cost is not None and currency is not None:
             row["cost"] = float(row["cost"] or 0) + float(cost)
             row["_cost_known"] = True
+    latency_by_model = {}
+    for model_id, name, revision, sample_count, average_ms, p50_ms, p95_ms in call_query.filter(
+        RuntimeCallFact.duration_ms > 0,
+    ).with_entities(
+        RuntimeCallFact.model_config_id, RuntimeCallFact.model_name, RuntimeCallFact.model_revision,
+        func.count(RuntimeCallFact.id), func.avg(RuntimeCallFact.duration_ms),
+        func.percentile_cont(0.50).within_group(RuntimeCallFact.duration_ms),
+        func.percentile_cont(0.95).within_group(RuntimeCallFact.duration_ms),
+    ).group_by(
+        RuntimeCallFact.model_config_id, RuntimeCallFact.model_name, RuntimeCallFact.model_revision,
+    ).all():
+        latency_by_model[(model_id, name, revision)] = {
+            "latency_sample_count": int(sample_count),
+            "avg_latency_ms": round(float(average_ms), 2) if average_ms is not None else None,
+            "p50_latency_ms": round(float(p50_ms), 2) if p50_ms is not None else None,
+            "p95_latency_ms": round(float(p95_ms), 2) if p95_ms is not None else None,
+        }
     model_breakdown = []
     for row in models.values():
-        row["avg_latency_ms"] = round(row.pop("_latency_sum") / row["calls"], 2) if row["calls"] else None
+        row["unknown_calls"] = row["calls"] - row["known_calls"]
+        row["success_rate"] = _model_success_rate(row["succeeded"], row["failed"])
+        row.update(latency_by_model.get(
+            (row["model_config_id"], row["model_name"], row["model_revision"]),
+            {"latency_sample_count": 0, "avg_latency_ms": None,
+             "p50_latency_ms": None, "p95_latency_ms": None},
+        ))
         row.pop("_cost_known")
         model_breakdown.append(row)
     model_breakdown.sort(key=lambda row: (-row["calls"], row["model_name"]))
@@ -500,34 +686,44 @@ def runtime_overview(
 
     previous_model_rows = previous_call_query.with_entities(
         RuntimeCallFact.model_name, RuntimeCallFact.model_revision, RuntimeCallFact.status,
-        func.count(RuntimeCallFact.id), func.avg(RuntimeCallFact.duration_ms),
+        func.count(RuntimeCallFact.id), func.count(func.nullif(RuntimeCallFact.duration_ms, 0)),
+        func.avg(func.nullif(RuntimeCallFact.duration_ms, 0)),
     ).group_by(RuntimeCallFact.model_name, RuntimeCallFact.model_revision, RuntimeCallFact.status).all()
     previous_models: dict[tuple[str, str | None], dict[str, float]] = {}
-    for name, revision, status, count, average_ms in previous_model_rows:
+    for name, revision, status, count, duration_count, average_ms in previous_model_rows:
         key = (name, revision)
-        row = previous_models.setdefault(key, {"calls": 0, "known_calls": 0, "failed": 0, "latency_sum": 0.0})
+        row = previous_models.setdefault(key, {
+            "calls": 0, "known_calls": 0, "failed": 0, "latency_sum": 0.0, "duration_count": 0,
+        })
         row["calls"] += int(count)
         row["failed"] += int(count) if status == "FAILED" else 0
         row["known_calls"] += int(count) if status in {"SUCCEEDED", "FAILED"} else 0
-        row["latency_sum"] += float(average_ms or 0) * int(count)
+        row["latency_sum"] += float(average_ms or 0) * int(duration_count)
+        row["duration_count"] += int(duration_count)
     current_models: dict[tuple[str, str | None], dict[str, float]] = {}
-    for name, revision, status, count, average_ms in call_query.with_entities(
+    for name, revision, status, count, duration_count, average_ms in call_query.with_entities(
         RuntimeCallFact.model_name, RuntimeCallFact.model_revision, RuntimeCallFact.status,
-        func.count(RuntimeCallFact.id), func.avg(RuntimeCallFact.duration_ms),
+        func.count(RuntimeCallFact.id), func.count(func.nullif(RuntimeCallFact.duration_ms, 0)),
+        func.avg(func.nullif(RuntimeCallFact.duration_ms, 0)),
     ).group_by(RuntimeCallFact.model_name, RuntimeCallFact.model_revision, RuntimeCallFact.status).all():
         key = (name, revision)
-        row = current_models.setdefault(key, {"calls": 0, "known_calls": 0, "failed": 0, "latency_sum": 0.0})
+        row = current_models.setdefault(key, {
+            "calls": 0, "known_calls": 0, "failed": 0, "latency_sum": 0.0, "duration_count": 0,
+        })
         row["calls"] += int(count)
         row["failed"] += int(count) if status == "FAILED" else 0
         row["known_calls"] += int(count) if status in {"SUCCEEDED", "FAILED"} else 0
-        row["latency_sum"] += float(average_ms or 0) * int(count)
+        row["latency_sum"] += float(average_ms or 0) * int(duration_count)
+        row["duration_count"] += int(duration_count)
     for key, current in current_models.items():
         baseline = previous_models.get(key)
-        if not baseline or current["calls"] < 5 or baseline["calls"] < 5:
+        if not baseline:
             continue
-        current_latency = current["latency_sum"] / current["calls"]
-        baseline_latency = baseline["latency_sum"] / baseline["calls"]
-        if current_latency >= max(baseline_latency * 2, baseline_latency + 1000):
+        current_latency = current["latency_sum"] / current["duration_count"] if current["duration_count"] else None
+        baseline_latency = baseline["latency_sum"] / baseline["duration_count"] if baseline["duration_count"] else None
+        if (current_latency is not None and baseline_latency is not None
+                and current["duration_count"] >= 5 and baseline["duration_count"] >= 5
+                and current_latency >= max(baseline_latency * 2, baseline_latency + 1000)):
             anomalies.append({
                 "kind": "MODEL_LATENCY_INCREASE", "severity": "WARNING",
                 "model_name": key[0], "model_revision": key[1],
@@ -545,6 +741,19 @@ def runtime_overview(
                 "current": round(current_failure_rate, 4), "baseline": round(baseline_failure_rate, 4),
                 "current_samples": int(current["calls"]), "baseline_samples": int(baseline["calls"]),
             })
+    current_token_samples, current_token_average = _positive_token_average(call_query)
+    previous_token_samples, previous_token_average = _positive_token_average(previous_call_query)
+    if (current_token_average is not None and previous_token_average is not None
+            and current_token_samples >= 5 and previous_token_samples >= 5
+            and previous_token_average > 0
+            and current_token_average >= previous_token_average * 2):
+        anomalies.append({
+            "kind": "TOKEN_USAGE_INCREASE", "severity": "WARNING",
+            "current": round(current_token_average, 2),
+            "baseline": round(previous_token_average, 2),
+            "current_samples": current_token_samples,
+            "baseline_samples": previous_token_samples,
+        })
 
     def agent_failure_rates(query: Any) -> dict[tuple[int, int | None], dict[str, int]]:
         rows = query.with_entities(
@@ -673,7 +882,7 @@ def runtime_overview(
         "runtime_events": event_query.with_entities(func.max(RuntimeEventFact.occurred_at)).scalar(),
     }
     return {
-        "metric_definition_version": "agent-runtime-v1",
+        "metric_definition_version": "agent-runtime-v2",
         "window": {"from": start, "to": end, "project_id": project_id},
         "data_watermark": data_watermark,
         "summary": {
@@ -681,6 +890,10 @@ def runtime_overview(
             "average_duration_ms": round(float(average_duration), 2) if average_duration is not None else None,
             "p95_duration_ms": round(float(p95_duration), 2) if p95_duration is not None else None,
             "duration_sample_count": int(duration_count or 0),
+            "average_model_latency_ms": round(float(model_latency_sample[1]), 2) if model_latency_sample[1] is not None else None,
+            "p50_model_latency_ms": round(float(model_latency_sample[2]), 2) if model_latency_sample[2] is not None else None,
+            "p95_model_latency_ms": round(float(model_latency_sample[3]), 2) if model_latency_sample[3] is not None else None,
+            "model_latency_sample_count": int(model_latency_sample[0] or 0),
             "retried_work_items": retried_count,
             "work_items": work_count,
             "started_work_items": started_work_count,
@@ -696,7 +909,9 @@ def runtime_overview(
                 subagent_instance_failed / subagent_instance_terminal, 4,
             ) if subagent_instance_terminal else None,
             "model_calls": model_total,
-            "model_success_rate": round(call_statuses.get("SUCCEEDED", 0) / known_model_calls, 4) if known_model_calls else None,
+            "model_success_rate": _model_success_rate(
+                call_statuses.get("SUCCEEDED", 0), call_statuses.get("FAILED", 0),
+            ),
             "model_failures": call_statuses.get("FAILED", 0),
             "model_tokens": int(token_total or 0),
             "known_usage_calls": usage_known_count,
@@ -724,6 +939,7 @@ def runtime_overview(
         },
         "model_statuses": call_statuses,
         "run_statuses": run_statuses,
+        "providers": _provider_health(db, call_query),
         "models": model_breakdown,
         "agents_by_revision": agent_breakdown,
         "tools": tool_breakdown,
@@ -744,11 +960,13 @@ def runtime_overview(
             "subagent_work_items": "来源：TaskWorkItem 与 TaskAgentInstance；统计子 Agent 工作项数量、失败数及待核对数，不与实例失败率合并。",
             "subagent_runtime_events": "来源：RuntimeEventFact event_type=AGENT_RUN；按 attempt_id 记录已提交的子 Agent 成功/失败运行事件，恢复复用结果使用稳定 event_id 去重。",
             "model": "RuntimeCallFact；不包含未写入 RuntimeCallFact 的历史调用。",
-            "model_status_rate": "来源：RuntimeCallFact；仅 SUCCEEDED/FAILED 为已知终态调用，UNKNOWN 不进成功率分母并单列。",
+            "model_status_rate": "来源：RuntimeCallFact；仅 SUCCEEDED/FAILED 为已知终态调用，UNKNOWN 不进成功率分母；模型明细同时列出已知与未知调用数。",
             "tool": "RuntimeEventFact 覆盖本版本接入 dispatcher 的工具；其成功率按成功/失败终态计算。TaskToolInvocation 业务回执成功率同样排除 STARTED/未知状态。",
             "skill": "统计 Skill 文件装载/渲染是否完成，不代表 Markdown Skill 的业务结果或正确率。",
             "cost": "仅汇总有明确价格快照的调用；未配置价格时为 null，不按 Token 猜测成本。",
-            "anomalies": "与上一段等长时间窗对比；当前和基线样本均至少 5。任务/模型/工具/Skill 及用例人工反馈率增加至少 15 个百分点告警；模型平均延迟至少翻倍且增加不少于 1000ms 告警；已计价 Agent Revision 单次成本至少翻倍才告警。",
+            "model_latency": "来源：RuntimeCallFact.duration_ms > 0；平均值、P50 和 P95 仅使用实测正时长，单列有效样本数；零值不作为测量结果。",
+            "providers": "来源：RuntimeCallFact 左连接 ModelConfiguration.provider。成功率分母仅为 SUCCEEDED+FAILED。启用配置数为当前配置，不随时间窗变化。已知终态不足 5 次为 INSUFFICIENT_SAMPLE；失败率不低于 20% 为 DEGRADED，不低于 50% 为 UNHEALTHY；该供应商配置全部停用为 DISABLED。成本按币种分开，不跨币种相加。",
+            "anomalies": "与上一段等长时间窗对比；当前和基线样本均至少 5。任务/模型/工具/Skill 及用例人工反馈率增加至少 15 个百分点告警；模型平均延迟至少翻倍且增加不少于 1000ms（仅计正时长样本）告警；已记录正 Token 的单次平均用量至少翻倍告警；已计价 Agent Revision 单次成本至少翻倍才告警。",
             "manual_feedback": "仅用已有 CaseDraft/CaseGenerationAudit 统计用例生成的人工接受、拒绝和编辑；不外推为正确率，也不代表其他 Agent 类型。",
         },
     }

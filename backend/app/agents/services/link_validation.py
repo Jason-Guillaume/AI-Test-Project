@@ -28,7 +28,12 @@ def validate_agent_links(
     """校验 Agent 关联的 Skill、内置/MCP 工具和最多一层的叶子子 Agent。"""
     if len(set(skill_keys)) != len(skill_keys) or len(set(tool_keys)) != len(tool_keys):
         raise bad_request("Skill 和工具不能重复关联")
-    skills = db.query(SkillDefinition).filter(SkillDefinition.key.in_(skill_keys)).all() if skill_keys else []
+    # Serialize Agent configuration changes with Skill deletion. If deletion wins the
+    # row lock, this query no longer finds the Skill; if this update wins, deletion
+    # observes the committed Agent reference and rejects it.
+    skills = db.query(SkillDefinition).filter(
+        SkillDefinition.key.in_(skill_keys),
+    ).order_by(SkillDefinition.id).with_for_update().all() if skill_keys else []
     if len({row.key for row in skills}) != len(set(skill_keys)):
         raise bad_request("Agent 关联的 Skill 不存在")
     if agent_enabled and any(not row.is_enabled for row in skills):
@@ -50,8 +55,12 @@ def validate_agent_links(
             unknown_tools.add(key)
     if unknown_tools:
         raise bad_request("Agent 包含平台未注册的工具")
+    servers = db.query(MCPServer).filter(
+        MCPServer.id.in_(sorted({server_id for server_id, _ in mcp_refs})),
+    ).order_by(MCPServer.id).with_for_update().all() if mcp_refs else []
+    servers_by_id = {server.id: server for server in servers}
     for server_id, tool_name in mcp_refs:
-        server = db.get(MCPServer, server_id)
+        server = servers_by_id.get(server_id)
         if server is None:
             raise bad_request("Agent 关联的 MCP 服务不存在")
         discovered = {item.get("name"): item for item in (server.discovered_tools_json or [])}

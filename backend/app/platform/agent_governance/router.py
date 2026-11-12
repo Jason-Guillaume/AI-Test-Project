@@ -112,7 +112,7 @@ def restore_agent_version(agent_id: int, version: int, db: Session = Depends(get
 @router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_agent(agent_id: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """删除智能体。"""
-    agent_services.delete_agent(db, agent_id)
+    agent_services.delete_agent(db, agent_id, actor)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -171,7 +171,7 @@ def skill_usage(skill_id: int, db: Session = Depends(get_db), actor: User = Depe
 @router.delete("/skills/{skill_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_skill(skill_id: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """删除`skill`。"""
-    agent_services.delete_skill(db, skill_id)
+    agent_services.delete_skill(db, skill_id, actor)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -196,7 +196,7 @@ def update_mcp_server(server_id: int, body: MCPServerUpdate, db: Session = Depen
 @router.delete("/mcp-servers/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_mcp_server(server_id: int, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """删除MCP服务端。"""
-    agent_services.delete_mcp_server(db, server_id)
+    agent_services.delete_mcp_server(db, server_id, actor)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.agents.schemas import AgentDefinitionCreate, AgentDefinitionUpdate, AgentRuntimeSettings
 from app.agents.models import AgentDefinition, AgentDefinitionRevision
 from app.core.http.errors import bad_request, conflict, not_found
+from app.core.models.identity import User
 from app.agents.services.link_validation import validate_agent_links
 
 
@@ -125,19 +125,11 @@ def agent_versions(db: Session, agent_id: int) -> list[AgentDefinitionRevision]:
     ).order_by(AgentDefinitionRevision.version.desc()).all()
 
 
-def delete_agent(db: Session, agent_id: int) -> None:
-    """删除智能体。"""
-    row = db.get(AgentDefinition, agent_id)
-    if row is None:
-        raise not_found("Agent 配置不存在")
-    if any(agent_id in (item.child_agent_ids or []) for item in db.query(AgentDefinition).filter(AgentDefinition.id != agent_id).all()):
-        raise conflict("该 Agent 已被其他 Agent 配置为子节点，请先移除引用")
-    db.delete(row)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise conflict("已有任务绑定此 Agent，请停用配置而不是删除") from exc
+def delete_agent(db: Session, agent_id: int, actor: User) -> None:
+    """通过统一生命周期契约删除智能体，同时保留不可变修订记录。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "agent_definition", agent_id, actor=actor)
 
 
 def restore_agent_version(db: Session, agent_id: int, version: int, actor_id: int) -> AgentDefinition:

@@ -129,15 +129,18 @@ class MockServiceService:
         return MockServiceCreateResponse(service=service_response(db, service), runtime_token=plaintext)
 
     def delete_service(self, db: Session, service_id: int, *, actor: User) -> None:
-        """删除服务。"""
-        service = self._get_writable_or_404(db, service_id, actor)
-        ref_count = int(
-            db.query(TestCaseMock.id).filter(TestCaseMock.mock_service_id == service.id).count()
+        """将服务移入回收站；权限和依赖检查仍按 Mock 服务规则执行。"""
+        from app.features.mocking.models import MockService
+        from app.lifecycle.service import delete_resource
+
+        service = (
+            db.query(MockService).execution_options(include_deleted=True)
+            .filter(MockService.id == service_id).first()
         )
-        if ref_count:
-            raise conflict(f"该 Mock 服务正被 {ref_count} 条用例 Mock 依赖引用，请先在用例上移除")
-        db.delete(service)
-        db.commit()
+        if service is None:
+            _raise_not_found()
+        require_manage_project(db, service.project_id, actor)
+        delete_resource(db, "mock_service", service_id, actor=actor, project_id=service.project_id)
 
     # ---------------------------------------------------------------- 更新 + 重置 Token
 

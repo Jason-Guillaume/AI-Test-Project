@@ -172,13 +172,19 @@ def update(
 
 
 def delete(db: Session, project_id: int, user: User, profile_id: int) -> None:
-    """删除策略：editor+；内置策略不可删除。"""
+    """将自定义扫描策略移入回收站。内置策略仍不可删除。"""
+    from app.lifecycle.service import delete_resource
+
     _access.require_admin_project(db, project_id, user)
-    row = _accessible(db, project_id, profile_id)
+    row = (
+        db.query(SecurityScanProfile).execution_options(include_deleted=True)
+        .filter(SecurityScanProfile.id == profile_id).first()
+    )
+    if row is None or (row.project_id is not None and row.project_id != project_id):
+        raise AppError("扫描策略不存在", status_code=404)
     if row.is_builtin:
         raise AppError("平台内置策略不可删除", status_code=400, code=CODE_SECURITY_SCAN_PROFILE_INVALID)
-    db.delete(row)
-    db.commit()
+    delete_resource(db, "security_scan_profile", profile_id, actor=user, project_id=row.project_id)
 
 
 def get_or_none(db: Session, project_id: int, profile_id: int) -> SecurityScanProfile | None:

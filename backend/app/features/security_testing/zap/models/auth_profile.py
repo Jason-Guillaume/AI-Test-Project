@@ -19,10 +19,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class SecurityScanAuthProfile(Base):
+class SecurityScanAuthProfile(SoftDeleteBase):
     """一份认证配置（§十一 / §十二 / §十三）。
 
     三种模式：

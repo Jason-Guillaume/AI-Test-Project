@@ -124,10 +124,7 @@ def delete_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """删除用户；不能删除自己。
-
-    删除动作会把目标用户名下的项目与组织显式交接出去，细节见 service.delete_user。
-    """
+    """将用户移入回收站；组织、项目归属与历史关联保持原样。"""
     _require_admin(current_user)
     SERVICE.delete_user(db, user_id, actor=current_user)
     return None

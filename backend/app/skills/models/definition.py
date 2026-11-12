@@ -4,9 +4,10 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, Str
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class SkillDefinition(Base):
+class SkillDefinition(SoftDeleteBase):
     """可复用的 Markdown 指令 / 领域知识。"""
 
     __tablename__ = "skill_definition"

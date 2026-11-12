@@ -22,6 +22,7 @@ from app.features.business.services.access_service import resolve_flow_project_i
 from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
 from app.core.models.identity import User
 from app.core.http.errors import bad_request, not_found
+from app.lifecycle.service import delete_resource
 
 
 def _ref_response(ref: BusinessVariableRef) -> BusinessVariableRefResponse:
@@ -96,5 +97,4 @@ class RefService:
         if ref is None:
             raise not_found("变量引用不存在")
         require_writable_project(db, resolve_flow_project_id(db, ref.flow_id), actor)
-        db.delete(ref)
-        db.commit()
+        delete_resource(db, "business_variable_ref", ref.id, actor=actor)

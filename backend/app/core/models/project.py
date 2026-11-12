@@ -11,17 +11,18 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     PrimaryKeyConstraint,
     String,
-    UniqueConstraint,
 )
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class Project(Base):
+class Project(SoftDeleteBase):
     """测试项目及负责人信息。"""
 
     __tablename__ = "project"
@@ -41,13 +42,17 @@ class Project(Base):
                         comment="更新时间")
 
 
-class ProjectMember(Base):
+class ProjectMember(SoftDeleteBase):
     """项目成员及其访问角色。"""
 
     __tablename__ = "project_member"
     __table_args__ = (
         PrimaryKeyConstraint("id", name="pk_project_member"),
-        UniqueConstraint("project_id", "user_id", name="uq_project_member_project_user"),
+        Index(
+            "uq_project_member_project_user_live", "project_id", "user_id", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "项目成员及其数据访问角色"},
     )
     # 命名主键 + (project_id, user_id) 唯一约束：一个用户在一个项目里只保留一行，
@@ -65,12 +70,16 @@ class ProjectMember(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
 
-class ProjectOutboundTarget(Base):
+class ProjectOutboundTarget(SoftDeleteBase):
     """项目出站目标、协议端口及生产目标授权。"""
 
     __tablename__ = "project_outbound_target"
     __table_args__ = (
-        UniqueConstraint("project_id", "scheme", "host", "port", name="uq_project_outbound_target"),
+        Index(
+            "uq_project_outbound_target_live", "project_id", "scheme", "host", "port", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "项目出站目标、协议端口及生产目标授权"},
     )
     # 授权粒度到 (project, scheme, host, port) 四元组：唯一约束保证同一目标不会被重复登记，

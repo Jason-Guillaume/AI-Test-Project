@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class SecurityStrategy(Base):
+class SecurityStrategy(SoftDeleteBase):
     """一条安全策略。
 
     - ``project_id`` 可空：空 = 系统模板（scope=SYSTEM、builtin=true），
@@ -20,8 +20,10 @@ class SecurityStrategy(Base):
 
     __tablename__ = "security_strategy"
     __table_args__ = (
-        UniqueConstraint(
-            "project_id", "strategy_key", name="uq_security_strategy_project_key"
+        Index(
+            "uq_security_strategy_project_key", "project_id", "strategy_key", unique=True,
+            postgresql_where=text("project_id IS NOT NULL AND deleted_at IS NULL"),
+            sqlite_where=text("project_id IS NOT NULL AND deleted_at IS NULL"),
         ),
         Index("ix_security_strategy_project_category", "project_id", "category"),
         Index("ix_security_strategy_scope_enabled", "scope", "enabled"),
@@ -29,7 +31,8 @@ class SecurityStrategy(Base):
         # 普通 UNIQUE(project_id, strategy_key) 拦不住重复模板（NULL 不相等）。
         Index(
             "uq_security_strategy_system_key", "strategy_key", unique=True,
-            postgresql_where=text("project_id IS NULL"),
+            postgresql_where=text("project_id IS NULL AND deleted_at IS NULL"),
+            sqlite_where=text("project_id IS NULL AND deleted_at IS NULL"),
         ),
         {"comment": "安全策略：SYSTEM 模板 / PROJECT 自定义"},
     )

@@ -266,6 +266,16 @@ class TaskQueryService:
         )
         attempts = attempts_query.order_by(attempt_time.desc(), TaskAttempt.id.desc()).limit(limit + 1).all()
 
+        from app.orchestration.tasks.services.trace_projection_service import (
+            projection_status,
+            projection_status_by_source,
+        )
+        projection_sources = [("MODEL_CALL", row.call_id) for row in calls]
+        projection_sources.extend(("RUNTIME_EVENT", row.event_id) for row in events)
+        projection_sources.extend(("AGENT_ATTEMPT", str(attempt.id)) for attempt, _ in attempts)
+        projection_by_source = projection_status_by_source(db, projection_sources)
+        projection_summary = projection_status(db, run_ids)
+
         agent_ids = {row.agent_instance_id for row in calls if row.agent_instance_id}
         agent_ids.update(row.agent_instance_id for row in events if row.agent_instance_id)
         agent_ids.update(work.agent_instance_id for _, work in attempts if work.agent_instance_id)
@@ -292,6 +302,7 @@ class TaskQueryService:
                 "total_tokens": row.total_tokens,
                 "cost_amount": str(row.cost_amount) if row.cost_amount is not None else None,
                 "cost_currency": row.cost_currency, "metadata": {},
+                "projection_status": projection_by_source.get(("MODEL_CALL", row.call_id), "UNTRACKED"),
                 "_sort_kind": "MODEL_CALL", "_sort_id": row.id,
             })
         for row in events:
@@ -307,6 +318,7 @@ class TaskQueryService:
                 "agent_definition_revision_id": row.agent_definition_revision_id,
                 "trace_id": row.trace_id, "span_id": row.span_id, "duration_ms": row.duration_ms,
                 "error_code": row.error_code, "metadata": row.event_metadata or {},
+                "projection_status": projection_by_source.get(("RUNTIME_EVENT", row.event_id), "UNTRACKED"),
                 "_sort_kind": row.event_type, "_sort_id": row.id,
             })
         for attempt, work in attempts:
@@ -326,6 +338,7 @@ class TaskQueryService:
                     (attempt.finished_at or attempt.heartbeat_at or attempt.started_at) - attempt.started_at
                 ).total_seconds() * 1000)) if attempt.started_at else 0,
                 "error_code": attempt.error_code, "metadata": {"attempt_number": attempt.attempt_number},
+                "projection_status": projection_by_source.get(("AGENT_ATTEMPT", str(attempt.id)), "UNTRACKED"),
                 "_sort_kind": "AGENT_ATTEMPT", "_sort_id": attempt.id,
             })
 
@@ -347,8 +360,25 @@ class TaskQueryService:
         return TaskTracePageResponse(
             task_id=task.id, run_id=run.id, execution_root_run_id=root_id,
             generation_batch_id=generation_batch_id,
-            trace_id=run.trace_id, items=serialized, next_cursor=next_cursor,
+            trace_id=run.trace_id, projection=projection_summary,
+            items=serialized, next_cursor=next_cursor,
         ).model_dump()
+
+    @staticmethod
+    def replay_trace_projections(db: Session, run_id: int, user: User) -> dict[str, Any]:
+        """Requeue failed and register untracked runtime facts under the existing task write permission."""
+        from app.orchestration.tasks.services.trace_projection_service import replay_run
+
+        run, task = TaskAccessService.get_run_for_write(db, run_id, user)
+        root_id = run.execution_root_run_id or run.id
+        related_runs = db.query(TaskRun.id).filter(
+            TaskRun.task_id == task.id,
+            or_(TaskRun.id == root_id, TaskRun.execution_root_run_id == root_id),
+        ).all()
+        run_ids = [row[0] for row in related_runs]
+        if run.id not in run_ids:
+            run_ids.append(run.id)
+        return replay_run(db, task_id=task.id, run_ids=run_ids, root_id=root_id)
 
     @staticmethod
     def latest_runs(db: Session, task_ids: list[int]) -> dict[int, TaskRun]:

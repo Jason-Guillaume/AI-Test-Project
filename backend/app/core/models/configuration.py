@@ -19,16 +19,24 @@ from sqlalchemy import (
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class ModelConfiguration(Base):
+class ModelConfiguration(SoftDeleteBase):
     """平台级大模型连接配置。"""
 
     __tablename__ = "model_configuration"
-    __table_args__ = {"comment": "大模型连接、调用参数及启停状态配置"}
+    __table_args__ = (
+        Index(
+            "uq_model_configuration_domain_id_live", "domain_id", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+        {"comment": "大模型连接、调用参数及启停状态配置"},
+    )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    domain_id = Column(String(100), unique=True, nullable=False, index=True, comment="后端生成的稳定逻辑ID")
+    domain_id = Column(String(100), nullable=False, index=True, comment="后端生成的稳定逻辑ID")
     # domain_id 是后端生成并保持不变的引用键，授权白名单（organization_member.allowed_model_ids）
     # 与任务模型路由使用它；管理表单不接收或展示它，自增 id 用于内部关联。
     label = Column(String(120), nullable=False, comment="前端展示名称")
@@ -57,12 +65,17 @@ class ModelConfiguration(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间")
 
 
-class Environment(Base):
+class Environment(SoftDeleteBase):
     """一个被测环境的路由配置（dev/test/staging/prod 或自定义）。"""
 
     __tablename__ = "environment"
     __table_args__ = (
         Index("ix_environment_active_default", "is_active", "is_default"),
+        Index(
+            "ix_environment_name", "name", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "接口执行环境路由配置"},
     )
     # 上面这个 (is_active, is_default) 复合索引服务于最热的一条查询：
@@ -70,7 +83,7 @@ class Environment(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     # name 会被写进执行记录等列（String(50)），长度需保持一致。
-    name = Column(String(50), nullable=False, unique=True, index=True, comment="环境唯一标识，如 dev/test")
+    name = Column(String(50), nullable=False, comment="环境唯一标识，如 dev/test")
     display_name = Column(String(100), nullable=False, default="", server_default=text("''"), comment="展示名称")
     base_url = Column(String(500), nullable=False, default="", server_default=text("''"), comment="被测服务基础URL")
     # 危险字段：它决定测试流量真正打到哪台服务器，因此写操作仅限平台管理员（见模块 docstring）。

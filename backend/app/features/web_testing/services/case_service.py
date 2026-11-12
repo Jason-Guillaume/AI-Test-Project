@@ -18,6 +18,7 @@ from app.features.web_testing.services.access_service import get_row
 from app.features.web_testing.services.response_mapper import json_dump
 from app.features.web_testing.services.response_mapper import list_result
 from app.features.web_testing.services.case_inputs import load_steps
+from app.lifecycle.service import delete_resource
 
 
 def list_cases(db, project_id, actor, *, page=1, page_size=20, keyword=None, confirmed_only=False):
@@ -105,12 +106,11 @@ def confirm_case(db, case_id, revision, actor):
 
 
 def delete_case(db, case_id, actor):
-    """删除既有测试资产；历史执行由原有外键 SET NULL 保留。"""
+    """软删除既有测试资产并保留其 Web 扩展配置与历史执行关联。"""
     case = get_row(db, TestCase, case_id, actor, write=True)
     if db.get(WebCase, case_id) is None:
         raise not_found("Web 用例不存在")
-    db.delete(case)
-    db.commit()
+    delete_resource(db, "test_case", case.id, actor=actor)
 
 
 def bind_action(db, action_id, case_id, actor):

@@ -10,6 +10,7 @@
 import { api } from '@/shared/api/client';
 import type { ApiChangeLog, ApiDebugResult, ApiImportConfirmResponse, ApiImportPreviewResponse, ApiImportRecord, ApiInterface, ApiListQuery, ApiInterfaceDetail, ApiItemListResponse, ApiModule, ApiRelation, ApiRequestBundleResponse, ApiResponsesBundleResponse } from '@/features/api-catalog/contracts';
 import type { Paginated } from '@/shared/api/contracts';
+import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 
 import type { ApiDebugRequest, ApiImportConfirmRequest, ApiImportPreviewRequest, ApiInterfaceCreate, ApiInterfaceMove, ApiInterfaceUpdate, ApiModuleCreate, ApiModuleMove, ApiModuleUpdate, ApiRelationCreate, ApiRequestBundle, ApiResponsesBundle } from '../contracts';
 
@@ -36,7 +37,7 @@ export const apiCatalogApi = {
   /** 移动模块（改 parent_id，校验两级与无环）。 */
   moveModule: (moduleId: number, body: ApiModuleMove) =>
     api.patch<ApiModule>(`/api-modules/${moduleId}/move`, body),
-  /** 删除模块（未分类不可删；子接口归未分类）。 */
+  /** 软删除空模块；子模块或接口需先移动。 */
   removeModule: (moduleId: number) =>
     api.delete<void>(`/api-modules/${moduleId}`),
 
@@ -52,8 +53,11 @@ export const apiCatalogApi = {
   /** 编辑接口基本信息。 */
   updateApi: (apiId: number, body: ApiInterfaceUpdate) =>
     api.patch<ApiInterfaceDetail>(`/apis/${apiId}`, body),
-  /** 删除接口（级联子表）。 */
+  /** 软删除未被测试用例或接口关系引用的接口。 */
   removeApi: (apiId: number) => api.delete<void>(`/apis/${apiId}`),
+  /** 按项目范围批量软删除接口，逐条返回依赖校验结果。 */
+  removeApis: (projectId: number, ids: number[]) =>
+    api.post<BatchLifecycleReceipt>('/resources/api_interface/batch-delete', { project_id: projectId, ids }),
   /** 移动接口到指定模块。 */
   moveApi: (apiId: number, body: ApiInterfaceMove) =>
     api.patch<ApiInterfaceDetail>(`/apis/${apiId}/move`, body),

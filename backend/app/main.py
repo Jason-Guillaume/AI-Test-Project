@@ -28,8 +28,11 @@ from app.llm.tracing import flush_langfuse
 from app.agents.router import router as agent_router
 from app.platform.agent_governance.router import router as agent_governance_router
 from app.features.api_catalog.router import router as api_catalog_router
+from app.features.automation_center.router import router as automation_center_router
+from app.features.automation_center.services.poller import AutomationPoller
 from app.features.asr_evaluation.router import router as asr_evaluation_router
 from app.features.asr_evaluation.runtime.funasr_worker import FunAsrTuningWorker
+from app.lifecycle.router import router as lifecycle_router
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
 from app.features.defects.router import router as defects_router
@@ -50,6 +53,7 @@ from app.features.test_data.router import router as test_data_router
 from app.features.test_management.router import router as test_management_router
 from app.orchestration.tasks.router import router as tasks_router
 from app.orchestration.tasks.runtime.worker import TaskWorker
+from app.orchestration.tasks.services.trace_projection_service import TraceProjectionWorker
 from app.platform.users.admin import router as users_admin_router
 from app.platform.users.auth import router as auth_router
 from app.features.web_testing.router import router as web_ui_router
@@ -68,6 +72,8 @@ logger = logging.getLogger(__name__)
 task_worker = TaskWorker()
 scan_worker = ScanWorker()
 funasr_tuning_worker = FunAsrTuningWorker()
+trace_projection_worker = TraceProjectionWorker()
+automation_poller = AutomationPoller()
 
 # 业务路由统一挂在 /api/v1 下；新增路由时必须走 include_router(prefix=API_PREFIX)，不要另起前缀。
 API_PREFIX = "/api/v1"
@@ -111,11 +117,15 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         # 先登记启动责任，确保 start() 部分启动后抛错时 finally 仍会释放 Worker。
         started_workers.append(task_worker)
         task_worker.start()
+        started_workers.append(trace_projection_worker)
+        trace_projection_worker.start()
         started_workers.append(funasr_tuning_worker)
         funasr_tuning_worker.start()
         if settings.ZAP_ENABLED:
             started_workers.append(scan_worker)
             scan_worker.start()
+        started_workers.append(automation_poller)
+        automation_poller.start()
         from app.knowledge.worker import start as start_knowledge_worker
         knowledge_stop = start_knowledge_worker()
         try:
@@ -220,6 +230,7 @@ def create_app() -> FastAPI:
     application.include_router(auth_router, prefix=API_PREFIX)
     application.include_router(users_admin_router, prefix=API_PREFIX)
     application.include_router(organizations_router, prefix=API_PREFIX)
+    application.include_router(lifecycle_router, prefix=API_PREFIX)
     from app.knowledge.router import router as knowledge_router
     application.include_router(knowledge_router, prefix=API_PREFIX)
     application.include_router(projects_router, prefix=API_PREFIX)
@@ -231,6 +242,7 @@ def create_app() -> FastAPI:
     application.include_router(tasks_router, prefix=API_PREFIX)
     # 报告依赖 test_management（TestRun / CaseExecution），紧随其后装配。
     application.include_router(reports_router, prefix=API_PREFIX)
+    application.include_router(automation_center_router, prefix=API_PREFIX)
     application.include_router(agent_router, prefix=API_PREFIX)
     application.include_router(agent_governance_router, prefix=API_PREFIX)
     application.include_router(notifications_router, prefix=API_PREFIX)

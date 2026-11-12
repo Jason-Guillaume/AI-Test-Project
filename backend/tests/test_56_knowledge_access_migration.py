@@ -5,10 +5,10 @@ import psycopg
 from tests.test_50_migration_0049 import _upgrade, _url, scratch
 
 
-def test_0052_0056_runtime_schema_is_compatible_and_reversible(scratch):
+def test_0052_0056_runtime_schema_is_compatible_and_reversible(scratch, test_database_head):
     """知识绑定沿用共享默认，运行事实保留关联，Agent 检查点可安全降级。"""
     _upgrade(scratch, "0051")
-    _upgrade(scratch, "head")
+    _upgrade(scratch, test_database_head)
     plain = _url(scratch).replace("+psycopg", "")
     with psycopg.connect(plain) as conn:
         default = conn.execute(

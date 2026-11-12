@@ -153,21 +153,18 @@ def update(
 
 
 def delete(db: Session, project_id: int, user: User, target_id: int) -> None:
-    """删除扫描目标：editor+；有未结束任务时禁止删除（避免任务指向空目标）。"""
+    """将扫描目标移入回收站。未结束的任务由统一删除规则拒绝。"""
+    from app.lifecycle.service import delete_resource
+
     _access.require_admin_project(db, project_id, user)
-    row = _get(db, project_id, target_id)
-    running = (
-        db.query(SecurityScanJob)
-        .filter(
-            SecurityScanJob.target_id == row.id,
-            SecurityScanJob.status.in_(JOB_INFLIGHT_STATUSES),
-        )
-        .count()
+    row = (
+        db.query(SecurityScanTarget).execution_options(include_deleted=True)
+        .filter(SecurityScanTarget.id == target_id, SecurityScanTarget.project_id == project_id)
+        .first()
     )
-    if running:
-        raise AppError("该目标下有未结束的扫描任务，无法删除", status_code=409)
-    db.delete(row)
-    db.commit()
+    if row is None:
+        raise AppError("扫描目标不存在", status_code=404)
+    delete_resource(db, "security_scan_target", target_id, actor=user, project_id=project_id)
 
 
 def get_or_none(db: Session, project_id: int, target_id: int) -> SecurityScanTarget | None:

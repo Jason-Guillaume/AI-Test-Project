@@ -129,6 +129,7 @@ export interface TaskTraceEvent {
   cost_amount?: string | null;
   cost_currency?: string | null;
   metadata: Record<string, unknown>;
+  projection_status: 'PENDING' | 'RETRYING' | 'FAILED' | 'SUCCEEDED' | 'UNTRACKED';
 }
 
 export interface TaskTracePage {
@@ -137,6 +138,12 @@ export interface TaskTracePage {
   execution_root_run_id: number;
   generation_batch_id: number | null;
   trace_id: string | null;
+  projection: {
+    status: string;
+    counts: Record<string, number>;
+    last_projected_at: string | null;
+    last_error_code: string | null;
+  };
   items: TaskTraceEvent[];
   next_cursor: string | null;
 }

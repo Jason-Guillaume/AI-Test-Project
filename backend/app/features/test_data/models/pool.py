@@ -7,18 +7,23 @@ FOR UPDATE SKIP LOCKED`。租约到期由领取时懒更新为 EXPIRED，第一�
 模型 feature-local，不进 app/models/__init__.py；由 alembic 0009 显式建表。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class DataPool(Base):
+class DataPool(SoftDeleteBase):
     """数据池：可并发占用的共享测试数据集合。"""
 
     __tablename__ = "data_pool"
     __table_args__ = (
-        UniqueConstraint("project_id", "pool_key", name="uq_data_pool_project_key"),
+        Index(
+            "uq_data_pool_project_key_live", "project_id", "pool_key", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "数据池：可并发占用的共享测试数据集合"},
     )
 
@@ -55,7 +60,7 @@ class DataPool(Base):
     )
 
 
-class DataPoolItem(Base):
+class DataPoolItem(SoftDeleteBase):
     """池条目。payload 脱敏后落库，占用计数由执行引擎维护。"""
 
     __tablename__ = "data_pool_item"

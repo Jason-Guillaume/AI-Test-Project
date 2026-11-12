@@ -81,10 +81,10 @@ def scratch():
         _drop(name)
 
 
-def test_fresh_database_upgrades_to_head_with_0049_objects(scratch):
+def test_fresh_database_upgrades_to_head_with_0049_objects(scratch, test_database_head):
     """空库升级到 head：0049 的表、列与部分唯一索引全部就位。"""
     _upgrade(scratch, "base")
-    _upgrade(scratch, "head")
+    _upgrade(scratch, test_database_head)
     with psycopg.connect(_url(scratch).replace("+psycopg", "")) as conn:
         tables = {row[0] for row in conn.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
@@ -100,7 +100,7 @@ def test_fresh_database_upgrades_to_head_with_0049_objects(scratch):
         assert "uq_case_draft_test_case" in indexes
 
 
-def test_0048_data_survives_upgrade_to_0049(scratch):
+def test_0048_data_survives_upgrade_to_0049(scratch, test_database_head):
     """0048 的旧批次与草稿升级后保留，原文回填，约束与审计表生效。"""
     _upgrade(scratch, "base")
     _upgrade(scratch, "0048")
@@ -125,7 +125,7 @@ def test_0048_data_survives_upgrade_to_0049(scratch):
             VALUES (1, 'api', '旧草稿', 'P1', '{"title": "旧草稿"}', '[]', 'ACCEPTED', 1)
             """,
         )
-    _upgrade(scratch, "head")
+    _upgrade(scratch, test_database_head)
     with psycopg.connect(plain, autocommit=True) as conn:
         row = conn.execute(
             "SELECT payload_json, original_payload_json, quality_json, status FROM case_draft WHERE id = 1",

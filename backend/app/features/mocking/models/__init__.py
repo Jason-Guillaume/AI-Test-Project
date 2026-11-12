@@ -33,14 +33,16 @@ from sqlalchemy import (
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class MockService(Base):
+class MockService(SoftDeleteBase):
     """一个 Mock 依赖服务（如地图服务 / 支付服务 / AI 模型服务）。"""
 
     __tablename__ = "mock_service"
     __table_args__ = (
-        UniqueConstraint("project_id", "service_key", name="uq_mock_service_project_key"),
+        Index("uq_mock_service_project_key", "project_id", "service_key", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_mock_service_project_enabled", "project_id", "enabled"),
         {"comment": "Mock 依赖服务：service_key 项目内唯一"},
     )
@@ -76,12 +78,13 @@ class MockService(Base):
     revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
 
 
-class MockEndpoint(Base):
+class MockEndpoint(SoftDeleteBase):
     """一个 Mock 接口。(mock_service_id, method, path) 唯一。"""
 
     __tablename__ = "mock_endpoint"
     __table_args__ = (
-        UniqueConstraint("mock_service_id", "method", "path", name="uq_mock_endpoint_service_method_path"),
+        Index("uq_mock_endpoint_service_method_path", "mock_service_id", "method", "path", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_mock_endpoint_service_enabled", "mock_service_id", "enabled"),
         Index("ix_mock_endpoint_project", "project_id"),
         {"comment": "Mock 接口：method + path 匹配，api_id 可空关联 API Catalog"},
@@ -114,17 +117,19 @@ class MockEndpoint(Base):
     revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
 
 
-class MockScenario(Base):
+class MockScenario(SoftDeleteBase):
     """一个 Endpoint 的多个场景。(mock_endpoint_id, scenario_key) 唯一。"""
 
     __tablename__ = "mock_scenario"
     __table_args__ = (
-        UniqueConstraint("mock_endpoint_id", "scenario_key", name="uq_mock_scenario_endpoint_key"),
+        Index("uq_mock_scenario_endpoint_key", "mock_endpoint_id", "scenario_key", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_mock_scenario_endpoint_enabled", "mock_endpoint_id", "enabled"),
         # 部分唯一索引：同一 Endpoint 只允许一个 is_default=true（§三十六）。
         Index(
             "uq_mock_scenario_default", "mock_endpoint_id", unique=True,
-            postgresql_where=text("is_default = true"),
+            postgresql_where=text("is_default = true AND deleted_at IS NULL"),
+            sqlite_where=text("is_default = true AND deleted_at IS NULL"),
         ),
         {"comment": "Mock 场景：行为类型 + 响应配置 + 延迟/超时"},
     )

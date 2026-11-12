@@ -7,9 +7,7 @@ from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_relation import ApiRelation
 from app.features.api_catalog.schemas import ApiRelationCreate, ApiRelationResponse
 from app.core.models.identity import User
-from app.core.models.project import Project
 from app.core.http.errors import bad_request, conflict, not_found
-from app.core.security.roles import PROJECT_ROLE_MEMBER, has_project_role, project_role_for
 from app.features.api_catalog.services.access_service import get_interface_or_404
 from app.features.api_catalog.services.access_service import get_writable_interface_or_404
 from app.features.api_catalog.services.queries import interface_name_map
@@ -74,14 +72,7 @@ def create_relation(db: Session, api_id: int, body: ApiRelationCreate, *, actor:
 
 
 def delete_relation(db: Session, relation_id: int, *, actor: User) -> None:
-    """删除`relation`。"""
-    rel = db.get(ApiRelation, relation_id)
-    if rel is None:
-        raise not_found("关联不存在")
-    project = db.get(Project, rel.project_id)
-    if project is None or not has_project_role(
-        project_role_for(db, project, actor), PROJECT_ROLE_MEMBER
-    ):
-        raise not_found("关联不存在")
-    db.delete(rel)
-    db.commit()
+    """软删除关系配置，保留原关联键供回收站恢复。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "api_relation", relation_id, actor=actor)

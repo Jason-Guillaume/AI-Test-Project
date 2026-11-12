@@ -4,13 +4,14 @@
 // 权限（服务端为准）：读 = 项目可见（viewer+）；越权 404，前端不展示。
 // 报告统计字段全部由后端代码计算，本页只展示，不做二次计算。
 // 筛选走 FilterToolbar（服务端筛选，无关键词搜索），状态与风险颜色由 reports feature 提供。
-import { useMemo, useState } from 'react';
-import { Button, Progress, Table, theme } from 'antd';
-import { EyeOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, App, Button, Checkbox, Progress, Space, Table, theme } from 'antd';
+import { DeleteOutlined, EyeOutlined } from '@ant-design/icons';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import type { TableColumnsType } from 'antd';
 import { reportsApi } from '@/features/reports/api/reports';
+import { getErrorMessage } from '@/shared/api/client';
 import { projectsApi } from '@/features/projects/api/projects';
 import { FilterToolbar } from '@/shared/ui/FilterToolbar';
 import { EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
@@ -21,6 +22,7 @@ import { REPORT_RISK_COLOR, REPORT_STATUS_COLOR } from '@/features/reports/statu
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { REPORT_RISK_OPTIONS, REPORT_STATUS_OPTIONS } from './constants';
 import type { ReportRiskLevel, ReportStatus, TestReportListItem } from '@/features/reports/contracts';
+import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 
 
 interface Filters {
@@ -32,11 +34,16 @@ interface Filters {
 /** 测试报告列表页。 */
 export function ConsoleReportListPage() {
   const { currentProjectId } = useConsoleScope();
+  const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const [filters, setFilters] = useState<Filters>({});
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [selectedReportIds, setSelectedReportIds] = useState<number[]>([]);
+
+  useEffect(() => setSelectedReportIds([]), [currentProjectId]);
 
   const envsQuery = useQuery({
     queryKey: ['project-environments', currentProjectId],
@@ -50,6 +57,39 @@ export function ConsoleReportListPage() {
     queryKey: ['test-reports', currentProjectId, page, pageSize, filters],
     queryFn: () => reportsApi.list(currentProjectId!, { page, page_size: pageSize, ...filters }),
     enabled: currentProjectId != null,
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: number) => reportsApi.remove(id),
+    onSuccess: () => {
+      message.success('测试报告已移入回收站');
+      queryClient.invalidateQueries({ queryKey: ['test-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '删除报告失败')),
+  });
+  const { isPending: isRemovingReport, mutateAsync: removeReport } = removeMutation;
+  const batchRemoveMutation = useMutation({
+    mutationFn: (ids: number[]) => reportsApi.removeMany(currentProjectId!, ids),
+    onSuccess: (receipt: BatchLifecycleReceipt) => {
+      setSelectedReportIds([]);
+      queryClient.invalidateQueries({ queryKey: ['test-reports'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      if (receipt.failed === 0) message.success(`已删除 ${receipt.succeeded} 份报告，记录已移入回收站`);
+      else {
+        message.warning(`已删除 ${receipt.succeeded} 份报告，${receipt.failed} 份未删除`);
+        modal.info({
+          title: '批量删除结果',
+          width: 620,
+          content: <Space direction="vertical" style={{ width: '100%' }}>
+            {receipt.items.filter((item) => !item.succeeded).map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`报告 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>,
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除报告失败')),
   });
 
   // 服务端筛选：改动任一筛选器即回到第一页并重新拉取
@@ -126,16 +166,23 @@ export function ConsoleReportListPage() {
       { title: '生成时间', dataIndex: 'created_at', width: 160, render: (v: string) => fmtTime(v) },
       {
         title: '操作',
-        width: 110,
+        width: 190,
         fixed: 'right',
         render: (_, row) => (
-          <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/console/test-reports/${row.id}`)}>
-            查看详情
-          </Button>
+          <Space size={4}>
+            <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/console/test-reports/${row.id}`)}>查看详情</Button>
+            <Button size="small" danger icon={<DeleteOutlined />} loading={isRemovingReport}
+              onClick={() => modal.confirm({
+                title: `删除报告「${row.title}」？`,
+                content: '报告将移入项目回收站；测试运行和执行证据保留。',
+                okText: '删除并移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+                onOk: () => removeReport(row.id),
+              })} />
+          </Space>
         ),
       },
     ],
-    [navigate, token],
+    [navigate, token, modal, isRemovingReport, removeReport],
   );
 
   if (currentProjectId == null) {
@@ -180,6 +227,28 @@ export function ConsoleReportListPage() {
         }}
       />
 
+      <Space style={{ margin: '12px 0' }} wrap>
+        <Checkbox
+          checked={rows.length > 0 && rows.every((report) => selectedReportIds.includes(report.id))}
+          indeterminate={rows.some((report) => selectedReportIds.includes(report.id)) && !rows.every((report) => selectedReportIds.includes(report.id))}
+          onChange={(event) => setSelectedReportIds((current) => event.target.checked
+            ? [...new Set([...current, ...rows.map((report) => report.id)])]
+            : current.filter((id) => !rows.some((report) => report.id === id)))}
+        >
+          全选当前页（{rows.length}）
+        </Checkbox>
+        <Button danger disabled={selectedReportIds.length === 0 || batchRemoveMutation.isPending}
+          loading={batchRemoveMutation.isPending}
+          onClick={() => modal.confirm({
+            title: `删除选中的 ${selectedReportIds.length} 份报告？`,
+            content: '报告逐条移入项目回收站；测试运行和执行证据保留。',
+            okText: '删除并移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+            onOk: () => batchRemoveMutation.mutateAsync(selectedReportIds),
+          })}>
+          批量删除（{selectedReportIds.length}）
+        </Button>
+      </Space>
+
       {reportsQuery.isLoading ? (
         <LoadingState />
       ) : rows.length === 0 ? (
@@ -192,6 +261,11 @@ export function ConsoleReportListPage() {
           dataSource={rows}
           scroll={{ x: 1160 }}
           loading={reportsQuery.isFetching}
+          rowSelection={{
+            selectedRowKeys: selectedReportIds,
+            preserveSelectedRowKeys: true,
+            onChange: (keys) => setSelectedReportIds(keys.map(Number)),
+          }}
           pagination={{
             current: currentPage,
             pageSize,

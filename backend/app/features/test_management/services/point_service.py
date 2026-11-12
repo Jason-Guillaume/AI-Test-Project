@@ -137,10 +137,12 @@ class PointService:
             strategy = db.get(TestStrategy, data["strategy_id"])
             if strategy is None or strategy.project_id != point.project_id:
                 raise not_found("测试策略不存在")
-        for field in ("description", "priority", "target_type", "strategy_id", "api_id",
+        for field in ("description", "priority", "target_type", "api_id",
                        "business_flow_id", "business_action_id", "status"):
             if field in data and data[field] is not None:
                 setattr(point, field, data[field])
+        if "strategy_id" in data:
+            point.strategy_id = data["strategy_id"]
         db.flush()
         db.commit()
         db.refresh(point)
@@ -148,9 +150,9 @@ class PointService:
 
     def delete_point(self, db: Session, point_id: int, *, actor: User) -> None:
         """删除检查点。"""
-        point = self._get_writable_or_404(db, point_id, actor)
-        db.delete(point)
-        db.commit()
+        from app.lifecycle.service import delete_resource
+
+        delete_resource(db, "test_point", point_id, actor=actor)
 
     def _get_or_404(self, db: Session, point_id: int, user: User) -> TestPoint:
         """获取或。"""

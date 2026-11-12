@@ -20,9 +20,10 @@ from sqlalchemy import (
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestScopeNode(Base):
+class TestScopeNode(SoftDeleteBase):
     """项目内某一测试方向的目录节点。parent_id 为空表示该方向的根。"""
 
     __tablename__ = "test_scope_node"

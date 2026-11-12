@@ -24,6 +24,7 @@
 | [migration-plan.md](migration-plan.md) | 旧→新 API 映射、字段与状态码差异 |
 | [architecture-audit-unification-plan.md](architecture-audit-unification-plan.md) | 前后端架构审计与统一改造计划 |
 | [agent-governance-runtime.md](agent-governance-runtime.md) | Agent、Skill、MCP 与任务 LangGraph 运行边界及配置步骤 |
+| [P6–P10 Super Agent 实施记录](super-agent-runtime-final-closeout.md) | P6 调度、P8 Trace、P9 RAG/Context、P10 运行治理的统一收口、迁移与验收记录 |
 
 ## 开发流程与规范
 

@@ -23,7 +23,6 @@ from tests.conftest import (
     BACKEND_DIR,
     TEST_DSN,
     TEST_DATABASE_NAME,
-    migration_head,
     unique,
 )
 
@@ -212,10 +211,10 @@ def _alembic(config=None):
 
 
 class TestMigration:
-    def test_head_and_tables_created(self, db):
+    def test_head_and_tables_created(self, db, test_database_head):
         """验证`head`是否和`tables`创建场景及其预期结果。"""
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == migration_head()
+        assert head == test_database_head
         assert SECURITY_TABLES.issubset(_tables(db))
 
     def test_partial_unique_indexes(self, db):
@@ -253,10 +252,20 @@ class TestMigration:
                 c.name for c in table.columns
             }
             expected = {
-                constraint.name for constraint in table.constraints if constraint.name
+                constraint.name for constraint in table.constraints
+                if constraint.name and constraint not in table.foreign_key_constraints
             } | {index.name for index in table.indexes if index.name}
             missing = expected - live_indexes
             assert not missing, f"{table.name} 缺索引: {sorted(missing)}"
+            expected_foreign_keys = {
+                constraint.name for constraint in table.foreign_key_constraints if constraint.name
+            }
+            live_foreign_keys = {
+                foreign_key["name"] for foreign_key in inspector.get_foreign_keys(table.name)
+                if foreign_key["name"]
+            }
+            missing_foreign_keys = expected_foreign_keys - live_foreign_keys
+            assert not missing_foreign_keys, f"{table.name} 缺外键: {sorted(missing_foreign_keys)}"
 
     def test_security_models_stay_out_of_core_registry(self):
         """安全模型归 Feature 所有，核心注册表只暴露九张平台基线表。"""
@@ -267,7 +276,7 @@ class TestMigration:
         for table in SECURITY_TABLES:
             assert table not in core_exports
 
-    def test_downgrade_removes_only_security_tables(self, db):
+    def test_downgrade_removes_only_security_tables(self, db, test_database_head):
         """downgrade 到 0010 删除后续 feature 表，Mock 保留；再升级至当前 head。"""
         from alembic import command
 
@@ -283,12 +292,12 @@ class TestMigration:
             head = db.execute(text("select version_num from alembic_version")).scalar()
             assert head == "0010"
         finally:
-            command.upgrade(config, "head")
+            command.upgrade(config, test_database_head)
 
         assert _tables(db) >= SECURITY_TABLES
         assert WEB_AGENT_TABLES.issubset(_tables(db)), _tables(db)
         assert TASK_TABLES.issubset(_tables(db)), _tables(db)
-        assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
+        assert db.execute(text("select version_num from alembic_version")).scalar() == test_database_head
 
 
 class TestBuiltinStrategies:

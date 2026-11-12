@@ -3,7 +3,9 @@ import { App, Alert, Button, Card, Checkbox, Col, Form, Input, Modal, Row, Selec
 import { ApiOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { MCPServer } from '@/features/agent-governance/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
@@ -14,14 +16,36 @@ export function McpPane() {
   const [inspecting, setInspecting] = useState<MCPServer | null>(null);
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const servers = useQuery({ queryKey: ['agent-governance', 'mcp'], queryFn: agentGovernanceApi.mcpServers });
   const agents = useQuery({ queryKey: ['agent-governance', 'agents'], queryFn: agentGovernanceApi.agents });
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['agent-governance', 'mcp'] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['agent-governance', 'mcp'] });
+    queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+  };
   const createMutation = useMutation({ mutationFn: agentGovernanceApi.createMcpServer, onSuccess: () => { message.success('MCP 服务已登记'); setCreating(false); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
   const updateMutation = useMutation({ mutationFn: ({ id, body }: { id: number; body: { name?: string; endpoint?: string; auth_type?: 'none' | 'bearer'; auth_token?: string; is_enabled?: boolean } }) => agentGovernanceApi.updateMcpServer(id, body), onSuccess: () => { message.success('MCP 配置已更新'); setEditing(null); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
   const discoverMutation = useMutation({ mutationFn: agentGovernanceApi.discoverMcpTools, onSuccess: (server) => { message.success(`已发现 ${server.discovered_tools_json.length} 个工具`); setInspecting(server); invalidate(); }, onError: (e) => { message.error(getErrorMessage(e)); invalidate(); } });
   const approveMutation = useMutation({ mutationFn: ({ id, names }: { id: number; names: string[] }) => agentGovernanceApi.approveMcpTools(id, names), onSuccess: (server) => { message.success('工具审批清单已保存'); setInspecting(server); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
-  const deleteMutation = useMutation({ mutationFn: agentGovernanceApi.deleteMcpServer, onSuccess: () => { message.success('MCP 服务已删除'); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const deleteMutation = useMutation({ mutationFn: agentGovernanceApi.deleteMcpServer, onSuccess: () => { message.success('MCP 服务已移入回收站'); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const deleteMany = () => modal.confirm({
+    title: `将 ${selectedIds.length} 个 MCP 服务移入回收站？`,
+    content: '被 Agent、Skill 或运行任务引用的服务会逐项拒绝；凭据与配置保留且不会级联删除历史记录。',
+    okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        const receipt = await dataLifecycleApi.deleteMany('mcp_server', null, selectedIds);
+        setSelectedIds([]);
+        invalidate();
+        if (receipt.failed) modal.info({
+          title: `成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+          content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`MCP 服务 #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+        });
+        else message.success(`已将 ${receipt.succeeded} 个 MCP 服务移入回收站`);
+      } catch (error) { message.error(getErrorMessage(error, '批量删除失败')); }
+    },
+  });
   if (servers.isPending || agents.isPending) return <LoadingState />;
   const failed = [servers, agents].find((query) => query.isError);
   if (failed) return <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
@@ -30,7 +54,11 @@ export function McpPane() {
   const onSubmit = (body: { name: string; endpoint: string; auth_type: 'none' | 'bearer'; auth_token?: string; is_enabled: boolean }) => editing ? updateMutation.mutate({ id: editing.id, body }) : createMutation.mutate(body);
   return <>
     <Alert type="warning" showIcon message="MCP 调用限定为管理员审批的只读工具" description="配置 Agent 时可关联已审批工具，任务 Planner 可能在制定方案时调用只读工具并写入任务审计回执。写入、高风险或未标注 readOnlyHint 的工具不会自动执行；Bearer 凭据加密保存且接口不回传明文。" style={{ marginBottom: 12 }} />
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}><Button type="primary" icon={<ApiOutlined />} onClick={() => setCreating(true)}>新增 MCP 服务</Button></div>
+    <Space wrap style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+      <Button danger disabled={!selectedIds.length} onClick={deleteMany}>批量删除（{selectedIds.length}）</Button>
+      <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
+      <Button type="primary" icon={<ApiOutlined />} onClick={() => setCreating(true)}>新增 MCP 服务</Button>
+    </Space>
     {serverRows.length ? <Row gutter={[12, 12]}>
       {serverRows.map((server) => {
         const linkedAgents = agentRows.filter((agent) => agent.tool_keys.some((key) => key.startsWith(`mcp:${server.id}:`)));
@@ -40,6 +68,13 @@ export function McpPane() {
           <Card size="small" style={{ height: '100%' }} styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', padding: 12 } }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ minWidth: 0 }}>
+                <Checkbox
+                  checked={selectedIds.includes(server.id)}
+                  onChange={(event) => setSelectedIds((current) => event.target.checked
+                    ? current.length < 100 ? [...current, server.id] : (message.warning('一次最多选择 100 个 MCP 服务'), current)
+                    : current.filter((id) => id !== server.id))}
+                  aria-label={`选择 MCP 服务 ${server.name}`}
+                />
                 <Typography.Text strong ellipsis={{ tooltip: server.name }}>{server.name}</Typography.Text>
                 <div style={{ marginTop: 4 }}><Tag>{server.auth_type === 'bearer' ? 'Bearer' : '无认证'}</Tag><Tag color={connectionColor}>{connectionLabel}</Tag></div>
               </div>
@@ -66,7 +101,7 @@ export function McpPane() {
                 <Button size="small" loading={discoverMutation.isPending && discoverMutation.variables === server.id} onClick={() => discoverMutation.mutate(server.id)}>连接并发现</Button>
                 <Button size="small" onClick={() => setInspecting(server)}>工具清单</Button>
                 <Button size="small" onClick={() => setEditing(server)}>编辑</Button>
-                <Button size="small" danger onClick={() => modal.confirm({ title: `删除 MCP 服务「${server.name}」？`, okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(server.id) })}>删除</Button>
+                <Button size="small" danger onClick={() => modal.confirm({ title: `将 MCP 服务「${server.name}」移入回收站？`, content: '若 Agent、Skill 或运行任务仍引用该服务，删除会被拒绝。', okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(server.id) })}>删除</Button>
               </Space>
             </div>
           </Card>

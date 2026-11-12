@@ -7,18 +7,19 @@ value_json 入库前可以是明文（项目内配置），读 API 必须脱敏�
 模型 feature-local，不进 app/models/__init__.py；由 alembic 0009 显式建表。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestDataAsset(Base):
+class TestDataAsset(SoftDeleteBase):
     """测试数据目录项。"""
 
     __tablename__ = "test_data_asset"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_test_data_asset_project_name"),
+        Index("uq_test_data_asset_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_data_asset_project_entity", "project_id", "entity_type", "status"),
         {"comment": "测试数据目录项：静态样本 / 池分组 / Fixture 登记的可检索数据"},
     )

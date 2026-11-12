@@ -184,10 +184,28 @@ class SecurityStrategyService:
         return self._to_response(db, strategy, with_rules=True)
 
     def delete_strategy(self, db: Session, strategy_id: int, *, actor: User) -> None:
-        """删除项目自定义策略；系统模板禁止删除。规则随外键级联删除。"""
+        """删除项目策略；其规则作为同批独立回收站记录，系统模板禁止删除。"""
         strategy = self._get_manageable(db, strategy_id, actor)
-        db.delete(strategy)
-        db.commit()
+        from uuid import uuid4
+
+        from app.lifecycle.service import delete_resource, soft_delete_object
+
+        batch_id = str(uuid4())
+        rules = (
+            db.query(SecurityMutationRule)
+            .filter(SecurityMutationRule.strategy_id == strategy.id)
+            .with_for_update()
+            .all()
+        )
+        for rule in rules:
+            soft_delete_object(
+                db, "security_rule", rule, actor=actor,
+                reason="所属安全策略删除", batch_id=batch_id,
+            )
+        delete_resource(
+            db, "security_strategy", strategy.id, actor=actor,
+            project_id=strategy.project_id, batch_id=batch_id,
+        )
 
     def get_manageable_strategy(self, db: Session, strategy_id: int, *, actor: User) -> SecurityStrategy:
         """取策略实体并校验管理权限（editor+），供规则写入判断预留类别使用。"""
@@ -198,7 +216,7 @@ class SecurityStrategyService:
     @staticmethod
     def _get_or_404(db: Session, strategy_id: int) -> SecurityStrategy:
         """获取或。"""
-        strategy = db.get(SecurityStrategy, strategy_id)
+        strategy = db.query(SecurityStrategy).filter(SecurityStrategy.id == strategy_id).first()
         if strategy is None:
             raise AppError(
                 "安全策略不存在", status_code=404, code=CODE_SECURITY_STRATEGY_NOT_FOUND,

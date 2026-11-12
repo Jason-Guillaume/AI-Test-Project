@@ -11,6 +11,9 @@ import app.core.models
 from app.agents.models import AgentDefinition
 from app.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeVersion, KnowledgeChunk, KnowledgeBinding
 from app.knowledge import service
+from app.knowledge.retrieval import reciprocal_rank_fusion
+import app.orchestration.tasks.models  # noqa: F401 — 注册 RuntimeEventFact 外键目标
+from app.orchestration.tasks.models import RuntimeEventFact
 
 
 def test_bm25_uses_document_frequency_and_declared_parameters():
@@ -29,7 +32,7 @@ def db(monkeypatch):
     Base.metadata.create_all(engine, tables=[t for t in Base.metadata.tables.values() if t.name in {
         'user', 'organization', 'organization_member', 'project', 'project_member', 'model_configuration',
         'agent_definition', 'knowledge_base', 'knowledge_document', 'knowledge_document_version',
-        'knowledge_chunk', 'project_agent_knowledge_binding'}])
+        'knowledge_chunk', 'project_agent_knowledge_binding', 'runtime_event_fact'}])
     def access(db, project_id, actor, write=False):
         if project_id not in actor:
             raise HTTPException(404)
@@ -137,6 +140,70 @@ def test_bm25_top_k_and_relevance_threshold(db):
     assert results[0]['score'] > 0
     assert results[0]['version'] == version.version
     assert service.search(db, snapshot, {1}, '支付', minimum_score=100.0) == []
+
+
+def test_search_limits_sql_candidates_and_persists_retrieval_facts(db):
+    """候选上限在数据库查询中执行，检索事实只记哈希、版本和结果 ID。"""
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    version_id = snapshot['version_ids'][0]
+    db.add_all([
+        KnowledgeChunk(version_id=version_id, position=index, text=f'完全无关的说明 {index}')
+        for index in range(1000)
+    ])
+    db.add_all([
+        KnowledgeChunk(version_id=version_id, position=1001 + index, text=f'支付退款流程 {index}')
+        for index in range(3)
+    ])
+    db.commit()
+
+    results, metadata = service.search(
+        db, snapshot, {1}, '支付退款', limit=2, candidate_limit=2, return_metadata=True,
+    )
+    assert len(results) == 2
+    assert all('支付退款' in row['text'] for row in results)
+    assert metadata['strategy'] == 'BM25_SQL_CANDIDATE'
+    assert metadata['candidate_count'] == 2
+    assert metadata['candidate_truncated'] is True
+    assert metadata['vector_status'] == 'UNAVAILABLE'
+    fact = db.query(RuntimeEventFact).filter_by(
+        event_type='KNOWLEDGE_RETRIEVAL', project_id=1,
+    ).order_by(RuntimeEventFact.id.desc()).first()
+    assert fact is not None
+    assert fact.event_metadata['query_sha256']
+    assert fact.event_metadata['candidate_truncated'] is True
+    assert 'query' not in fact.event_metadata
+
+
+def test_rrf_fusion_filters_vector_candidates_against_authorized_snapshot(db):
+    prepared(db)
+    first = service.freeze(db, 1, 1, {1})
+    second = service.freeze(db, 2, 1, {2})
+    first_chunk = db.query(KnowledgeChunk).filter(
+        KnowledgeChunk.version_id.in_(first['version_ids']),
+    ).one()
+    second_chunk = db.query(KnowledgeChunk).filter(
+        KnowledgeChunk.version_id.in_(second['version_ids']),
+    ).one()
+
+    results, metadata = service.search(
+        db, first, {1}, '商城订单规范', vector_candidate_ids=[second_chunk.id, first_chunk.id],
+        return_metadata=True,
+    )
+    assert results
+    assert {item['chunk_id'] for item in results} == {first_chunk.id}
+    assert all(item['score_type'] == 'RRF' for item in results)
+    assert metadata['strategy'] == 'HYBRID_RRF'
+    assert metadata['fusion'] == 'RRF'
+    assert metadata['vector_candidate_count'] == 1
+
+
+def test_reciprocal_rank_fusion_combines_rankings_and_breaks_ties_stably():
+    merged = reciprocal_rank_fusion([[1, 2, 3], [3, 2, 4]])
+    assert [row['chunk_id'] for row in merged] == [3, 2, 1, 4]
+    assert merged[0]['ranks'] == {'channel_1': 3, 'channel_2': 1}
+    tied = reciprocal_rank_fusion([[8], [9]])
+    assert [row['chunk_id'] for row in tied] == [8, 9]
 
 
 def test_source_requires_exactly_authorized_version(db):

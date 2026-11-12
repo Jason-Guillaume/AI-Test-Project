@@ -260,7 +260,7 @@ export function ConsoleNotificationChannelsPage() {
     mutationFn: (id: number) => notificationChannelsApi.remove(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notification-channels', currentProjectId] });
-      msg.success('通知渠道已删除（其发送记录一并删除）');
+      msg.success('通知渠道已移入回收站，发送记录保留');
     },
     onError: (e) => msg.error(getErrorMessage(e, '删除渠道失败')),
   });
@@ -375,8 +375,8 @@ export function ConsoleNotificationChannelsPage() {
             编辑
           </Button>
           <Popconfirm
-            title="确认删除该通知渠道？"
-            description="其发送记录将一并删除；不影响任何测试报告。"
+            title="将通知渠道移入回收站？"
+            description="发送记录会保留。仍被自动化项目使用时不能删除。"
             onConfirm={() => deleteMutation.mutate(row.id)}
           >
             <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending}>

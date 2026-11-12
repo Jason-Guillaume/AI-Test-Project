@@ -11,12 +11,26 @@ from langgraph.graph import END, START, StateGraph
 from app.core.security.sanitizer import sanitize_text
 from app.llm.tracing import runtime_agent_context, runtime_call_observation
 
+# 仅把调用层明确可恢复的错误和网络超时视为可重试；业务异常默认不可重试。
+_RETRYABLE_ERROR_TYPES = (TimeoutError, ConnectionError)
+
 
 class _SubAgentState(TypedDict):
     """子图输入与按配置顺序收集的分析摘要。"""
 
     prompt: str
     insights: Annotated[list[dict[str, Any]], operator.add]
+
+
+def classify_child_failure(exc: Exception) -> dict[str, Any]:
+    """区分可重试与不可重试，不把异常正文带回规划结果。"""
+    retryable = bool(getattr(exc, "retryable", False)) or isinstance(exc, _RETRYABLE_ERROR_TYPES)
+    code = getattr(exc, "code", None) or type(exc).__name__
+    return {
+        "error_code": str(code)[:80],
+        "retryable": retryable,
+        "error_class": "RETRYABLE" if retryable else "PERMANENT",
+    }
 
 
 def run_subagent_graph(
@@ -117,7 +131,8 @@ def run_subagent_graph(
                             span.update(output={"status": "SUCCEEDED"})
             except Exception as exc:
                 child_snapshot["runtime_duration_ms"] = int((time.monotonic() - child_started) * 1000)
-                child_snapshot["runtime_error_code"] = type(exc).__name__[:80]
+                failure = classify_child_failure(exc)
+                child_snapshot["runtime_error_code"] = failure["error_code"]
                 if status_callback is not None:
                     status_callback(child_snapshot, "FAILED")
                 return {"insights": [{
@@ -125,7 +140,9 @@ def run_subagent_graph(
                     "name": str(child_snapshot.get("name") or "子 Agent")[:120],
                     "version": int(child_snapshot.get("version") or 1),
                     "status": "FAILED",
-                    "error_code": type(exc).__name__[:80],
+                    "error_code": failure["error_code"],
+                    "retryable": failure["retryable"],
+                    "error_class": failure["error_class"],
                     "summary": "该子 Agent 本次运行失败，详细错误已脱敏。",
                     "knowledge_sources": [{k: v for k, v in source.items() if k != 'text'} for source in child_snapshot.get('knowledge_data', [])],
                 }]}

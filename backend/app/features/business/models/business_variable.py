@@ -9,18 +9,19 @@ direction ∈ {INPUT, OUTPUT}；data_type ∈ {STRING, INTEGER, NUMBER, BOOLEAN,
 feature-local 表，由迁移 0004 建立。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessVariable(Base):
+class BusinessVariable(SoftDeleteBase):
     """业务动作输入/输出变量。"""
 
     __tablename__ = "business_variable"
     __table_args__ = (
-        UniqueConstraint("action_id", "direction", "name", name="uq_business_variable_action_dir_name"),
+        Index("uq_business_variable_action_dir_name", "action_id", "direction", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_business_variable_action_direction", "action_id", "direction"),
         {"comment": "业务动作输入/输出变量"},
     )

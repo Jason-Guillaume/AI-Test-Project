@@ -65,6 +65,38 @@ def upgrade() -> None:
     from app.core.database.session import Base
 
     Base.metadata.create_all(bind=op.get_bind(), tables=_baseline_tables())
+    # 0001 is a frozen historical baseline even though it creates its tables from current
+    # metadata. Environment lifecycle fields are introduced by migration 0070, so strip the
+    # newer fields/index from the just-created baseline before the forward migration chain runs.
+    op.drop_index("ix_environment_name", table_name="environment")
+    op.create_index("ix_environment_name", "environment", ["name"], unique=True)
+    op.drop_constraint("fk_soft_delete_deleted_by_user", "environment", type_="foreignkey")
+    for column in ("deletion_batch_id", "deletion_reason", "deleted_by", "deleted_at"):
+        op.drop_column("environment", column)
+    # Project and user lifecycle fields were introduced by later migrations; keep this
+    # baseline historical even though current metadata creates the latest columns.
+    for table in ("project", "user"):
+        op.drop_constraint("fk_soft_delete_deleted_by_user", table, type_="foreignkey")
+        for column in ("deletion_batch_id", "deletion_reason", "deleted_by", "deleted_at"):
+            op.drop_column(table, column)
+    # 0081 才引入这些表的软删除。基线先恢复历史唯一约束，再去掉新列。
+    op.drop_index("uq_model_configuration_domain_id_live", table_name="model_configuration")
+    op.create_unique_constraint("model_configuration_domain_id_key", "model_configuration", ["domain_id"])
+    op.drop_index("uq_project_member_project_user_live", table_name="project_member")
+    op.create_unique_constraint("uq_project_member_project_user", "project_member", ["project_id", "user_id"])
+    op.drop_index("uq_organization_member_user_live", table_name="organization_member")
+    op.create_unique_constraint("uq_organization_member_user", "organization_member", ["organization_id", "user_id"])
+    op.drop_index("uq_project_outbound_target_live", table_name="project_outbound_target")
+    op.create_unique_constraint(
+        "uq_project_outbound_target", "project_outbound_target", ["project_id", "scheme", "host", "port"],
+    )
+    for table in (
+        "model_configuration", "notification", "project_member",
+        "organization_member", "project_outbound_target",
+    ):
+        op.drop_constraint("fk_soft_delete_deleted_by_user", table, type_="foreignkey")
+        for column in ("deletion_batch_id", "deletion_reason", "deleted_by", "deleted_at"):
+            op.drop_column(table, column)
 
 
 def downgrade() -> None:

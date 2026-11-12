@@ -138,11 +138,21 @@ def update(
 
 
 def delete(db: Session, project_id: int, user: User, profile_id: int) -> None:
-    """删除认证配置：editor+。被策略引用时不解引用（外键 SET NULL 自动置空）。"""
+    """将扫描认证配置移入回收站。引用它的策略保持原关联，恢复后仍然有效。"""
+    from app.lifecycle.service import delete_resource
+
     _access.require_admin_project(db, project_id, user)
-    row = _get(db, project_id, profile_id)
-    db.delete(row)
-    db.commit()
+    row = (
+        db.query(SecurityScanAuthProfile).execution_options(include_deleted=True)
+        .filter(
+            SecurityScanAuthProfile.id == profile_id,
+            SecurityScanAuthProfile.project_id == project_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise AppError("认证配置不存在", status_code=404)
+    delete_resource(db, "security_scan_auth_profile", profile_id, actor=user, project_id=project_id)
 
 
 def get_or_none(db: Session, project_id: int, profile_id: int) -> SecurityScanAuthProfile | None:

@@ -310,6 +310,16 @@ def get_trace_timeline(
     return service.trace_timeline(db, run_id, user, cursor=cursor, limit=limit)
 
 
+@router.post("/task-runs/{run_id}/trace/replay", summary="补偿和重放运行事实的 Langfuse 投影")
+def replay_trace_projection(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, int]:
+    """按项目写权限重放失败投影并登记历史事实；任务状态不受影响。"""
+    return service.replay_trace_projections(db, run_id, user)
+
+
 @router.get("/task-runs/{run_id}/resources", response_model=list[TaskResourceRefResponse], summary="运行资源与产物")
 def list_resources(
     run_id: int,

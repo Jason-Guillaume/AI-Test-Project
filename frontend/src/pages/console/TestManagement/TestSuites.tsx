@@ -7,7 +7,9 @@ import { collectArrayPages } from '@/shared/api/pagination';
 import { useState } from 'react';
 import {
   App,
+  Alert,
   Button,
+  Checkbox,
   Drawer,
   Form,
   Input,
@@ -48,13 +50,14 @@ const SUITE_TYPE_COLOR: Record<string, string> = {
 
 /** 测试套件页。 */
 export function ConsoleTestSuitesPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TestSuite | null>(null);
   const [suiteDrawerId, setSuiteDrawerId] = useState<number | null>(null);
+  const [selectedSuiteIds, setSelectedSuiteIds] = useState<number[]>([]);
   const [addCaseId, setAddCaseId] = useState<number | null>(null);
   const [addCaseSort, setAddCaseSort] = useState(0);
   const [form] = Form.useForm<SuiteFormValues>();
@@ -94,6 +97,29 @@ export function ConsoleTestSuitesPage() {
       queryClient.invalidateQueries({ queryKey: ['test-suites'] });
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
+  });
+
+  const batchRemoveMutation = useMutation({
+    mutationFn: (ids: number[]) => testManagementApi.removeSuites(currentProjectId!, ids),
+    onSuccess: (receipt) => {
+      setSelectedSuiteIds([]);
+      queryClient.invalidateQueries({ queryKey: ['test-suites'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      if (receipt.failed === 0) message.success(`已删除 ${receipt.succeeded} 个测试套件，记录已移入回收站`);
+      else {
+        message.warning(`已删除 ${receipt.succeeded} 个测试套件，${receipt.failed} 个未删除`);
+        modal.info({
+          title: '批量删除结果',
+          width: 620,
+          content: <Space direction="vertical" style={{ width: '100%' }}>
+            {receipt.items.filter((item) => !item.succeeded).map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`测试套件 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>,
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
   });
 
   const openCreate = () => {
@@ -179,7 +205,7 @@ export function ConsoleTestSuitesPage() {
             管理用例
           </Button>
           <Popconfirm
-            title="确认删除该套件？"
+            title="删除该套件？仍被启用计划或执行任务引用时会拒绝删除。"
             onConfirm={() => removeMutation.mutate(row.id)}
           >
             <Button size="small" danger icon={<DeleteOutlined />}>
@@ -193,13 +219,30 @@ export function ConsoleTestSuitesPage() {
 
   return (
     <PageContainer>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
+      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }} wrap>
         <Typography.Title level={5} style={{ margin: 0 }}>
           测试套件
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新建套件
-        </Button>
+        <Space wrap>
+          <Checkbox
+            checked={suites.length > 0 && selectedSuiteIds.length === suites.length}
+            indeterminate={selectedSuiteIds.length > 0 && selectedSuiteIds.length < suites.length}
+            onChange={(event) => setSelectedSuiteIds(event.target.checked ? suites.map((suite) => suite.id) : [])}
+          >
+            全选当前列表（{suites.length}）
+          </Checkbox>
+          <Button danger disabled={selectedSuiteIds.length === 0 || batchRemoveMutation.isPending}
+            loading={batchRemoveMutation.isPending}
+            onClick={() => modal.confirm({
+              title: `删除选中的 ${selectedSuiteIds.length} 个测试套件？`,
+              content: '仍被启用测试计划或执行任务引用的套件会逐条拒绝；成功删除的套件可在回收站恢复。',
+              okText: '删除并移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+              onOk: () => batchRemoveMutation.mutateAsync(selectedSuiteIds),
+            })}>
+            批量删除（{selectedSuiteIds.length}）
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建套件</Button>
+        </Space>
       </Space>
 
       {suitesQuery.isLoading ? (
@@ -209,7 +252,8 @@ export function ConsoleTestSuitesPage() {
       ) : suites.length === 0 ? (
         <EmptyState description="暂无测试套件" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={suites} pagination={false} size="middle" />
+        <Table rowKey="id" columns={columns} dataSource={suites} pagination={false} size="middle"
+          rowSelection={{ selectedRowKeys: selectedSuiteIds, onChange: (keys) => setSelectedSuiteIds(keys.map(Number)) }} />
       )}
 
       {/* 新建/编辑套件弹窗 */}

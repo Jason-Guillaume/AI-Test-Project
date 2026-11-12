@@ -8,18 +8,19 @@ status ∈ {DRAFT, ACTIVE, DISABLED}。
 execution_mode ∈ {MANUAL, SCHEDULED, CI}（本阶段仅 MANUAL，其余预留）。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestPlan(Base):
+class TestPlan(SoftDeleteBase):
     """测试计划：组织套件与环境的执行单元。"""
 
     __tablename__ = "test_plan"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_test_plan_project_name"),
+        Index("uq_test_plan_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_plan_project_status", "project_id", "status"),
         {"comment": "测试计划：组织套件与环境的执行单元"},
     )
@@ -55,12 +56,16 @@ class TestPlan(Base):
     )
 
 
-class TestPlanSuite(Base):
+class TestPlanSuite(SoftDeleteBase):
     """计划-套件关联。"""
 
     __tablename__ = "test_plan_suite"
     __table_args__ = (
-        UniqueConstraint("plan_id", "suite_id", name="uq_test_plan_suite_plan_suite"),
+        Index(
+            "uq_test_plan_suite_plan_suite_live", "plan_id", "suite_id", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         Index("ix_test_plan_suite_plan_sort", "plan_id", "sort"),
         {"comment": "计划-套件关联"},
     )

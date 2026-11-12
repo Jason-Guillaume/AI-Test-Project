@@ -1,10 +1,12 @@
 // Skill 列表、文件编辑、版本历史与恢复。
-import { App, Alert, Button, Card, Col, Drawer, Form, Input, List, Modal, Row, Pagination, Select, Space, Switch, Table, Tabs, Tag, Typography, Upload } from 'antd';
+import { App, Alert, Button, Card, Checkbox, Col, Drawer, Form, Input, List, Modal, Row, Pagination, Select, Space, Switch, Table, Tabs, Tag, Typography, Upload } from 'antd';
 import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
 import type { AgentDefinition, DefinitionVersion, SkillDefinition, SkillInput } from '@/features/agent-governance/contracts';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
 
@@ -19,8 +21,10 @@ export function SkillPane() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [categoryFilter, setCategoryFilter] = useState('全部');
+  const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>([]);
   const [history, setHistory] = useState<{ kind: 'agent' | 'skill'; id: number; name: string } | null>(null);
   const { message, modal } = App.useApp();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const skills = useQuery({ queryKey: ['agent-governance', 'skills'], queryFn: agentGovernanceApi.skills });
   const agents = useQuery({ queryKey: ['agent-governance', 'agents'], queryFn: agentGovernanceApi.agents });
@@ -28,7 +32,7 @@ export function SkillPane() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['agent-governance'] });
   const createMutation = useMutation({ mutationFn: agentGovernanceApi.createSkill, onSuccess: () => { message.success('Skill 已创建'); setCreating(false); setCurrentPage(1); setCategoryFilter('全部'); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
   const updateMutation = useMutation({ mutationFn: ({ id, body }: { id: number; body: Partial<SkillDefinition> }) => agentGovernanceApi.updateSkill(id, body), onSuccess: () => { message.success('Skill 已更新，版本已递增'); setEditing(null); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
-  const deleteMutation = useMutation({ mutationFn: agentGovernanceApi.deleteSkill, onSuccess: () => { message.success('Skill 已删除'); setCurrentPage(1); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const deleteMutation = useMutation({ mutationFn: agentGovernanceApi.deleteSkill, onSuccess: () => { message.success('Skill 已移入回收站'); setCurrentPage(1); invalidate(); queryClient.invalidateQueries({ queryKey: ['recycle-bin'] }); }, onError: (e) => message.error(getErrorMessage(e)) });
   const importMutation = useMutation({ mutationFn: (file: File) => agentGovernanceApi.importSkillZip(file), onSuccess: (skill) => { message.success(`已导入 Skill「${skill.name}」`); setEditing(skill); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
   if (skills.isPending || agents.isPending || mcpServers.isPending) return <LoadingState />;
   const failed = [skills, agents, mcpServers].find((query) => query.isError);
@@ -57,6 +61,46 @@ export function SkillPane() {
     && `${skill.name} ${skill.description}`.toLocaleLowerCase().includes(normalizedSearch),
   );
   const pageSkills = visibleSkills.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const selectedOnPage = pageSkills.filter((skill) => selectedSkillIds.includes(skill.id)).length;
+  const toggleSkillSelection = (skillId: number, checked: boolean) => {
+    setSelectedSkillIds((current) => checked
+      ? (current.includes(skillId) || current.length >= 100 ? current : [...current, skillId])
+      : current.filter((id) => id !== skillId));
+  };
+  const toggleCurrentPage = (checked: boolean) => {
+    const pageIds = pageSkills.map((skill) => skill.id);
+    setSelectedSkillIds((current) => {
+      if (!checked) return current.filter((id) => !pageIds.includes(id));
+      const next = [...new Set([...current, ...pageIds])];
+      if (next.length > 100) {
+        message.warning('一次最多选择 100 个 Skill');
+        return current;
+      }
+      return next;
+    });
+  };
+  const deleteSelectedSkills = () => {
+    if (!selectedSkillIds.length) return;
+    modal.confirm({
+      title: `将 ${selectedSkillIds.length} 个 Skill 移入回收站？`,
+      content: '平台内置 Skill、仍被 Agent 配置或执行中任务引用的项会逐条拒绝；成功项保留原始 ID 和修订历史，可在回收站恢复。',
+      okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const receipt = await dataLifecycleApi.deleteMany('skill_definition', null, selectedSkillIds);
+          setSelectedSkillIds([]);
+          invalidate();
+          queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+          if (receipt.failed) {
+            modal.info({
+              title: `成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+              content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`Skill #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+            });
+          } else message.success(`已将 ${receipt.succeeded} 个 Skill 移入回收站`);
+        } catch (error) { message.error(getErrorMessage(error, '批量删除失败')); }
+      },
+    });
+  };
   const onSubmit = (body: SkillInput) => editing ? updateMutation.mutate({ id: editing.id, body }) : createMutation.mutate(body);
   return <>
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
@@ -65,13 +109,21 @@ export function SkillPane() {
         <Select value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={categoryOptions} style={{ width: 180 }} />
       </Space>
       <Space>
+        <Button danger disabled={!selectedSkillIds.length} onClick={deleteSelectedSkills}>批量删除（{selectedSkillIds.length}）</Button>
+        <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
         <Upload accept=".zip,application/zip" showUploadList={false} beforeUpload={(file) => { importMutation.mutate(file); return false; }}>
           <Button icon={<UploadOutlined />} loading={importMutation.isPending}>导入 Skill ZIP</Button>
         </Upload>
         <Button type="primary" onClick={() => setCreating(true)}>新增 Skill</Button>
       </Space>
     </div>
-    <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>共 {visibleSkills.length} 个 Skill</Typography.Text>
+    <Space style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+      <Typography.Text type="secondary">共 {visibleSkills.length} 个 Skill；跨页选择已保留，最多 100 个</Typography.Text>
+      <Space size={8}>
+        <Checkbox checked={pageSkills.length > 0 && selectedOnPage === pageSkills.length} indeterminate={selectedOnPage > 0 && selectedOnPage < pageSkills.length} onChange={(event) => toggleCurrentPage(event.target.checked)}>全选当前页</Checkbox>
+        <Button type="link" size="small" disabled={!selectedSkillIds.length} onClick={() => setSelectedSkillIds([])}>清空选择</Button>
+      </Space>
+    </Space>
     {visibleSkills.length ? <>
       <List
         size="small"
@@ -81,6 +133,7 @@ export function SkillPane() {
           const category = skillCategory(skill.name);
           return <List.Item
             actions={[
+              <Checkbox key="select" checked={selectedSkillIds.includes(skill.id)} disabled={!selectedSkillIds.includes(skill.id) && selectedSkillIds.length >= 100} onChange={(event) => toggleSkillSelection(skill.id, event.target.checked)} aria-label={`选择 Skill ${skill.name}`} />,
               <Button key="detail" type="link" size="small" onClick={() => setEditing(skill)}>详情 / 编辑</Button>,
               <Button key="version" type="link" size="small" onClick={() => setHistory({ kind: 'skill', id: skill.id, name: skill.name })}>v{skill.version}</Button>,
               <Tag key="status" color={skill.is_enabled ? 'green' : 'default'}>{skill.is_enabled ? '启用' : '停用'}</Tag>,
@@ -92,7 +145,7 @@ export function SkillPane() {
                 onChange={(checked) => updateMutation.mutate({ id: skill.id, body: { is_enabled: checked } })}
                 aria-label={`${skill.is_enabled ? '停用' : '启用'} ${skill.name}`}
               />,
-              <Button key="delete" type="link" size="small" danger onClick={() => modal.confirm({ title: `删除 Skill「${skill.name}」？`, okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(skill.id) })}>删除</Button>,
+              <Button key="delete" type="link" size="small" danger onClick={() => modal.confirm({ title: `将 Skill「${skill.name}」移入回收站？`, okText: '移入回收站', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(skill.id) })}>删除</Button>,
             ]}
           >
             <div

@@ -53,6 +53,7 @@ from app.core.http.errors import (
 )
 from app.core.notifications.notify import notify
 from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 # 失败分类启发式关键词（小写子串匹配 error_message）。环境类：超时/连接/5xx/网络；
 # 数据类：参数/变量/数据缺失或无效。用于 EXECUTION_ERROR/ENVIRONMENT_ERROR/TEST_DATA_ISSUE 判定。
@@ -283,8 +284,7 @@ class ReportService:
         if report is None:
             raise not_found("测试报告不存在")
         require_writable_project(db, report.project_id, user)
-        db.delete(report)
-        db.commit()
+        delete_resource(db, "test_report", report.id, actor=user)
 
     def regenerate_ai_summary(
         self, db: Session, report_id: int, user: User, *, provider: Any = None,
@@ -581,7 +581,12 @@ class ReportService:
         """生成稳定编号 RPT-YYYYMMDD-NNNNNN（按当日已存在报告数 +1）。"""
         now = datetime.now()
         prefix = f"RPT-{now.strftime('%Y%m%d')}-"
-        count = db.query(TestReport).filter(TestReport.report_no.like(f"{prefix}%")).count()
+        # report_no remains globally unique across soft deletion; include trashed reports
+        # so the daily counter never attempts to reuse a reserved identifier.
+        count = (
+            db.query(TestReport).execution_options(include_deleted=True)
+            .filter(TestReport.report_no.like(f"{prefix}%")).count()
+        )
         return f"{prefix}{count + 1:06d}"
 
     def _generate_ai_summary(

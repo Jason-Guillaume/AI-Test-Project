@@ -29,4 +29,5 @@ export interface ApiErrorBody {
   code: string; // 机器可读的错误码，前端按它做分支处理
   message: string; // 可直接展示给用户的错误描述
   request_id: string; // 请求追踪 ID，用于联系后端排查
+  meta?: Record<string, unknown>; // 结构化冲突对象等可操作细节
 }

@@ -3,10 +3,10 @@
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class MCPServer(Base):
+class MCPServer(SoftDeleteBase):
     """MCP 服务登记；仅缓存发现结果，不自动授予工具执行权限。"""
 
     __tablename__ = "mcp_server"

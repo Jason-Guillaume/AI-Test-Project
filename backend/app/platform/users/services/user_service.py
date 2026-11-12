@@ -20,13 +20,11 @@ from app.platform.users.schemas import (
     UserLogin,
     UserUpdate,
 )
-from app.core.models.configuration import ModelConfiguration
-from app.core.models.identity import Organization, OrganizationMember, User
-from app.core.models.project import Project, ProjectMember, ProjectOutboundTarget
+from app.core.models.identity import Organization, User
 from app.core.security.auth import create_access_token, invalidate_user_tokens
 from app.core.http.errors import bad_request, conflict, forbidden, not_found
 from app.core.security.passwords import hash_password, verify_password
-from app.core.security.roles import ORG_ROLE_OWNER, is_platform_admin
+from app.core.security.roles import is_platform_admin
 
 logger = logging.getLogger(__name__)  # 通知写入等降级路径的告警日志
 
@@ -65,7 +63,7 @@ class UserAdminService:
         Returns:
             可用为 True。
         """
-        query = db.query(User).filter(User.username == username)
+        query = db.query(User).execution_options(include_deleted=True).filter(User.username == username)
         if exclude_id is not None:
             query = query.filter(User.id != exclude_id)  # 排除自身，允许用户名不变
         return query.first() is None
@@ -194,7 +192,9 @@ class UserAdminService:
         Returns:
             更新后的用户。
         """
-        user = self.get_or_404(db, user_id)
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
+        if user is None:
+            raise not_found("用户不存在")
         data = body.model_dump(exclude_unset=True)  # 只取调用方显式传入的字段
         if not data:
             return user
@@ -269,7 +269,9 @@ class UserAdminService:
         """
         if user_id != actor.id:
             raise forbidden("只能修改自己的密码")  # 权限边界：只允许改自己的密码
-        user = self.get_or_404(db, user_id)
+        user = db.query(User).filter(User.id == user_id).with_for_update().first()
+        if user is None:
+            raise not_found("用户不存在")
         self.validate_password(new_password)
 
         if not verify_password(old_password, user.hashed_password or ""):
@@ -283,147 +285,10 @@ class UserAdminService:
         db.commit()  # 事务提交点
 
     def delete_user(self, db: Session, user_id: int, *, actor: User) -> None:
-        """删除用户，并把其名下数据交接出去，避免留下无主数据。
+        """Soft-delete the account while preserving ownership and audit references."""
+        from app.lifecycle.service import delete_resource
 
-        旧项目直接 ``db.delete(user)``，遇到「用户拥有的组织/项目」会因外键
-        约束抛 500。这里改为显式交接：
-        - 有其它成员的项目/组织：负责人转交给下一个激活成员
-        - 没有其它成员的项目/组织：连带清理（成员关系与出站目标由外键级联删除）
-        - 仍然存活的审计字段（created_by / approved_by）指向当前负责人
-
-        Args:
-            db: 数据库会话。
-            user_id: 待删除用户 ID。
-            actor: 触发删除的管理员账号，同时作为审计字段的兜底负责人。
-        """
-        if actor.id == user_id:
-            raise forbidden("不能删除自己")  # 自保护：不允许自删
-        user = self.get_or_404(db, user_id)
-        if user.role == "admin":
-            raise bad_request("不能删除管理员账户")  # 自保护：避免删除平台管理员后无人可管
-
-        for project in db.query(Project).filter(Project.owner_id == user.id).all():
-            self._hand_over_project(db, project, user.id)
-
-        for organization in db.query(Organization).filter(
-            Organization.owner_id == user.id
-        ).all():
-            self._hand_over_organization(db, organization, user.id)
-
-        self._reattach_audits(db, user.id, fallback_owner=actor.id)
-
-        db.delete(user)
-        db.commit()  # 事务提交点
-
-    @staticmethod
-    def _successor_member_id(
-        db: Session, table, key_column, key_value: int, exclude_user_id: int
-    ) -> int | None:
-        """在成员表里找下一个激活成员，作为负责人交接对象。
-
-        Args:
-            db: 数据库会话。
-            table: 成员表类（ProjectMember 或 OrganizationMember）。
-            key_column: 成员表上的组织/项目外键列。
-            key_value: 对应的外键值。
-            exclude_user_id: 需要排除的用户（被删除者）。
-        Returns:
-            下一任负责人用户 ID；不存在时返回 None。
-        """
-        from sqlalchemy import and_
-
-        row = (
-            db.query(table.user_id)
-            .join(User, User.id == table.user_id)  # 关联用户表，只接受仍处于激活状态的成员
-            .filter(
-                key_column == key_value,
-                table.user_id != exclude_user_id,
-                and_(User.is_active.is_(True)),
-            )
-            .order_by(table.id)
-            .first()
-        )
-        return int(row[0]) if row else None
-
-    def _hand_over_project(self, db: Session, project: Project, old_owner_id: int) -> None:
-        """处理单个项目的负责人交接：有继承人则转交，无人继承则连带删除。
-
-        Args:
-            db: 数据库会话。
-            project: 待处理的项目。
-            old_owner_id: 原负责人（被删除用户）的 ID。
-        """
-        successor = self._successor_member_id(
-            db, ProjectMember, ProjectMember.project_id, project.id, old_owner_id
-        )
-        if successor is None:
-            # 项目没有其他激活成员，用户账号已删除，项目随之清理。
-            db.delete(project)
-        else:
-            project.owner_id = successor  # 负责人转交给下一任激活成员
-        db.flush()
-
-    def _hand_over_organization(
-        self, db: Session, organization: Organization, old_owner_id: int
-    ) -> None:
-        """处理单个组织的负责人交接；无继承人时需先清理组织内的项目。
-
-        Args:
-            db: 数据库会话。
-            organization: 待处理的组织。
-            old_owner_id: 原负责人的 ID。
-        """
-        successor = self._successor_member_id(
-            db, OrganizationMember, OrganizationMember.organization_id, organization.id, old_owner_id
-        )
-        if successor is None:
-            # organization.id 被 project.organization_id 引用但没有级联动作，
-            # 需要先清掉组织内的项目，再删组织。
-            projects = db.query(Project).filter(
-                Project.organization_id == organization.id
-            )
-            for project in projects.all():
-                db.delete(project)
-                db.flush()  # 逐条 flush，避免外键顺序问题
-            db.delete(organization)
-        else:
-            organization.owner_id = successor
-            row = db.query(OrganizationMember).filter(
-                OrganizationMember.organization_id == organization.id,
-                OrganizationMember.user_id == successor,
-            ).first()
-            if row is not None:
-                row.role = ORG_ROLE_OWNER  # 负责人身份还要同步落到成员行角色上
-
-        db.flush()
-
-    @staticmethod
-    def _reattach_audits(db: Session, deleted_user_id: int, *, fallback_owner: int) -> None:
-        """把仍然存活行的审计外键指向其所属项目负责人。
-
-        Args:
-            db: 数据库会话。
-            deleted_user_id: 被删除用户的 ID。
-            fallback_owner: 所属项目已不存在时的兜底负责人。
-        """
-        for row in db.query(ProjectMember).filter(
-            ProjectMember.created_by == deleted_user_id
-        ).all():
-            project = db.get(Project, row.project_id)
-            row.created_by = (project.owner_id if project is not None else fallback_owner)
-
-        for row in db.query(ProjectOutboundTarget).filter(
-            ProjectOutboundTarget.approved_by == deleted_user_id
-        ).all():
-            project = db.get(Project, row.project_id)
-            row.approved_by = (project.owner_id if project is not None else fallback_owner)
-
-        # 模型配置是平台级数据，不随用户删除而消失，创建人置空保留记录。
-        db.query(ModelConfiguration).filter(
-            ModelConfiguration.created_by == deleted_user_id
-        ).update({"created_by": None}, synchronize_session=False)
-
-        db.flush()
+        delete_resource(db, "user", user_id, actor=actor)
 
     # ---------------------------------------------------------------- 登录
 

@@ -13,6 +13,7 @@
 // 不带分页信封；仅 list_runs / list_case_executions 返回 {items,total,page,page_size} 信封。
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { BatchReviewResponse, CaseExecutionListResponse, GenerationAgentOption, GenerationAudit, GenerationBatch, GenerationTaskStatus, GenerationBatchListResponse, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
@@ -198,6 +199,8 @@ export const testManagementApi = {
   updateSuite: (suiteId: number, body: TestSuiteUpdate) =>
     api.patch<TestSuite>(`/test-suites/${suiteId}`, body),
   removeSuite: (suiteId: number) => api.delete<void>(`/test-suites/${suiteId}`),
+  removeSuites: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('test_suite', projectId, ids),
 
   // ---- 套件-用例关联 ----
   listSuiteCases: (suiteId: number) =>
@@ -221,6 +224,8 @@ export const testManagementApi = {
   updatePlan: (planId: number, body: TestPlanUpdate) =>
     api.patch<TestPlan>(`/test-plans/${planId}`, body),
   removePlan: (planId: number) => api.delete<void>(`/test-plans/${planId}`),
+  removePlans: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('test_plan', projectId, ids),
 
   // ---- 计划-套件关联 ----
   listPlanSuites: (planId: number) =>

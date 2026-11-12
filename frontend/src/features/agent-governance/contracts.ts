@@ -60,6 +60,8 @@ export interface AgentRuntimeOverview {
     failure_rate: number | null; cancellation_rate: number | null; execution_success_rate: number | null;
     average_duration_ms: number | null; p95_duration_ms: number | null;
     duration_sample_count: number; retried_work_items: number; started_work_items: number; work_items: number; retry_rate: number | null;
+    average_model_latency_ms: number | null; p50_model_latency_ms: number | null; p95_model_latency_ms: number | null;
+    model_latency_sample_count: number;
     subagent_failed_work_items: number; subagent_terminal_work_items: number;
     subagent_reconciliation_required_work_items: number; subagent_failure_rate: number | null;
     subagent_runtime_events: number; subagent_runtime_failures: number;
@@ -75,7 +77,8 @@ export interface AgentRuntimeOverview {
   };
   model_statuses: Record<string, number>;
   run_statuses: Record<string, number>;
-  models: { model_config_id: number | null; model_name: string; model_revision: string | null; cost_currency: string | null; calls: number; succeeded: number; failed: number; tokens: number; cost: number | null; avg_latency_ms: number | null }[];
+  providers: { provider: string; calls: number; succeeded: number; failed: number; unknown_calls: number; known_calls: number; tokens: number; success_rate: number | null; status: string; enabled_configs: number; disabled_configs: number; cost_by_currency: { currency: string; amount: number }[] }[];
+  models: { model_config_id: number | null; model_name: string; model_revision: string | null; cost_currency: string | null; calls: number; known_calls: number; unknown_calls: number; success_rate: number | null; succeeded: number; failed: number; tokens: number; cost: number | null; latency_sample_count: number; avg_latency_ms: number | null; p50_latency_ms: number | null; p95_latency_ms: number | null }[];
   agents_by_revision: { agent_definition_id: number | null; agent_name: string; revision_id: number | null; cost_currency: string | null; calls: number; succeeded: number; failed: number; tokens: number; cost: number | null; avg_latency_ms: number | null }[];
   tools: { tool_key: string; calls: number; succeeded: number; failed: number; avg_latency_ms: number | null }[];
   skills: { skill_key: string; skill_version: number | null; loads: number; succeeded: number; failed: number; avg_latency_ms: number | null }[];

@@ -47,8 +47,18 @@ def save_auth(db, project_id, body: AuthInput, actor, auth_id=None):
 
 
 def delete_auth(db, auth_id, actor):
-    """撤销认证配置，清除引用用例的人工确认，避免静默变为匿名执行。"""
-    row = get_row(db, WebAuthProfile, auth_id, actor, write=True)
-    db.query(WebCase).filter_by(auth_profile_id=auth_id).update({"confirmed_digest": None}, synchronize_session=False)
-    db.delete(row)
-    db.commit()
+    """将认证配置移入回收站，并取消引用用例的人工确认。"""
+    from app.lifecycle.service import delete_resource
+
+    row = (
+        db.query(WebAuthProfile).execution_options(include_deleted=True)
+        .filter(WebAuthProfile.id == auth_id).first()
+    )
+    if row is None:
+        raise not_found("认证配置不存在")
+    require_writable_project(db, row.project_id, actor)
+    if row.deleted_at is None:
+        db.query(WebCase).filter_by(auth_profile_id=auth_id).update(
+            {"confirmed_digest": None}, synchronize_session=False,
+        )
+    delete_resource(db, "web_auth_profile", auth_id, actor=actor, project_id=row.project_id)
