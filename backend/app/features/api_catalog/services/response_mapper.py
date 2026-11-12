@@ -53,6 +53,7 @@ def response_to_internal(r: ApiResponse) -> InternalResponse:
     """将响应转换为内部数据结构。"""
     return InternalResponse(
         status_code=r.status_code,
+        response_key=r.response_key,
         description=r.description,
         schema_json=r.schema_json,
         example_json=r.example_json,
@@ -155,6 +156,7 @@ def response_response(r: ApiResponse) -> ApiResponseResponse:
         id=r.id,
         interface_id=r.interface_id,
         status_code=r.status_code,
+        response_key=r.response_key,
         description=r.description,
         schema_json=r.schema_json,
         example_json=r.example_json,

@@ -13,7 +13,6 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.platform.organizations.services.organization_service import ensure_personal_organization
 from app.platform.users.schemas import (
     AdminUserCreate,
     UserCreate,
@@ -126,14 +125,14 @@ class UserAdminService:
     # ---------------------------------------------------------------- 写入
 
     def register(self, db: Session, body: UserCreate) -> User:
-        """注册普通账号，并在一个事务内创建对应的个人组织。
+        """注册普通账号；组织由平台管理员另行创建并分配。
 
         Args:
             db: 当前请求的数据库会话。
             body: 用户名与密码。
         Returns:
             已持久化的新用户。
-        副作用：提交用户及个人组织；任一步骤失败时事务不得部分落库。
+        副作用：只提交账号。
         """
         username = body.username.strip()
         self.validate_password(body.password)
@@ -142,14 +141,13 @@ class UserAdminService:
 
         user = User(username=username, hashed_password=hash_password(body.password))
         db.add(user)
-        db.flush()  # 取得用户 ID，个人组织成员关系依赖该值。
-        ensure_personal_organization(db, user)
-        db.commit()  # 注册与个人组织必须作为同一事务提交。
+        db.flush()  # 取得用户 ID，随后提交账号本身。
+        db.commit()
         db.refresh(user)
         return user
 
     def create_by_admin(self, db: Session, body: AdminUserCreate, *, actor: User) -> User:
-        """管理员创建账号，并在同一事务内创建个人组织。
+        """管理员创建账号；组织由平台管理员另行创建并分配。
 
         Args:
             db: 数据库会话。
@@ -161,7 +159,7 @@ class UserAdminService:
         username = body.username.strip()
         self.validate_password(body.password)
         if username.lower() == (actor.username or "").strip().lower():
-            # 与操作人同名会被后续个人组织命名规则撞车，直接拒绝
+            # 避免用操作人本人账号作为新账号名，给出明确冲突提示。
             raise conflict("不能创建与操作人同名的账号")
         if not self._username_available(db, username):
             raise conflict("该用户名已存在")
@@ -174,8 +172,7 @@ class UserAdminService:
             token_version=0,  # 初始令牌版本号，之后每次敏感变更递增
         )
         db.add(user)
-        db.flush()  # 先落库取回自增 ID，个人组织创建依赖它
-        ensure_personal_organization(db, user)  # 用户与个人组织必须同时成功
+        db.flush()
         self._emit(db, user, "user.created", actor)  # 通知写入与主数据同事务
         db.commit()  # 事务提交点
         db.refresh(user)

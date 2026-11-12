@@ -34,8 +34,8 @@ def diff_body(old: ApiRequestBody | None, new: ApiBodyIn) -> dict:
 
 def diff_responses(old: list[ApiResponse], new: list[ApiResponseIn]) -> dict:
     """计算 API 响应定义之间的差异。"""
-    old_codes = {r.status_code for r in old}
-    new_codes = {r.status_code for r in new}
+    old_codes = {r.response_key for r in old}
+    new_codes = {r.response_key for r in new}
     added = sorted(c for c in new_codes if c not in old_codes)
     removed = sorted(c for c in old_codes if c not in new_codes)
     if not (added or removed):

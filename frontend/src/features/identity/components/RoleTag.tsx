@@ -5,14 +5,14 @@ import type { PlatformRole } from '@/features/identity/contracts';
 
 
 // 平台角色的中文展示文案。
-const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
+export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
   admin: '平台管理员',
   test: '测试工程师',
   dev: '开发工程师',
 };
 
 // 平台角色对应的标签配色：与展示文案一一对应，改文案时同步改这里。
-const PLATFORM_ROLE_COLORS: Record<PlatformRole, string> = {
+export const PLATFORM_ROLE_COLORS: Record<PlatformRole, string> = {
   admin: 'magenta',
   test: 'blue',
   dev: 'cyan',
@@ -30,6 +30,12 @@ export function PlatformRoleTag({ role }: { role: PlatformRole }) {
       {PLATFORM_ROLE_LABELS[role] ?? role}
     </Tag>
   );
+}
+
+/** 侧栏、列表和表单共用的平台角色名称；加载中与未知值使用明确占位。 */
+export function platformRoleLabel(role: string | null | undefined): string {
+  if (!role) return '未知角色';
+  return PLATFORM_ROLE_LABELS[role as PlatformRole] ?? '未知角色';
 }
 
 /**

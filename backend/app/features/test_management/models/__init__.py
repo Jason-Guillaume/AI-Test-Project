@@ -11,6 +11,7 @@
 """
 
 from app.features.test_management.models.case_generation import CaseDraft, CaseGenerationAudit, CaseGenerationBatch
+from app.features.test_management.models.case_import import TestCaseImportBatch
 from app.features.test_management.models.execution import CaseExecution, TestRun
 from app.features.test_management.models.test_assertion import TestAssertion
 from app.features.test_management.models.test_case import TestCase
@@ -33,6 +34,7 @@ __all__ = [
     "CaseDraft",
     "CaseGenerationAudit",
     "CaseGenerationBatch",
+    "TestCaseImportBatch",
     "TestCase",
     "TestCaseData",
     "TestCasePrecondition",

@@ -28,7 +28,8 @@ class ApiResponse(Base):
         index=True,
         comment="所属接口ID",
     )
-    status_code = Column(Integer, nullable=False, comment="HTTP 状态码，如 200/400/500")
+    status_code = Column(Integer, nullable=True, comment="具体 HTTP 状态码；范围码和 default 为空")
+    response_key = Column(String(16), nullable=False, default="200", comment="原始 OpenAPI 响应键")
     description = Column(String(500), nullable=True, comment="响应描述")
     schema_json = Column(JSON, nullable=True, comment="响应 JSON Schema 结构")
     example_json = Column(Text, nullable=True, comment="响应示例 JSON 文本")

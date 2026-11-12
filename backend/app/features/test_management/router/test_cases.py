@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
+from io import BytesIO
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from openpyxl import Workbook
+from openpyxl.worksheet.datavalidation import DataValidation
+from starlette.responses import Response
 from sqlalchemy.orm import Session
 from app.features.test_management.schemas import (
     TestAssertionCreate,
@@ -19,9 +25,97 @@ from app.core.security.auth import get_current_user
 from app.core.database.session import get_db
 from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.features.test_management.router.dependencies import _CASE
+from app.features.test_management.services.excel_case_import_service import HEADERS, SERVICE as _EXCEL_IMPORT
 
 
 router = APIRouter()
+
+
+@router.get("/projects/{project_id}/test-cases/import-template", summary="下载测试用例 Excel 模板")
+def download_case_import_template(
+    project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """生成包含优先级与测试维度下拉选项的空白模板。"""
+    from app.platform.projects.services.access_service import require_writable_project
+
+    require_writable_project(db, project_id, user)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "测试用例"
+    sheet.append(HEADERS)
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = "A1:D1001"
+    for column, width in {"A": 34, "B": 14, "C": 18, "D": 60}.items():
+        sheet.column_dimensions[column].width = width
+    priority_validation = DataValidation(type="list", formula1='"P0,P1,P2,P3"', allow_blank=True)
+    dimension_validation = DataValidation(
+        type="list",
+        formula1='"FUNCTIONAL,BUSINESS,NEGATIVE,BOUNDARY,PERMISSION,SECURITY,EXCEPTION"',
+        allow_blank=True,
+    )
+    sheet.add_data_validation(priority_validation)
+    sheet.add_data_validation(dimension_validation)
+    priority_validation.add("B2:B1001")
+    dimension_validation.add("C2:C1001")
+    instructions = workbook.create_sheet("填写说明")
+    instructions.append(["列名", "规则"])
+    instructions.append(["用例名称（必填）", "1-200 字；同一文件与当前项目内不可重名"])
+    instructions.append(["优先级", "P0-P3；留空按 P1"])
+    instructions.append(["测试维度", "FUNCTIONAL、BUSINESS、NEGATIVE、BOUNDARY、PERMISSION、SECURITY、EXCEPTION；留空按 FUNCTIONAL"])
+    instructions.append(["用例描述", "可留空，最多 1000 字；保留换行"])
+    instructions.append(["目标目录", "上传预览页会固定当前项目、测试方向和目录"])
+    output = BytesIO()
+    workbook.save(output)
+    filename = "test-case-import-template.xlsx"
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.post("/projects/{project_id}/test-cases/import-preview", summary="预览测试用例 Excel 导入")
+async def preview_case_import(
+    project_id: int,
+    file: UploadFile = File(...),
+    direction: str = Form(...),
+    scope_node_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """解析并校验工作簿，不写入用例。"""
+    content = await _read_xlsx(file)
+    return _EXCEL_IMPORT.parse(
+        content, project_id=project_id, direction=direction, scope_node_id=scope_node_id, db=db, actor=user,
+    )
+
+
+@router.post("/projects/{project_id}/test-cases/import-confirm", summary="确认测试用例 Excel 导入")
+async def confirm_case_import(
+    project_id: int,
+    file: UploadFile = File(...),
+    direction: str = Form(...),
+    request_key: str = Form(...),
+    source_hash: str = Form(...),
+    scope_node_id: int | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """重新校验后以单事务写入；同一请求键重试返回原批次结果。"""
+    content = await _read_xlsx(file)
+    return _EXCEL_IMPORT.confirm(
+        content, project_id=project_id, direction=direction, scope_node_id=scope_node_id,
+        request_key=request_key, expected_source_hash=source_hash, db=db, actor=user,
+    )
+
+
+async def _read_xlsx(file: UploadFile) -> bytes:
+    if not (file.filename or "").lower().endswith(".xlsx"):
+        raise HTTPException(status_code=422, detail="仅支持 .xlsx 文件")
+    content = await file.read(5 * 1024 * 1024 + 1)
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Excel 文件不能超过 5 MiB")
+    return content
 
 
 @router.get("/projects/{project_id}/test-cases", response_model=list, summary="测试用例列表")

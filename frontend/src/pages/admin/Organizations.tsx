@@ -12,7 +12,7 @@ import {
   Switch,
   Tag,
 } from 'antd';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { organizationsApi } from '@/features/organizations/api/organizations';
 import type { MemberGrant } from '@/features/organizations/contracts';
@@ -22,6 +22,8 @@ import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { OrgRoleTag } from '@/features/identity/components/RoleTag';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { useAuth } from '@/app/providers/AuthProvider';
+import { platformRoleLabel } from '@/features/identity/components/RoleTag';
 
 // 组织角色下拉选项：owner > admin > member 三级
 const ORG_ROLE_OPTIONS: { label: string; value: OrganizationRole }[] = [
@@ -42,6 +44,8 @@ const ORG_ROLE_OPTIONS: { label: string; value: OrganizationRole }[] = [
  * 空态：组织无成员时列表显示「暂无成员」；无组织时右侧显示「请选择左侧组织」。
  */
 export function AdminOrganizationsPage() {
+  const { user } = useAuth();
+  const canManage = user?.role === 'admin';
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   // 当前选中的组织 ID；null 表示尚未选中（默认回退到列表第一项）
@@ -61,17 +65,18 @@ export function AdminOrganizationsPage() {
     queryKey: ['organizations'],
     queryFn: () => organizationsApi.list(),
   });
-  // 成员列表：仅在 activeId 有值时启用
+  const effectiveOrgId = activeId ?? listQuery.data?.items[0]?.id ?? null;
+  // 默认组织与成员、模型查询共用同一个有效 ID，避免首屏详情查询被跳过。
   const membersQuery = useQuery({
-    queryKey: ['organizations', activeId, 'members'],
-    queryFn: () => organizationsApi.members(activeId!),
-    enabled: activeId !== null,
+    queryKey: ['organizations', effectiveOrgId, 'members'],
+    queryFn: () => organizationsApi.members(effectiveOrgId!),
+    enabled: effectiveOrgId !== null,
   });
   // 可分配模型列表：给成员授权下拉用
   const modelsQuery = useQuery({
-    queryKey: ['organizations', activeId, 'models'],
-    queryFn: () => organizationsApi.availableModels(activeId!),
-    enabled: activeId !== null,
+    queryKey: ['organizations', effectiveOrgId, 'models'],
+    queryFn: () => organizationsApi.availableModels(effectiveOrgId!),
+    enabled: effectiveOrgId !== null && canManage,
   });
 
   const createMutation = useMutation({
@@ -91,7 +96,7 @@ export function AdminOrganizationsPage() {
     onSuccess: () => {
       message.success('成员已保存');
       queryClient.invalidateQueries({
-        queryKey: ['organizations', activeId, 'members'],
+        queryKey: ['organizations', effectiveOrgId, 'members'],
       });
       setMemberDrawer({ open: false });
     },
@@ -104,7 +109,7 @@ export function AdminOrganizationsPage() {
     onSuccess: () => {
       message.success('成员已移除');
       queryClient.invalidateQueries({
-        queryKey: ['organizations', activeId, 'members'],
+        queryKey: ['organizations', effectiveOrgId, 'members'],
       });
     },
     onError: (e) => message.error(getErrorMessage(e)),
@@ -118,7 +123,7 @@ export function AdminOrganizationsPage() {
       message.success('负责人已转移');
       queryClient.invalidateQueries({ queryKey: ['organizations'] });
       queryClient.invalidateQueries({
-        queryKey: ['organizations', activeId, 'members'],
+        queryKey: ['organizations', effectiveOrgId, 'members'],
       });
     },
     onError: (e) => message.error(getErrorMessage(e)),
@@ -135,19 +140,20 @@ export function AdminOrganizationsPage() {
 
   const orgs = listQuery.data.items;
   // 默认回退：activeId 未选中或对应组织已删除时，取列表第一项
-  const activeOrg = orgs.find((o) => o.id === activeId) ?? orgs[0] ?? null;
+  const activeOrg = orgs.find((o) => o.id === effectiveOrgId) ?? null;
   const activeOrgId = activeOrg?.id ?? null;
 
   return (
     <PageContainer>
       <PageHeader title="组织管理" subtitle="维护组织成员、角色与模型授权" />
       <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Button type="primary" onClick={() => setCreating(true)}>
-          新建组织
-        </Button>
+        {canManage && <Button type="primary" onClick={() => setCreating(true)}>新建组织</Button>}
       </Space>
 
       <div className="organization-layout">
+        {orgs.length === 0 && !canManage ? (
+          <div style={{ padding: 24, color: '#666' }}>等待平台管理员分配组织</div>
+        ) : null}
         {/* 左侧：组织列表；点击选中高亮，切换右侧详情 */}
         <List
           className="organization-layout__list"
@@ -187,14 +193,14 @@ export function AdminOrganizationsPage() {
               >
                 <strong>{activeOrg.name}</strong>
                 {/* 只有当前用户是该组织成员时才允许添加/更新成员 */}
-                <Button
+                {canManage && <Button
                   onClick={() =>
                     setMemberDrawer({ open: true, editing: null })
                   }
-                  disabled={activeOrg.my_role == null}
+                  disabled={!activeOrgId}
                 >
                   添加/更新成员
-                </Button>
+                </Button>}
               </Space>
               <List
                 bordered
@@ -204,7 +210,7 @@ export function AdminOrganizationsPage() {
                 renderItem={(member: OrganizationMember) => (
                   <List.Item
                     /* 三个操作：编辑（任何成员都可以）、转为负责人、移除；后两者对组织负责人 disabled */
-                    actions={[
+                    actions={canManage ? [
                       <Button
                         key="edit"
                         size="small"
@@ -241,7 +247,7 @@ export function AdminOrganizationsPage() {
                       >
                         移除
                       </Button>,
-                    ]}
+                    ] : []}
                   >
                     <List.Item.Meta
                       title={`用户 #${member.user_id}`}
@@ -286,6 +292,7 @@ export function AdminOrganizationsPage() {
       </Modal>
 
       <MemberDrawer
+        key={`${activeOrgId ?? 'none'}-${memberDrawer.editing?.user_id ?? 'new'}`}
         open={memberDrawer.open}
         editing={memberDrawer.editing}
         models={modelsQuery.data?.items ?? []}
@@ -298,11 +305,7 @@ export function AdminOrganizationsPage() {
           })
         }
         loading={upsertMutation.isPending}
-        onFindCandidate={async (username) => {
-          // 无活跃组织时直接返回 null，避免发出无效请求
-          if (!activeOrgId) return null;
-          return organizationsApi.findCandidate(activeOrgId, username);
-        }}
+        orgId={activeOrgId}
       />
     </PageContainer>
   );
@@ -323,7 +326,7 @@ function MemberDrawer({
   loading,
   onCancel,
   onSubmit,
-  onFindCandidate,
+  orgId,
 }: {
   open: boolean;
   editing?: OrganizationMember | null;
@@ -331,11 +334,25 @@ function MemberDrawer({
   loading: boolean;
   onCancel: () => void;
   onSubmit: (grant: MemberGrant) => void;
-  onFindCandidate: (
-    username: string,
-  ) => Promise<{ item: { id: number } | null } | null>;
+  orgId: number | null;
 }) {
   const [form] = Form.useForm<MemberGrant & { username: string }>();
+  const [keyword, setKeyword] = useState('');
+  const [selectedCandidate, setSelectedCandidate] = useState<{
+    id: number; username: string; role: string; is_active: boolean; is_member: boolean;
+  } | null>(null);
+  const candidatesQuery = useInfiniteQuery({
+    queryKey: ['organization-candidates', orgId, keyword],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => organizationsApi.listCandidates(orgId!, keyword, pageParam),
+    getNextPageParam: (lastPage) => lastPage.page * lastPage.page_size < lastPage.total ? lastPage.page + 1 : undefined,
+    enabled: open && !editing && orgId != null,
+  });
+  const candidates = candidatesQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const options = [...candidates];
+  if (selectedCandidate && !options.some((item) => item.id === selectedCandidate.id)) {
+    options.unshift(selectedCandidate);
+  }
 
   return (
     <Drawer
@@ -376,33 +393,46 @@ function MemberDrawer({
       >
         {/* 仅新建时展示用户名查找；编辑时 user_id 由 editing 决定 */}
         {!editing && (
-          <>
-            <Form.Item label="用户名" name="username" rules={[{ required: true }]}>
-              <Input.Search
-                enterButton="查找"
-                // 查找候选：找到后写入隐藏 user_id 字段；未找到时保持原状
-                onSearch={async (v) => {
-                  const res = await onFindCandidate(v);
-                  if (res?.item) {
-                    form.setFieldValue('user_id', res.item.id);
-                  }
-                }}
-              />
-            </Form.Item>
-            <Form.Item name="user_id" hidden>
-              <Input />
-            </Form.Item>
-            <Form.Item shouldUpdate noStyle>
-              {/* 根据当前 user_id 是否选中显示对应状态标签 */}
-              {() =>
-                form.getFieldValue('user_id') ? (
-                  <Tag color="green">已选中用户 #{form.getFieldValue('user_id')}</Tag>
-                ) : (
-                  <Tag>请先查找并选择用户</Tag>
-                )
-              }
-            </Form.Item>
-          </>
+          <Form.Item label="人员" name="user_id" rules={[{ required: true, message: '请选择人员' }]}>
+            <Select
+              showSearch
+              allowClear
+              filterOption={false}
+              placeholder="搜索并选择启用账号"
+              loading={candidatesQuery.isFetching}
+              options={options.map((item) => ({
+                value: item.id,
+                label: `${item.username} · ${platformRoleLabel(item.role)}${item.is_member ? ' · 已加入' : ''}`,
+              }))}
+              notFoundContent={candidatesQuery.isError ? '候选加载失败，请修改关键词重试' : candidatesQuery.isFetching ? '正在加载候选…' : '没有匹配的启用账号'}
+              onPopupScroll={(event) => {
+                const element = event.currentTarget;
+                if (element.scrollTop + element.clientHeight >= element.scrollHeight - 24 && candidatesQuery.hasNextPage && !candidatesQuery.isFetchingNextPage) {
+                  void candidatesQuery.fetchNextPage();
+                }
+              }}
+              onSearch={(value) => {
+                if (value !== selectedCandidate?.username) {
+                  form.setFieldValue('user_id', undefined);
+                  setSelectedCandidate(null);
+                }
+                setKeyword(value);
+              }}
+              onChange={(value) => {
+                const candidate = candidates.find((item) => item.id === value) ?? null;
+                setSelectedCandidate(candidate);
+              }}
+            />
+          </Form.Item>
+        )}
+        {!editing && (
+          <Form.Item shouldUpdate noStyle>
+            {() => {
+              const id = form.getFieldValue('user_id');
+              const candidate = options.find((item) => item.id === id) ?? selectedCandidate;
+              return candidate ? <Tag color="green">已选择：{candidate.username}</Tag> : <Tag>请选择一个人员</Tag>;
+            }}
+          </Form.Item>
         )}
         <Form.Item label="组织角色" name="role">
           <Select options={ORG_ROLE_OPTIONS} />

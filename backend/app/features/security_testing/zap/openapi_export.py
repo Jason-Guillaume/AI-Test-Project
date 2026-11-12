@@ -322,6 +322,20 @@ def _responses_for(db: Session, interface_id: int) -> list[ApiResponse]:
     )
 
 
+def _responses_to_openapi(rows: Iterable[ApiResponse]) -> dict[str, dict[str, Any]]:
+    """保留原始 response key、描述、结构和示例，生成 OpenAPI responses 对象。"""
+    responses: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        response_key = row.response_key or str(row.status_code or 200)
+        responses[response_key] = _response_object(
+            _schema_from_json(row.schema_json), row.example_json,
+            description=row.description or "标准响应",
+        )
+    if not responses:
+        responses["200"] = _response_object({"type": "object"})
+    return responses
+
+
 def _mask_example(value: Any, depth: int = 0) -> Any:
     """递归掩码响应示例里的令牌。
 
@@ -357,6 +371,7 @@ def _response_object(
     schema: dict[str, Any],
     example_json: Any = None,
     media_type: str = "application/json",
+    description: str = "标准响应",
 ) -> dict[str, Any]:
     """OpenAPI 3 的 Response Object。
 
@@ -365,7 +380,7 @@ def _response_object(
     会拒绝导入或按未知字段忽略掉整个响应定义。
     """
     return {
-        "description": "标准响应",
+        "description": _text(description, MAX_DOC_TEXT_LENGTH) or "标准响应",
         "content": {media_type: _content_entry(schema, example_json)},
     }
 
@@ -410,14 +425,7 @@ def build_openapi_document(
                 "name": name, "in": "path", "required": True, "schema": {"type": "string"},
             })
 
-        responses: dict[str, dict[str, Any]] = {}
-        for resp in _responses_for(db, interface_id):
-            status = str(resp.status_code or 200)
-            if not status.isdigit():
-                status = "default"
-            responses[status] = _response_object(_schema_from_json(resp.schema_json), resp.example_json)
-        if not responses:
-            responses["200"] = _response_object({"type": "object"})
+        responses = _responses_to_openapi(_responses_for(db, interface_id))
 
         operation: dict[str, Any] = {
             "summary": _text(row.name, 200),

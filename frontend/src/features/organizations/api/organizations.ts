@@ -37,6 +37,12 @@ export const organizationsApi = {
       `/organizations/${id}/candidates`,
       { params: { username } },
     ),
+  /** 列出首批或按用户名模糊搜索的启用账号。 */
+  listCandidates: (id: number, keyword = '', page = 1) =>
+    api.get<{ items: (UserCandidate & { is_member: boolean })[]; total: number; page: number; page_size: number }>(
+      `/organizations/${id}/candidate-users`,
+      { params: { keyword, page, page_size: 50 } },
+    ),
   /** 取组织可选用的模型列表，供成员权限里的模型白名单勾选。 */
   availableModels: (id: number) =>
     api.get<{ items: ModelOption[]; total: number }>(

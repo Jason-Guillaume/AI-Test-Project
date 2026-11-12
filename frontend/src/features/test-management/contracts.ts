@@ -29,6 +29,41 @@ export type TestSourceType = 'MANUAL' | 'AI';
 export type TestCaseType =
   | 'FUNCTIONAL' | 'BUSINESS' | 'NEGATIVE' | 'BOUNDARY' | 'PERMISSION' | 'SECURITY' | 'EXCEPTION';
 
+export interface TestCaseExcelImportRow {
+  worksheet: string;
+  row: number;
+  name: string;
+  priority: TestPriority;
+  case_type: TestCaseType;
+  description: string;
+  valid: boolean;
+}
+
+export interface TestCaseExcelImportError {
+  worksheet: string;
+  row: number;
+  column: string;
+  message: string;
+}
+
+export interface TestCaseExcelImportPreview {
+  source_hash: string;
+  items: TestCaseExcelImportRow[];
+  errors: TestCaseExcelImportError[];
+  total_rows: number;
+}
+
+export interface TestCaseExcelImportResult {
+  batch_id: number;
+  request_key: string;
+  project_id: number;
+  direction: string;
+  scope_node_id: number | null;
+  source_hash: string;
+  imported_count: number;
+  case_ids: number[];
+}
+
 export type TestPreconditionType =
   | 'VARIABLE' | 'TEXT' | 'FIXTURE' | 'API' | 'BUSINESS_ACTION' | 'BUSINESS_FLOW';
 
