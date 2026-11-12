@@ -14,11 +14,12 @@ import { collectPages } from '@/shared/api/pagination';
 import { useState } from 'react';
 import { Alert, App, Button, Card, Flex, Popconfirm, Space, Table, Tag, Tooltip, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, EyeOutlined, HistoryOutlined, KeyOutlined, PlusOutlined, SafetyOutlined } from '@ant-design/icons';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { getErrorMessage } from '@/shared/api/client';
 import { mockManagementApi } from '@/features/mocking/api/mockManagement';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { fmtTime } from '@/shared/lib/format';
@@ -29,13 +30,15 @@ import { FromApiModal } from './components/FromApiModal';
 
 export function ConsoleMockManagementPage() {
   const { currentProjectId } = useConsoleScope();
-  const { message: msg } = App.useApp();
+  const { message: msg, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MockService | null>(null);
   const [fromApiOpen, setFromApiOpen] = useState(false);
   const [oneTimeToken, setOneTimeToken] = useState<{ token: string; key: string; title: string } | null>(null);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
 
   const servicesQuery = useQuery({
     queryKey: ['mock-services', currentProjectId],
@@ -45,6 +48,30 @@ export function ConsoleMockManagementPage() {
   const services = servicesQuery.data?.items ?? [];
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mock-services', currentProjectId] });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => dataLifecycleApi.deleteMany('mock_service', currentProjectId!, ids),
+    onSuccess: async (receipt) => {
+      setSelectedServiceIds([]);
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      const failures = receipt.items.filter((item) => !item.succeeded);
+      modal.info({
+        title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+        width: 620,
+        content: failures.length ? (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {failures.map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`Mock 服务 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>
+        ) : '成功项已移入回收站。',
+        okText: '查看回收站',
+        onOk: () => navigate('/console/recycle-bin'),
+      });
+    },
+    onError: (error) => msg.error(getErrorMessage(error, '批量删除 Mock 服务失败')),
+  });
 
   const createMutation = useMutation({
     mutationFn: (values: ServiceFormValues) =>
@@ -82,7 +109,7 @@ export function ConsoleMockManagementPage() {
     mutationFn: (id: number) => mockManagementApi.removeService(id),
     onSuccess: () => {
       invalidate();
-      msg.success('Mock 服务已删除（其接口、场景与调用记录一并删除）');
+      msg.success('Mock 服务已移入回收站；调用记录保留');
     },
     onError: (e) => msg.error(getErrorMessage(e, '删除 Mock 服务失败')),
   });
@@ -218,7 +245,7 @@ export function ConsoleMockManagementPage() {
           </Popconfirm>
           <Popconfirm
             title="确认删除该 Mock 服务？"
-            description="其接口、场景与调用记录将一并删除；不影响任何测试用例。"
+            description="服务下仍有接口或测试用例引用时会拒绝删除；调用记录保留。"
             onConfirm={() => deleteMutation.mutate(row.id)}
           >
             <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending}>
@@ -242,6 +269,9 @@ export function ConsoleMockManagementPage() {
           </Typography.Text>
         </Flex>
         <Space wrap>
+          <Link to="/console/recycle-bin">
+            <Button>回收站</Button>
+          </Link>
           <Link to="/console/mock-management/executions">
             <Button icon={<HistoryOutlined />}>调用记录</Button>
           </Link>
@@ -293,9 +323,37 @@ export function ConsoleMockManagementPage() {
           size="middle"
           columns={columns}
           dataSource={services}
+          rowSelection={{
+            selectedRowKeys: selectedServiceIds,
+            onChange: (keys) => setSelectedServiceIds(keys.map(Number)),
+          }}
           scroll={{ x: 1380 }}
           pagination={false}
         />
+      )}
+
+      {selectedServiceIds.length > 0 && (
+        <Flex justify="space-between" align="center" style={{ marginTop: 12 }}>
+          <Typography.Text>已选择 {selectedServiceIds.length} 个 Mock 服务</Typography.Text>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={batchDeleteMutation.isPending}
+            onClick={() => {
+              const ids = [...selectedServiceIds];
+              modal.confirm({
+                title: `确认删除选中的 ${ids.length} 个 Mock 服务？`,
+                content: '仍有接口或测试用例引用的服务会逐条拒绝；执行历史不会删除。',
+                okText: '删除并移入回收站',
+                okType: 'danger',
+                cancelText: '取消',
+                onOk: () => batchDeleteMutation.mutateAsync(ids),
+              });
+            }}
+          >
+            批量删除
+          </Button>
+        </Flex>
       )}
 
       <ServiceFormModal

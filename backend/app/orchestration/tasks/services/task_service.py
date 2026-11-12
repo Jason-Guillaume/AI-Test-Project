@@ -393,6 +393,10 @@ class TaskService:
         """兼容入口：委托 Trace 只读索引查询，不复制 Langfuse 正文。"""
         return TaskQueryService.trace_timeline(db, run_id, user, cursor=cursor, limit=limit)
 
+    def replay_trace_projections(self, db: Session, run_id: int, user: User) -> dict[str, int]:
+        """Requeue failed Trace projections through the existing project write permission."""
+        return TaskQueryService.replay_trace_projections(db, run_id, user)
+
     def list_resources(self, db: Session, run_id: int, user: User) -> list[dict[str, Any]]:
         """兼容入口：委托资源服务读取批量命名后的运行资源。"""
         return TaskResourceService.list_resources(db, run_id, user)

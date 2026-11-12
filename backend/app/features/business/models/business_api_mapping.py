@@ -10,21 +10,19 @@ direction ∈ {INPUT, OUTPUT}；api_location ∈ {BODY, HEADER, QUERY, PATH, RES
 feature-local 表，由迁移 0004 建立。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
-from sqlalchemy.sql import func
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessApiMapping(Base):
+class BusinessApiMapping(SoftDeleteBase):
     """业务变量与绑定 API 接口参数之间的映射。"""
 
     __tablename__ = "business_api_mapping"
     __table_args__ = (
-        UniqueConstraint(
-            "binding_id", "direction", "business_variable",
-            name="uq_business_api_mapping_binding_dir_var",
-        ),
+        Index("uq_business_api_mapping_binding_dir_var", "binding_id", "direction", "business_variable", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_business_api_mapping_binding_direction", "binding_id", "direction"),
         {"comment": "业务变量与绑定 API 接口参数之间的映射"},
     )

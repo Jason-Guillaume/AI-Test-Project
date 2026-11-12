@@ -21,9 +21,11 @@ import {
   CloudServerOutlined,
   BugOutlined,
   DatabaseOutlined,
+  DeleteOutlined,
   FileSearchOutlined,
   FileTextOutlined,
   ProfileOutlined,
+  ExperimentOutlined,
   HistoryOutlined,
   AudioOutlined,
   LogoutOutlined,
@@ -107,10 +109,20 @@ const BASE_MENU_ITEMS: MenuSection[] = [
     ],
   },
   {
+    type: 'submenu', key: 'automation-center', label: '自动化测试中心', icon: <ExperimentOutlined />,
+    children: [
+      { key: '/console/automation-projects', icon: <ProjectOutlined />, label: '自动化项目' },
+      { key: '/console/automation-runs', icon: <PlayCircleOutlined />, label: '执行任务' },
+      { key: '/console/automation-history', icon: <HistoryOutlined />, label: '执行历史' },
+      { key: '/console/automation-integration', icon: <ApiOutlined />, label: '集成配置' },
+    ],
+  },
+  {
     type: 'submenu', key: 'project-settings', label: '项目设置', icon: <ProjectOutlined />,
     children: [
       { key: '/console/projects', icon: <ProjectOutlined />, label: '项目管理' },
       { key: '/console/notification-channels', icon: <SendOutlined />, label: '通知渠道' },
+      { key: '/console/recycle-bin', icon: <DeleteOutlined />, label: '回收站' },
     ],
   },
 ];
@@ -138,6 +150,11 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/execution-history': '执行历史', // 执行历史
   '/console/test-reports': '测试报告', // 测试报告
   '/console/test-reports/:reportId': '报告详情', // 报告详情（动态，与列表页区分）
+  '/console/automation-projects': '自动化项目',
+  '/console/automation-runs': '执行任务',
+  '/console/automation-history': '执行历史',
+  '/console/automation-reports/:reportId': 'Allure 报告',
+  '/console/automation-integration': '集成配置',
   '/console/mock-management': '接口 Mock', // 接口 Mock
   '/console/mock-management/services/:serviceId': '服务详情', // 服务详情（动态）
   '/console/mock-management/endpoints/:endpointId': '端点详情', // 端点详情（动态）
@@ -161,6 +178,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/notifications': '消息中心',
   '/console/notification-channels': '通知渠道', // 通知渠道
   '/console/profile': '个人中心', // 个人中心
+  '/console/recycle-bin': '回收站',
 };
 
 /**

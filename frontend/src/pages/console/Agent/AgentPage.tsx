@@ -16,6 +16,7 @@ import {
   App,
   Alert,
   Button,
+  Checkbox,
   Divider,
   Empty,
   Flex,
@@ -23,6 +24,7 @@ import {
   List,
   Popconfirm,
   Select,
+  Space,
   Spin,
   Tag,
   Typography,
@@ -35,6 +37,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { agentApi } from '@/features/agent/api/agent';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { projectsApi } from '@/features/projects/api/projects';
 import { notificationChannelsApi } from '@/features/notifications/api/notificationChannels';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
@@ -65,6 +68,7 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
   const navigate = useNavigate();
 
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<number[]>([]);
   const [activePanel, setActivePanel] = useState<'sessions' | 'chat' | 'workspace'>('chat');
   const [inputValue, setInputValue] = useState('');
   const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
@@ -116,6 +120,10 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
     queryFn: () => agentApi.listSessions(currentProjectId!),
     enabled: currentProjectId != null,
   });
+  useEffect(() => {
+    const visibleIds = new Set((sessionsQuery.data ?? []).map((session) => session.id));
+    setSelectedSessionIds((ids) => ids.filter((id) => visibleIds.has(id)));
+  }, [sessionsQuery.data]);
 
   const sessionDetailQuery = useQuery({
     queryKey: ['agent', 'session', currentProjectId, selectedSessionId],
@@ -216,9 +224,36 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
     onSuccess: (_data, deletedId) => {
       if (deletedId === selectedSessionRef.current) selectSession(null);
       queryClient.invalidateQueries({ queryKey: ['agent', 'sessions', currentProjectId] });
-      msg.success('会话已删除');
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      setSelectedSessionIds((ids) => ids.filter((id) => id !== deletedId));
+      msg.success('会话已移入回收站');
     },
     onError: (e) => msg.error(getErrorMessage(e, '删除会话失败')),
+  });
+
+  const deleteSelectedSessions = () => modal.confirm({
+    title: `将选中的 ${selectedSessionIds.length} 个 Agent 会话移入回收站？`,
+    content: '会话消息与原有测试追溯关系会保留；任务运行关联的会话属于执行证据，不可删除。',
+    okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        const receipt = await dataLifecycleApi.deleteMany('agent_session', currentProjectId, selectedSessionIds);
+        setSelectedSessionIds([]);
+        if (selectedSessionId != null && selectedSessionIds.includes(selectedSessionId)) selectSession(null);
+        queryClient.invalidateQueries({ queryKey: ['agent', 'sessions', currentProjectId] });
+        queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+        if (receipt.failed) {
+          modal.info({
+            title: `成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {receipt.items.filter((item) => !item.succeeded).map((item) => (
+                <Alert key={item.id} type="error" showIcon message={`Agent 会话 #${item.id}`} description={item.error ?? '删除失败'} />
+              ))}
+            </Space>,
+          });
+        } else msg.success(`已将 ${receipt.succeeded} 个 Agent 会话移入回收站`);
+      } catch (error) { msg.error(getErrorMessage(error, '批量删除失败')); }
+    },
   });
 
   const sendMutation = useMutation({
@@ -398,15 +433,34 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
       <div className="agent-workspace-panel agent-workspace-sessions" id="agent-workspace-sessions">
         <Flex justify="space-between" align="center" style={{ marginBottom: 8 }}>
           <Typography.Text strong style={{ fontSize: 14 }}>会话</Typography.Text>
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlusOutlined />}
-            aria-label="新建 Agent 会话"
-            onClick={() => createMutation.mutate()}
-            loading={createMutation.isPending}
-          />
+          <Space size={4}>
+            <Button danger size="small" disabled={!selectedSessionIds.length} onClick={deleteSelectedSessions}>
+              批量删除（{selectedSessionIds.length}）
+            </Button>
+            <Button size="small" onClick={() => navigate('/console/recycle-bin')}>回收站</Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<PlusOutlined />}
+              aria-label="新建 Agent 会话"
+              onClick={() => createMutation.mutate()}
+              loading={createMutation.isPending}
+            />
+          </Space>
         </Flex>
+        {sessionsQuery.data && sessionsQuery.data.length > 0 && (
+          <Checkbox
+            checked={selectedSessionIds.length === sessionsQuery.data.length}
+            indeterminate={selectedSessionIds.length > 0 && selectedSessionIds.length < sessionsQuery.data.length}
+            onChange={(event) => {
+              if (event.target.checked && sessionsQuery.data!.length > 100) {
+                msg.warning('一次最多选择 100 个 Agent 会话');
+                setSelectedSessionIds(sessionsQuery.data!.slice(0, 100).map((session) => session.id));
+              } else setSelectedSessionIds(event.target.checked ? sessionsQuery.data!.map((session) => session.id) : []);
+            }}
+            style={{ marginBottom: 8 }}
+          >全选当前项目会话</Checkbox>
+        )}
         <Divider style={{ margin: '4px 0 8px' }} />
         <div className="agent-workspace-scroll">
           {sessionsQuery.isPending ? (
@@ -430,7 +484,8 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
                   actions={[
                     <Popconfirm
                       key="del"
-                      title="确认删除？"
+                      title="将会话移入回收站？"
+                      description="消息历史与测试追溯关系会保留，可从回收站恢复。"
                       onConfirm={(e) => { e?.stopPropagation(); deleteMutation.mutate(item.id); }}
                     >
                       <Button type="text" size="small" icon={<DeleteOutlined />} danger aria-label={`删除会话 ${item.title || item.id}`}
@@ -439,6 +494,17 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
                     </Popconfirm>,
                   ]}
                 >
+                  <Checkbox
+                    checked={selectedSessionIds.includes(item.id)}
+                    aria-label={`选择会话 ${item.title || item.id}`}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      if (!event.target.checked) setSelectedSessionIds((ids) => ids.filter((id) => id !== item.id));
+                      else if (selectedSessionIds.length >= 100) msg.warning('一次最多选择 100 个 Agent 会话');
+                      else setSelectedSessionIds((ids) => [...ids, item.id]);
+                    }}
+                    style={{ marginRight: 8 }}
+                  />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.title || '新会话'}

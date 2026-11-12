@@ -389,10 +389,10 @@ def _seed_alert_risks(db, project_id, job_id):
 
 
 class TestMigration:
-    def test_head_and_tables_created(self, db):
+    def test_head_and_tables_created(self, db, test_database_head):
         """验证`head`是否和`tables`创建场景及其预期结果。"""
         head = db.execute(text("select version_num from alembic_version")).scalar()
-        assert head == migration_head()
+        assert head == test_database_head
         assert ZAP_TABLES.issubset(_tables(db))
 
     def test_orm_matches_migrated_schema(self, db):
@@ -437,22 +437,25 @@ class TestMigration:
         assert "uq_security_scan_event_job_seq" in indexes
         assert "ix_security_scan_event_job_seq" not in indexes
 
-    def test_downgrade_removes_only_zap_tables(self, db):
+    def test_downgrade_removes_only_zap_tables(self, isolated_migration_database, test_database_head):
         """降级到 0012 只删 0013 建的表：Mock（0011）、Web UI（0012）表原样保留。"""
         from alembic import command
 
-        config = _alembic()
+        config, engine = isolated_migration_database
         command.downgrade(config, "0012")
         try:
-            tables = _tables(db)
+            with engine.connect() as connection:
+                tables = _tables(connection)
             assert not (ZAP_TABLES & tables), ZAP_TABLES & tables
             assert WEB_UI_TABLES.issubset(tables), WEB_UI_TABLES - tables
         finally:
-            command.upgrade(config, "head")
+            command.upgrade(config, test_database_head)
 
-        tables = _tables(db)
+        with engine.connect() as connection:
+            tables = _tables(connection)
+            version = connection.execute(text("select version_num from alembic_version")).scalar()
         assert ZAP_TABLES.issubset(tables)
-        assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
+        assert version == test_database_head
 
 
 # --------------------------------------------------------------------------- 范围守卫（§四 / §五 / §十五）

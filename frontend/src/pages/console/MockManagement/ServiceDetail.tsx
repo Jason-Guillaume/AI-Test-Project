@@ -37,6 +37,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { buildRuntimeUrl, mockManagementApi } from '@/features/mocking/api/mockManagement';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
@@ -149,12 +150,13 @@ function EndpointFormModal({
 export function ConsoleMockServiceDetailPage() {
   const { serviceId } = useParams<{ serviceId: string }>();
   const { currentProjectId } = useConsoleScope();
-  const { message: msg } = App.useApp();
+  const { message: msg, modal } = App.useApp();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<MockEndpoint | null>(null);
+  const [selectedEndpointIds, setSelectedEndpointIds] = useState<number[]>([]);
 
   const id = Number(serviceId);
   const serviceQuery = useQuery({
@@ -219,9 +221,33 @@ export function ConsoleMockServiceDetailPage() {
     mutationFn: (targetId: number) => mockManagementApi.removeEndpoint(targetId),
     onSuccess: () => {
       invalidate();
-      msg.success('Mock 接口已删除（其场景与匹配规则一并删除）');
+      msg.success('Mock 接口已移入回收站；执行历史保留');
     },
     onError: (e) => msg.error(getErrorMessage(e, '删除 Mock 接口失败')),
+  });
+
+  const batchDeleteEndpoints = useMutation({
+    mutationFn: (ids: number[]) => dataLifecycleApi.deleteMany('mock_endpoint', service!.project_id, ids),
+    onSuccess: async (receipt) => {
+      setSelectedEndpointIds([]);
+      invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      const failures = receipt.items.filter((item) => !item.succeeded);
+      modal.info({
+        title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+        width: 620,
+        content: failures.length ? (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {failures.map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`Mock 接口 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>
+        ) : '成功项已移入回收站。',
+        okText: '查看回收站',
+        onOk: () => navigate('/console/recycle-bin'),
+      });
+    },
+    onError: (error) => msg.error(getErrorMessage(error, '批量删除 Mock 接口失败')),
   });
 
   const resetTokenMutation = useMutation({
@@ -326,7 +352,7 @@ export function ConsoleMockServiceDetailPage() {
           </Button>
           <Popconfirm
             title="确认删除该 Mock 接口？"
-            description="其场景与匹配规则将一并删除。"
+            description="仍有场景或测试用例引用时会拒绝删除；调用记录保留。"
             onConfirm={() => deleteEndpointMutation.mutate(row.id)}
           >
             <Button size="small" danger icon={<DeleteOutlined />} loading={deleteEndpointMutation.isPending}>
@@ -436,9 +462,37 @@ export function ConsoleMockServiceDetailPage() {
           size="middle"
           columns={columns}
           dataSource={endpoints}
+          rowSelection={{
+            selectedRowKeys: selectedEndpointIds,
+            onChange: (keys) => setSelectedEndpointIds(keys.map(Number)),
+          }}
           scroll={{ x: 1280 }}
           pagination={false}
         />
+      )}
+
+      {selectedEndpointIds.length > 0 && (
+        <Flex justify="space-between" align="center" style={{ marginTop: 12 }}>
+          <Typography.Text>已选择 {selectedEndpointIds.length} 个 Mock 接口</Typography.Text>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={batchDeleteEndpoints.isPending}
+            onClick={() => {
+              const ids = [...selectedEndpointIds];
+              modal.confirm({
+                title: `确认删除选中的 ${ids.length} 个 Mock 接口？`,
+                content: '仍有场景或测试用例引用的接口会逐条拒绝；执行历史保留。',
+                okText: '删除并移入回收站',
+                okType: 'danger',
+                cancelText: '取消',
+                onOk: () => batchDeleteEndpoints.mutateAsync(ids),
+              });
+            }}
+          >
+            批量删除
+          </Button>
+        </Flex>
       )}
 
       <EndpointFormModal

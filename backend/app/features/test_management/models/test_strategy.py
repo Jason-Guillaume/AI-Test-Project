@@ -12,10 +12,10 @@ source_type ∈ {MANUAL, AI}，本阶段仅 MANUAL，预留 AI。
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestStrategy(Base):
+class TestStrategy(SoftDeleteBase):
     """测试策略：项目下某一测试维度的策略定义。"""
 
     __tablename__ = "test_strategy"

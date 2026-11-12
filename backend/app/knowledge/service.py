@@ -8,7 +8,7 @@ import zipfile
 from collections import Counter
 from pathlib import Path
 from xml.etree import ElementTree
-from sqlalchemy import delete
+from sqlalchemy import case, delete, func, or_
 from app.core.http.errors import bad_request, forbidden, not_found
 from app.core.security.roles import PROJECT_ROLE_EDITOR, has_project_role, project_role_for
 from app.platform.projects.services.access_service import get_project_or_404
@@ -26,7 +26,7 @@ def access(db, project_id, actor, write=False):
 
 
 def owned(db, cls, ident, project_id):
-    row = db.get(cls, ident, populate_existing=True)
+    row = db.query(cls).filter(cls.id == ident).first()
     if row is None or row.project_id != project_id:
         raise not_found('知识资源不存在')
     return row
@@ -34,13 +34,22 @@ def owned(db, cls, ident, project_id):
 
 def upload(db, project_id, base_id, actor, filename, content, category='', document_id=None):
     access(db, project_id, actor, True)
-    owned(db, KnowledgeBase, base_id, project_id)
+    base = db.query(KnowledgeBase).filter_by(id=base_id, project_id=project_id).with_for_update().first()
+    if base is None:
+        raise not_found('知识资源不存在')
     if Path(filename).suffix.lower() not in {'.txt', '.md', '.markdown', '.docx', '.pdf'}:
         raise bad_request('仅支持 TXT、Markdown、DOCX、文本 PDF')
     if not content or len(content) > 20 * 1024 * 1024:
         raise bad_request('文件不能为空且不得超过 20 MB')
-    doc = owned(db, KnowledgeDocument, document_id, project_id) if document_id else KnowledgeDocument(
-        project_id=project_id, base_id=base_id, name=Path(filename).name, category=category)
+    doc = (
+        db.query(KnowledgeDocument).filter_by(id=document_id, project_id=project_id)
+        .with_for_update().first()
+        if document_id else KnowledgeDocument(
+            project_id=project_id, base_id=base_id, name=Path(filename).name, category=category,
+        )
+    )
+    if document_id and doc is None:
+        raise not_found('知识资源不存在')
     if doc.base_id != base_id:
         raise bad_request('文档不属于所选知识库')
     db.add(doc)
@@ -76,8 +85,19 @@ def extract(filename, content):
 
 
 def parse_version(db, version_id):
-    # Row lock serializes retries; interrupted transactions leave QUEUED records retryable.
-    row = db.query(KnowledgeVersion).filter_by(id=version_id).with_for_update().one()
+    # Lock the document first, matching upload/delete ordering. A trashed document
+    # cannot be parsed after a queued worker wakes up.
+    hint = db.query(KnowledgeVersion).filter_by(id=version_id).first()
+    if hint is None:
+        return
+    doc = db.query(KnowledgeDocument).filter_by(id=hint.document_id).with_for_update().first()
+    if doc is None or db.query(KnowledgeBase).filter_by(id=doc.base_id).first() is None:
+        db.rollback()
+        return
+    # The document lock serializes parse retries and concurrent uploads/deletes.
+    row = db.query(KnowledgeVersion).filter_by(id=version_id).with_for_update().first()
+    if row is None:
+        return
     if row.status == 'READY':
         return
     row.attempts += 1
@@ -90,7 +110,6 @@ def parse_version(db, version_id):
                 db.add(KnowledgeChunk(version_id=row.id, position=position, page=page, text=text[offset:offset+1200]))
                 position += 1
         row.status, row.error = 'READY', None
-        doc = db.get(KnowledgeDocument, row.document_id)
         current = db.get(KnowledgeVersion, doc.current_version_id) if doc.current_version_id else None
         if current is None or current.version < row.version:
             doc.current_version_id = row.id
@@ -198,30 +217,123 @@ def _bm25_scores(rows, query: str) -> dict[int, float]:
     return scores
 
 
-def search(db, snapshot, actor, query, limit=8, minimum_score=0.0):
-    """按当前权限重验快照并执行 BM25 检索；返回来源引用与原始排序分数。"""
+def _candidate_chunks(db, version_ids: list[int], query: str, *, candidate_limit: int):
+    """在 PostgreSQL 侧按词项过滤和截断候选，应用层只加载有限 Chunk 正文。"""
+    base = db.query(KnowledgeChunk).filter(KnowledgeChunk.version_id.in_(version_ids))
+    terms = list(dict.fromkeys(_terms(query)))[:64]
+    if not terms:
+        rows = base.order_by(
+            KnowledgeChunk.version_id, KnowledgeChunk.position, KnowledgeChunk.id,
+        ).limit(candidate_limit + 1).all()
+    else:
+        predicates = []
+        for term in terms:
+            escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            predicates.append(KnowledgeChunk.text.ilike(f"%{escaped}%", escape="\\"))
+        match_count = sum(case((predicate, 1), else_=0) for predicate in predicates)
+        rows = base.filter(or_(*predicates)).order_by(
+            match_count.desc(), KnowledgeChunk.version_id,
+            KnowledgeChunk.position, KnowledgeChunk.id,
+        ).limit(candidate_limit + 1).all()
+    truncated = len(rows) > candidate_limit
+    return rows[:candidate_limit], truncated, len(terms)
+
+
+def search(
+    db, snapshot, actor, query, limit=8, minimum_score=0.0, *,
+    candidate_limit: int | None = None, return_metadata: bool = False,
+    vector_candidate_ids: list[int] | None = None,
+):
+    """按当前权限执行 SQL 候选 BM25；可安全融合外部授权候选，分数不代表概率。"""
     retrieval_started = time.monotonic()
     current = freeze(db, snapshot['project_id'], snapshot['agent_id'], actor)
     # 修订号来自已停用的 Agent 绑定，不能再用来拒绝检索；停用文档由下面的来源校验拦截。
-    allowed_documents = {db.get(KnowledgeVersion, i).document_id for i in current['version_ids']}
-    versions = [db.get(KnowledgeVersion, i) for i in snapshot['version_ids']]
-    if any(v is None or v.status != 'READY' or v.document_id not in allowed_documents for v in versions):
+    allowed_documents = {
+        row[0] for row in db.query(KnowledgeVersion.document_id).filter(
+            KnowledgeVersion.id.in_(current['version_ids']),
+        ).all()
+    }
+    version_rows = db.query(
+        KnowledgeVersion.id, KnowledgeVersion.document_id,
+        KnowledgeVersion.version, KnowledgeVersion.status,
+    ).filter(KnowledgeVersion.id.in_(snapshot['version_ids'])).all()
+    versions_by_id = {
+        row.id: {'document_id': row.document_id, 'version': row.version}
+        for row in version_rows
+    }
+    if (
+        len(versions_by_id) != len(set(snapshot['version_ids']))
+        or any(row.status != 'READY' or row.document_id not in allowed_documents for row in version_rows)
+    ):
         raise forbidden('知识来源已停用或权限已撤销')
-    if limit == 0:
-        return []
-    rows = db.query(KnowledgeChunk).filter(KnowledgeChunk.version_id.in_(snapshot['version_ids'])).all() if versions else []
+    top_k = max(0, min(int(limit), 50))
+    cap = max(1, min(int(candidate_limit if candidate_limit is not None else max(200, top_k * 40)), 5000))
+    rows, candidates_truncated, _ = (
+        _candidate_chunks(db, list(versions_by_id), query, candidate_limit=cap)
+        if versions_by_id and top_k else ([], False, 0)
+    )
     scores = _bm25_scores(rows, query)
     scored = sorted(rows, key=lambda c: (-scores.get(c.id, 0.0), c.version_id, c.position))
     # 空查询保留旧版来源浏览行为；有查询词但无匹配时不再返回无关片段。
-    if _terms(query):
+    hybrid = vector_candidate_ids is not None
+    if _terms(query) and not hybrid:
         scored = [row for row in scored if scores.get(row.id, 0.0) >= minimum_score and scores.get(row.id, 0.0) > 0]
-    selected = scored[:max(0, min(int(limit), 50))]
-    versions_by_id = {version.id: version for version in versions}
+    ranked_score_by_id = {row.id: scores.get(row.id, 0.0) for row in scored}
+    score_type = 'BM25'
+    candidate_rows_by_id = {row.id: row for row in rows}
+    vector_count = 0
+    fusion_metadata = None
+    if hybrid:
+        from app.knowledge.retrieval import reciprocal_rank_fusion
+
+        vector_ids = list(dict.fromkeys(
+            int(ident) for ident in (vector_candidate_ids or []) if isinstance(ident, int) and ident > 0
+        ))[:cap]
+        vector_rows = db.query(KnowledgeChunk).filter(
+            KnowledgeChunk.id.in_(vector_ids),
+            KnowledgeChunk.version_id.in_(list(versions_by_id)),
+        ).all() if vector_ids and versions_by_id else []
+        vector_by_id = {row.id: row for row in vector_rows}
+        authorized_vector_ids = [ident for ident in vector_ids if ident in vector_by_id]
+        vector_count = len(authorized_vector_ids)
+        candidate_rows_by_id.update(vector_by_id)
+        fused = reciprocal_rank_fusion([
+            [row.id for row in scored],
+            authorized_vector_ids,
+        ])
+        fusion_metadata = 'RRF'
+        score_type = 'RRF'
+        ranked_score_by_id = {item['chunk_id']: item['score'] for item in fused}
+        selected_ids = [
+            item['chunk_id'] for item in fused
+            if item['score'] >= minimum_score
+        ][:top_k]
+        selected = [candidate_rows_by_id[ident] for ident in selected_ids]
+    else:
+        selected = scored[:top_k]
     documents_by_id = {doc.id: doc for doc in db.query(KnowledgeDocument).filter(
-        KnowledgeDocument.id.in_([versions_by_id[row.version_id].document_id for row in selected])
+        KnowledgeDocument.id.in_([versions_by_id[row.version_id]['document_id'] for row in selected])
     ).all()} if selected else {}
     from app.llm.tracing import record_runtime_span, task_trace_metadata
     runtime = task_trace_metadata.get() or {}
+    elapsed_ms = int((time.monotonic() - retrieval_started) * 1000)
+    retrieval_metadata = {
+        'strategy': 'HYBRID_RRF' if hybrid else 'BM25_SQL_CANDIDATE',
+        'candidate_count': len(rows),
+        'candidate_limit': cap,
+        'candidate_truncated': candidates_truncated,
+        'vector_candidate_count': vector_count,
+        'result_count': len(selected),
+        'minimum_score': minimum_score,
+        'top_k': top_k,
+        'duration_ms': elapsed_ms,
+        'tokenizer_version': _TOKENIZER_VERSION,
+        # 当前仓库无 pgvector 扩展和 Embedding Provider，保留显式降级状态。
+        'vector_status': 'ACTIVE' if hybrid and vector_count else 'UNAVAILABLE',
+        'reranker_status': 'UNAVAILABLE',
+        'fusion': fusion_metadata,
+    }
+    span_id = None
     if runtime:
         metadata = {
             key: runtime.get(key) for key in (
@@ -229,9 +341,11 @@ def search(db, snapshot, actor, query, limit=8, minimum_score=0.0):
                 'agent_id', 'agent_revision_id', 'work_item_id', 'attempt_id', 'project_id',
             ) if runtime.get(key) is not None
         } | {
-            'strategy': 'BM25', 'query_sha256': hashlib.sha256(query.encode('utf-8')).hexdigest(),
-            'candidate_count': len(rows), 'result_count': len(selected),
-            'minimum_score': minimum_score, 'top_k': max(0, min(int(limit), 50)),
+            'strategy': retrieval_metadata['strategy'], 'query_sha256': hashlib.sha256(query.encode('utf-8')).hexdigest(),
+            'candidate_count': len(rows), 'candidate_limit': cap,
+            'candidate_truncated': candidates_truncated, 'result_count': len(selected),
+            'vector_candidate_count': vector_count, 'fusion': fusion_metadata,
+            'minimum_score': minimum_score, 'top_k': top_k,
             'bm25_k1': _BM25_K1, 'bm25_b': _BM25_B, 'tokenizer_version': _TOKENIZER_VERSION,
         }
         span_id = record_runtime_span(
@@ -239,46 +353,48 @@ def search(db, snapshot, actor, query, limit=8, minimum_score=0.0):
             metadata=metadata,
             output={'results': [
                 {'chunk_id': row.id, 'version_id': row.version_id, 'rank': index + 1,
-                 'score': round(scores.get(row.id, 0.0), 6)}
+                 'score': round(ranked_score_by_id.get(row.id, 0.0), 6), 'score_type': score_type}
                 for index, row in enumerate(selected)
             ]},
         )
-        from app.orchestration.tasks.services.runtime_fact_service import record_runtime_event
-        record_runtime_event(
-            project_id=snapshot['project_id'],
-            task_id=runtime.get('task_id'), task_run_id=runtime.get('task_run_id'),
-            execution_root_run_id=runtime.get('execution_root_run_id'),
-            work_item_id=runtime.get('work_item_id'), attempt_id=runtime.get('attempt_id'),
-            agent_session_id=runtime.get('agent_session_id'),
-            agent_instance_id=runtime.get('agent_run_id'),
-            agent_definition_id=runtime.get('agent_id'),
-            agent_definition_revision_id=runtime.get('agent_revision_id'),
-            trace_id=runtime.get('trace_id'), span_id=span_id,
-            event_type='KNOWLEDGE_RETRIEVAL', event_name='BM25', status='SUCCEEDED',
-            duration_ms=int((time.monotonic() - retrieval_started) * 1000),
-            event_metadata={
-                'query_sha256': metadata['query_sha256'], 'strategy': 'BM25',
-                'candidate_count': len(rows), 'result_count': len(selected),
-                'minimum_score': minimum_score, 'top_k': metadata['top_k'],
-                'bm25_k1': _BM25_K1, 'bm25_b': _BM25_B, 'tokenizer_version': _TOKENIZER_VERSION,
-                'chunk_ids': [row.id for row in selected],
-                'version_ids': sorted({row.version_id for row in selected}),
-            },
-        )
-    return [{
+    from app.orchestration.tasks.services.runtime_fact_service import record_runtime_event
+    record_runtime_event(
+        db=db,
+        project_id=snapshot['project_id'],
+        task_id=runtime.get('task_id'), task_run_id=runtime.get('task_run_id'),
+        execution_root_run_id=runtime.get('execution_root_run_id'),
+        work_item_id=runtime.get('work_item_id'), attempt_id=runtime.get('attempt_id'),
+        agent_session_id=runtime.get('agent_session_id'),
+        agent_instance_id=runtime.get('agent_run_id'),
+        agent_definition_id=runtime.get('agent_id') or snapshot['agent_id'] or None,
+        agent_definition_revision_id=runtime.get('agent_revision_id'),
+        trace_id=runtime.get('trace_id'), span_id=span_id,
+        event_type='KNOWLEDGE_RETRIEVAL', event_name='BM25', status='SUCCEEDED',
+        duration_ms=elapsed_ms,
+        event_metadata={
+            'query_sha256': hashlib.sha256(query.encode('utf-8')).hexdigest(),
+            **retrieval_metadata,
+            'fusion': fusion_metadata,
+            'bm25_k1': _BM25_K1, 'bm25_b': _BM25_B,
+            'chunk_ids': [row.id for row in selected],
+            'version_ids': sorted({row.version_id for row in selected}),
+        },
+    )
+    results = [{
         'chunk_id': row.id,
         'version_id': row.version_id,
-        'version': versions_by_id[row.version_id].version,
-        'document_id': versions_by_id[row.version_id].document_id,
-        'document_name': documents_by_id[versions_by_id[row.version_id].document_id].name,
-        'base_id': documents_by_id[versions_by_id[row.version_id].document_id].base_id,
+        'version': versions_by_id[row.version_id]['version'],
+        'document_id': versions_by_id[row.version_id]['document_id'],
+        'document_name': documents_by_id[versions_by_id[row.version_id]['document_id']].name,
+        'base_id': documents_by_id[versions_by_id[row.version_id]['document_id']].base_id,
         'agent_id': snapshot['agent_id'],
         'page': row.page,
         'position': row.position,
-        'score': round(scores.get(row.id, 0.0), 6),
-        'score_type': 'BM25',
+        'score': round(ranked_score_by_id.get(row.id, 0.0), 6),
+        'score_type': score_type,
         'text': row.text,
     } for row in selected]
+    return (results, retrieval_metadata) if return_metadata else results
 
 
 def source(db, project_id, agent_id, actor, chunk_id):

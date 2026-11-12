@@ -204,10 +204,10 @@ def move_interface(db: Session, api_id: int, body, *, actor: User
 
 
 def delete_interface(db: Session, api_id: int, *, actor: User) -> None:
-    """删除接口。"""
-    iface = get_writable_interface_or_404(db, api_id, actor)
-    db.delete(iface)
-    db.commit()
+    """软删除未被测试用例引用的接口，保留其请求定义和变更历史供恢复。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "api_interface", api_id, actor=actor)
 
 
 def ensure_unique_interface(

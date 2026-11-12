@@ -258,7 +258,7 @@ def test_business_full_acceptance_flow(api, admin):
 
 
 def test_business_binding_invalid_on_interface_delete(api, admin):
-    """接口被硬删 → ondelete=SET NULL 置空 api_id → 绑定 valid=False「已删除」。"""
+    """接口软删除 → 绑定失效但保留 api_id；恢复原接口后关联可继续使用。"""
     project_id, _ = _create_project(api, admin)
     domain_id = _create_domain(api, admin, project_id, unique("域"))
     flow_id = _create_flow(api, admin, project_id, domain_id, unique("流程"))
@@ -273,7 +273,7 @@ def test_business_binding_invalid_on_interface_delete(api, admin):
     binding_id = r.json()["id"]
     assert r.json()["valid"] is True
 
-    # 删除接口（走接口管理真实删除路径）。
+    # 删除接口（走接口管理真实软删除路径）。
     r = api.delete(f"/apis/{api_id}", username=admin)
     assert r.status_code == 204
 
@@ -282,9 +282,15 @@ def test_business_binding_invalid_on_interface_delete(api, admin):
     detail = r.json()
     assert detail["valid"] is False
     assert detail["invalid_reason"] == "绑定接口已失效（已删除）"
-    assert detail["api_id"] is None
-    # 绑定行仍保留（未随接口级联删除）。
+    assert detail["api_id"] == api_id
+    # 绑定行与原始引用保留，恢复 API 后能恢复有效状态。
     assert detail["id"] == binding_id
+    trash = api.get("/recycle-bin", username=admin, params={"project_id": project_id, "resource_type": "api_interface"})
+    assert trash.status_code == 200, trash.text
+    item = next(row for row in trash.json()["items"] if row["resource_id"] == str(api_id))
+    restored = api.post(f"/recycle-bin/{item['id']}/restore", username=admin)
+    assert restored.status_code == 200, restored.text
+    assert api.get(f"/business-bindings/{binding_id}", username=admin).json()["valid"] is True
 
 
 def test_business_binding_invalid_on_deprecated(api, admin):

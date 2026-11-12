@@ -139,6 +139,7 @@ export function FlowDetail({ flowId, projectId }: { flowId: number; projectId: n
       label: `步骤编排（${detail.actions.length}）`,
       children: (
         <FlowSteps
+          projectId={projectId}
           actions={detail.actions}
           onReorder={() => {
             queryClient.invalidateQueries({ queryKey: ['business'] });

@@ -11,10 +11,10 @@ config_json 存放附加配置（如 fixture 标识、引用路径等）。
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestCasePrecondition(Base):
+class TestCasePrecondition(SoftDeleteBase):
     """测试用例前置条件。"""
 
     __tablename__ = "test_case_precondition"

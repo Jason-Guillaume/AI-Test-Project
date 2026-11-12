@@ -21,10 +21,10 @@ feature-local 表，由迁移 0008 显式建立。
 from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestReport(Base):
+class TestReport(SoftDeleteBase):
     """正式测试报告：一次 TestRun 的汇总结论 + AI 总结 + 风险等级。"""
 
     __tablename__ = "test_report"

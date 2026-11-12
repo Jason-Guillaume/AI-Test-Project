@@ -14,10 +14,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class SecurityScanProfile(Base):
+class SecurityScanProfile(SoftDeleteBase):
     """一个扫描策略（§十六）。
 
     内置策略：code 非空、is_builtin=True、created_by 为空，可编辑但禁止删除与改 code。
@@ -31,6 +31,11 @@ class SecurityScanProfile(Base):
     __tablename__ = "security_scan_profile"
     __table_args__ = (
         Index("ix_security_scan_profile_project_enabled", "project_id", "enabled"),
+        Index(
+            "ix_security_scan_profile_code", "code", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         {"comment": "OWASP ZAP 扫描策略：内置 6 个 + 项目自定义"},
     )
 
@@ -40,7 +45,7 @@ class SecurityScanProfile(Base):
         nullable=True, index=True, comment="所属平台项目ID；NULL 表示平台内置",
     )
     code = Column(
-        String(60), nullable=True, unique=True, index=True,
+        String(60), nullable=True,
         comment="内置策略代号（如 API_PASSIVE_BASIC）；自定义策略为空",
     )
     is_builtin = Column(

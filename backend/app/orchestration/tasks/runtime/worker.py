@@ -303,11 +303,17 @@ class TaskWorker:
         agent_session_id = db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar()
         primary_id = agent.model_config_id or snapshot.get("model_config_id")
         configured_ids = [primary_id, *(snapshot.get("fallback_model_config_ids") or [])]
+        from app.orchestration.tasks.services.runtime_fact_service import model_revision_admitted
+
         candidate_ids: list[int] = []
         denied = False
+        revision_blocked = False
         for config_id in dict.fromkeys(item for item in configured_ids if item is not None):
             model = db.get(ModelConfiguration, int(config_id))
             if model is None or not model.is_enabled:
+                continue
+            if not model_revision_admitted(db, model.id):
+                revision_blocked = True
                 continue
             try:
                 # 备用模型也必须在当前组织授权集合内，不能因主模型故障扩大模型权限。
@@ -319,6 +325,8 @@ class TaskWorker:
                 raise
             candidate_ids.append(model.id)
         if not candidate_ids:
+            if revision_blocked and not denied:
+                raise LLMError("MODEL_REVISION_BLOCKED", "当前模型修订未准入，已停止新的模型调用", retryable=False)
             if denied:
                 raise RuntimeError("当前任务没有仍获授权的模型，已停止新的模型调用")
             raise LLMError("MODEL_UNAVAILABLE", "主模型及备用模型均未启用", retryable=True)
@@ -362,6 +370,13 @@ class TaskWorker:
                     started_at=now - timedelta(milliseconds=duration_ms),
                     finished_at=now,
                 ))
+                from app.orchestration.tasks.services.trace_projection_service import enqueue_projection
+                enqueue_projection(
+                    fact_db, source_type="MODEL_CALL", source_key=str(item["call_id"]),
+                    project_id=task.project_id, task_id=task.id, task_run_id=run.id,
+                    execution_root_run_id=run.execution_root_run_id or run.id,
+                    trace_id=run.trace_id, span_id=str(item["span_id"]) if item.get("span_id") else None,
+                )
                 fact_db.commit()
             except Exception as exc:  # noqa: BLE001 —— 计量故障不应让已完成的模型调用变为任务失败
                 fact_db.rollback()
@@ -373,17 +388,30 @@ class TaskWorker:
         def recheck_access():
             """复核运行者和来源授权，并在真实网络请求前结束数据库事务。"""
             from app.orchestration.tasks.runtime.fencing import has_live_claim
+            from app.orchestration.tasks.services.runtime_fact_service import (
+                assert_token_quota, model_revision_admitted,
+            )
             if not has_live_claim(db, run.id, work.id, attempt.id, attempt.owner, attempt.lease_generation):
                 db.rollback()
                 raise LLMError('STALE_EXECUTION', '任务执行租约已失效')
+            assert_token_quota(db, project_id=task.project_id, user_id=actor.id)
             # Provider reloads the actual candidate immediately before each request.
             # A disabled primary must not block an explicitly configured live fallback.
+            revision_blocked = False
+            admitted = False
             for candidate_id in candidate_ids:
                 model = db.get(ModelConfiguration, candidate_id, populate_existing=True)
-                if model is not None and model.is_enabled:
-                    assembly_service.assert_agent_model_access(db, task.project_id, actor, candidate_id)
-                    break
-            else:
+                if model is None or not model.is_enabled:
+                    continue
+                if not model_revision_admitted(db, model.id):
+                    revision_blocked = True
+                    continue
+                assembly_service.assert_agent_model_access(db, task.project_id, actor, candidate_id)
+                admitted = True
+                break
+            if not admitted:
+                if revision_blocked:
+                    raise LLMError("MODEL_REVISION_BLOCKED", "当前模型修订未准入，已停止新的模型调用", retryable=False)
                 raise RuntimeError('任务主模型及配置的备用模型均已停用')
             from app.knowledge.service import search
             profile = (run.input_snapshot or {}).get('agent_definition') or {}

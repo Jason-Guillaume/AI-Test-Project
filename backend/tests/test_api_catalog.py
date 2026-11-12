@@ -106,10 +106,10 @@ def test_module_crud_two_level_and_default(api, admin):
 
     # 8. 有子模块的一级模块不可直接删（先要求清掉子模块）。
     r = api.delete(f"/api-modules/{level1_id}", username=admin)
-    assert r.status_code == 400, r.text
+    assert r.status_code == 409, r.text
     assert "子模块" in r.json()["message"]
 
-    # 9. 删掉子模块后，建接口到一级模块，再删一级模块：接口归未分类。
+    # 9. 有接口的模块不能隐式改写接口归属；先拒删，再显式移动接口。
     r = api.delete(f"/api-modules/{level2_id}", username=admin)
     assert r.status_code == 204, r.text
 
@@ -127,9 +127,13 @@ def test_module_crud_two_level_and_default(api, admin):
     api_id = r.json()["id"]
 
     r = api.delete(f"/api-modules/{level1_id}", username=admin)
+    assert r.status_code == 409, r.text
+    r = api.patch(f"/apis/{api_id}/move", username=admin, json={"module_id": default_id})
+    assert r.status_code == 200, r.text
+    r = api.delete(f"/api-modules/{level1_id}", username=admin)
     assert r.status_code == 204, r.text
 
-    # 接口仍在，且模块归未分类。
+    # 接口仍在，且用户显式选择的归属保持不变。
     r = api.get(f"/apis/{api_id}", username=admin)
     assert r.status_code == 200
     assert r.json()["module_name"] == "未分类"

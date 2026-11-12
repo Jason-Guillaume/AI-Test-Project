@@ -7,7 +7,9 @@ import { collectArrayPages } from '@/shared/api/pagination';
 import { useState } from 'react';
 import {
   App,
+  Alert,
   Button,
+  Checkbox,
   Drawer,
   Form,
   Input,
@@ -49,13 +51,14 @@ const PLAN_STATUS_COLOR: Record<string, string> = {
 
 /** 测试计划页。 */
 export function ConsoleTestPlansPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TestPlan | null>(null);
   const [planDrawerId, setPlanDrawerId] = useState<number | null>(null);
+  const [selectedPlanIds, setSelectedPlanIds] = useState<number[]>([]);
   const [addSuiteId, setAddSuiteId] = useState<number | null>(null);
   const [addSuiteSort, setAddSuiteSort] = useState(0);
   const [form] = Form.useForm<PlanFormValues>();
@@ -101,6 +104,28 @@ export function ConsoleTestPlansPage() {
       queryClient.invalidateQueries({ queryKey: ['test-plans'] });
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
+  });
+  const batchRemoveMutation = useMutation({
+    mutationFn: (ids: number[]) => testManagementApi.removePlans(currentProjectId!, ids),
+    onSuccess: (receipt) => {
+      setSelectedPlanIds([]);
+      queryClient.invalidateQueries({ queryKey: ['test-plans'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      if (receipt.failed === 0) message.success(`已删除 ${receipt.succeeded} 个测试计划，记录已移入回收站`);
+      else {
+        message.warning(`已删除 ${receipt.succeeded} 个测试计划，${receipt.failed} 个未删除`);
+        modal.info({
+          title: '批量删除结果',
+          width: 620,
+          content: <Space direction="vertical" style={{ width: '100%' }}>
+            {receipt.items.filter((item) => !item.succeeded).map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`测试计划 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>,
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
   });
 
   const openCreate = () => {
@@ -181,7 +206,7 @@ export function ConsoleTestPlansPage() {
           <Button size="small" onClick={() => setPlanDrawerId(row.id)}>
             管理套件
           </Button>
-          <Popconfirm title="确认删除该计划？" onConfirm={() => removeMutation.mutate(row.id)}>
+          <Popconfirm title="删除该计划？正在运行的计划会拒绝删除，历史运行记录将保留。" onConfirm={() => removeMutation.mutate(row.id)}>
             <Button size="small" danger icon={<DeleteOutlined />}>
               删除
             </Button>
@@ -193,13 +218,30 @@ export function ConsoleTestPlansPage() {
 
   return (
     <PageContainer>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
+      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }} wrap>
         <Typography.Title level={5} style={{ margin: 0 }}>
           测试计划
         </Typography.Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新建计划
-        </Button>
+        <Space wrap>
+          <Checkbox
+            checked={plans.length > 0 && selectedPlanIds.length === plans.length}
+            indeterminate={selectedPlanIds.length > 0 && selectedPlanIds.length < plans.length}
+            onChange={(event) => setSelectedPlanIds(event.target.checked ? plans.map((plan) => plan.id) : [])}
+          >
+            全选当前列表（{plans.length}）
+          </Checkbox>
+          <Button danger disabled={selectedPlanIds.length === 0 || batchRemoveMutation.isPending}
+            loading={batchRemoveMutation.isPending}
+            onClick={() => modal.confirm({
+              title: `删除选中的 ${selectedPlanIds.length} 个测试计划？`,
+              content: '正在运行的计划会逐条拒绝；已完成的运行历史保留。成功删除的计划可在回收站恢复。',
+              okText: '删除并移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+              onOk: () => batchRemoveMutation.mutateAsync(selectedPlanIds),
+            })}>
+            批量删除（{selectedPlanIds.length}）
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建计划</Button>
+        </Space>
       </Space>
 
       {plansQuery.isLoading ? (
@@ -209,7 +251,8 @@ export function ConsoleTestPlansPage() {
       ) : plans.length === 0 ? (
         <EmptyState description="暂无测试计划" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={plans} pagination={false} size="middle" />
+        <Table rowKey="id" columns={columns} dataSource={plans} pagination={false} size="middle"
+          rowSelection={{ selectedRowKeys: selectedPlanIds, onChange: (keys) => setSelectedPlanIds(keys.map(Number)) }} />
       )}
 
       <Modal

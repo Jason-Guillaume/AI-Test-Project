@@ -287,5 +287,7 @@ def persist_turn(
         session.status = "COMPLETED"
     elif stage == "FAILED":
         session.status = "FAILED"
+    from app.agents.services.context_memory import refresh_session_summary
+    refresh_session_summary(db, session.id)
     db.commit()
     return emitted

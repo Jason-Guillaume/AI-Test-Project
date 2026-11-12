@@ -38,6 +38,13 @@ def list_mcp_servers(db: Session) -> list[dict[str, Any]]:
     rows = db.query(MCPServer).order_by(MCPServer.updated_at.desc(), MCPServer.id.desc()).all()
     return [_server_response(row) for row in rows]
 
+
+def _server_for_update(db: Session, server_id: int) -> MCPServer:
+    row = db.query(MCPServer).filter(MCPServer.id == server_id).with_for_update().first()
+    if row is None:
+        raise not_found("MCP 服务不存在")
+    return row
+
 def create_mcp_server(db: Session, body: MCPServerCreate, actor_id: int) -> dict[str, Any]:
     """创建MCP服务端。"""
     row = MCPServer(
@@ -56,9 +63,7 @@ def create_mcp_server(db: Session, body: MCPServerCreate, actor_id: int) -> dict
 
 def update_mcp_server(db: Session, server_id: int, body: MCPServerUpdate, actor_id: int) -> dict[str, Any]:
     """更新MCP服务端。"""
-    row = db.get(MCPServer, server_id)
-    if row is None:
-        raise not_found("MCP 服务不存在")
+    row = _server_for_update(db, server_id)
     changes = {key: value for key, value in body.model_dump(exclude_unset=True).items() if value is not None}
     token = changes.pop("auth_token", None)
     new_auth_type = changes.get("auth_type", row.auth_type)
@@ -85,19 +90,15 @@ def update_mcp_server(db: Session, server_id: int, body: MCPServerUpdate, actor_
     db.refresh(row)
     return _server_response(row)
 
-def remove_mcp_server(db: Session, server_id: int) -> None:
-    """删除MCP服务端。"""
-    row = db.get(MCPServer, server_id)
-    if row is None:
-        raise not_found("MCP 服务不存在")
-    db.delete(row)
-    db.commit()
+def remove_mcp_server(db: Session, server_id: int, actor) -> None:
+    """将 MCP 服务端软删除并记录统一生命周期审计。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "mcp_server", server_id, actor=actor)
 
 def update_mcp_approvals(db: Session, server_id: int, body: MCPApprovalUpdate, actor_id: int) -> dict[str, Any]:
     """更新MCP`approvals`。"""
-    row = db.get(MCPServer, server_id)
-    if row is None:
-        raise not_found("MCP 服务不存在")
+    row = _server_for_update(db, server_id)
     discovered = {item.get("name") for item in (row.discovered_tools_json or [])}
     if set(body.tool_names) - discovered:
         raise bad_request("只能批准本服务最近一次发现的工具")
@@ -111,9 +112,7 @@ def update_mcp_approvals(db: Session, server_id: int, body: MCPApprovalUpdate, a
 
 def discover_mcp_tools(db: Session, server_id: int, actor_id: int) -> dict[str, Any]:
     """按 MCP Streamable HTTP 初始化并调用 tools/list；不会执行任何发现到的工具。"""
-    row = db.get(MCPServer, server_id)
-    if row is None:
-        raise not_found("MCP 服务不存在")
+    row = _server_for_update(db, server_id)
     headers = {
         "Accept": "application/json, text/event-stream",
         "MCP-Protocol-Version": "2025-11-25",
@@ -187,7 +186,7 @@ def invoke_approved_mcp_tool(
     db: Session, server_id: int, tool_name: str, arguments: dict[str, Any],
 ) -> dict[str, Any]:
     """仅调用当前已启用、已发现、已审批且明确只读的 MCP 工具。"""
-    row = db.get(MCPServer, server_id)
+    row = db.query(MCPServer).filter(MCPServer.id == server_id).with_for_update().first()
     if row is None or not row.is_enabled or row.connection_status != "connected":
         raise RuntimeError("MCP 服务当前不可用")
     if tool_name not in (row.approved_tools_json or []):
@@ -215,7 +214,9 @@ def invoke_approved_mcp_tool(
             raise RuntimeError("MCP Bearer 凭据无法解密")
         headers["Authorization"] = f"Bearer {token}"
     try:
-        with httpx.Client(timeout=httpx.Timeout(18.0), follow_redirects=False) as client:
+        from app.core.config import settings
+
+        with httpx.Client(timeout=httpx.Timeout(float(settings.TOOL_CALL_TIMEOUT_SECONDS)), follow_redirects=False) as client:
             init_response, _ = _mcp_post(client, row, {
                 "jsonrpc": "2.0", "id": 1, "method": "initialize",
                 "params": {

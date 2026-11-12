@@ -7,7 +7,7 @@ from alembic.config import Config
 from tests.test_50_migration_0049 import scratch, _upgrade, _url, BACKEND_DIR
 
 
-def test_0050_upgrade_and_downgrade_keep_reviewed_drafts(scratch):
+def test_0050_upgrade_and_downgrade_keep_reviewed_drafts(scratch, test_database_head):
     """从 0049 升级并回退，已入库草稿、审计、正式用例状态均保留。"""
     _upgrade(scratch, '0049')
     plain = _url(scratch).replace('+psycopg', '')
@@ -21,7 +21,7 @@ def test_0050_upgrade_and_downgrade_keep_reviewed_drafts(scratch):
         conn.execute("""INSERT INTO case_draft (batch_id,module,title,priority,payload_json,original_payload_json,skill_versions_json,status,test_case_id)
             VALUES (1,'api','旧草稿','P1','{}','{}','[]','ACCEPTED',1)""")
         conn.execute("INSERT INTO case_generation_audit (project_id,batch_id,draft_id,action,detail_json) VALUES (1,1,1,'APPROVE','{}')")
-    _upgrade(scratch, 'head')
+    _upgrade(scratch, test_database_head)
     with psycopg.connect(plain, autocommit=True) as conn:
         assert conn.execute('SELECT task_run_id FROM case_generation_batch').fetchone() == (None,)
         assert conn.execute('SELECT status,work_item_id,result_ordinal FROM case_draft').fetchone() == ('ACCEPTED', None, None)

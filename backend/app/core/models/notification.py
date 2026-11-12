@@ -17,10 +17,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class Notification(Base):
+class Notification(SoftDeleteBase):
     """发送给单个用户的平台通知。"""
 
     __tablename__ = "notification"

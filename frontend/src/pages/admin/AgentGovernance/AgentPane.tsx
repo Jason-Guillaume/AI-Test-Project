@@ -1,10 +1,12 @@
 // Agent 配置列表、版本化编辑与受控工作流表单。
 import { collectPages } from '@/shared/api/pagination';
-import { App, Alert, Button, Card, Col, Drawer, Form, Input, Row, Select, Space, Switch, Tabs, Tag, Tree, Typography } from 'antd';
+import { App, Alert, Button, Card, Col, Drawer, Form, Input, Row, Select, Space, Switch, Table, Tabs, Tag, Tree, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { AgentDefinition, AgentDefinitionInput, AgentTrigger } from '@/features/agent-governance/contracts';
 import { modelConfigsApi } from '@/features/model-configuration/api/modelConfigs';
 import { getErrorMessage } from '@/shared/api/client';
@@ -35,7 +37,9 @@ export function AgentPane() {
   const [editing, setEditing] = useState<AgentDefinition | null>(null);
   const [creating, setCreating] = useState(false);
   const [history, setHistory] = useState<{ kind: 'agent' | 'skill'; id: number; name: string } | null>(null);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
   const { message, modal } = App.useApp();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['agent-governance'] });
   const agents = useQuery({ queryKey: ['agent-governance', 'agents'], queryFn: agentGovernanceApi.agents });
@@ -56,7 +60,7 @@ export function AgentPane() {
   });
   const deleteMutation = useMutation({
     mutationFn: agentGovernanceApi.deleteAgent,
-    onSuccess: () => { message.success('Agent 配置已删除'); invalidate(); },
+    onSuccess: () => { message.success('Agent 配置已移入回收站'); invalidate(); queryClient.invalidateQueries({ queryKey: ['recycle-bin'] }); },
     onError: (error) => message.error(getErrorMessage(error)),
   });
   if (agents.isPending || workflows.isPending || skills.isPending || tools.isPending || models.isPending || mcpServers.isPending) return <LoadingState />;
@@ -86,15 +90,55 @@ export function AgentPane() {
     else createMutation.mutate(normalized);
   };
 
+  const deleteSelected = () => {
+    if (!selectedAgentIds.length) return;
+    modal.confirm({
+      title: `将 ${selectedAgentIds.length} 个 Agent 移入回收站？`,
+      content: '平台内置 Agent、仍被其他 Agent 或执行中任务引用的项会逐条拒绝；成功项保留原始 ID 和修订历史，可在回收站恢复。',
+      okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const receipt = await dataLifecycleApi.deleteMany('agent_definition', null, selectedAgentIds);
+          setSelectedAgentIds([]);
+          invalidate();
+          queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+          if (receipt.failed) {
+            modal.info({
+              title: `成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+              content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`Agent #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+            });
+          } else message.success(`已将 ${receipt.succeeded} 个 Agent 移入回收站`);
+        } catch (error) { message.error(getErrorMessage(error, '批量删除失败')); }
+      },
+    });
+  };
+
+  const agentTableColumns = [
+    { title: 'Agent', dataIndex: 'name', render: (_: string, row: AgentDefinition) => <Button type="link" onClick={() => setEditing(row)}>{row.name}</Button> },
+    { title: '工作流', dataIndex: 'workflow_template', render: (value: string) => WORKFLOW_LABELS[value] ?? value },
+    { title: '用途', dataIndex: 'purpose' },
+    { title: '状态', dataIndex: 'is_enabled', render: (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? '启用' : '停用'}</Tag> },
+    { title: '模型', key: 'model', render: (_: unknown, row: AgentDefinition) => modelLabel(row) },
+    { title: '操作', key: 'actions', render: (_: unknown, row: AgentDefinition) => <Space><Button size="small" onClick={() => setEditing(row)}>配置</Button><Button size="small" onClick={() => setHistory({ kind: 'agent', id: row.id, name: row.name })}>变更记录</Button><Button size="small" danger onClick={() => modal.confirm({ title: `将 Agent「${row.name}」移入回收站？`, okText: '移入回收站', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(row.id) })}>删除</Button></Space> },
+  ];
+
   return (
     <>
       <Space wrap style={{ marginBottom: 12 }}>
         <Select allowClear placeholder="测试类型" aria-label="测试类型" value={moduleFilter} onChange={setModuleFilter} style={{ width: 180 }} options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
         <Select allowClear showSearch optionFilterProp="label" placeholder="按绑定模型筛选" aria-label="按绑定模型筛选" value={modelFilter} onChange={setModelFilter} style={{ width: 260 }} options={[{ value: 'inherit', label: '继承 / 本次选择 / 全局默认' }, ...(models.data?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.label} (${item.model_name})` }))]} />
-        <Select value={view} onChange={setView} options={[{ value: 'tree', label: '主子关系' }, { value: 'cards', label: '全部卡片' }]} />
+        <Select value={view} onChange={setView} options={[{ value: 'tree', label: '主子关系' }, { value: 'cards', label: '全部卡片' }, { value: 'table', label: '表格与批量删除' }]} />
+        <Button danger disabled={!selectedAgentIds.length} onClick={deleteSelected}>批量删除（{selectedAgentIds.length}）</Button>
+        <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
         <Button type="primary" onClick={() => setCreating(true)}>新增 Agent</Button>
       </Space>
       {view === 'tree' && (treeData.length ? <Card><Tree key={`${moduleFilter}-${modelFilter}-${allAgents.length}`} defaultExpandAll selectable={false} blockNode treeData={treeData} /></Card> : <EmptyState description="没有匹配的 Agent" />)}
+      {view === 'table' && <Table<AgentDefinition>
+        rowKey="id" size="small" scroll={{ x: 'max-content' }} columns={agentTableColumns}
+        dataSource={agentRows} pagination={false}
+        rowSelection={{ selectedRowKeys: selectedAgentIds, onChange: (keys) => setSelectedAgentIds(keys.map(Number)) }}
+        locale={{ emptyText: '没有匹配的 Agent' }}
+      />}
       {view === 'cards' && (agentRows.length ? <Row gutter={[12, 12]}>
         {agentRows.map((agent) => <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
           <Card
@@ -132,7 +176,7 @@ export function AgentPane() {
             <div className="agent-card-actions">
               <Button size="small" style={{ flex: 1 }} onClick={() => setEditing(agent)}>查看详情 / 编辑配置</Button>
               <Button size="small" onClick={() => setHistory({ kind: 'agent', id: agent.id, name: agent.name })}>变更记录</Button>
-              <Button size="small" danger onClick={() => modal.confirm({ title: `删除 Agent「${agent.name}」？`, okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(agent.id) })}>删除</Button>
+              <Button size="small" danger onClick={() => modal.confirm({ title: `将 Agent「${agent.name}」移入回收站？`, okText: '移入回收站', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(agent.id) })}>删除</Button>
             </div>
           </Card>
         </Col>)}

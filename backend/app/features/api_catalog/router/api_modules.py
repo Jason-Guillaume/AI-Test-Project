@@ -70,7 +70,7 @@ def move_module(
 @router.delete(
     "/api-modules/{module_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="删除模块（未分类不可删；子接口归未分类）",
+    summary="软删除模块（未分类不可删；有接口或子模块时需先移动）",
 )
 def delete_module(
     module_id: int,

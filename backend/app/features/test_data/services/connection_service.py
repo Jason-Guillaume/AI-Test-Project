@@ -219,13 +219,21 @@ class ConnectionService:
         return _connection_response(conn, db)
 
     def delete_connection(self, db: Session, connection_id: int, *, actor: User) -> None:
-        """删除连接。"""
-        conn = self._get_writable_or_404(db, connection_id, actor)
-        used = _referenced_count(db, conn.project_id, conn.id)
-        if used:
-            raise conflict(f"该连接正被 {used} 个 Provider 引用，请先移除引用")
-        db.delete(conn)
-        db.commit()
+        """将被测库连接移入回收站。密码密文保留，详情接口不回传。"""
+        from app.lifecycle.service import delete_resource
+
+        conn = (
+            db.query(TargetDatabaseConnection).execution_options(include_deleted=True)
+            .filter(TargetDatabaseConnection.id == connection_id).first()
+        )
+        if conn is None:
+            raise not_found("被测库连接不存在")
+        require_admin(db, actor)
+        require_writable_project(db, conn.project_id, actor)
+        delete_resource(
+            db, "target_database_connection", connection_id,
+            actor=actor, project_id=conn.project_id,
+        )
 
     def ping(self, db: Session, connection_id: int, user: User) -> dict:
         """连通性探测：只执行 SELECT 1，短连接、显式超时，不做任何 DML。"""

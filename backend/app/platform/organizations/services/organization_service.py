@@ -208,13 +208,19 @@ def upsert_member(
     allowed = validate_allowed_model_ids(db, allowed_model_ids) if agent_enabled else []
 
     row = (
-        db.query(OrganizationMember)
+        db.query(OrganizationMember).execution_options(include_deleted=True)
         .filter(
             OrganizationMember.organization_id == organization.id,
             OrganizationMember.user_id == member_user_id,
         )
         .first()
     )
+    if row is not None and row.deleted_at is not None:
+        from app.lifecycle.service import clear_soft_delete
+        from app.core.models.identity import User
+        actor = db.get(User, organization.owner_id)
+        if actor is not None:
+            clear_soft_delete(db, "organization_member", row, actor)
     if row is None:
         # 新建成员行；role/agent_enabled/allowed_model_ids 在下面统一赋值
         row = OrganizationMember(
@@ -228,7 +234,7 @@ def upsert_member(
     return row
 
 
-def remove_member(db: Session, *, organization: Organization, member_user_id: int) -> None:
+def remove_member(db: Session, *, organization: Organization, member_user_id: int, actor: User | None = None) -> None:
     """移除组织成员。
 
     负责人不能移除；仍负责组织内项目的成员不能移除，避免留下无主项目。
@@ -251,8 +257,10 @@ def remove_member(db: Session, *, organization: Organization, member_user_id: in
     if owned is not None:
         raise forbidden("该成员仍负责组织内项目，请先转移项目")  # 避免留下无主项目
 
+    from app.lifecycle.service import delete_resource
+
     row = (
-        db.query(OrganizationMember)
+        db.query(OrganizationMember).execution_options(include_deleted=True)
         .filter(
             OrganizationMember.organization_id == organization.id,
             OrganizationMember.user_id == member_user_id,
@@ -261,4 +269,6 @@ def remove_member(db: Session, *, organization: Organization, member_user_id: in
     )
     if row is None:
         raise not_found("组织成员不存在")  # 错误信封：成员行本身不存在
-    db.delete(row)  # 仅删除成员行；不会自动处理组织负责人（上面已拒绝）
+    if actor is None:
+        actor = db.get(User, organization.owner_id)
+    delete_resource(db, "organization_member", row.id, actor=actor)

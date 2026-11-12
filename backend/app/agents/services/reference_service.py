@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 from app.agents.models import AgentDefinition
-from app.mcp.models import MCPServer
-from app.mcp.services import mcp_service
 from app.skills.models import SkillDefinition, SkillDefinitionRevision
 from app.skills.schemas import SkillUpdate
 from app.skills.services import skill_service
@@ -26,27 +24,16 @@ def update_skill(db: Session, skill_id: int, body: SkillUpdate, actor_id: int) -
     return skill_service.update_skill(db, skill_id, body, actor_id)
 
 
-def delete_skill(db: Session, skill_id: int) -> None:
-    """删除未被 Agent 配置引用的 Skill。"""
-    row = db.get(SkillDefinition, skill_id)
-    if row is None:
-        raise not_found("Skill 不存在")
-    if any(row.key in (agent.skill_keys or []) for agent in db.query(AgentDefinition).all()):
-        raise conflict("该 Skill 已被 Agent 引用，请先从 Agent 配置中移除")
-    skill_service.remove_skill(db, skill_id)
+def delete_skill(db: Session, skill_id: int, actor) -> None:
+    """将未被活跃 Agent 引用的 Skill 移入统一回收站。"""
+    skill_service.remove_skill(db, skill_id, actor)
 
 
-def delete_mcp_server(db: Session, server_id: int) -> None:
-    """删除未被 Agent 工具授权引用的 MCP 服务。"""
-    if db.get(MCPServer, server_id) is None:
-        raise not_found("MCP 服务不存在")
-    prefix = f"mcp:{server_id}:"
-    if any(
-        any(str(key).startswith(prefix) for key in (agent.tool_keys or []))
-        for agent in db.query(AgentDefinition).all()
-    ):
-        raise conflict("该 MCP 服务仍被 Agent 引用，请先移除 Agent 工具授权；紧急停用可直接关闭服务")
-    mcp_service.remove_mcp_server(db, server_id)
+def delete_mcp_server(db: Session, server_id: int, actor) -> None:
+    """软删除未被 Agent、Skill 或活跃任务引用的 MCP 服务。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "mcp_server", server_id, actor=actor)
 
 
 def restore_skill_version(db: Session, skill_id: int, version: int, actor_id: int) -> SkillDefinition:

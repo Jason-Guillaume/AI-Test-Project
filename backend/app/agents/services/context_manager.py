@@ -54,6 +54,9 @@ def assemble_history(
     query: str | None,
     token_budget: int,
     max_messages: int = 8,
+    total_message_count: int | None = None,
+    summary: dict[str, Any] | None = None,
+    long_term_memories: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
     """选取当前 AgentSession 的最近与相关历史，并生成本次装配清单。"""
     sources = [
@@ -70,7 +73,13 @@ def assemble_history(
     budget = max(0, int(token_budget))
     count_limit = max(0, int(max_messages))
     latest = sources[-1:] if sources else []
-    historical = sources[:-1] if sources else []
+    latest_user = next((source for source in reversed(sources) if source.role == 'user'), None)
+    priority = []
+    for source in (latest_user, latest[0] if latest else None):
+        if source is not None and source not in priority:
+            priority.append(source)
+    priority_ids = {source.message_id for source in priority}
+    historical = [source for source in sources if source.message_id not in priority_ids]
     ranked = sorted(
         enumerate(historical),
         key=lambda item: (_relevance(item[1], terms, len(historical) - item[0]), item[0]),
@@ -118,15 +127,63 @@ def assemble_history(
             selected.append(source)
             used += cost
 
-    if count_limit and latest:
-        append_with_budget(latest[0])
+    latest_user_source = next((source for source in priority if source.role == 'user'), None)
+    if latest_user_source is not None and count_limit:
+        append_with_budget(latest_user_source)
+
+    context_preamble: list[dict[str, str]] = []
+    memory_refs: list[dict[str, Any]] = []
+    memory_token_count = 0
+    memory_items = long_term_memories or []
+    memory_text = "\n".join(
+        f"[{item['memory_key']}@v{item['version']}] {item['content'][:1000]}"
+        for item in memory_items
+    )
+    if memory_text and len(selected) + len(context_preamble) < count_limit:
+        memory_content = "以下是同一项目、同一 Agent 的长期记忆记录（保留原始来源指纹）：\n" + memory_text
+        memory_cost = estimate_tokens(memory_content)
+        if memory_cost <= budget - used:
+            context_preamble.append({'role': 'user', 'content': memory_content})
+            used += memory_cost
+            memory_token_count = memory_cost
+            memory_refs = [
+                {'id': item['id'], 'memory_key': item['memory_key'], 'version': item['version'],
+                 'source_digest': item['source_digest'], 'source_refs': item['source_refs']}
+                for item in memory_items
+            ]
+
+    summary_used = False
+    summary_token_count = 0
+    summary_source_refs = summary.get('source_refs', []) if summary else []
+    summary_terms = _query_terms(summary.get('text', '')) if summary else set()
+    if (
+        summary and summary.get('text') and len(selected) + len(context_preamble) < count_limit
+        and (not terms or bool(terms & summary_terms))
+    ):
+        candidate_summary = (
+            '以下是同一 Agent 会话的历史原文摘录，仅作上下文参考：\n'
+            + summary['text']
+        )
+        candidate_cost = estimate_tokens(candidate_summary)
+        if candidate_cost <= budget - used:
+            summary_token_count = candidate_cost
+            used += candidate_cost
+            summary_used = True
+            context_preamble.append({'role': 'user', 'content': candidate_summary})
+
+    for source in priority:
+        if source is latest_user_source:
+            continue
+        if len(selected) + len(context_preamble) >= count_limit:
+            break
+        append_with_budget(source)
     for _, source in ranked:
-        if len(selected) >= count_limit:
+        if len(selected) + len(context_preamble) >= count_limit:
             break
         append_with_budget(source)
     selected.sort(key=lambda source: source.message_id)
     manifest = {
-        'version': 'agent-message-selection-v2',
+        'version': 'agent-context-selection-v3',
         'permission_scope': {
             'project_id': session.project_id,
             'agent_session_id': session.id,
@@ -141,6 +198,23 @@ def assemble_history(
              'version': source.message_id, 'message_type': source.message_type}
             for source in selected
         ],
-        'omitted_message_count': max(0, len(sources) - len(selected)),
+        'candidate_message_count': len(sources),
+        'unsearched_message_count': max(0, (total_message_count or len(sources)) - len(sources)),
+        'omitted_message_count': max(0, (total_message_count or len(sources)) - len(selected)),
+        'summary_used': summary_used,
+        'summary_version': summary.get('version') if summary_used and summary else None,
+        'summary_source_count': len(summary_source_refs) if summary_used else 0,
+        'summary_token_count': summary_token_count,
+        'summary_source_digest': summary.get('source_digest') if summary_used and summary else None,
+        'summary_source_refs': [
+            {'kind': 'AGENT_MESSAGE', 'id': source['message_id'],
+             'version': source['content_sha256'], 'message_type': source['message_type']}
+            for source in summary_source_refs
+        ] if summary_used else [],
+        'memory_count': len(memory_refs),
+        'memory_ids': [item['id'] for item in memory_refs],
+        'memory_refs': memory_refs,
+        'memory_token_count': memory_token_count,
     }
-    return [{'role': source.role, 'content': source.content} for source in selected], manifest
+    assembled = [{'role': source.role, 'content': source.content} for source in selected]
+    return context_preamble + assembled, manifest

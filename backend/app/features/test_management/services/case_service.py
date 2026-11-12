@@ -279,9 +279,9 @@ class CaseService:
 
     def delete_case(self, db: Session, case_id: int, *, actor: User) -> None:
         """删除用例。"""
-        case = self._get_writable_or_404(db, case_id, actor)
-        db.delete(case)
-        db.commit()
+        from app.lifecycle.service import delete_resource
+
+        delete_resource(db, "test_case", case_id, actor=actor)
 
     # -------------------------------------------------------------- 前置条件
 
@@ -327,10 +327,8 @@ class CaseService:
         return TestCasePreconditionResponse.model_validate(row)
 
     def delete_precondition(self, db: Session, precondition_id: int, *, actor: User) -> None:
-        """删除前置条件。"""
-        row = self._get_writable_sub_or_404(db, precondition_id, TestCasePrecondition, "前置条件", actor)
-        db.delete(row)
-        db.commit()
+        """将前置条件移入回收站。"""
+        self._trash_case_child(db, TestCasePrecondition, precondition_id, "test_case_precondition", "前置条件", actor)
 
     # -------------------------------------------------------------- 测试数据
 
@@ -389,10 +387,8 @@ class CaseService:
         return TestCaseDataResponse.model_validate(row)
 
     def delete_data(self, db: Session, data_id: int, *, actor: User) -> None:
-        """删除数据。"""
-        row = self._get_writable_sub_or_404(db, data_id, TestCaseData, "测试数据", actor)
-        db.delete(row)
-        db.commit()
+        """将用例数据项移入回收站。"""
+        self._trash_case_child(db, TestCaseData, data_id, "test_case_data", "测试数据", actor)
 
     # -------------------------------------------------------------- 所需 固定数据 Fixture
 
@@ -570,10 +566,8 @@ class CaseService:
         return TestStepResponse.model_validate(row)
 
     def delete_step(self, db: Session, step_id: int, *, actor: User) -> None:
-        """删除`step`。"""
-        row = self._get_writable_sub_or_404(db, step_id, TestStep, "测试步骤", actor)
-        db.delete(row)
-        db.commit()
+        """将测试步骤移入回收站。"""
+        self._trash_case_child(db, TestStep, step_id, "test_step", "测试步骤", actor)
 
     # -------------------------------------------------------------- 断言
 
@@ -630,10 +624,21 @@ class CaseService:
         return TestAssertionResponse.model_validate(row)
 
     def delete_assertion(self, db: Session, assertion_id: int, *, actor: User) -> None:
-        """删除断言。"""
-        row = self._get_writable_sub_or_404(db, assertion_id, TestAssertion, "断言", actor)
-        db.delete(row)
-        db.commit()
+        """将断言移入回收站。"""
+        self._trash_case_child(db, TestAssertion, assertion_id, "test_assertion", "断言", actor)
+
+    def _trash_case_child(self, db: Session, model, resource_id: int, resource_type: str, label: str, actor: User) -> None:
+        """把用例下的子资源移入回收站。重复删除不会再次改写关联。"""
+        from app.lifecycle.service import delete_resource
+
+        row = db.query(model).execution_options(include_deleted=True).filter(model.id == resource_id).first()
+        if row is None:
+            raise not_found(f"{label}不存在")
+        case = db.query(TestCase).execution_options(include_deleted=True).filter(TestCase.id == row.test_case_id).first()
+        if case is None:
+            raise not_found("测试用例不存在")
+        require_writable_project(db, case.project_id, actor)
+        delete_resource(db, resource_type, resource_id, actor=actor, project_id=case.project_id)
 
     # -------------------------------------------------------------- 取实体
 

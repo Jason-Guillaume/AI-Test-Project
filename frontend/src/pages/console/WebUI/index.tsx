@@ -13,6 +13,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import { AuthEditor, CaseEditor, PageEditor } from '@/pages/console/WebUI/Editors';
 import { WebArtifacts } from '@/pages/console/WebUI/Artifacts';
 import { TaskSourceLinks } from '@/features/tasks/components/TaskSourceLinks';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { WebAuthProfile, WebCase, WebExecution, WebPage } from '@/features/web-testing/contracts';
 
 
@@ -32,6 +33,8 @@ function Workspace({ projectId }: { projectId: number }) {
   const requestedCaseId = Number.isSafeInteger(caseId) && caseId > 0 ? caseId : null;
   const [tab, setTab] = useState('cases');
   const [casePage, setCasePage] = useState(1);
+  const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
+  const [selectedPageIds, setSelectedPageIds] = useState<number[]>([]);
   const [pageModal, setPageModal] = useState<{ row: WebPage | null } | null>(null);
   const [caseModal, setCaseModal] = useState<{ row: WebCase | null } | null>(null);
   const [authModal, setAuthModal] = useState<{ row: WebAuthProfile | null } | null>(null);
@@ -59,6 +62,7 @@ function Workspace({ projectId }: { projectId: number }) {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
         queryClient.invalidateQueries({ queryKey: ['business'] }),
+        queryClient.invalidateQueries({ queryKey: ['recycle-bin'] }),
       ]);
       void message.success('操作完成');
     },
@@ -72,6 +76,64 @@ function Workspace({ projectId }: { projectId: number }) {
       setTab('history');
       await reportsApi.generate(run.id, { generate_ai_summary: false });
       void message.info(`执行 #${run.id}：通过 ${run.passed}，失败 ${run.failed}，错误 ${run.error}`);
+    });
+  }
+  function batchDeleteCases() {
+    if (!selectedCaseIds.length) return;
+    if (selectedCaseIds.length > 100) { void message.warning('每批最多删除 100 个用例，请分批操作'); return; }
+    const ids = [...selectedCaseIds];
+    modal.confirm({
+      title: `确认删除选中的 ${ids.length} 个 Web 用例？`,
+      content: '删除后可从项目回收站恢复；运行中的用例会逐条拒绝删除。',
+      okText: '删除并移入回收站',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const receipt = await dataLifecycleApi.deleteMany('test_case', projectId, ids);
+        setSelectedCaseIds([]);
+        await cases.refetch();
+        const failures = receipt.items.filter(item => !item.succeeded);
+        if (failures.length) {
+          message.warning(`已删除 ${receipt.succeeded} 个，${receipt.failed} 个未删除`);
+          modal.info({
+            title: '批量删除结果',
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {failures.map(item => <Alert key={item.id} type="error" showIcon message={`用例 #${item.id}`} description={item.error ?? '删除失败'} />)}
+            </Space>,
+          });
+        } else {
+          message.success(`已删除 ${receipt.succeeded} 个 Web 用例，可在回收站恢复`);
+        }
+      },
+    });
+  }
+  function batchDeletePages() {
+    if (!selectedPageIds.length) return;
+    if (selectedPageIds.length > 100) { void message.warning('每批最多删除 100 个页面对象，请分批操作'); return; }
+    const ids = [...selectedPageIds];
+    modal.confirm({
+      title: `确认删除选中的 ${ids.length} 个页面对象？`,
+      content: '仍被 Web 测试步骤引用的页面会逐条拒绝删除；成功项可从项目回收站恢复。',
+      okText: '删除并移入回收站',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const receipt = await dataLifecycleApi.deleteMany('web_page', projectId, ids);
+        setSelectedPageIds([]);
+        await pages.refetch();
+        const failures = receipt.items.filter(item => !item.succeeded);
+        if (failures.length) {
+          message.warning(`已删除 ${receipt.succeeded} 个页面对象，${receipt.failed} 个未删除`);
+          modal.info({
+            title: '批量删除结果',
+            content: <Space direction="vertical" style={{ width: '100%' }}>
+              {failures.map(item => <Alert key={item.id} type="error" showIcon message={`页面对象 #${item.id}`} description={item.error ?? '删除失败'} />)}
+            </Space>,
+          });
+        } else {
+          message.success(`已删除 ${receipt.succeeded} 个页面对象，可在回收站恢复`);
+        }
+      },
     });
   }
   if (cases.isPending || pages.isPending || auth.isPending) return <LoadingState />;
@@ -101,7 +163,11 @@ function Workspace({ projectId }: { projectId: number }) {
           <Select showSearch filterOption={false} onSearch={setEnvironmentKeyword} style={{ width: 280 }} placeholder="选择执行环境" value={environmentId} onChange={setEnvironmentId} options={environmentRows.map(e => ({ value: e.id, label: `${e.display_name || e.name}（${e.name}）` }))} />
           {environments.isError && <Typography.Text type="danger">环境读取失败</Typography.Text>}
         </Space>
-        <Table rowKey="id" dataSource={cases.data?.items ?? []} pagination={{ current: casePage, pageSize: 20, total: cases.data?.total, onChange: setCasePage }} columns={[
+        <Space wrap>
+          <Button danger disabled={!selectedCaseIds.length || write.isPending} onClick={batchDeleteCases}>批量删除已选（{selectedCaseIds.length}）</Button>
+          <Button disabled={!selectedCaseIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
+        </Space>
+        <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedCaseIds, onChange: keys => setSelectedCaseIds(keys.map(Number)) }} dataSource={cases.data?.items ?? []} pagination={{ current: casePage, pageSize: 20, total: cases.data?.total, onChange: setCasePage }} columns={[
           { title: '用例', dataIndex: 'name' }, { title: '步骤', render: (_, row) => row.steps.length },
           { title: '状态', render: (_, row) => <Tag color={row.confirmed ? 'green' : 'gold'}>{row.confirmed ? '已确认' : '待人工确认'} · {row.source_type}</Tag> },
           { title: '操作', render: (_, row) => <Space wrap>
@@ -115,8 +181,12 @@ function Workspace({ projectId }: { projectId: number }) {
         ]} />
       </Space> },
       { key: 'pages', label: '页面对象', children: <Space direction="vertical" style={{ width: '100%' }}>
-        <Button type="primary" onClick={() => setPageModal({ row: null })}>新增页面对象</Button>
-        <Table rowKey="id" dataSource={pageRows} columns={[{ title: '名称', dataIndex: 'name' }, { title: '路径', dataIndex: 'path' },
+        <Space wrap>
+          <Button type="primary" onClick={() => setPageModal({ row: null })}>新增页面对象</Button>
+          <Button danger disabled={!selectedPageIds.length || write.isPending} onClick={batchDeletePages}>批量删除已选（{selectedPageIds.length}）</Button>
+          <Button disabled={!selectedPageIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
+        </Space>
+        <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedPageIds, onChange: keys => setSelectedPageIds(keys.map(Number)) }} dataSource={pageRows} columns={[{ title: '名称', dataIndex: 'name' }, { title: '路径', dataIndex: 'path' },
           { title: '元素', render: (_, row) => row.elements.map(e => e.key).join('、') },
           { title: '操作', render: (_, row) => <Space><Button onClick={() => setPageModal({ row })}>编辑</Button><Popconfirm title="删除后引用该页面的用例需重新配置，继续？" onConfirm={() => write.mutate(() => webUIApi.deletePage(row.id))}><Button danger>删除</Button></Popconfirm></Space> }]} />
       </Space> },

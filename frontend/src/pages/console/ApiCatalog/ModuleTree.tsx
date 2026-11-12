@@ -219,7 +219,7 @@ export function ModuleTree({
                 onClick={() => {
                   modal.confirm({
                     title: `删除模块「${module.name}」？`,
-                    content: '模块下的接口将归入「未分类」，不会被删除。',
+                    content: '此操作会将模块移入回收站。仍有接口或子模块时，请先显式移动这些资源。',
                     okText: '删除',
                     okType: 'danger',
                     cancelText: '取消',

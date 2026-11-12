@@ -1,7 +1,7 @@
 """E2E 专用 OpenAI 兼容 LLM 桩服务器。
 
 只供 scripts/e2e_case_generation.sh 启动；确定性响应，不访问外部模型服务、不消耗真实 Token。
-识别规则：按 system 提示中的子 Agent 角色文案区分模块；Supervisor 审阅单独识别。
+识别规则：按 system 提示中的子 Agent 角色文案区分模块；Supervisor 审阅和旧 Agent 意图澄清单独识别。
 失败注入：需求文本含 [stub-fail-<module>] 标记时，该模块对同一需求首次请求返回 500，
 之后（含重新生成）正常成功——「部分失败 → 重新生成成功」可在一次 E2E 中确定性地完成。
 日志只打印调用类别与结果，绝不打印提示词、响应正文或密钥。
@@ -106,6 +106,11 @@ class _Handler(BaseHTTPRequestHandler):
             user = "\n".join(str(item.get("content") or "") for item in messages if item.get("role") == "user")
             if "审阅模块子 Agent" in system:
                 kind, payload = "review", _review_payload()
+            elif "## 意图枚举" in system:
+                kind, payload = "agent-intent", {
+                    "intent": "CLARIFY", "target_ids": [],
+                    "clarify_question": "请指定接口或业务流程目标。",
+                }
             else:
                 module = next((value for marker, value in _MODULE_MARKERS.items() if marker in system), None)
                 if module is None:

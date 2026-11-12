@@ -336,7 +336,7 @@ def _detail_to_message(detail: Any) -> str:
     return str(detail)
 
 
-def _error_body(request: Request, status_code: int, message: str, code: str | None = None) -> dict[str, str]:
+def _error_body(request: Request, status_code: int, message: str, code: str | None = None) -> dict[str, Any]:
     """拼装统一错误信封 {code, message, request_id}，前端可据此区分业务分支。
 
     Args:
@@ -360,6 +360,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         优先级：先取 exc.code，其次 exc.detail 字典里的 "code"，最后按状态码回查默认码。
         """
         code = getattr(exc, "code", None)
+        extra: dict[str, Any] = {}
         if not code:
             body_detail = exc.detail
             code = None
@@ -368,6 +369,8 @@ def register_exception_handlers(app: FastAPI) -> None:
                 message = _detail_to_message(body_detail.get("message", body_detail))
             else:
                 message = _detail_to_message(body_detail)
+            if isinstance(body_detail, dict) and isinstance(body_detail.get("meta"), dict):
+                extra["meta"] = body_detail["meta"]
         else:
             message = _detail_to_message(exc.detail)
         if message == "Not authenticated" or (
@@ -380,7 +383,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         headers.pop("content-type", None)
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error_body(request, exc.status_code, message, code),
+            content={**_error_body(request, exc.status_code, message, code), **extra},
             headers=headers,
         )
 

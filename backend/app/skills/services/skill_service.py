@@ -145,13 +145,11 @@ def skill_versions(db: Session, skill_id: int) -> list[SkillDefinitionRevision]:
         SkillDefinitionRevision.skill_definition_id == skill_id
     ).order_by(SkillDefinitionRevision.version.desc()).all()
 
-def remove_skill(db: Session, skill_id: int) -> None:
-    """删除`skill`。"""
-    row = db.get(SkillDefinition, skill_id)
-    if row is None:
-        raise not_found("Skill 不存在")
-    db.delete(row)
-    db.commit()
+def remove_skill(db: Session, skill_id: int, actor) -> None:
+    """通过统一生命周期契约删除 Skill，并保留不可变修订与使用记录。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "skill_definition", skill_id, actor=actor)
 
 def restore_skill_version(db: Session, skill_id: int, version: int, actor_id: int) -> SkillDefinition:
     """将历史 Skill 快照恢复为当前配置，并新建版本。"""
@@ -165,12 +163,21 @@ def restore_skill_version(db: Session, skill_id: int, version: int, actor_id: in
 def _validate_skill_mcp_links(db: Session, keys: list[str]) -> None:
     if len(set(keys)) != len(keys):
         raise bad_request("Skill 关联的 MCP 工具不能重复")
+    server_ids: set[int] = set()
+    parsed: list[tuple[str, int, str]] = []
     for key in keys:
         match = re.fullmatch(r"mcp:(\d+):(.+)", key)
         if not match:
             raise bad_request("Skill 只能关联 MCP 工具")
-        server = db.get(MCPServer, int(match.group(1)))
-        tool_name = match.group(2)
+        server_id, tool_name = int(match.group(1)), match.group(2)
+        server_ids.add(server_id)
+        parsed.append((key, server_id, tool_name))
+    servers = {
+        row.id: row for row in db.query(MCPServer).filter(MCPServer.id.in_(sorted(server_ids)))
+        .order_by(MCPServer.id).with_for_update().all()
+    } if server_ids else {}
+    for _, server_id, tool_name in parsed:
+        server = servers.get(server_id)
         discovered = {item.get("name"): item for item in (server.discovered_tools_json or [])} if server else {}
         tool = discovered.get(tool_name)
         if server is None or tool_name not in (server.approved_tools_json or []) or tool is None:

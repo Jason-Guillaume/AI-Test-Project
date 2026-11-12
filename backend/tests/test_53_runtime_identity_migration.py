@@ -7,7 +7,7 @@ from alembic.config import Config
 from tests.test_50_migration_0049 import scratch, _upgrade, _url, BACKEND_DIR
 
 
-def test_0051_root_backfill_isolation_and_downgrade(scratch):
+def test_0051_root_backfill_isolation_and_downgrade(scratch, test_database_head):
     """旧生成分支回填到协调根，跨 Task 根引用被拒，Trace 不伪造。"""
     _upgrade(scratch, '0050')
     plain = _url(scratch).replace('+psycopg', '')
@@ -20,7 +20,7 @@ def test_0051_root_backfill_isolation_and_downgrade(scratch):
         conn.execute("""INSERT INTO case_generation_batch (project_id,direction,supervisor_version,supervisor_name,requirements,
             modules_json,status,review_gaps_json,module_errors_json,task_run_id)
             VALUES (1,'API',1,'主Agent','需求','["api"]','COMPLETED','[]','[]',2)""")
-    _upgrade(scratch, 'head')
+    _upgrade(scratch, test_database_head)
     with psycopg.connect(plain, autocommit=True) as conn:
         assert conn.execute('SELECT execution_root_run_id,trace_id,deadline_at FROM task_run WHERE task_id=1 ORDER BY id').fetchall() == [(2,None,None),(2,None,None)]
         assert conn.execute('SELECT execution_root_run_id FROM task_run WHERE task_id=2').fetchone() == (None,)

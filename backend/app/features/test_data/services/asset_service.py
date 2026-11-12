@@ -175,13 +175,17 @@ class AssetService:
         return _response(asset, db)
 
     def delete_asset(self, db: Session, asset_id: int, *, actor: User) -> None:
-        """删除资产。"""
-        asset = self._get_writable_or_404(db, asset_id, actor)
-        ref_count = int(db.query(DataPool.id).filter(DataPool.asset_id == asset.id).count())
-        if ref_count:
-            raise conflict(f"该数据正被 {ref_count} 个数据池引用，请先移除引用")
-        db.delete(asset)
-        db.commit()
+        """将测试数据移入回收站，保留原始主键和值。"""
+        from app.lifecycle.service import delete_resource
+
+        asset = (
+            db.query(TestDataAsset).execution_options(include_deleted=True)
+            .filter(TestDataAsset.id == asset_id).first()
+        )
+        if asset is None:
+            raise not_found("测试数据不存在")
+        require_writable_project(db, asset.project_id, actor)
+        delete_resource(db, "test_data_asset", asset_id, actor=actor, project_id=asset.project_id)
 
     def _get_or_404(self, db: Session, asset_id: int, user: User) -> TestDataAsset:
         """获取或。"""

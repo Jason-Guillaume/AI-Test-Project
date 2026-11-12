@@ -103,10 +103,10 @@ def confirm(api, admin, case):
     assert response.json()["confirmed"]
 
 
-def test_migration_and_web_asset_storage(api, admin, db, web_setup):
+def test_migration_and_web_asset_storage(api, admin, db, web_setup, test_database_head):
     """0012 新表存在，用例和步骤使用旧表；原始脚本和非法操作被拒绝。"""
     project, _ = web_setup
-    assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
+    assert db.execute(text("select version_num from alembic_version")).scalar() == test_database_head
     case = create_case(api, admin, project)
     from app.features.test_management.models.test_case import TestCase
     from app.features.test_management.models.test_step import TestStep
@@ -371,6 +371,50 @@ def test_attachment_access_and_auth_revocation(api, admin, web_setup):
     assert api.post(f"/web-cases/{case['id']}/debug", username=admin, json={"environment_id": env}).status_code == 409
 
 
+def test_page_object_recycle_and_restore_conflict(api, admin, web_setup):
+    """Page objects retain their primary key; recovery reports duplicate-name conflicts."""
+    project, _ = web_setup
+    name = unique("recoverable-page")
+    created = api.post(f"/projects/{project}/web-pages", username=admin,
+        json={"name": name, "path": "/", "elements": []})
+    assert created.status_code == 201, created.text
+    page_id = created.json()["id"]
+
+    assert api.delete(f"/web-pages/{page_id}", username=admin).status_code == 204
+    listed = api.get(f"/projects/{project}/web-pages", username=admin).json()
+    assert all(row["id"] != page_id for row in listed["items"])
+    trash = api.get("/recycle-bin", username=admin,
+        params={"project_id": project, "resource_type": "web_page"}).json()["items"]
+    item = next(row for row in trash if row["resource_id"] == str(page_id))
+
+    replacement = api.post(f"/projects/{project}/web-pages", username=admin,
+        json={"name": name, "path": "/replacement", "elements": []})
+    assert replacement.status_code == 201, replacement.text
+    assert api.post(f"/recycle-bin/{item['id']}/restore", username=admin).status_code == 409
+
+    assert api.delete(f"/web-pages/{replacement.json()['id']}", username=admin).status_code == 204
+    replacement_item = next(row for row in api.get("/recycle-bin", username=admin,
+        params={"project_id": project, "resource_type": "web_page"}).json()["items"]
+        if row["resource_id"] == str(replacement.json()["id"]))
+    purged = api.client.request("DELETE", f"/api/v1/recycle-bin/{replacement_item['id']}/permanent",
+        headers=api.headers(admin), json={"confirmation": "PERMANENTLY_DELETE", "reason": "回归数据清理"})
+    assert purged.status_code == 200, purged.text
+    assert api.post(f"/recycle-bin/{item['id']}/restore", username=admin).status_code == 200
+    listed = api.get(f"/projects/{project}/web-pages", username=admin).json()
+    assert any(row["id"] == page_id and row["name"] == name for row in listed["items"])
+
+
+def test_referenced_web_page_cannot_be_deleted(api, admin, web_setup):
+    """A page referenced by a Web step remains active until the case is adjusted."""
+    project, _ = web_setup
+    page = api.post(f"/projects/{project}/web-pages", username=admin,
+        json={"name": unique("referenced-page"), "path": "/", "elements": [{"key": "login", "locator": {"strategy": "TEST_ID", "value": "login"}}]}).json()
+    case = create_case(api, admin, project, [step("CLICK", page_object_id=page["id"], element_key="login")])
+    response = api.delete(f"/web-pages/{page['id']}", username=admin)
+    assert response.status_code == 409, response.text
+    assert api.get(f"/web-cases/{case['id']}", username=admin).status_code == 200
+
+
 def test_independent_browser_concurrency(db, web_setup, target_server):
     """两个真实 Chromium 并发运行，storage_state 和浏览器资源互不共享。"""
     from concurrent.futures import ThreadPoolExecutor
@@ -389,24 +433,21 @@ def test_independent_browser_concurrency(db, web_setup, target_server):
         assert second.result(timeout=30).status == "PASSED"
 
 
-def test_migration_downgrade_preserves_existing_contracts(db):
+def test_migration_downgrade_preserves_existing_contracts(isolated_migration_database, test_database_head):
     """回滚只删除四张 Web 扩展表；既有测试、安全、Mock、业务和报告表仍在。"""
     from alembic import command
-    from alembic.config import Config
     from sqlalchemy import inspect
-    from tests.conftest import TEST_DSN, BACKEND_DIR
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    config.set_main_option("sqlalchemy.url", TEST_DSN)
-    db.rollback()
+    config, engine = isolated_migration_database
     try:
         command.downgrade(config, "0011")
-        tables = set(inspect(db.bind).get_table_names())
+        tables = set(inspect(engine).get_table_names())
         assert not {"web_case", "web_auth_profile", "web_artifact", "web_page_object"} & tables
         assert {"test_case", "test_step", "case_execution", "test_run", "test_report", "security_case", "mock_service"} <= tables
     finally:
-        command.upgrade(config, "head")
-    assert db.execute(text("select version_num from alembic_version")).scalar() == migration_head()
+        command.upgrade(config, test_database_head)
+    with engine.connect() as connection:
+        version = connection.execute(text("select version_num from alembic_version")).scalar()
+    assert version == test_database_head
 
 
 def test_cookie_and_jwt_are_used_by_real_browser(api, admin, web_setup, target_server):

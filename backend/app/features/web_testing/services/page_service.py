@@ -10,6 +10,7 @@ from app.core.http.errors import bad_request, conflict, not_found
 from app.features.web_testing.services.access_service import get_row
 from app.features.web_testing.services.response_mapper import list_result
 from app.features.web_testing.services.response_mapper import page_response
+from app.lifecycle.service import delete_resource
 
 
 def list_pages(db, project_id, actor, *, page=1, page_size=200):
@@ -45,6 +46,6 @@ def save_page(db, project_id, body: PageInput, actor, page_id=None):
 
 
 def delete_page(db, page_id, actor):
-    """删除页面，引用它的用例将显示未确认并在执行前失败。"""
-    db.delete(get_row(db, PageObject, page_id, actor, write=True))
-    db.commit()
+    """软删除未被 Web 用例引用的页面对象，允许从回收站恢复。"""
+    row = get_row(db, PageObject, page_id, actor, write=True)
+    delete_resource(db, "web_page", row.id, actor=actor)

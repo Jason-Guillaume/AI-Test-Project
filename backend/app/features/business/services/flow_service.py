@@ -48,6 +48,7 @@ from app.core.models.identity import User
 from app.core.http.errors import bad_request, conflict, not_found
 from app.core.notifications.notify import notify
 from app.core.http.pagination import DEFAULT_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 
 def _flow_response(flow: BusinessFlow) -> BusinessFlowResponse:
@@ -283,9 +284,7 @@ class FlowService:
     def delete_flow(self, db: Session, flow_id: int, *, actor: User) -> None:
         """删除流程。"""
         flow = self._get_writable_flow_or_404(db, flow_id, actor)
-        # 级联由外键承担：流程删除 → 动作 → 绑定/前置条件/变量/状态/映射 → 变量引用/规则。
-        db.delete(flow)
-        db.commit()
+        delete_resource(db, "business_flow", flow.id, actor=actor)
 
     # ---------------------------------------------------------------- 动作
 
@@ -383,8 +382,7 @@ class FlowService:
     def delete_action(self, db: Session, action_id: int, *, actor: User) -> None:
         """删除动作。"""
         action = self._get_writable_action_or_404(db, action_id, actor)
-        db.delete(action)
-        db.commit()
+        delete_resource(db, "business_action", action.id, actor=actor)
 
     def reorder_actions(
         self, db: Session, flow_id: int, body: BusinessActionReorder, *, actor: User

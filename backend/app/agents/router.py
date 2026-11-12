@@ -13,8 +13,11 @@ require_writable_project），跨项目统一 404（§33）。service owns commi
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.agents.services.workspace_response import build_workspace
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from app.agents.workflows.legacy.graph import run_agent
 from app.llm.providers import ProductionLLMProvider
@@ -32,6 +35,28 @@ from app.core.models.identity import User
 from app.core.security.auth import get_current_user
 from app.core.database.session import get_db
 from app.core.http.errors import bad_request, conflict, not_found
+
+
+class AgentMemoryInput(BaseModel):
+    content: str = Field(min_length=1, max_length=12000)
+    source_message_ids: list[int] = Field(default_factory=list, max_length=10)
+    expected_version: int = Field(default=0, ge=0)
+    expires_at: datetime | None = None
+
+
+class AgentMemoryExpireInput(BaseModel):
+    expected_version: int = Field(gt=0)
+
+
+def _memory_response(row) -> dict:
+    return {
+        "id": row.id, "project_id": row.project_id,
+        "agent_definition_id": row.agent_definition_id,
+        "memory_key": row.memory_key, "version": row.version,
+        "content": row.content, "source_refs": row.source_refs,
+        "source_digest": row.source_digest, "status": row.status,
+        "expires_at": row.expires_at, "created_at": row.created_at,
+    }
 
 
 router = APIRouter(tags=["接口测试 Agent"])
@@ -67,6 +92,65 @@ def list_sessions(
     """列出`sessions`。"""
     sessions = session_service.list_sessions(db, project_id, user)
     return [AgentSessionResponse.model_validate(s) for s in sessions]
+
+
+@router.get(
+    "/projects/{project_id}/agents/{agent_id}/memories",
+    summary="读取 Agent 长期记忆",
+)
+def list_agent_memories(
+    project_id: int,
+    agent_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    from app.agents.services.long_term_memory import list_agent_memories as list_memories
+
+    return {"items": [
+        _memory_response(row) for row in list_memories(db, project_id, agent_id, user)
+    ]}
+
+
+@router.put(
+    "/projects/{project_id}/agents/{agent_id}/memories/{memory_key}",
+    summary="新增或版本化更新 Agent 长期记忆",
+)
+def put_agent_memory(
+    project_id: int,
+    agent_id: int,
+    memory_key: str,
+    body: AgentMemoryInput,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    from app.agents.services.long_term_memory import save_agent_memory
+
+    row = save_agent_memory(
+        db, project_id, agent_id, user, memory_key=memory_key,
+        content=body.content, source_message_ids=body.source_message_ids,
+        expected_version=body.expected_version, expires_at=body.expires_at,
+    )
+    return _memory_response(row)
+
+
+@router.post(
+    "/projects/{project_id}/agents/{agent_id}/memories/{memory_key}/expire",
+    summary="使 Agent 长期记忆版本失效",
+)
+def expire_agent_memory(
+    project_id: int,
+    agent_id: int,
+    memory_key: str,
+    body: AgentMemoryExpireInput,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    from app.agents.services.long_term_memory import expire_agent_memory as expire_memory
+
+    row = expire_memory(
+        db, project_id, agent_id, user, memory_key, expected_version=body.expected_version,
+    )
+    return _memory_response(row)
 
 
 @router.get(

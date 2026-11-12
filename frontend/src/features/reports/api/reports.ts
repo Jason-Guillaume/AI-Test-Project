@@ -10,6 +10,7 @@
 // 权限（服务端为准）：读 viewer+，写 member+，越权统一 404，前端不展示。
 // 幂等：同一 test_run_id 已有 COMPLETED 报告时默认返回已有；regenerate=true 仅重生成 AI 总结。
 import { api } from '@/shared/api/client';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { ReportGenerateRequest, ReportGenerateResponse, ReportListQuery, TestReportDetail, TestReportListResponse, TestReport } from '@/features/reports/contracts';
 
 
@@ -30,6 +31,8 @@ export const reportsApi = {
 
   /** 删除报告记录（不删 TestRun / CaseExecution）。 */
   remove: (reportId: number) => api.delete<void>(`/reports/${reportId}`),
+  removeMany: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('test_report', projectId, ids),
 
   /** 重生成 AI 总结（统计字段不变）。 */
   regenerateAiSummary: (reportId: number) =>

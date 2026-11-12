@@ -169,8 +169,8 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
             编辑
           </Button>
           <Popconfirm
-            title="确认删除该扫描目标？"
-            description="删除后无法再用它发起扫描；已有任务记录不受影响。"
+            title="将扫描目标移入回收站？"
+            description="未结束的扫描会阻止删除。历史任务记录保留，可从回收站恢复目标。"
             onConfirm={() => removeMutation.mutate(r.id)}
           >
             <Button size="small" danger>

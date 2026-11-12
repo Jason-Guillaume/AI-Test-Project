@@ -12,6 +12,7 @@
 import { api } from '@/shared/api/client';
 import type { BusinessAction, BusinessApiMapping, BusinessDomain, BusinessFlow, BusinessPrecondition, BusinessRule, BusinessState, BusinessVariable, BusinessVariableRef, ActionExecution, FlowExecution } from '@/features/business/contracts';
 import type { Paginated } from '@/shared/api/contracts';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 
 import type { BusinessActionCreate, BusinessActionReorder, BusinessActionUpdate, BusinessApiMappingCreate, BusinessApiMappingUpdate, BusinessBindingDetail, BusinessBindingCreate, BusinessBindingUpdate, BusinessDomainCreate, BusinessDomainUpdate, BusinessFlowCreate, BusinessFlowDetail, BusinessFlowUpdate, BusinessPreconditionCreate, BusinessPreconditionUpdate, BusinessRuleCreate, BusinessRuleUpdate, BusinessStateCreate, BusinessStateUpdate, BusinessVariableCreate, BusinessVariableRefCreate, BusinessVariableUpdate, FlowExecutionRequest } from '../contracts';
 
@@ -35,6 +36,8 @@ export const businessApi = {
   updateDomain: (domainId: number, body: BusinessDomainUpdate) =>
     api.patch<BusinessDomain>(`/business-domains/${domainId}`, body),
   removeDomain: (domainId: number) => api.delete<void>(`/business-domains/${domainId}`),
+  removeDomains: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('business_domain', projectId, ids),
 
   // ---- 业务流程 ----
   listFlows: (projectId: number, params: { page?: number; page_size?: number; domain_id?: number; status?: string; keyword?: string }) =>
@@ -46,6 +49,8 @@ export const businessApi = {
   updateFlow: (flowId: number, body: BusinessFlowUpdate) =>
     api.patch<BusinessFlow>(`/business-flows/${flowId}`, body),
   removeFlow: (flowId: number) => api.delete<void>(`/business-flows/${flowId}`),
+  removeFlows: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('business_flow', projectId, ids),
 
   // ---- 业务动作 ----
   listActions: (flowId: number) => api.get<BusinessAction[]>(`/business-flows/${flowId}/actions`),
@@ -54,6 +59,8 @@ export const businessApi = {
   updateAction: (actionId: number, body: BusinessActionUpdate) =>
     api.patch<BusinessAction>(`/business-actions/${actionId}`, body),
   removeAction: (actionId: number) => api.delete<void>(`/business-actions/${actionId}`),
+  removeActions: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('business_action', projectId, ids),
   reorderActions: (flowId: number, body: BusinessActionReorder) =>
     api.patch<BusinessAction[]>(`/business-flows/${flowId}/actions/reorder`, body),
 

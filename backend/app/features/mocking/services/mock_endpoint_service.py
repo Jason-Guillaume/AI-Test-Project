@@ -133,15 +133,19 @@ class MockEndpointService:
         return endpoint_response(db, endpoint)
 
     def delete_endpoint(self, db: Session, endpoint_id: int, *, actor: User) -> None:
-        """删除接口。"""
-        endpoint = self._get_writable_or_404(db, endpoint_id, actor)
-        ref_count = int(
-            db.query(TestCaseMock.id).filter(TestCaseMock.mock_endpoint_id == endpoint.id).count()
+        """将接口移入回收站，阻止绕过场景和执行记录依赖检查。"""
+        from app.features.mocking.models import MockEndpoint
+        from app.lifecycle.service import delete_resource
+        from app.platform.projects.services.access_service import require_writable_project
+
+        endpoint = (
+            db.query(MockEndpoint).execution_options(include_deleted=True)
+            .filter(MockEndpoint.id == endpoint_id).first()
         )
-        if ref_count:
-            raise conflict(f"该 Mock 接口正被 {ref_count} 条用例 Mock 依赖引用，请先在用例上移除")
-        db.delete(endpoint)
-        db.commit()
+        if endpoint is None:
+            _raise_not_found()
+        require_writable_project(db, endpoint.project_id, actor)
+        delete_resource(db, "mock_endpoint", endpoint_id, actor=actor, project_id=endpoint.project_id)
 
     # ---------------------------------------------------------------- 更新
 

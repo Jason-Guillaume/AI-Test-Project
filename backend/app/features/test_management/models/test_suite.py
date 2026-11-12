@@ -6,18 +6,19 @@
 suite_type ∈ {SMOKE, REGRESSION, BUSINESS, CUSTOM}。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestSuite(Base):
+class TestSuite(SoftDeleteBase):
     """测试套件：测试用例的集合容器。"""
 
     __tablename__ = "test_suite"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_test_suite_project_name"),
+        Index("uq_test_suite_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_suite_project_enabled", "project_id", "enabled"),
         {"comment": "测试套件：测试用例的集合容器"},
     )
@@ -44,12 +45,16 @@ class TestSuite(Base):
     )
 
 
-class TestSuiteCase(Base):
+class TestSuiteCase(SoftDeleteBase):
     """套件-用例关联。"""
 
     __tablename__ = "test_suite_case"
     __table_args__ = (
-        UniqueConstraint("suite_id", "test_case_id", name="uq_test_suite_case_suite_case"),
+        Index(
+            "uq_test_suite_case_suite_case_live", "suite_id", "test_case_id", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         Index("ix_test_suite_case_suite_sort", "suite_id", "sort"),
         {"comment": "套件-用例关联"},
     )

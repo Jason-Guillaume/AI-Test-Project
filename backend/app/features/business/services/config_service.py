@@ -26,6 +26,7 @@ from app.features.business.services.access_service import resolve_action_project
 from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
 from app.core.models.identity import User
 from app.core.http.errors import conflict, not_found
+from app.lifecycle.service import delete_resource
 
 
 def _precondition_response(p: BusinessPrecondition) -> BusinessPreconditionResponse:
@@ -100,8 +101,7 @@ class ConfigService:
     def delete_precondition(self, db: Session, precondition_id: int, *, actor: User) -> None:
         """删除前置条件。"""
         precondition = self._get_writable_precondition_or_404(db, precondition_id, actor)
-        db.delete(precondition)
-        db.commit()
+        delete_resource(db, "business_precondition", precondition.id, actor=actor)
 
     # ---------------------------------------------------------------- 变量
 
@@ -164,8 +164,7 @@ class ConfigService:
     def delete_variable(self, db: Session, variable_id: int, *, actor: User) -> None:
         """删除变量。"""
         variable = self._get_writable_variable_or_404(db, variable_id, actor)
-        db.delete(variable)
-        db.commit()
+        delete_resource(db, "business_variable", variable.id, actor=actor)
 
     # ---------------------------------------------------------------- 状态
 
@@ -220,8 +219,7 @@ class ConfigService:
     def delete_state(self, db: Session, state_id: int, *, actor: User) -> None:
         """删除状态。"""
         state = self._get_writable_state_or_404(db, state_id, actor)
-        db.delete(state)
-        db.commit()
+        delete_resource(db, "business_state", state.id, actor=actor)
 
     # ---------------------------------------------------------------- 取实体
 

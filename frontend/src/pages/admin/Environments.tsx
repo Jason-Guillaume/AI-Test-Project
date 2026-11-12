@@ -1,21 +1,27 @@
 import { collectPages } from '@/shared/api/pagination';
 // 环境与目标服务配置：保留项目作用域与目标授权规则（写操作仅平台管理员）。
 import {
+  Alert,
   App,
   Button,
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Switch,
+  Table,
+  Tabs,
   Tag,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { projectsApi } from '@/features/projects/api/projects';
 import { environmentsApi } from '@/features/environments/api/environments';
-import type { EnvironmentUpdate, ProjectEnvironmentCreate } from '@/features/environments/contracts';
+import type { EnvironmentCreate, EnvironmentUpdate, ProjectEnvironmentCreate } from '@/features/environments/contracts';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { Environment } from '@/features/environments/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
@@ -39,6 +45,17 @@ import { PageHeader } from '@/shared/ui/PageHeader';
  * 空态：所选项目无环境时显示项目范围的空态与新增入口。
  */
 export function AdminEnvironmentsPage() {
+  return (
+    <Tabs
+      items={[
+        { key: 'project', label: '项目环境', children: <ProjectEnvironmentsTab /> },
+        { key: 'catalog', label: '平台环境类型', children: <EnvironmentCatalogTab /> },
+      ]}
+    />
+  );
+}
+
+function ProjectEnvironmentsTab() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   // 分页初值：第一页，每页 20 条
@@ -239,6 +256,103 @@ export function AdminEnvironmentsPage() {
   );
 }
 
+function EnvironmentCatalogTab() {
+  const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Environment | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const listQuery = useQuery({
+    queryKey: ['environment-catalog'],
+    queryFn: () => environmentsApi.list({ include_inactive: true, page: 1, page_size: 200 }),
+  });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['environment-catalog'] });
+    queryClient.invalidateQueries({ queryKey: ['environments'] });
+    queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+  };
+  const createMutation = useMutation({
+    mutationFn: (body: EnvironmentCreate) => environmentsApi.create(body),
+    onSuccess: () => { message.success('环境类型已创建'); setCreating(false); invalidate(); },
+    onError: (error) => message.error(getErrorMessage(error)),
+  });
+  const updateMutation = useMutation({
+    mutationFn: ({ name, body }: { name: string; body: EnvironmentUpdate }) => environmentsApi.update(name, body),
+    onSuccess: () => { message.success('环境类型已更新'); setEditing(null); invalidate(); },
+    onError: (error) => message.error(getErrorMessage(error)),
+  });
+  const removeMutation = useMutation({
+    mutationFn: (name: string) => environmentsApi.remove(name),
+    onSuccess: () => { message.success('环境类型已移入回收站'); invalidate(); },
+    onError: (error) => message.error(getErrorMessage(error)),
+  });
+  const deleteMany = () => {
+    if (!selectedIds.length) return;
+    modal.confirm({
+      title: `将 ${selectedIds.length} 个环境类型移入回收站？`,
+      content: '默认环境、仍被项目绑定或被数据库/Web 配置使用的环境会逐项拒绝，成功项可在回收站恢复。',
+      okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const result = await dataLifecycleApi.deleteMany('environment', null, selectedIds);
+          setSelectedIds([]);
+          invalidate();
+          if (result.failed) {
+            modal.info({
+              title: `成功 ${result.succeeded} 个，失败 ${result.failed} 个`,
+              content: <Space direction="vertical" style={{ width: '100%' }}>{result.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`环境 #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+            });
+          } else message.success(`已将 ${result.succeeded} 个环境类型移入回收站`);
+        } catch (error) { message.error(getErrorMessage(error, '批量删除失败')); }
+      },
+    });
+  };
+  const columns = [
+    { title: '环境标识', dataIndex: 'name' },
+    { title: '展示名称', dataIndex: 'display_name' },
+    { title: '目标地址', dataIndex: 'base_url', ellipsis: true },
+    { title: '状态', key: 'status', render: (_: unknown, row: Environment) => <Space>{row.is_active ? <Tag color="blue">启用</Tag> : <Tag>停用</Tag>}{row.is_default && <Tag color="gold">默认</Tag>}</Space> },
+    {
+      title: '操作', key: 'actions', width: 300,
+      render: (_: unknown, row: Environment) => (
+        <Space wrap>
+          <Button size="small" onClick={() => setEditing(row)}>编辑</Button>
+          {!row.is_default && row.is_active && <Button size="small" onClick={() => updateMutation.mutate({ name: row.name, body: { is_default: true } })}>设为默认</Button>}
+          <Button size="small" onClick={() => updateMutation.mutate({ name: row.name, body: { is_active: !row.is_active } })}>{row.is_active ? '停用' : '启用'}</Button>
+          <Popconfirm title="将环境类型移入回收站？" description="默认环境及仍被项目或运行配置引用的环境不能删除。" onConfirm={() => removeMutation.mutate(row.name)}>
+            <Button size="small" danger>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+  if (listQuery.isPending) return <PageContainer><LoadingState /></PageContainer>;
+  if (listQuery.isError) return <PageContainer><ErrorState error={listQuery.error} onRetry={listQuery.refetch} /></PageContainer>;
+  return (
+    <PageContainer>
+      <PageHeader title="平台环境类型" subtitle="环境类型目录与项目环境绑定分开管理；停用不会删除历史配置。" />
+      <Space wrap className="ui-list-toolbar" style={{ marginBottom: 12 }}>
+        <Button type="primary" onClick={() => setCreating(true)}>新增环境类型</Button>
+        <Button danger disabled={!selectedIds.length} onClick={deleteMany}>批量删除（{selectedIds.length}）</Button>
+        <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
+      </Space>
+      <Table<Environment>
+        rowKey="id" size="small" scroll={{ x: 'max-content' }} columns={columns}
+        dataSource={listQuery.data.items} loading={listQuery.isFetching} pagination={false}
+        rowSelection={{
+          selectedRowKeys: selectedIds,
+          onChange: (keys) => setSelectedIds(keys.map(Number)),
+          getCheckboxProps: (row) => ({ disabled: row.id == null || row.is_default }),
+        }}
+        locale={{ emptyText: '暂无平台环境类型' }}
+      />
+      {creating && <EnvironmentFormModal title="新增平台环境类型" catalogMode loading={createMutation.isPending} onCancel={() => setCreating(false)} onSubmit={(body) => createMutation.mutate(body as EnvironmentCreate)} />}
+      {editing && <EnvironmentFormModal title={`编辑平台环境类型：${editing.name}`} editing={editing} catalogMode loading={updateMutation.isPending} onCancel={() => setEditing(null)} onSubmit={(body) => updateMutation.mutate({ name: editing.name, body: body as EnvironmentUpdate })} />}
+    </PageContainer>
+  );
+}
+
 /**
  * 环境新建/编辑共用表单弹窗。
  *
@@ -250,12 +364,14 @@ export function AdminEnvironmentsPage() {
 function EnvironmentFormModal({
   title,
   editing,
+  catalogMode = false,
   loading,
   onCancel,
   onSubmit,
 }: {
   title: string;
   editing?: Environment;
+  catalogMode?: boolean;
   loading: boolean;
   onCancel: () => void;
   onSubmit: (body: ProjectEnvironmentCreate | EnvironmentUpdate) => void;
@@ -338,7 +454,7 @@ function EnvironmentFormModal({
         <Form.Item name="display_name" label="展示名称">
           <Input />
         </Form.Item>
-        <Form.Item name="base_url" label="被测服务地址" rules={[{ required: !editing, message: '请输入被测服务地址' }]}>
+        <Form.Item name="base_url" label="被测服务地址" rules={[{ required: !editing && !catalogMode, message: '请输入被测服务地址' }]}>
           <Input placeholder="https://test-api.example.com" />
         </Form.Item>
         <Form.Item name="gateway_prefix" label="网关前缀">

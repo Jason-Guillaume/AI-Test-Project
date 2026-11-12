@@ -19,6 +19,7 @@ import {
   App,
   Alert,
   Button,
+  Checkbox,
   Form,
   Input,
   Modal,
@@ -42,6 +43,7 @@ import { tasksApi } from '@/features/tasks/api/tasks';
 import { clearTaskCreateUncertainty, readTaskCreateUncertainty, rememberTaskCreateUncertainty, type TaskCreateUncertainty } from '@/features/tasks/createUncertainty';
 import { isAxiosError } from 'axios';
 import type { Bug, BugSeverity, BugStatus } from '@/features/defects/contracts';
+import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 import type { Paginated } from '@/shared/api/contracts';
 
 
@@ -108,6 +110,7 @@ export function ConsoleDefectsPage() {
   const [status, setStatus] = useState<BugStatus | undefined>(undefined);
   const [severity, setSeverity] = useState<BugSeverity | undefined>(undefined);
   const [keyword, setKeyword] = useState('');
+  const [selectedBugIds, setSelectedBugIds] = useState<number[]>([]);
 
   // 弹窗状态：null 表示关闭；mode='create' 新建，mode='edit' 编辑已有 bug
   const [modalState, setModalState] = useState<
@@ -183,16 +186,40 @@ export function ConsoleDefectsPage() {
     onSuccess: () => {
       message.success('缺陷已删除');
       queryClient.invalidateQueries({ queryKey: ['bugs'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
+  });
+
+  const batchRemoveMutation = useMutation({
+    mutationFn: (ids: number[]) => bugsApi.removeMany(projectId!, ids),
+    onSuccess: (receipt: BatchLifecycleReceipt) => {
+      setSelectedBugIds([]);
+      queryClient.invalidateQueries({ queryKey: ['bugs'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      if (receipt.failed === 0) message.success(`已删除 ${receipt.succeeded} 个缺陷，记录已移入回收站`);
+      else {
+        message.warning(`已删除 ${receipt.succeeded} 个缺陷，${receipt.failed} 个未删除`);
+        modal.info({
+          title: '批量删除结果',
+          width: 620,
+          content: <Space direction="vertical" style={{ width: '100%' }}>
+            {receipt.items.filter((item) => !item.succeeded).map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`缺陷 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>,
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
   });
 
   const confirmDelete = (bug: Bug) => {
     modal.confirm({
       title: '确认删除该缺陷？',
       icon: <ExclamationCircleOutlined />,
-      content: `「${bug.title}」将被永久删除，无法恢复。`,
-      okText: '删除',
+      content: `「${bug.title}」将移入项目回收站，可由授权成员恢复。`,
+      okText: '删除并移入回收站',
       okType: 'danger',
       cancelText: '取消',
       onOk: () => removeMutation.mutateAsync(bug.id),
@@ -250,6 +277,7 @@ export function ConsoleDefectsPage() {
           value={projectId}
           onChange={(v) => {
             setProjectId(v);
+            setSelectedBugIds([]);
             setPagination((p) => ({ ...p, page: 1 }));
           }}
           style={{ minWidth: 180 }}
@@ -279,6 +307,28 @@ export function ConsoleDefectsPage() {
         <Button type="primary" onClick={openCreate} loading={createMutation.isPending}>
           新建缺陷
         </Button>
+      </Space>
+
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Checkbox
+          checked={data.items.length > 0 && data.items.every((bug) => selectedBugIds.includes(bug.id))}
+          indeterminate={data.items.some((bug) => selectedBugIds.includes(bug.id)) && !data.items.every((bug) => selectedBugIds.includes(bug.id))}
+          disabled={projectId == null}
+          onChange={(event) => setSelectedBugIds(event.target.checked ? data.items.map((bug) => bug.id) : [])}
+        >
+          全选当前页（{data.items.length}）
+        </Checkbox>
+        <Button danger disabled={projectId == null || selectedBugIds.length === 0 || batchRemoveMutation.isPending}
+          loading={batchRemoveMutation.isPending}
+          onClick={() => modal.confirm({
+            title: `删除选中的 ${selectedBugIds.length} 个缺陷？`,
+            content: '删除会保留来源追溯关系并移入项目回收站；每个缺陷独立校验并返回处理结果。',
+            okText: '删除并移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+            onOk: () => batchRemoveMutation.mutateAsync(selectedBugIds),
+          })}>
+          批量删除（{selectedBugIds.length}）
+        </Button>
+        {projectId == null && <Typography.Text type="secondary">请先选择项目，再批量删除缺陷。</Typography.Text>}
       </Space>
 
       <ResourceTable
@@ -353,6 +403,12 @@ export function ConsoleDefectsPage() {
         total={data.total}
         pagination={pagination}
         onPaginationChange={setPagination}
+        rowSelection={{
+          selectedRowKeys: selectedBugIds,
+          preserveSelectedRowKeys: true,
+          onChange: (keys) => setSelectedBugIds(keys.map(Number)),
+          getCheckboxProps: (row) => ({ disabled: projectId == null || row.project_id !== projectId }),
+        }}
       />
 
       <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnClose>

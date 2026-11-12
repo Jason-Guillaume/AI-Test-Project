@@ -19,6 +19,8 @@ import { TestDataTab } from './TestDataTab';
 import { FixtureTab } from './FixtureTab';
 import { ProviderTab } from './ProviderTab';
 import { ExecutionTab } from './ExecutionTab';
+import { PoolTab } from './PoolTab';
+import { ConnectionTab } from './ConnectionTab';
 import type { Environment } from '@/features/environments/contracts';
 
 
@@ -102,6 +104,16 @@ export function ConsoleTestDataPage() {
                 environmentName={currentEnv ? currentEnv.display_name || currentEnv.name : null}
               />
             ),
+          },
+          {
+            key: 'pools',
+            label: '数据池',
+            children: <PoolTab projectId={currentProjectId} />,
+          },
+          {
+            key: 'connections',
+            label: '被测库连接',
+            children: <ConnectionTab projectId={currentProjectId} environments={environments} />,
           },
           {
             key: 'executions',

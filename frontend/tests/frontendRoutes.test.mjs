@@ -8,9 +8,9 @@ const app = await readFile(new URL('../src/app/App.tsx', import.meta.url), 'utf8
 const routeCount = [...app.matchAll(/<Route\b/g)].length;
 const currentPaths = new Set([...app.matchAll(/\bpath=\"([^\"]+)\"/g)].map((match) => match[1]));
 
-test('all original route declarations remain registered after relocation and new task, ASR and model-center pages are additive', () => {
-  // 5d3171b 用例管理中心新增 2 条路由（test-cases 等），基线由 +14 调为 +16。
-  assert.equal(routeCount, routes.length + 16);
+test('all original routes remain registered and task, ASR, model-center and recycle-bin pages are additive', () => {
+  // 用例管理中心和 Agent 运行治理页都只增加路由，不移除原入口。
+  assert.equal(routeCount, routes.length + 24);
   for (const item of routes) {
     if (!item.route.path) continue;
     const path = JSON.parse(item.route.path);
@@ -30,4 +30,6 @@ test('all original route declarations remain registered after relocation and new
   assert.ok(currentPaths.has('asr/funasr'));
   assert.ok(currentPaths.has('model-center'));
   assert.ok(currentPaths.has('knowledge'));
+  assert.ok(currentPaths.has('agent-runtime'));
+  assert.ok(currentPaths.has('recycle-bin'));
 });

@@ -64,7 +64,7 @@ def test_users_and_members_are_persisted(api, admin, db):
     """不变量：管理员建号与删号都真实落库，建号时同步创建个人组织。
 
     验收点：库里能看到新账号（role / is_active / hashed_password / token_version=0
-    全对），并且 owner_id 指向它的个人组织存在；删除后再查用户与成员表都为空。
+    全对），并且 owner_id 指向它的个人组织存在；软删除后原始账号和组织仍保留。
     """
     username = unique("persist-user")
     created = api.post(
@@ -87,10 +87,15 @@ def test_users_and_members_are_persisted(api, admin, db):
         )
         assert personal is not None
 
-    # 删除后确实从库里消失。
+    # 删除后普通查询隐藏账号，但保留原记录和个人组织供恢复。
     assert api.delete(f"/users/{created['id']}", username=admin).status_code == 204
     with SessionLocal() as fresh:
         assert fresh.scalar(select(User).where(User.username == username)) is None
+        deleted = fresh.query(User).execution_options(include_deleted=True).filter_by(id=created["id"]).one()
+        assert deleted.deleted_at is not None
+        assert deleted.deleted_by is not None
+        assert deleted.token_version == 1
+        assert fresh.scalar(select(Organization.id).where(Organization.owner_id == created["id"])) == personal.id
 
 
 def _count(db, table: str, column: str, value: int) -> int:
@@ -113,8 +118,8 @@ def _count(db, table: str, column: str, value: int) -> int:
     )
 
 
-def test_deleting_user_hands_over_owned_data(api, admin, db):
-    """删除用户时把其拥有的组织与项目转交给下一个成员，不留下无主数据，也不 500。"""
+def test_deleting_user_preserves_owned_data_and_links(api, admin, db):
+    """删除账号保留组织、项目、成员和操作归属，恢复后原 ID 与权限关系可用。"""
     owner_name = unique("删户-owner")
     keeper_name = unique("删户-keeper")
     for name in (owner_name, keeper_name):
@@ -148,7 +153,7 @@ def test_deleting_user_hands_over_owned_data(api, admin, db):
         ).status_code
         == 200
     )
-    # 这个项目的成员只有被删用户自己：账号删除后应连带清理。
+    # 独立项目也必须保留，不能因账号删除扩大影响范围。
     orphan = api.post(
         "/projects",
         username=owner_name,
@@ -161,39 +166,43 @@ def test_deleting_user_hands_over_owned_data(api, admin, db):
     # 账号删除后，旧的令牌同样失效。
     assert api.get("/me", token=api.tokens[owner_name]).status_code == 401
 
-    # 数据库里不再有任何一行指向被删用户。
+    # 归属与成员关系都保留原值；移入回收站只影响账号登录。
     for table, column in (
         ("organization", "owner_id"),
         ("project", "owner_id"),
         ("organization_member", "user_id"),
-        ("project_member", "user_id"),
     ):
-        assert _count(db, table, column, owner_id) == 0, (table, column)
+        assert _count(db, table, column, owner_id) > 0, (table, column)
+    # 项目负责人不在项目成员表中；删除前后都不应创建或清除虚构的成员关系。
+    assert _count(db, "project_member", "user_id", owner_id) == 0
 
-    # 有成员的组织被转交：库里 owner 指向接手人，成员表里也标为组织负责人。
     assert (
         db.scalar(select(Organization.owner_id).where(Organization.id == org["id"]))
-        == keeper_id
+        == owner_id
     )
     members_after = api.get(f"/organizations/{org['id']}/members", username=keeper_name)
     assert members_after.status_code == 200, members_after.text
     keeper_row = next(
         item for item in members_after.json()["items"] if item["user_id"] == keeper_id
     )
-    assert keeper_row["is_org_owner"] is True
-    assert keeper_row["role"] == "owner"
+    assert keeper_row["is_org_owner"] is False
+    assert keeper_row["role"] == "member"
 
     project_after = api.get(f"/projects/{shared['id']}", username=keeper_name)
     assert project_after.status_code == 200, project_after.text
-    assert project_after.json()["owner_id"] == keeper_id
+    assert project_after.json()["owner_id"] == owner_id
 
-    # 没有其它成员的项目被清理掉，不再是「幽灵项目」。
-    assert api.get(f"/projects/{orphan['id']}", username=keeper_name).status_code == 404
-    assert db.scalar(select(Project.id).where(Project.id == orphan["id"])) is None
+    assert db.scalar(select(Project.id).where(Project.id == orphan["id"])) == orphan["id"]
+    item = next(row for row in api.get("/recycle-bin?resource_type=user", username=admin).json()["items"]
+                if row["resource_id"] == str(owner_id))
+    restored = api.post(f"/recycle-bin/{item['id']}/restore", username=admin)
+    assert restored.status_code == 200, restored.text
+    assert api.login(owner_name)
+    assert api.get(f"/projects/{orphan['id']}", username=owner_name).status_code == 200
 
 
-def test_deleting_user_without_successor_cleans_private_data(api, admin, db):
-    """没有其它成员的个人组织会被连带清理，而不是留下无人可管理的组织。"""
+def test_deleting_user_without_successor_keeps_private_data_recoverable(api, admin, db):
+    """没有其它成员的账号仍保留其个人组织和成员关系，管理员可恢复账号。"""
     name = unique("删户-独行")
     assert api.register(name).status_code == 201
     api.login(name)
@@ -201,8 +210,8 @@ def test_deleting_user_without_successor_cleans_private_data(api, admin, db):
 
     assert api.delete(f"/users/{user_id_value}", username=admin).status_code == 204
     assert db.scalar(select(User.id).where(User.id == user_id_value)) is None
-    assert _count(db, "organization", "owner_id", user_id_value) == 0
-    assert _count(db, "organization_member", "user_id", user_id_value) == 0
+    assert _count(db, "organization", "owner_id", user_id_value) > 0
+    assert _count(db, "organization_member", "user_id", user_id_value) > 0
 
 
 def test_cannot_delete_admin_or_self(api, admin, db):

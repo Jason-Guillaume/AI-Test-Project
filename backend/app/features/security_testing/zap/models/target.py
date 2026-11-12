@@ -14,10 +14,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class SecurityScanTarget(Base):
+class SecurityScanTarget(SoftDeleteBase):
     """一个被授权的扫描目标（§四）。
 
     创建时必须通过 scope_guard 校验：协议 / 主机白名单 / 解析 IP / 端口 / 授权状态。

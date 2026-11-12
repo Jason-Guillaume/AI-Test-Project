@@ -447,3 +447,42 @@ class RuntimeEventFact(Base):
     event_metadata = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
     occurred_at = Column(DateTime, nullable=False, server_default=func.now())
     created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class RuntimeTraceProjection(Base):
+    """Langfuse 投影回执；只存事实引用和同步状态，不保存 Trace 正文。"""
+
+    __tablename__ = "runtime_trace_projection"
+    __table_args__ = (
+        UniqueConstraint("projection_key", name="uq_runtime_trace_projection_key"),
+        UniqueConstraint("source_type", "source_key", name="uq_runtime_trace_projection_source"),
+        ForeignKeyConstraint(
+            ["task_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_trace_projection_run_task", ondelete="CASCADE",
+        ),
+        Index("ix_runtime_trace_projection_due", "status", "next_attempt_at", "lease_expires_at"),
+        Index("ix_runtime_trace_projection_run", "task_run_id", "created_at"),
+        {"comment": "Langfuse 投影 outbox，仅持有业务事实引用及投递状态"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    projection_key = Column(String(64), nullable=False)
+    source_type = Column(String(24), nullable=False)
+    source_key = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_run_id = Column(Integer, nullable=False)
+    execution_root_run_id = Column(Integer, nullable=False)
+    trace_id = Column(String(32), nullable=False, index=True)
+    span_id = Column(String(64), nullable=True)
+    status = Column(String(16), nullable=False, default="PENDING", server_default="PENDING")
+    attempt_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    next_attempt_at = Column(DateTime, nullable=False, server_default=func.now())
+    last_attempt_at = Column(DateTime, nullable=True)
+    last_delivery_at = Column(DateTime, nullable=True)
+    lease_owner = Column(String(120), nullable=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    last_error_code = Column(String(80), nullable=True)
+    projected_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

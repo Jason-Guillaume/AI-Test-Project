@@ -2,12 +2,13 @@ import { collectPages } from '@/shared/api/pagination';
 // 左侧业务域 / 流程树。
 // 两栏结构：域列表 → 选中域后展示其下流程。点击域切换流程列表，点击流程选中进入详情。
 // 域与流程均支持删除（弹窗确认）；新建在 index.tsx 的主弹窗中完成。
-import { useState } from 'react';
-import { App, Button, Empty, Input, Popconfirm, Skeleton, Tag } from 'antd';
+import { useEffect, useState } from 'react';
+import { Alert, App, Button, Checkbox, Empty, Input, Popconfirm, Skeleton, Space, Tag } from 'antd';
 import { DeleteOutlined, FolderOutlined, PlayCircleOutlined, SearchOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { businessApi } from '@/features/business/api/business';
 import { getErrorMessage } from '@/shared/api/client';
+import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 import type { BusinessDomain } from '@/features/business/contracts';
 
 
@@ -31,9 +32,13 @@ const FLOW_STATUS_LABELS: Record<string, { color: string; text: string }> = {
 
 export function DomainTree(props: DomainTreeProps) {
   const { projectId, selectedDomainId, onSelectDomain, selectedFlowId, onSelectFlow } = props;
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const [keyword, setKeyword] = useState('');
+  const [selectedDomainIds, setSelectedDomainIds] = useState<number[]>([]);
+  const [selectedFlowIds, setSelectedFlowIds] = useState<number[]>([]);
+
+  useEffect(() => setSelectedFlowIds([]), [selectedDomainId]);
 
   const domainsQuery = useQuery({
     queryKey: ['business', projectId, 'domains', keyword],
@@ -75,6 +80,52 @@ export function DomainTree(props: DomainTreeProps) {
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
   });
 
+  const batchDeleteMutation = useMutation({
+    mutationFn: ({ type, ids }: { type: 'business_domain' | 'business_flow'; ids: number[] }) =>
+      type === 'business_domain'
+        ? businessApi.removeDomains(projectId, ids)
+        : businessApi.removeFlows(projectId, ids),
+    onSuccess: (receipt: BatchLifecycleReceipt, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['business'] });
+      if (variables.type === 'business_domain') {
+        setSelectedDomainIds([]);
+        onSelectDomain(null);
+      } else {
+        setSelectedFlowIds([]);
+        onSelectFlow(null);
+      }
+      if (receipt.failed === 0) {
+        message.success(`已删除 ${receipt.succeeded} 条，记录已移入回收站`);
+      } else {
+        message.warning(`已删除 ${receipt.succeeded} 条，${receipt.failed} 条未删除`);
+        modal.info({
+          title: '批量删除结果',
+          width: 620,
+          content: (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {receipt.items.filter((item) => !item.succeeded).map((item) => (
+                <Alert key={item.id} type="error" showIcon message={`资源 #${item.id}`} description={item.error ?? '删除失败'} />
+              ))}
+            </Space>
+          ),
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
+  });
+
+  function confirmBatchDelete(type: 'business_domain' | 'business_flow', ids: number[]) {
+    const label = type === 'business_domain' ? '业务域' : '业务流程';
+    modal.confirm({
+      title: `删除选中的 ${ids.length} 个${label}？`,
+      content: '每条资源会独立检查依赖并返回结果；成功删除的记录可在回收站恢复。',
+      okText: '删除并移入回收站',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => batchDeleteMutation.mutateAsync({ type, ids }),
+    });
+  }
+
   if (domainsQuery.isPending) {
     return <Skeleton active paragraph={{ rows: 4 }} />;
   }
@@ -92,6 +143,24 @@ export function DomainTree(props: DomainTreeProps) {
         value={keyword}
         onChange={(e) => setKeyword(e.target.value)}
       />
+      <Space wrap>
+        <Checkbox
+          checked={domains.length > 0 && domains.every((domain) => selectedDomainIds.includes(domain.id))}
+          indeterminate={selectedDomainIds.some((id) => domains.some((domain) => domain.id === id)) && !domains.every((domain) => selectedDomainIds.includes(domain.id))}
+          onChange={(event) => setSelectedDomainIds(event.target.checked ? domains.map((domain) => domain.id) : [])}
+        >
+          全选当前搜索结果（{domains.length}）
+        </Checkbox>
+        <Button
+          size="small"
+          danger
+          disabled={selectedDomainIds.length === 0 || batchDeleteMutation.isPending}
+          loading={batchDeleteMutation.isPending && selectedDomainIds.length > 0}
+          onClick={() => confirmBatchDelete('business_domain', selectedDomainIds)}
+        >
+          批量删除域（{selectedDomainIds.length}）
+        </Button>
+      </Space>
       {domains.length === 0 && !keyword && (
         <Empty description="暂无业务域，点击「新建域」开始" image={Empty.PRESENTED_IMAGE_SIMPLE} />
       )}
@@ -106,12 +175,36 @@ export function DomainTree(props: DomainTreeProps) {
             onSelect={onSelectDomain}
             onSelectFlow={onSelectFlow}
             onDelete={(id) => removeDomainMutation.mutate(id)}
+            domainChecked={selectedDomainIds.includes(d.id)}
+            onToggleDomain={(checked) => setSelectedDomainIds((current) => checked ? [...new Set([...current, d.id])] : current.filter((id) => id !== d.id))}
+            selectedFlowIds={selectedFlowIds}
+            onToggleFlow={(id, checked) => setSelectedFlowIds((current) => checked ? [...new Set([...current, id])] : current.filter((value) => value !== id))}
             deletingFlow={removeFlowMutation.isPending}
             onDeleteFlow={(id) => removeFlowMutation.mutate(id)}
             flowsLoading={flowsQuery.isFetching}
           />
         ))}
       </div>
+      {selectedDomainId != null && (
+        <Space wrap>
+          <Checkbox
+            checked={flows.length > 0 && flows.every((flow) => selectedFlowIds.includes(flow.id))}
+            indeterminate={selectedFlowIds.some((id) => flows.some((flow) => flow.id === id)) && !flows.every((flow) => selectedFlowIds.includes(flow.id))}
+            onChange={(event) => setSelectedFlowIds(event.target.checked ? flows.map((flow) => flow.id) : [])}
+          >
+            全选当前流程列表（{flows.length}）
+          </Checkbox>
+          <Button
+            size="small"
+            danger
+            disabled={selectedFlowIds.length === 0 || batchDeleteMutation.isPending}
+            loading={batchDeleteMutation.isPending && selectedFlowIds.length > 0}
+            onClick={() => confirmBatchDelete('business_flow', selectedFlowIds)}
+          >
+            批量删除流程（{selectedFlowIds.length}）
+          </Button>
+        </Space>
+      )}
     </div>
   );
 }
@@ -124,6 +217,10 @@ function DomainNode({
   onSelect,
   onSelectFlow,
   onDelete,
+  domainChecked,
+  onToggleDomain,
+  selectedFlowIds,
+  onToggleFlow,
   onDeleteFlow,
   deletingFlow,
   flowsLoading,
@@ -135,6 +232,10 @@ function DomainNode({
   onSelect: (id: number) => void;
   onSelectFlow: (id: number | null) => void;
   onDelete: (id: number) => void;
+  domainChecked: boolean;
+  onToggleDomain: (checked: boolean) => void;
+  selectedFlowIds: number[];
+  onToggleFlow: (id: number, checked: boolean) => void;
   onDeleteFlow: (id: number) => void;
   deletingFlow: boolean;
   flowsLoading: boolean;
@@ -154,6 +255,11 @@ function DomainNode({
         }}
         onClick={() => onSelect(domain.id)}
       >
+        <Checkbox
+          checked={domainChecked}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onToggleDomain(event.target.checked)}
+        />
         <FolderOutlined />
         <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {domain.name}
@@ -162,7 +268,7 @@ function DomainNode({
           {statusInfo.text}
         </Tag>
         <Popconfirm
-          title="删除业务域会级联删除其下所有流程与动作，确认？"
+          title="删除此业务域？仍有流程时服务端会拒绝删除。"
           onConfirm={() => onDelete(domain.id)}
           okText="删除"
           cancelText="取消"
@@ -199,6 +305,11 @@ function DomainNode({
                 }}
                 onClick={() => onSelectFlow(f.id)}
               >
+                <Checkbox
+                  checked={selectedFlowIds.includes(f.id)}
+                  onClick={(event) => event.stopPropagation()}
+                  onChange={(event) => onToggleFlow(f.id, event.target.checked)}
+                />
                 <PlayCircleOutlined />
                 <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13 }}>
                   {f.name}
@@ -207,7 +318,7 @@ function DomainNode({
                   {fStatus.text}
                 </Tag>
                 <Popconfirm
-                  title="删除流程会级联删除其下所有步骤与配置，确认？"
+                  title="删除此流程？仍有动作、引用或执行任务时服务端会拒绝删除。"
                   onConfirm={() => onDeleteFlow(f.id)}
                   okText="删除"
                   cancelText="取消"

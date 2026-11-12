@@ -23,7 +23,12 @@ def build_agent_profile(
     from app.knowledge.service import freeze
     if agent_definition_id is None:
         return None
-    definition = db.get(AgentDefinition, agent_definition_id)
+    # Lock the selected definition while its runtime snapshot and task run are created.
+    # Lifecycle deletion takes the same row lock, so a delete cannot pass its active-run
+    # check between this read and the transaction that stores the snapshot.
+    definition = db.query(AgentDefinition).filter(
+        AgentDefinition.id == agent_definition_id,
+    ).with_for_update().first()
     if definition is None:
         raise not_found("Agent 配置不存在")
     if not definition.is_enabled:
@@ -40,7 +45,7 @@ def build_agent_profile(
 
     skill_rows = db.query(SkillDefinition).filter(
         SkillDefinition.key.in_(definition.skill_keys or []),
-    ).all() if definition.skill_keys else []
+    ).order_by(SkillDefinition.id).with_for_update().all() if definition.skill_keys else []
     skills_by_key = {row.key: row for row in skill_rows}
     if len(skills_by_key) != len(definition.skill_keys or []) or any(
         not skills_by_key[key].is_enabled for key in (definition.skill_keys or [])
@@ -58,7 +63,7 @@ def build_agent_profile(
     )
     child_rows_from_db = db.query(AgentDefinition).filter(
         AgentDefinition.id.in_(definition.child_agent_ids or []),
-    ).all() if definition.child_agent_ids else []
+    ).order_by(AgentDefinition.id).with_for_update().all() if definition.child_agent_ids else []
     child_by_id = {child.id: child for child in child_rows_from_db}
     child_rows = [child_by_id[child_id] for child_id in (definition.child_agent_ids or []) if child_id in child_by_id]
     if len(child_rows) != len(definition.child_agent_ids or []) or any(
@@ -70,7 +75,7 @@ def build_agent_profile(
         child_skills_by_key = {
             skill.key: skill for skill in db.query(SkillDefinition).filter(
                 SkillDefinition.key.in_(child.skill_keys or []),
-            ).all()
+            ).order_by(SkillDefinition.id).with_for_update().all()
         } if child.skill_keys else {}
         if len(child_skills_by_key) != len(child.skill_keys or []) or any(
             not child_skills_by_key[key].is_enabled for key in (child.skill_keys or [])

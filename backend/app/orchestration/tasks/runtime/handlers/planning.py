@@ -49,6 +49,23 @@ from app.orchestration.tasks.runtime.handlers.security_planning import security_
 logger = logging.getLogger(__name__)
 
 
+def reject_failed_children(child_insights: list[dict]) -> None:
+    """任一子 Agent 未成功时拒绝把规划标成完成。
+
+    全部失败都可重试时，交由现有模型重试策略重新调度；已成功子 Agent 的检查点保持不变。
+    只要存在不可重试失败，本次规划就终止，避免自动重试永久错误。
+    """
+    failed = [item for item in child_insights if item.get("status") != "SUCCEEDED"]
+    if not failed:
+        return
+    names = "、".join(str(item.get("name") or "子 Agent") for item in failed)[:180]
+    raise LLMError(
+        "SUBAGENT_FAILED",
+        f"子 Agent 未全部成功，规划不能标记完成：{names}",
+        retryable=all(bool(item.get("retryable")) for item in failed),
+    )
+
+
 def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: TaskAttempt, agent: TaskAgentInstance | None, actor: User, *, provider_for_agent: ProviderFactory) -> None:
     """调用真实 Planner LLM 形成可审阅方案；资产与用例选择由服务端锁定。"""
     if agent is None:
@@ -368,6 +385,13 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
                             usage_status="KNOWN" if usage else "UNKNOWN", duration_ms=duration_ms,
                             started_at=now - timedelta(milliseconds=duration_ms), finished_at=now,
                         ))
+                        from app.orchestration.tasks.services.trace_projection_service import enqueue_projection
+                        enqueue_projection(
+                            fact_db, source_type="MODEL_CALL", source_key=str(item["call_id"]),
+                            project_id=task.project_id, task_id=task.id, task_run_id=run.id,
+                            execution_root_run_id=run.execution_root_run_id or run.id,
+                            trace_id=run.trace_id, span_id=str(item["span_id"]) if item.get("span_id") else None,
+                        )
                     fact_db.commit()
                 except Exception as exc:  # noqa: BLE001 —— 事实写入不能改变模型调用结果
                     fact_db.rollback()
@@ -383,12 +407,25 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
                         str(child_attempt["owner"]), int(child_attempt["lease_generation"]),
                     ):
                         raise LLMError("STALE_EXECUTION", "任务执行租约已失效")
+                    from app.orchestration.tasks.services.runtime_fact_service import (
+                        assert_token_quota, model_revision_admitted,
+                    )
+                    assert_token_quota(child_db, project_id=task.project_id, user_id=actor.id)
+                    revision_blocked = False
+                    admitted = False
                     for candidate_id in allowed_ids:
                         model = child_db.get(ModelConfiguration, candidate_id, populate_existing=True)
-                        if model is not None and model.is_enabled:
-                            assembly_service.assert_agent_model_access(child_db, task.project_id, actor, candidate_id)
-                            break
-                    else:
+                        if model is None or not model.is_enabled:
+                            continue
+                        if not model_revision_admitted(child_db, model.id):
+                            revision_blocked = True
+                            continue
+                        assembly_service.assert_agent_model_access(child_db, task.project_id, actor, candidate_id)
+                        admitted = True
+                        break
+                    if not admitted:
+                        if revision_blocked:
+                            raise LLMError("MODEL_REVISION_BLOCKED", "子 Agent 当前模型修订未准入", retryable=False)
                         raise RuntimeError('子 Agent 主模型及配置的备用模型均已停用')
                     if child.get('knowledge'):
                         search(child_db, child['knowledge'], actor, '', limit=0)
@@ -508,6 +545,23 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
             result_callback=persist_child_result,
         )
         db.refresh(attempt, with_for_update=True)
+        failed_children = [item for item in child_insights if item.get("status") != "SUCCEEDED"]
+        if failed_children:
+            # 先落失败分类，Worker 回滚当前事务时仍能保留调度依据。
+            attempt.checkpoint_json = {
+                **(attempt.checkpoint_json or {}),
+                "child_failures": [
+                    {
+                        "name": str(item.get("name") or "子 Agent")[:120],
+                        "error_code": item.get("error_code"),
+                        "retryable": bool(item.get("retryable")),
+                        "error_class": item.get("error_class") or "PERMANENT",
+                    }
+                    for item in failed_children
+                ],
+            }
+            db.commit()
+            reject_failed_children(child_insights)
         prompt = json.dumps({
             "task_context": json.loads(prompt),
             "child_agent_insights": child_insights,

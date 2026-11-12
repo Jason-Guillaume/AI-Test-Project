@@ -321,6 +321,14 @@ class TaskTraceEventResponse(BaseModel):
     cost_amount: str | None = None
     cost_currency: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    projection_status: Literal["PENDING", "RETRYING", "FAILED", "SUCCEEDED", "UNTRACKED"] = "UNTRACKED"
+
+
+class TaskTraceProjectionSummary(BaseModel):
+    status: str
+    counts: dict[str, int]
+    last_projected_at: datetime | None = None
+    last_error_code: str | None = None
 
 
 class TaskTracePageResponse(BaseModel):
@@ -329,6 +337,7 @@ class TaskTracePageResponse(BaseModel):
     execution_root_run_id: int
     generation_batch_id: int | None = None
     trace_id: str | None = None
+    projection: TaskTraceProjectionSummary
     items: list[TaskTraceEventResponse]
     next_cursor: str | None = None
 

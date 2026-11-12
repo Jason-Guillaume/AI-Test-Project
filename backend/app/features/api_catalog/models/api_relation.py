@@ -17,24 +17,21 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
 )
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class ApiRelation(Base):
+class ApiRelation(SoftDeleteBase):
     """接口关联（PRECONDITION/OUTPUT_INPUT/FOLLOW_UP）。"""
 
     __tablename__ = "api_relation"
     __table_args__ = (
-        UniqueConstraint(
-            "source_api_id",
-            "target_api_id",
-            "relation_type",
-            "variable_name",
-            name="uq_api_relation_src_tgt_type_var",
+        Index(
+            "uq_api_relation_src_tgt_type_var", "source_api_id", "target_api_id",
+            "relation_type", "variable_name", unique=True,
+            postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL"),
         ),
         Index("ix_api_relation_project", "project_id"),
         Index("ix_api_relation_source", "source_api_id"),

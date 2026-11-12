@@ -76,11 +76,13 @@ const AdminEnvironmentsPage = lazyNamedPage(() => import('@/pages/admin/Environm
 const AdminAgentGovernancePage = lazyNamedPage(() => import('@/pages/admin/AgentGovernance'), 'AdminAgentGovernancePage');
 const AdminAgentRuntimePage = lazyNamedPage(() => import('@/pages/admin/AgentRuntime'), 'AdminAgentRuntimePage');
 const AdminKnowledgePage = lazyNamedPage(() => import('@/pages/admin/Knowledge'), 'AdminKnowledgePage');
+const AdminRecycleBinPage = lazyNamedPage(() => import('@/pages/shared/RecycleBinPage'), 'AdminRecycleBinPage');
 const ConsoleWorkbenchPage = lazyNamedPage(() => import('@/pages/console/Workbench'), 'ConsoleWorkbenchPage');
 const ConsoleProjectsPage = lazyNamedPage(() => import('@/pages/console/Projects'), 'ConsoleProjectsPage');
 const ConsoleProjectDetailPage = lazyNamedPage(() => import('@/pages/console/Projects/ProjectDetail'), 'ConsoleProjectDetailPage');
 const ConsoleNotificationsPage = lazyNamedPage(() => import('@/pages/console/Notifications'), 'ConsoleNotificationsPage');
 const ConsoleProfilePage = lazyNamedPage(() => import('@/pages/console/Profile'), 'ConsoleProfilePage');
+const ConsoleRecycleBinPage = lazyNamedPage(() => import('@/pages/shared/RecycleBinPage'), 'ConsoleRecycleBinPage');
 const ConsoleDefectsPage = lazyNamedPage(() => import('@/pages/console/Defects'), 'ConsoleDefectsPage');
 const ConsoleApiCatalogPage = lazyNamedPage(() => import('@/pages/console/ApiCatalog'), 'ConsoleApiCatalogPage');
 const ConsoleBusinessManagementPage = lazyNamedPage(() => import('@/pages/console/BusinessManagement'), 'ConsoleBusinessManagementPage');
@@ -91,6 +93,11 @@ const ConsoleTestPlansPage = lazyNamedPage(() => import('@/pages/console/TestMan
 const ConsoleExecutionCenterPage = lazyNamedPage(() => import('@/pages/console/TestManagement/ExecutionCenter'), 'ConsoleExecutionCenterPage');
 const ConsoleExecutionHistoryPage = lazyNamedPage(() => import('@/pages/console/TestManagement/ExecutionHistory'), 'ConsoleExecutionHistoryPage');
 const ConsoleAgentPage = lazyNamedPage(() => import('@/pages/console/Agent/AgentPage'), 'AgentPage');
+const ConsoleAutomationProjectsPage = lazyNamedPage(() => import('@/pages/console/AutomationCenter/Projects'), 'ConsoleAutomationProjectsPage');
+const ConsoleAutomationRunsPage = lazyNamedPage(() => import('@/pages/console/AutomationCenter/Runs'), 'ConsoleAutomationRunsPage');
+const ConsoleAutomationHistoryPage = lazyNamedPage(() => import('@/pages/console/AutomationCenter/History'), 'ConsoleAutomationHistoryPage');
+const ConsoleAutomationReportPage = lazyNamedPage(() => import('@/pages/console/AutomationCenter/Report'), 'ConsoleAutomationReportPage');
+const ConsoleAutomationIntegrationPage = lazyNamedPage(() => import('@/pages/console/AutomationCenter/Integration'), 'ConsoleAutomationIntegrationPage');
 const ConsoleReportListPage = lazyNamedPage(() => import('@/pages/console/Reports/ReportList'), 'ConsoleReportListPage');
 const ConsoleReportDetailPage = lazyNamedPage(() => import('@/pages/console/Reports/ReportDetail'), 'ConsoleReportDetailPage');
 const ConsoleNotificationChannelsPage = lazyNamedPage(() => import('@/pages/console/NotificationChannels'), 'ConsoleNotificationChannelsPage');
@@ -225,6 +232,7 @@ function AppRoutes() {
           <Route path="mcp" element={<AdminAgentGovernancePage />} />
           <Route path="skills" element={<AdminAgentGovernancePage />} />
           <Route path="tools" element={<AdminAgentGovernancePage />} />
+          <Route path="recycle-bin" element={<AdminRecycleBinPage />} />
         </Route>
 
         <Route
@@ -252,6 +260,11 @@ function AppRoutes() {
           <Route path="execution-history" element={<ConsoleExecutionHistoryPage />} />
           <Route path="test-reports" element={<ConsoleReportListPage />} />
           <Route path="test-reports/:reportId" element={<ConsoleReportDetailPage />} />
+          <Route path="automation-projects" element={<ConsoleAutomationProjectsPage />} />
+          <Route path="automation-runs" element={<ConsoleAutomationRunsPage />} />
+          <Route path="automation-history" element={<ConsoleAutomationHistoryPage />} />
+          <Route path="automation-reports/:reportId" element={<ConsoleAutomationReportPage />} />
+          <Route path="automation-integration" element={<ConsoleAutomationIntegrationPage />} />
           <Route path="notification-channels" element={<ConsoleNotificationChannelsPage />} />
           <Route path="test-data" element={<ConsoleTestDataPage />} />
           <Route path="mock-management" element={<ConsoleMockManagementPage />} />
@@ -281,6 +294,7 @@ function AppRoutes() {
           <Route path="agent" element={<ConsoleAgentPage />} />
           <Route path="notifications" element={<ConsoleNotificationsPage />} />
           <Route path="profile" element={<ConsoleProfilePage />} />
+          <Route path="recycle-bin" element={<ConsoleRecycleBinPage />} />
         </Route>
 
         <Route path="/403" element={<ForbiddenPage />} />

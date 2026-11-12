@@ -1,6 +1,7 @@
 // 缺陷管理相关接口。字段命名与后端 BugCreate/BugUpdate/BugResponse 严格对齐（snake_case）。
 // 权限：读 = 项目可见（viewer+）；写（建/改/删）= 项目 member+。
 import { api } from '@/shared/api/client';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { Bug, BugListQuery } from '@/features/defects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
@@ -32,4 +33,6 @@ export const bugsApi = {
   update: (id: number, body: BugUpdate) => api.put<Bug>(`/bugs/${id}`, body),
   /** 删除缺陷，无返回体。 */
   remove: (id: number) => api.delete<void>(`/bugs/${id}`),
+  removeMany: (projectId: number, ids: number[]) =>
+    dataLifecycleApi.deleteMany('bug', projectId, ids),
 };

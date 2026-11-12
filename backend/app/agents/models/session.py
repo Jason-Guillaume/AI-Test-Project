@@ -10,9 +10,10 @@ from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Uni
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class AgentSession(Base):
+class AgentSession(SoftDeleteBase):
     """共享的 Agent 对话上下文，供接口测试、安全分析和任务编排流程使用。"""
 
     __tablename__ = "agent_session"

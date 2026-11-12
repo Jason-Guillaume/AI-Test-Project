@@ -17,10 +17,10 @@ feature-local 表，由迁移 0008 显式建立。
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Boolean
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class NotificationChannel(Base):
+class NotificationChannel(SoftDeleteBase):
     """外发通知渠道（如飞书 Webhook 机器人），按项目隔离。"""
 
     __tablename__ = "notification_channel"

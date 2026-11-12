@@ -184,6 +184,12 @@ class GenerationProvider(ProductionLLMProvider):
         fact.input_tokens = usage.get('prompt_tokens') if usage else None
         fact.output_tokens = usage.get('completion_tokens') if usage else None
         fact.total_tokens = usage.get('total_tokens') if usage else None
+        from app.orchestration.tasks.services.trace_projection_service import enqueue_projection
+        enqueue_projection(
+            self.db, source_type="MODEL_CALL", source_key=fact.call_id,
+            project_id=fact.project_id, task_id=fact.task_id, task_run_id=fact.task_run_id,
+            execution_root_run_id=fact.execution_root_run_id, trace_id=fact.trace_id, span_id=fact.span_id,
+        )
 
 
 @contextmanager
@@ -416,4 +422,11 @@ def finish(db: Session, claim, result: dict, error: Exception | None):
     batch.module_metrics_json = [{'module': item.work_key, 'status': item.status,
         'duration_ms': (item.output_json or {}).get('duration_ms'), 'usage': (item.output_json or {}).get('usage', {})}
         for item in batch_works(db, batch)]
+    source_task = db.get(Task, run.task_id)
+    source_agent = db.get(TaskAgentInstance, work.agent_instance_id) if work.agent_instance_id else None
+    if source_task is not None:
+        from app.orchestration.tasks.services.trace_projection_service import enqueue_attempt_projection
+        enqueue_attempt_projection(
+            db, task=source_task, run=run, work=work, attempt=attempt, agent=source_agent,
+        )
     db.commit()

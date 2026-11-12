@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
 from app.features.defects.models.source_link import DefectSourceLink
+from app.features.defects.models.bug import Bug
 from app.features.defects.schemas import DefectSourceRequest
 from app.features.defects.services.defect_service import DefectService
 from app.features.security_testing.models.finding import SecurityFinding
@@ -43,7 +44,15 @@ class DefectSourceService:
         """按授权来源列出关联；来源被删除时返回 404。"""
         self._source(db, source_type, source_id, user)
         field = DefectSourceLink.case_execution_id if source_type == "CASE_EXECUTION" else DefectSourceLink.security_finding_id
-        return db.query(DefectSourceLink).filter(field == source_id).order_by(DefectSourceLink.id.desc()).all()
+        # Keep the FK for recovery/audit, but omit links from ordinary reads while
+        # their defect is in the recycle bin.
+        return (
+            db.query(DefectSourceLink)
+            .join(Bug, Bug.id == DefectSourceLink.bug_id)
+            .filter(field == source_id, Bug.deleted_at.is_(None))
+            .order_by(DefectSourceLink.id.desc())
+            .all()
+        )
 
     def source_context(self, db: Session, source_type: str, source_id: int, user: User):
         """返回不包含证据的来源定位信息。"""

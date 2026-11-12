@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session, sessionmaker, with_loader_criteria
 
 from app.core.config import settings
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 # 连接池参数：非 PostgreSQL 数据源（例如测试用的 SQLite）只保留 pool_pre_ping，
 # 其余 pool_* 参数仅在真实 PostgreSQL 下开启。
@@ -32,6 +33,22 @@ engine = create_engine(settings.DATABASE_URL, **engine_kwargs)  # type: ignore[a
 
 # expire_on_commit=False：commit 之后对象属性不失效，便于事务提交后直接回读对象字段。
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _filter_soft_deleted_resources(execute_state) -> None:
+    """Hide soft-deleted resources from normal ORM reads, including relationship loads."""
+    if (
+        execute_state.is_select
+        and not execute_state.execution_options.get("include_deleted", False)
+    ):
+        execute_state.statement = execute_state.statement.options(
+            with_loader_criteria(
+                SoftDeleteBase,
+                lambda resource: resource.deleted_at.is_(None),
+                include_aliases=True,
+            )
+        )
 
 
 def get_db() -> Iterator[Session]:

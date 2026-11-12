@@ -36,6 +36,7 @@ from app.core.security.roles import (
     has_project_role,
     project_role_for,
 )
+from app.lifecycle.service import delete_resource
 
 
 class DefectService:
@@ -251,5 +252,4 @@ class DefectService:
         if project is None:
             raise not_found("缺陷所属项目不存在")
         check_writable(db, project, actor)
-        db.delete(bug)
-        db.commit()
+        delete_resource(db, "bug", bug.id, actor=actor)

@@ -66,7 +66,7 @@ def apply_rule_payload(
 
 def get_manageable_rule(db: Session, rule_id: int, *, actor: User) -> SecurityMutationRule:
     """取规则并校验管理权限；系统规则返回 403，跨项目或不存在返回 404。"""
-    rule = db.get(SecurityMutationRule, rule_id)
+    rule = db.query(SecurityMutationRule).filter(SecurityMutationRule.id == rule_id).first()
     if rule is None:
         raise AppError("变异规则不存在", status_code=404, code=CODE_SECURITY_RULE_NOT_FOUND)
     project_id = resolve_rule_project_id(db, rule_id)
@@ -142,10 +142,14 @@ class SecurityRuleService:
         return MutationRuleResponse.model_validate(rule)
 
     def delete_rule(self, db: Session, rule_id: int, *, actor: User) -> None:
-        """删除规则。"""
+        """把项目规则移入回收站。"""
         rule = get_manageable_rule(db, rule_id, actor=actor)
-        db.delete(rule)
-        db.commit()
+        from app.lifecycle.service import delete_resource
+
+        delete_resource(
+            db, "security_rule", rule.id, actor=actor,
+            project_id=rule.project_id,
+        )
 
     @staticmethod
     def _to_response(rows) -> list[MutationRuleResponse]:

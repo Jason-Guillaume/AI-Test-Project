@@ -6,9 +6,11 @@ import { collectPages } from '@/shared/api/pagination';
 // 成功后直接把返回的执行记录详情开进 ExecutionDetailDrawer（每步 input/output/error）。
 // 单 Provider 试跑没有 Fixture 归属，步骤列在抽屉的「无归属步骤」区块。
 import { useState } from 'react';
-import { App, Button, Popconfirm, Space, Switch, Table, Tag } from 'antd';
+import { Alert, App, Button, Popconfirm, Space, Switch, Table, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { testDataApi } from '@/features/test-data/api/testData';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
 import {
@@ -38,10 +40,12 @@ export function ProviderTab({
 }) {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<DataProvider | null>(null);
   // 试跑结果：直接作为抽屉的 seed，省一次回读请求。
   const [detail, setDetail] = useState<DataExecutionDetail | null>(null);
+  const [selectedProviderIds, setSelectedProviderIds] = useState<number[]>([]);
 
   const query = useQuery({
     queryKey: ['test-data', 'providers', projectId],
@@ -75,6 +79,36 @@ export function ProviderTab({
     onError: (e) => message.error(getErrorMessage(e, '试跑失败')),
   });
 
+  const batchDelete = () => {
+    if (!selectedProviderIds.length) return;
+    if (selectedProviderIds.length > 100) { void message.warning('每批最多删除 100 个 Provider，请分批操作'); return; }
+    const ids = [...selectedProviderIds];
+    modal.confirm({
+      title: `确认删除选中的 ${ids.length} 个 Data Provider？`,
+      content: '仍被 Fixture 步骤引用的 Provider 会逐条拒绝；数据库型 Provider 还要求平台管理员权限。执行历史保留。',
+      okText: '删除并移入回收站',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        const receipt = await dataLifecycleApi.deleteMany('data_provider', projectId, ids);
+        setSelectedProviderIds([]);
+        await queryClient.invalidateQueries({ queryKey: ['test-data', 'providers'] });
+        await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+        const failures = receipt.items.filter((item) => !item.succeeded);
+        modal.info({
+          title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+          content: failures.length ? (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {failures.map((item) => <Alert key={item.id} type="error" showIcon message={`Data Provider #${item.id}`} description={item.error ?? '删除失败'} />)}
+            </Space>
+          ) : '成功项已移入回收站，执行历史保留。',
+          okText: '查看回收站',
+          onOk: () => navigate('/console/recycle-bin'),
+        });
+      },
+    });
+  };
+
   const handleTest = (provider: DataProvider) => {
     if (environmentId == null) {
       message.warning('请先在顶部选择试跑环境');
@@ -106,6 +140,10 @@ export function ProviderTab({
         >
           新增 Provider
         </Button>
+        <Button danger disabled={!selectedProviderIds.length} onClick={batchDelete}>
+          批量删除已选（{selectedProviderIds.length}）
+        </Button>
+        <Button disabled={!selectedProviderIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
       </Space>
       {rows.length === 0 ? (
         <EmptyState description="暂无 Data Provider，点「新增」创建第一个" />
@@ -114,6 +152,10 @@ export function ProviderTab({
           rowKey={(r) => r.id}
           dataSource={rows}
           loading={query.isFetching}
+          rowSelection={{
+            selectedRowKeys: selectedProviderIds,
+            onChange: (keys) => setSelectedProviderIds(keys.map(Number)),
+          }}
           pagination={false}
           size="middle"
           columns={[
@@ -174,15 +216,17 @@ export function ProviderTab({
                   </a>
                   <a onClick={() => handleTest(r)}>试跑</a>
                   <Popconfirm
-                    title={`删除 Provider「${r.name}」？`}
+                    title={`将 Provider「${r.name}」移入回收站？`}
+                    description="仍被 Fixture 步骤引用时会拒绝删除；执行历史保留。"
                     okText="删除"
                     okButtonProps={{ danger: true }}
                     cancelText="取消"
                     onConfirm={async () => {
                       try {
                         await testDataApi.removeProvider(r.id);
-                        message.success('已删除');
+                        message.success('Provider 已移入回收站');
                         queryClient.invalidateQueries({ queryKey: ['test-data', 'providers'] });
+                        queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
                       } catch (e) {
                         message.error(getErrorMessage(e, '删除失败'));
                       }

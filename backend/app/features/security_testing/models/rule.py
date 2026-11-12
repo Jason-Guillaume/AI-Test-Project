@@ -14,10 +14,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class SecurityMutationRule(Base):
+class SecurityMutationRule(SoftDeleteBase):
     """一条变异规则：改哪里、怎么改、期望什么、什么级别。
 
     全部是结构化配置，不允许脚本。``mutation_config`` 出现

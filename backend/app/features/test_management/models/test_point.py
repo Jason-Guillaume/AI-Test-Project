@@ -9,18 +9,19 @@ api_id / business_flow_id / business_action_id 均用 SET NULL：被测对象删
 priority ∈ {P0, P1, P2, P3}。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class TestPoint(Base):
+class TestPoint(SoftDeleteBase):
     """测试点：从策略细化的具体验证场景。"""
 
     __tablename__ = "test_point"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_test_point_project_name"),
+        Index("uq_test_point_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_point_project_status", "project_id", "status"),
         {"comment": "测试点：从策略细化的具体验证场景"},
     )

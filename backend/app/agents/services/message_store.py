@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from typing import Any
+import re
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.agents.models.message import AgentMessage
 from app.agents.models.session import AgentSession
@@ -40,6 +42,55 @@ def list_messages(db: Session, session_id: int) -> list[AgentMessage]:
         .order_by(AgentMessage.id.asc())
         .all()
     )
+
+
+def list_latest_state_messages(db: Session, session_id: int) -> list[AgentMessage]:
+    """每种消息类型只取最新一条，供工作流状态恢复，避免扫描完整会话正文。"""
+    latest_ids = db.query(func.max(AgentMessage.id).label("id")).filter(
+        AgentMessage.session_id == session_id,
+    ).group_by(AgentMessage.message_type).subquery()
+    return db.query(AgentMessage).join(
+        latest_ids, latest_ids.c.id == AgentMessage.id,
+    ).order_by(AgentMessage.id.asc()).all()
+
+
+def list_context_candidates(
+    db: Session,
+    session_id: int,
+    *,
+    query: str | None,
+    recent_limit: int = 32,
+    related_limit: int = 96,
+) -> tuple[list[AgentMessage], int]:
+    """取最近消息和同一会话内的关键词相关旧消息，并返回总消息数。"""
+    base = db.query(AgentMessage).filter(AgentMessage.session_id == session_id)
+    total = int(base.with_entities(func.count(AgentMessage.id)).scalar() or 0)
+    recent = base.order_by(AgentMessage.id.desc()).limit(max(1, recent_limit)).all()
+    if len(recent) < recent_limit or not query:
+        return list(reversed(recent)), total
+
+    oldest_recent_id = min(row.id for row in recent)
+    terms = []
+    for token in re.findall(r"[a-zA-Z0-9_]+|[\u3400-\u9fff]+", query.lower()):
+        if token[0].isascii():
+            terms.append(token)
+        elif len(token) > 1:
+            terms.extend(token[index:index + 2] for index in range(len(token) - 1))
+        else:
+            terms.append(token)
+    predicates = []
+    for term in list(dict.fromkeys(terms))[:64]:
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        predicates.append(AgentMessage.content.ilike(f"%{escaped}%", escape="\\"))
+    related = []
+    if predicates:
+        related = base.filter(
+            AgentMessage.id < oldest_recent_id,
+            AgentMessage.content.isnot(None),
+            or_(*predicates),
+        ).order_by(AgentMessage.id.desc()).limit(max(0, related_limit)).all()
+    by_id = {row.id: row for row in (*recent, *related)}
+    return [by_id[ident] for ident in sorted(by_id)], total
 
 
 def next_generation_version(db: Session, session_id: int, *, message_type: str) -> int:

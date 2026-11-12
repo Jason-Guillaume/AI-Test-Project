@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from app.features.test_data.models.case_fixture import TestCaseFixture
 from app.features.test_data.models.fixture import Fixture, FixtureDependency, FixtureOutput, FixtureStep
 from app.features.test_data.schemas import (
     FIXTURE_KEY_PATTERN,
@@ -137,22 +136,18 @@ class FixtureService:
         return detail_response(db, fixture)
 
     def delete_fixture(self, db: Session, fixture_id: int, *, actor: User) -> None:
-        """删除固定数据。"""
-        fixture = get_writable_or_404(db, fixture_id, actor)
-        ref_count = int(
-            db.query(TestCaseFixture.id).filter(TestCaseFixture.fixture_id == fixture.id).count()
+        """将 Fixture 移入回收站。引用检查在统一删除服务中执行，重复删除不产生额外副作用。"""
+        from app.features.test_data.services.fixture_validation import raise_not_found
+        from app.lifecycle.service import delete_resource
+
+        fixture = (
+            db.query(Fixture).execution_options(include_deleted=True)
+            .filter(Fixture.id == fixture_id).first()
         )
-        if ref_count:
-            raise conflict(f"该 Fixture 正被 {ref_count} 个用例引用，请先在用例上移除引用")
-        dep_count = int(
-            db.query(FixtureDependency.id)
-            .filter(FixtureDependency.depends_on_fixture_id == fixture.id)
-            .count()
-        )
-        if dep_count:
-            raise conflict(f"该 Fixture 正被 {dep_count} 条依赖边引用，请先移除依赖")
-        db.delete(fixture)
-        db.commit()
+        if fixture is None:
+            raise_not_found()
+        require_writable_project(db, fixture.project_id, actor)
+        delete_resource(db, "fixture", fixture_id, actor=actor, project_id=fixture.project_id)
 
     def update_fixture(
         self, db: Session, fixture_id: int, body: FixtureUpdate, *, actor: User,

@@ -7,18 +7,19 @@ config_json 里的密码字段禁止出现；数据库操作只存 connection_id
 模型 feature-local，不进 app/models/__init__.py；由 alembic 0009 显式建表。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class DataProvider(Base):
+class DataProvider(SoftDeleteBase):
     """数据工厂 Provider 配置。"""
 
     __tablename__ = "data_provider"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_data_provider_project_name"),
+        Index("uq_data_provider_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_data_provider_project_type", "project_id", "provider_type", "enabled"),
         {"comment": "数据工厂 Provider 配置（config_json 禁止密码，连接只存 connection_id）"},
     )

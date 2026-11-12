@@ -9,6 +9,7 @@ import { collectPages } from '@/shared/api/pagination';
 // 仅展示「恒不生效」提示——生产环境永远拒绝安全变异请求，由后端 gate 强制。
 import { useState } from 'react';
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -23,7 +24,9 @@ import {
 } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { securityApi } from '@/features/security-testing/api/securityTesting';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { StrategyModal, RuleModal } from './StrategyFormModals';
@@ -38,8 +41,9 @@ import type { MutationRule, SecurityStrategy, SecurityStrategyCreate, SecuritySt
 
 /** 策略与规则 Tab。projectId 由父页传入（已确保非空）。 */
 export function StrategyTab({ projectId }: { projectId: number }) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [keyword, setKeyword] = useState('');
   const [enabledFilter, setEnabledFilter] = useState<boolean | undefined>(undefined);
@@ -52,6 +56,7 @@ export function StrategyTab({ projectId }: { projectId: number }) {
     data?: MutationRule;
   } | null>(null);
   const [settingOpen, setSettingOpen] = useState(false);
+  const [selectedStrategyIds, setSelectedStrategyIds] = useState<number[]>([]);
 
   const listQuery = useQuery({
     queryKey: ['security-strategies', projectId, { keyword, enabled: enabledFilter }],
@@ -93,6 +98,35 @@ export function StrategyTab({ projectId }: { projectId: number }) {
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
   });
+
+  const batchDeleteStrategies = () => {
+    if (!selectedStrategyIds.length) return;
+    modal.confirm({
+      title: `将 ${selectedStrategyIds.length} 条安全策略移入回收站？`,
+      content: '批量选择仅包含没有规则的项目策略。含规则的策略请通过单条删除确认，系统会将策略和规则分别写入回收站。',
+      okText: '移入回收站',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const receipt = await dataLifecycleApi.deleteMany('security_strategy', projectId, selectedStrategyIds);
+          setSelectedStrategyIds([]);
+          invalidate();
+          queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+          if (receipt.failed) {
+            modal.info({
+              title: `已处理：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
+              content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`策略 #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+            });
+          } else {
+            message.success(`已将 ${receipt.succeeded} 条策略移入回收站`);
+          }
+        } catch (error) {
+          message.error(getErrorMessage(error, '批量删除失败'));
+        }
+      },
+    });
+  };
 
   const toggleEnabledMutation = useMutation({
     mutationFn: ({ s, next }: { s: SecurityStrategy; next: boolean }) =>
@@ -207,6 +241,10 @@ export function StrategyTab({ projectId }: { projectId: number }) {
           <Button type="primary" onClick={() => setStrategyModal({ mode: 'create' })}>
             新建策略
           </Button>
+          <Button danger disabled={!selectedStrategyIds.length} onClick={batchDeleteStrategies}>
+            批量删除（{selectedStrategyIds.length}）
+          </Button>
+          <Button onClick={() => navigate('/console/recycle-bin')}>回收站</Button>
         </Space>
       </Card>
 
@@ -215,10 +253,16 @@ export function StrategyTab({ projectId }: { projectId: number }) {
         size="small"
         columns={columns}
         dataSource={items}
+        rowSelection={{
+          selectedRowKeys: selectedStrategyIds,
+          onChange: (keys) => setSelectedStrategyIds(keys.map(Number)),
+          getCheckboxProps: (row) => ({ disabled: row.builtin || row.rules.length > 0 }),
+        }}
         pagination={false}
         expandable={{
           expandedRowRender: (r) => (
             <RulesTable
+              projectId={projectId}
               strategy={r}
               onEditRule={(rule) => setRuleModal({ strategyId: r.id, data: rule })}
             />
@@ -266,14 +310,18 @@ export function StrategyTab({ projectId }: { projectId: number }) {
 
 /** 策略下的规则列表（展开行）。 */
 function RulesTable({
+  projectId,
   strategy,
   onEditRule,
 }: {
+  projectId: number;
   strategy: SecurityStrategy;
   onEditRule: (rule: MutationRule) => void;
 }) {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [selectedRuleIds, setSelectedRuleIds] = useState<number[]>([]);
 
   const removeMutation = useMutation({
     mutationFn: (id: number) => securityApi.removeRule(id),
@@ -283,6 +331,35 @@ function RulesTable({
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
   });
+
+  const batchDeleteRules = () => {
+    if (!selectedRuleIds.length) return;
+    modal.confirm({
+      title: `将 ${selectedRuleIds.length} 条规则移入回收站？`,
+      content: '安全用例和发现记录中的历史引用会保留。恢复规则前，所属策略必须先处于正常状态。',
+      okText: '移入回收站',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const receipt = await dataLifecycleApi.deleteMany('security_rule', projectId, selectedRuleIds);
+          setSelectedRuleIds([]);
+          queryClient.invalidateQueries({ queryKey: ['security-strategies'] });
+          queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+          if (receipt.failed) {
+            modal.info({
+              title: `已处理：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
+              content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`规则 #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+            });
+          } else {
+            message.success(`已将 ${receipt.succeeded} 条规则移入回收站`);
+          }
+        } catch (error) {
+          message.error(getErrorMessage(error, '批量删除失败'));
+        }
+      },
+    });
+  };
 
   const columns: TableColumnsType<MutationRule> = [
     { title: '规则名', dataIndex: 'name' },
@@ -321,26 +398,36 @@ function RulesTable({
       width: 120,
       render: (_, r) => (
         <Space size="small">
-          <Button size="small" onClick={() => onEditRule(r)}>
+          {!strategy.builtin && <Button size="small" onClick={() => onEditRule(r)}>
             编辑
-          </Button>
-          <Popconfirm title="确认删除该规则？" onConfirm={() => removeMutation.mutate(r.id)}>
+          </Button>}
+          {!strategy.builtin && <Popconfirm title="确认将规则移入回收站？历史用例引用会保留。" onConfirm={() => removeMutation.mutate(r.id)}>
             <Button size="small" danger>
               删除
             </Button>
-          </Popconfirm>
+          </Popconfirm>}
         </Space>
       ),
     },
   ];
 
   return (
-    <Table<MutationRule> scroll={{ x: 'max-content' }}
-      rowKey="id"
-      size="small"
-      columns={columns}
-      dataSource={strategy.rules}
-      pagination={false}
-    />
+    <Space direction="vertical" style={{ width: '100%' }}>
+      {!strategy.builtin && <Space>
+        <Button danger disabled={!selectedRuleIds.length} onClick={batchDeleteRules}>批量删除规则（{selectedRuleIds.length}）</Button>
+        <Button onClick={() => navigate('/console/recycle-bin')}>回收站</Button>
+      </Space>}
+      <Table<MutationRule> scroll={{ x: 'max-content' }}
+        rowKey="id"
+        size="small"
+        columns={columns}
+        dataSource={strategy.rules}
+        rowSelection={strategy.builtin ? undefined : {
+          selectedRowKeys: selectedRuleIds,
+          onChange: (keys) => setSelectedRuleIds(keys.map(Number)),
+        }}
+        pagination={false}
+      />
+    </Space>
   );
 }

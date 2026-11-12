@@ -66,15 +66,10 @@ def web_setup(api, admin, db, target_server):
     return project_id, env.id
 
 
-def test_migration_head_preserves_web_agent_tables(db):
-    """Web Agent 表保留，测试数据库迁移到当前仓库 head。"""
-    from alembic.config import Config
-    from alembic.script import ScriptDirectory
-    from tests.conftest import BACKEND_DIR
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+def test_migration_head_preserves_web_agent_tables(db, test_database_head):
+    """Web Agent 表保留，测试数据库停在本会话启动时迁移到的 head。"""
     head = db.execute(text("select version_num from alembic_version")).scalar()
-    assert head == ScriptDirectory.from_config(config).get_current_head()
+    assert head == test_database_head
     tables = {r[0] for r in db.execute(text("select table_name from information_schema.tables "
         "where table_schema='public' and table_name like 'web_agent%'")).all()}
     assert {"web_agent_session", "web_agent_step"} <= tables

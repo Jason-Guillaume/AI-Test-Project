@@ -23,6 +23,7 @@ from app.core.models.identity import User
 from app.core.http.errors import bad_request, conflict, not_found
 from app.core.notifications.notify import notify
 from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.lifecycle.service import delete_resource
 
 
 def _domain_response(domain: BusinessDomain) -> BusinessDomainResponse:
@@ -146,9 +147,7 @@ class DomainService:
     def delete_domain(self, db: Session, domain_id: int, *, actor: User) -> None:
         """删除领域。"""
         domain = self._get_writable_domain_or_404(db, domain_id, actor)
-        # 级联删除由外键 ondelete=CASCADE 承担：删除域会一并清理其下流程→动作→绑定→映射。
-        db.delete(domain)
-        db.commit()
+        delete_resource(db, "business_domain", domain.id, actor=actor)
 
     # ---------------------------------------------------------------- 取实体
 

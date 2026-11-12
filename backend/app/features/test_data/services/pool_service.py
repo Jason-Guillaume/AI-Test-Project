@@ -171,12 +171,17 @@ class PoolService:
         return _pool_response(pool, db)
 
     def delete_pool(self, db: Session, pool_id: int, *, actor: User) -> None:
-        """删除连接池。"""
-        pool = self._get_pool_writable_or_404(db, pool_id, actor)
-        if self._active_lease_count(db, pool.id):
-            raise conflict("数据池存在活跃租约，无法删除")
-        db.delete(pool)
-        db.commit()
+        """将数据池移入回收站。活跃条目和租约会拒绝删除，已删除条目不阻止父池。"""
+        from app.lifecycle.service import delete_resource
+
+        pool = (
+            db.query(DataPool).execution_options(include_deleted=True)
+            .filter(DataPool.id == pool_id).first()
+        )
+        if pool is None:
+            raise not_found("数据池不存在")
+        require_writable_project(db, pool.project_id, actor)
+        delete_resource(db, "data_pool", pool_id, actor=actor, project_id=pool.project_id)
 
     # ---------------------------------------------------------------- 条目 CRUD
 
@@ -243,12 +248,23 @@ class PoolService:
         return _item_response(item)
 
     def delete_item(self, db: Session, item_id: int, *, actor: User) -> None:
-        """删除条目。"""
-        item = self._get_item_writable_or_404(db, item_id, actor)
-        if item.status == "OCCUPIED":
-            raise conflict("条目处于 OCCUPIED 状态，无法删除")
-        db.delete(item)
-        db.commit()
+        """将数据池条目移入回收站。占用中的条目拒绝删除。"""
+        from app.lifecycle.service import delete_resource
+
+        item = (
+            db.query(DataPoolItem).execution_options(include_deleted=True)
+            .filter(DataPoolItem.id == item_id).first()
+        )
+        if item is None:
+            raise not_found("池条目不存在")
+        pool = (
+            db.query(DataPool).execution_options(include_deleted=True)
+            .filter(DataPool.id == item.pool_id).first()
+        )
+        if pool is None:
+            raise not_found("数据池不存在")
+        require_writable_project(db, pool.project_id, actor)
+        delete_resource(db, "data_pool_item", item_id, actor=actor, project_id=pool.project_id)
 
     def release_item(self, db: Session, item_id: int, *, actor: User) -> DataPoolItemResponse:
         """手工释放：清掉条目上的活跃租约并归还。"""

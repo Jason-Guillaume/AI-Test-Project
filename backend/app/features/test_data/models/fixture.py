@@ -13,20 +13,26 @@ from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JS
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class Fixture(Base):
+class Fixture(SoftDeleteBase):
     """测试需要的业务状态配方。"""
 
     __tablename__ = "fixture"
     __table_args__ = (
-        UniqueConstraint("project_id", "fixture_key", name="uq_fixture_project_key"),
+        Index(
+            "uq_fixture_project_key_live", "project_id", "fixture_key", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
         Index("ix_fixture_project_status", "project_id", "status"),
         Index("ix_fixture_project_entity", "project_id", "entity_type"),
-        # 部分唯一索引：两个项目不能发布同一个 GLOBAL 键（迁移里 IF NOT EXISTS 创建）。
+        # 活跃的 GLOBAL 键跨项目唯一；回收站中的同名键不占用。
         Index(
             "uq_fixture_global_key", "fixture_key", unique=True,
-            postgresql_where=text("scope = 'GLOBAL'"),
+            postgresql_where=text("scope = 'GLOBAL' AND deleted_at IS NULL"),
+            sqlite_where=text("scope = 'GLOBAL' AND deleted_at IS NULL"),
         ),
         {"comment": "Fixture：测试需要的业务状态配方（非静态 JSON 结果）"},
     )

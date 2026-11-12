@@ -79,10 +79,27 @@ def append_event(
 
 
 def sync_task_status(db: Session, task: Task, run: TaskRun) -> None:
-    """只让最新 run 更新任务列表状态，旧运行收尾不覆盖新目标。"""
+    """只让协调根更新任务状态；根下有失败子运行时不能显示为完全成功。"""
+    root_id = run.execution_root_run_id or run.id
+    if run.id != root_id:
+        return
     latest_id = db.query(TaskRun.id).filter(TaskRun.task_id == task.id).order_by(TaskRun.run_number.desc()).limit(1).scalar()
-    if latest_id == run.id:
-        task.status = run.status
+    if latest_id != run.id:
+        latest = db.get(TaskRun, latest_id)
+        latest_root = (latest.execution_root_run_id or latest.id) if latest is not None else None
+        if latest_root != root_id:
+            return
+    failed_child = db.query(TaskRun.id).filter(
+        TaskRun.task_id == task.id,
+        TaskRun.id != run.id,
+        TaskRun.execution_root_run_id == root_id,
+        TaskRun.status == "FAILED",
+    ).first()
+    if failed_child is not None and run.status == "SUCCEEDED":
+        run.status = "SUCCEEDED_WITH_ISSUES"
+        if run.stage == "COMPLETED":
+            run.stage = "COMPLETED_WITH_ISSUES"
+    task.status = run.status
 
 
 RUN_TERMINAL_STATUSES = frozenset({"SUCCEEDED", "SUCCEEDED_WITH_ISSUES", "FAILED", "CANCELLED", "SUPERSEDED"})

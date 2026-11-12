@@ -7,6 +7,8 @@ const PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? '';
 let api: APIRequestContext;
 let project = 0;
 let agent = 0;
+let completedTaskId = 0;
+let completedRunId = 0;
 
 /** 登录真实浏览器、恢复项目并打开已有生成工作台。 */
 async function openWorkbench(page: Page, batchId: number) {
@@ -54,6 +56,7 @@ test('P6 HTTP立即返回、并发幂等、刷新恢复与模块并行', async (
   expect(response.status()).toBe(202);
   expect(Date.now() - started).toBeLessThan(2000);
   const batch = await response.json();
+  completedTaskId = batch.task_id;
   expect(batch.task_id).toBeGreaterThan(0);
   const duplicate = await api.post(`projects/${project}/case-generation-tasks`, { data: body });
   expect((await duplicate.json()).id).toBe(batch.id);
@@ -65,6 +68,7 @@ test('P6 HTTP立即返回、并发幂等、刷新恢复与模块并行', async (
   await waitStatus(batch.id, 'COMPLETED');
   await expect(page.getByTestId('gen-task-module-review')).toContainText('SUCCEEDED', { timeout: 20_000 });
   const status = await (await api.get(`case-generation-batches/${batch.id}/task`)).json();
+  completedRunId = status.run_id ?? batch.task_run_id;
   const modules = status.modules.filter((item: { module: string }) => item.module !== 'review');
   expect(modules).toHaveLength(2);
   expect(Math.max(...modules.map((item: { started_at: string }) => Date.parse(item.started_at))))
@@ -73,6 +77,49 @@ test('P6 HTTP立即返回、并发幂等、刷新恢复与模块并行', async (
   expect(result.drafts).toHaveLength(2);
   expect((await api.post(`case-drafts/${result.drafts[0].id}/accept`)).ok()).toBeTruthy();
   expect(status.events.some((item: { type: string }) => item.type === 'generation.finished')).toBeTruthy();
+});
+
+test('Agent 会话刷新恢复、任务 Trace 与运行质量页面可查看', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByPlaceholder('请输入用户名').fill(ADMIN);
+  await page.getByPlaceholder('请输入密码').fill(PASSWORD);
+  await page.getByRole('button', { name: /登录/ }).click();
+  await page.waitForURL((url) => !url.pathname.includes('/login'));
+  await page.evaluate(({ project }) => {
+    const user = JSON.parse(localStorage.getItem('user') ?? '{}');
+    localStorage.setItem('console.current_project_id', String(project));
+    localStorage.setItem('console.scope_user_id', String(user.id));
+  }, { project });
+
+  await page.goto('/console/agent');
+  await page.getByRole('button', { name: '显示会话' }).click();
+  await page.getByRole('button', { name: '新建 Agent 会话' }).click();
+  const input = page.getByPlaceholder('输入测试需求，例如：生成 /api/orders 接口的测试点');
+  await input.fill('帮我设计测试');
+  await page.getByRole('button', { name: '发送' }).click();
+  await expect(page.getByText('请指定接口或业务流程目标。', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await input.fill('补充订单接口上下文');
+  await page.getByRole('button', { name: '发送' }).click();
+  const chat = page.locator('#agent-workspace-chat');
+  await expect(chat.getByText('补充订单接口上下文', { exact: true })).toBeVisible();
+  await page.reload();
+  const restoredChat = page.locator('#agent-workspace-chat');
+  await expect(restoredChat.getByText('帮我设计测试', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(restoredChat.getByText('补充订单接口上下文', { exact: true })).toBeVisible();
+  await expect(restoredChat.getByText('请指定接口或业务流程目标。', { exact: true })).toHaveCount(2);
+  await expect(restoredChat.getByText('请指定接口或业务流程目标。', { exact: true }).first()).toBeVisible();
+
+  expect(completedTaskId).toBeGreaterThan(0);
+  expect(completedRunId).toBeGreaterThan(0);
+  await page.goto(`/console/tasks/${completedTaskId}?runId=${completedRunId}`);
+  await page.getByRole('tab', { name: '运行记录' }).click();
+  await expect(page.getByText(/Agent Trace ·/)).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(/投影 (PENDING|SUCCEEDED|FAILED|RETRYING)/).first()).toBeVisible();
+
+  await page.goto('/admin/agent-runtime');
+  await expect(page.getByRole('heading', { name: 'Agent 运行质量' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText('模型 P50 / P95')).toBeVisible();
+  await expect(page.getByText('统计口径与数据来源')).toBeVisible();
 });
 
 test('P6 运行中取消保留已完成草稿，刷新后取消状态可恢复', async ({ page }) => {

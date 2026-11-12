@@ -166,17 +166,19 @@ class MockScenarioService:
         return scenario_response(db, scenario)
 
     def delete_scenario(self, db: Session, scenario_id: int, *, actor: User) -> None:
-        """删除场景。"""
-        from app.features.mocking.models import TestCaseMock
+        """将场景移入回收站并保留其匹配器及调用历史。"""
+        from app.features.mocking.models import MockScenario
+        from app.lifecycle.service import delete_resource
+        from app.platform.projects.services.access_service import require_writable_project
 
-        scenario = self._get_writable_or_404(db, scenario_id, actor)
-        ref_count = int(
-            db.query(TestCaseMock.id).filter(TestCaseMock.mock_scenario_id == scenario.id).count()
+        scenario = (
+            db.query(MockScenario).execution_options(include_deleted=True)
+            .filter(MockScenario.id == scenario_id).first()
         )
-        if ref_count:
-            raise conflict(f"该场景正被 {ref_count} 条用例 Mock 依赖引用，请先在用例上移除")
-        db.delete(scenario)
-        db.commit()
+        if scenario is None:
+            _raise_not_found()
+        require_writable_project(db, scenario.project_id, actor)
+        delete_resource(db, "mock_scenario", scenario_id, actor=actor, project_id=scenario.project_id)
 
     # ---------------------------------------------------------------- 更新 + Matcher
 
