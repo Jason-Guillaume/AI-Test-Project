@@ -11,6 +11,8 @@ from app.platform.organizations.services import management_service
     "operation",
     [
         lambda user: management_service.create_organization(SimpleNamespace(name="Org"), None, user),
+        lambda user: management_service.preview_organization_delete(1, None, user),
+        lambda user: management_service.delete_organization(1, None, user),
         lambda user: management_service.update_organization(1, None, None, user),
         lambda user: management_service.find_candidate(1, "person", None, user),
         lambda user: management_service.list_candidates(1, None, user),

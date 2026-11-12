@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.platform.organizations.schemas import (
     CandidateListResponse, CandidateResponse, MemberGrant, MemberListResponse, ModelOptionsResponse, OrganizationCreate,
-    OrganizationMemberResponse, OrganizationResponse, OrganizationUpdate,
+    OrganizationDeletePreview, OrganizationDeleteResponse, OrganizationMemberResponse,
+    OrganizationResponse, OrganizationUpdate,
     PaginatedOrganizationResponse,
 )
 from app.platform.organizations.services import management_service as _management
@@ -48,6 +49,26 @@ def update_organization(
 ):
     '修改组织名称；仅组织管理员可改。\n\n    Args:\n        organization_id: 目标组织 ID。\n        body: 组织更新入参（仅名称）。\n        db: 数据库会话。\n        user: 当前登录用户。\n    Returns:\n        更新后的组织响应体。\n    '
     return _management.update_organization(organization_id=organization_id, body=body, db=db, user=user)
+
+
+@router.get("/{organization_id}/delete-preview", response_model=OrganizationDeletePreview)
+def preview_organization_delete(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """预览组织删除影响；关联项目必须先迁移或处理。"""
+    return _management.preview_organization_delete(organization_id=organization_id, db=db, user=user)
+
+
+@router.delete("/{organization_id}", response_model=OrganizationDeleteResponse)
+def delete_organization(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """将组织与成员关系移入回收站，保留用户账号。"""
+    return _management.delete_organization(organization_id=organization_id, db=db, user=user)
 
 
 @router.get("/{organization_id}/members", response_model=MemberListResponse)

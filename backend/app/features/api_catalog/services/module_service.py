@@ -2,23 +2,29 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_module import ApiModule
 from app.features.api_catalog.schemas import (
     ApiModuleCreate,
     ApiModuleMove,
+    ApiModuleDeletePreview,
+    ApiModuleDeleteResponse,
     ApiModuleResponse,
     ApiModuleUpdate,
 )
 from app.features.api_catalog.services.module_resolver import DEFAULT_MODULE_NAME, ModuleResolver
 from app.core.models.identity import User
 from app.core.models.project import Project
-from app.core.http.errors import bad_request, conflict
+from app.core.http.errors import bad_request, conflict, not_found
 from app.platform.projects.services.access_service import check_writable
 from app.platform.projects.services.access_service import get_project_or_404
 from app.features.api_catalog.services.access_service import get_writable_module_or_404
 from app.features.api_catalog.services.queries import module_interface_counts
+from app.features.api_catalog.models.api_relation import ApiRelation
 from app.features.api_catalog.services.response_mapper import module_response
 
 
@@ -128,11 +134,116 @@ def move_module(db: Session, module_id: int, body: ApiModuleMove, *, actor: User
     return module_response(mod, counts.get(mod.id, 0))
 
 
-def delete_module(db: Session, module_id: int, *, actor: User) -> None:
-    """软删除空模块；接口与子模块必须先显式移动到其他位置。"""
-    from app.lifecycle.service import delete_resource
+def _module_delete_plan(
+    db: Session, project_id: int, module_ids: list[int], *, actor: User,
+) -> tuple[list[ApiModule], list[ApiModule], list[int]]:
+    if not module_ids:
+        raise bad_request("请至少选择一个模块")
+    project = get_project_or_404(db, project_id, actor)
+    check_writable(db, project, actor)
+    modules = db.query(ApiModule).filter(ApiModule.project_id == project_id).all()
+    by_id = {module.id: module for module in modules}
+    selected = list(dict.fromkeys(module_ids))
+    if any(module_id not in by_id for module_id in selected):
+        raise not_found("模块不存在或不属于当前项目")
+    if any(by_id[module_id].is_default for module_id in selected):
+        raise bad_request("未分类模块不可删除")
+    selected_set = set(selected)
+    roots = [by_id[module_id] for module_id in selected if not _has_selected_ancestor(by_id[module_id], selected_set, by_id)]
+    children: dict[int | None, list[ApiModule]] = {}
+    for module in modules:
+        children.setdefault(module.parent_id, []).append(module)
+    target_ids: set[int] = set()
+    stack = [module.id for module in roots]
+    while stack:
+        current = stack.pop()
+        if current in target_ids:
+            continue
+        target_ids.add(current)
+        stack.extend(child.id for child in children.get(current, []))
+    targets = [by_id[module_id] for module_id in target_ids]
+    interface_ids = [int(row[0]) for row in db.query(ApiInterface.id).filter(
+        ApiInterface.project_id == project_id, ApiInterface.module_id.in_(target_ids),
+    ).all()]
+    targets.sort(key=lambda module: (-_module_depth(module, by_id), module.id))
+    return roots, targets, interface_ids
 
-    delete_resource(db, "api_module", module_id, actor=actor)
+
+def _has_selected_ancestor(module: ApiModule, selected: set[int], by_id: dict[int, ApiModule]) -> bool:
+    parent_id = module.parent_id
+    while parent_id is not None:
+        if parent_id in selected:
+            return True
+        parent = by_id.get(parent_id)
+        parent_id = parent.parent_id if parent else None
+    return False
+
+
+def _module_depth(module: ApiModule, by_id: dict[int, ApiModule]) -> int:
+    depth = 0
+    parent_id = module.parent_id
+    while parent_id is not None:
+        depth += 1
+        parent = by_id.get(parent_id)
+        parent_id = parent.parent_id if parent else None
+    return depth
+
+
+def preview_module_delete(
+    db: Session, project_id: int, module_ids: list[int], *, actor: User,
+) -> ApiModuleDeletePreview:
+    roots, modules, interfaces = _module_delete_plan(db, project_id, module_ids, actor=actor)
+    return ApiModuleDeletePreview(
+        project_id=project_id, root_names=[module.name for module in roots],
+        module_count=len(modules), interface_count=len(interfaces),
+    )
+
+
+def delete_modules(
+    db: Session, project_id: int, module_ids: list[int], *, actor: User,
+) -> ApiModuleDeleteResponse:
+    """移除整棵选中模块子树；关联、接口与模块在同一回收站事务内提交。"""
+    from app.lifecycle.service import soft_delete_object
+
+    try:
+        roots, modules, interface_ids = _module_delete_plan(db, project_id, module_ids, actor=actor)
+        interfaces = db.query(ApiInterface).filter(
+            ApiInterface.project_id == project_id, ApiInterface.id.in_(interface_ids),
+        ).with_for_update().all() if interface_ids else []
+        relations = db.query(ApiRelation).filter(or_(
+            ApiRelation.source_api_id.in_(interface_ids), ApiRelation.target_api_id.in_(interface_ids),
+        ), ApiRelation.project_id == project_id).with_for_update().all() if interface_ids else []
+        batch_id = str(uuid4())
+        receipt_ids: list[int] = []
+        for row in relations:
+            receipt_ids.append(soft_delete_object(
+                db, "api_relation", row, actor=actor, reason="删除接口模块子树", batch_id=batch_id,
+            ).id)
+        for row in interfaces:
+            receipt_ids.append(soft_delete_object(
+                db, "api_interface", row, actor=actor, reason="删除接口模块子树", batch_id=batch_id,
+            ).id)
+        module_rows = db.query(ApiModule).filter(ApiModule.id.in_([module.id for module in modules])).with_for_update().all()
+        module_rows.sort(key=lambda row: (-_module_depth(row, {m.id: m for m in modules}), row.id))
+        for row in module_rows:
+            receipt_ids.append(soft_delete_object(
+                db, "api_module", row, actor=actor, reason="删除接口模块子树", batch_id=batch_id,
+            ).id)
+        db.commit()
+        return ApiModuleDeleteResponse(
+            project_id=project_id, root_names=[module.name for module in roots],
+            module_count=len(modules), interface_count=len(interfaces),
+            deleted_module_ids=[module.id for module in modules],
+            deleted_interface_ids=[row.id for row in interfaces], recycle_bin_item_ids=receipt_ids,
+        )
+    except Exception:
+        db.rollback()
+        raise
+
+
+def delete_module(db: Session, module_id: int, *, actor: User) -> ApiModuleDeleteResponse:
+    module = get_writable_module_or_404(db, module_id, actor)
+    return delete_modules(db, module.project_id, [module_id], actor=actor)
 
 
 def resolve_parent_for_create(db: Session, project: Project, parent_id: int | None

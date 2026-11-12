@@ -78,7 +78,13 @@
 }
 .api-module-api-row:hover,
 .api-module-api-row.is-selected { background: #edf3ff; }
-.api-module-api-row .ant-tag { flex: 0 0 auto; margin: 0; }
+.api-module-api-row .ant-tag {
+  box-sizing: border-box;
+  flex: 0 0 84px;
+  width: 84px;
+  margin: 0;
+  text-align: center;
+}
 .api-module-api-name {
   min-width: 0;
   overflow: hidden;

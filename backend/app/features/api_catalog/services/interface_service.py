@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 from app.features.api_catalog.models.api_interface import ApiInterface
+from app.features.api_catalog.models.api_module import ApiModule
 from app.features.api_catalog.schemas import (
     API_STATUSES,
     HTTP_METHODS,
@@ -65,7 +66,15 @@ def list_interfaces(db: Session,
             raise bad_request("HTTP 方法取值非法")
         query = query.filter(ApiInterface.method == method)
     if module_id is not None:
-        query = query.filter(ApiInterface.module_id == module_id)
+        module = db.query(ApiModule).filter(
+            ApiModule.id == module_id, ApiModule.project_id == project_id,
+        ).first()
+        if module is not None and module.is_default:
+            from sqlalchemy import or_
+
+            query = query.filter(or_(ApiInterface.module_id == module_id, ApiInterface.module_id.is_(None)))
+        else:
+            query = query.filter(ApiInterface.module_id == module_id)
     if status:
         # 与上面的 method 过滤同一写法：先归一大写再校验。前端枚举值是大写，
         # 归一化兜住手输小写的直连调用；校验而非静默返回空集，否则拼错状态码

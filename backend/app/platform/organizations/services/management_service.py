@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from sqlalchemy.orm import Session
 
 from app.platform.organizations.schemas import (
     CandidateListResponse, CandidateResponse, MemberGrant, MemberListResponse, ModelOption, ModelOptionsResponse,
-    OrganizationCreate, OrganizationMemberResponse, OrganizationResponse, OrganizationUpdate,
-    PaginatedOrganizationResponse, UserCandidate,
+    OrganizationCreate, OrganizationDeletePreview, OrganizationDeleteResponse,
+    OrganizationMemberResponse, OrganizationProjectReference, OrganizationResponse,
+    OrganizationUpdate, PaginatedOrganizationResponse, UserCandidate,
 )
 from app.platform.organizations.services.organization_service import (
     count_members, get_organization_or_404, remove_member, require_organization_admin,
@@ -15,7 +18,8 @@ from app.platform.organizations.services.organization_service import (
 )
 from app.core.models.configuration import ModelConfiguration
 from app.core.models.identity import Organization, OrganizationMember, User
-from app.core.http.errors import bad_request, forbidden, not_found
+from app.core.models.project import Project
+from app.core.http.errors import bad_request, conflict, forbidden, not_found
 from app.core.security.roles import ORG_ROLE_OWNER, is_platform_admin, organization_role
 
 
@@ -169,6 +173,82 @@ def update_organization(
     db.commit()  # 事务提交点
     db.refresh(organization)
     return _response(db, organization, user)
+
+
+def preview_organization_delete(
+    organization_id: int, db: Session, user: User,
+) -> OrganizationDeletePreview:
+    """预览组织删除影响；包括回收站中的项目，避免破坏项目恢复链。"""
+    _require_platform_admin(user)
+    organization = get_organization_or_404(db, organization_id)
+    projects = (
+        db.query(Project).execution_options(include_deleted=True)
+        .filter(Project.organization_id == organization_id)
+        .order_by(Project.name, Project.id)
+        .all()
+    )
+    return OrganizationDeletePreview(
+        id=organization.id,
+        name=organization.name,
+        member_count=count_members(db, organization_id),
+        project_count=len(projects),
+        projects=[OrganizationProjectReference(
+            id=project.id, name=project.name, is_in_recycle_bin=project.deleted_at is not None,
+        ) for project in projects],
+    )
+
+
+def delete_organization(
+    organization_id: int, db: Session, user: User,
+) -> OrganizationDeleteResponse:
+    """将组织和成员关系作为同一可恢复批次移入回收站，保留用户账号。"""
+    _require_platform_admin(user)
+    organization = (
+        db.query(Organization).filter(Organization.id == organization_id).with_for_update().first()
+    )
+    if organization is None:
+        raise not_found("组织不存在")
+    projects = (
+        db.query(Project).execution_options(include_deleted=True)
+        .filter(Project.organization_id == organization_id)
+        .order_by(Project.name, Project.id)
+        .all()
+    )
+    if projects:
+        names = "、".join(project.name for project in projects[:5])
+        remainder = f" 等 {len(projects)} 个项目" if len(projects) > 5 else ""
+        raise conflict(f"组织仍关联项目：{names}{remainder}。请先迁移项目或处理项目回收站记录")
+
+    members = (
+        db.query(OrganizationMember).filter(
+            OrganizationMember.organization_id == organization_id,
+            OrganizationMember.deleted_at.is_(None),
+        ).with_for_update().all()
+    )
+    batch_id = str(uuid4())
+    try:
+        from app.lifecycle.service import soft_delete_object
+
+        organization_item = soft_delete_object(
+            db, "organization", organization, actor=user,
+            reason="平台管理员删除组织", batch_id=batch_id,
+        )
+        for member in members:
+            soft_delete_object(
+                db, "organization_member", member, actor=user,
+                reason="所属组织删除", batch_id=batch_id,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return OrganizationDeleteResponse(
+        id=organization_id,
+        name=organization.name,
+        deleted_member_count=len(members),
+        recycle_bin_item_id=organization_item.id,
+        deletion_batch_id=batch_id,
+    )
 
 
 def list_members(

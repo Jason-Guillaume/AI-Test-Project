@@ -16,7 +16,15 @@ def module_interface_counts(db: Session, project_id: int) -> dict[int, int]:
         .group_by(ApiInterface.module_id)
         .all()
     )
-    return {int(mid): int(cnt) for mid, cnt in rows if mid is not None}
+    counts = {int(mid): int(cnt) for mid, cnt in rows if mid is not None}
+    ungrouped = sum(int(cnt) for mid, cnt in rows if mid is None)
+    if ungrouped:
+        default_id = db.query(ApiModule.id).filter(
+            ApiModule.project_id == project_id, ApiModule.is_default.is_(True),
+        ).scalar()
+        if default_id is not None:
+            counts[int(default_id)] = counts.get(int(default_id), 0) + ungrouped
+    return counts
 
 
 def module_name_map(db: Session, module_ids: list[int | None]) -> dict[int, str]:
