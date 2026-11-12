@@ -102,6 +102,7 @@ from app.mcp.models import MCPServer
 RESOURCE_MODELS: dict[str, type[SoftDeleteBase]] = {
     "user": User,
     "project": Project,
+    "organization": Organization,
     "agent_session": AgentSession,
     "test_case": TestCase,
     "test_point": TestPoint,
@@ -344,6 +345,14 @@ def _assert_deletable(db: Session, resource_type: str, row: SoftDeleteBase, acto
             raise forbidden("不能删除当前登录账号")
         if row.role == "admin":
             raise bad_request("不能删除平台管理员账号")
+    elif resource_type == "organization":
+        if not is_platform_admin(actor):
+            raise forbidden("需要平台管理员权限")
+        project_count = db.query(Project.id).execution_options(include_deleted=True).filter(
+            Project.organization_id == row.id,
+        ).count()
+        if project_count:
+            raise conflict(f"组织仍关联 {project_count} 个（含回收站）项目，请先迁移或处理项目")
     elif resource_type == "project":
         active_statuses = (
             "QUEUED", "PENDING", "RUNNING", "WAITING", "WAITING_WINDOW",
@@ -546,8 +555,11 @@ def _assert_deletable(db: Session, resource_type: str, row: SoftDeleteBase, acto
         if project is not None and project.owner_id == row.user_id:
             raise bad_request("项目负责人不能移除；如需变更请使用负责人转移接口")
     elif resource_type == "organization_member":
-        organization = db.get(Organization, row.organization_id)
-        if organization is not None and organization.owner_id == row.user_id:
+        organization = (
+            db.query(Organization).execution_options(include_deleted=True)
+            .filter(Organization.id == row.organization_id).first()
+        )
+        if organization is not None and organization.deleted_at is None and organization.owner_id == row.user_id:
             raise forbidden("组织负责人不能移除")
     elif resource_type == "security_strategy":
         if row.builtin or row.project_id is None:
@@ -637,15 +649,18 @@ def _assert_deletable(db: Session, resource_type: str, row: SoftDeleteBase, acto
     elif resource_type == "api_module":
         if row.is_default:
             raise bad_request("未分类模块不可删除")
-        if db.query(ApiModule.id).filter(ApiModule.parent_id == row.id).first():
+        if db.query(ApiModule.id).filter(ApiModule.parent_id == row.id, ApiModule.deleted_at.is_(None)).first():
             raise conflict("该模块仍有子模块，请先移动子模块")
-        if db.query(ApiInterface.id).filter(ApiInterface.module_id == row.id).first():
+        if db.query(ApiInterface.id).filter(
+            ApiInterface.module_id == row.id, ApiInterface.deleted_at.is_(None),
+        ).first():
             raise conflict("该模块仍有接口，请先移动接口")
     elif resource_type == "api_interface":
         if db.query(TestCase.id).filter(TestCase.api_id == row.id).first():
             raise conflict("该接口仍被测试用例引用，请先调整用例关联")
         if db.query(ApiRelation.id).filter(
             or_(ApiRelation.source_api_id == row.id, ApiRelation.target_api_id == row.id),
+            ApiRelation.deleted_at.is_(None),
         ).first():
             raise conflict("该接口仍有业务关联，请先删除或调整接口关联")
     elif resource_type == "business_domain":
@@ -744,6 +759,8 @@ def _unique_conflict(db: Session, resource_type: str, row: SoftDeleteBase) -> di
     query = None
     if resource_type == "user":
         query = db.query(User).filter(User.username == row.username)
+    elif resource_type == "organization":
+        query = db.query(Organization).filter(Organization.name == row.name)
     elif resource_type == "mock_service":
         query = db.query(MockService).filter(
             MockService.project_id == row.project_id, MockService.service_key == row.service_key,
@@ -1239,7 +1256,8 @@ def soft_delete_object(
     item = RecycleBinItem(
         resource_type=resource_type, resource_id=str(row.id),
         display_name=_resource_name(row), project_id=project_id,
-        organization_id=project.organization_id if project else getattr(row, "organization_id", None),
+        organization_id=(row.id if resource_type == "organization" else
+                         project.organization_id if project else getattr(row, "organization_id", None)),
         deleted_by=actor.id, deleted_by_name=actor.username,
         deleted_at=deleted_at, deletion_reason=row.deletion_reason,
         deletion_batch_id=batch_id, deletion_status="ACTIVE", metadata_json=_resource_meta(row),
@@ -1293,6 +1311,10 @@ def _authorize_delete(db: Session, resource_type: str, row: SoftDeleteBase, acto
         if not is_platform_admin(actor):
             raise forbidden("需要平台管理员权限")
         return
+    if resource_type == "organization":
+        if not is_platform_admin(actor):
+            raise forbidden("需要平台管理员权限")
+        return
     if resource_type == "project" and not has_project_role(
         project_role_for(db, row, actor), PROJECT_ROLE_OWNER,
     ):
@@ -1305,6 +1327,8 @@ def delete_resource(
     project_id: int | None = None, reason: str | None = None, batch_id: str | None = None,
 ) -> tuple[RecycleBinItem, bool]:
     """Idempotent single-resource operation used by legacy DELETE routes and bulk API."""
+    if resource_type == "organization":
+        raise bad_request("组织删除必须使用组织管理接口")
     model = _model(resource_type)
     row = (
         db.query(model).execution_options(include_deleted=True)
@@ -1347,6 +1371,8 @@ def batch_delete(
     db: Session, resource_type: str, project_id: int | None, ids: list[int], *,
     actor: User, reason: str | None,
 ) -> dict[str, Any]:
+    if resource_type == "organization":
+        raise bad_request("组织删除必须使用组织管理接口")
     if resource_type in {"organization_member", "notification", "model_configuration"} and project_id is None:
         if resource_type == "model_configuration" and not is_platform_admin(actor):
             raise forbidden("需要平台管理员权限")
@@ -1420,6 +1446,10 @@ def _assert_item_access(db: Session, item: RecycleBinItem, actor: User, *, write
             raise not_found("回收站记录不存在")
         return
     if item.resource_type == "model_configuration":
+        if not is_platform_admin(actor):
+            raise not_found("回收站记录不存在")
+        return
+    if item.resource_type == "organization":
         if not is_platform_admin(actor):
             raise not_found("回收站记录不存在")
         return
@@ -1682,9 +1712,29 @@ def restore_recycle_item(db: Session, item_id: int, actor: User) -> dict[str, An
 def batch_restore(db: Session, item_ids: list[int], actor: User) -> dict[str, Any]:
     receipts: list[dict[str, Any]] = []
     items = db.query(RecycleBinItem).filter(RecycleBinItem.id.in_(item_ids)).all() if item_ids else []
-    rank = {"security_strategy": 0, "security_rule": 1}
-    order_by_id = {item.id: rank.get(item.resource_type, 0) for item in items}
-    for item_id in sorted(item_ids, key=lambda value: (order_by_id.get(value, 0), item_ids.index(value))):
+    by_item_id = {item.id: item for item in items}
+
+    def restore_rank(item: RecycleBinItem) -> tuple[int, int]:
+        ranks = {"organization": 0, "organization_member": 1, "security_strategy": 10,
+                 "security_rule": 11, "api_module": 20, "api_interface": 30, "api_relation": 40}
+        depth = 0
+        if item.resource_type == "api_module":
+            row = db.query(ApiModule).execution_options(include_deleted=True).filter_by(
+                id=int(item.resource_id),
+            ).first()
+            parent_id = row.parent_id if row else None
+            while parent_id is not None:
+                depth += 1
+                parent = db.query(ApiModule).execution_options(include_deleted=True).filter_by(
+                    id=parent_id,
+                ).first()
+                parent_id = parent.parent_id if parent else None
+        return ranks.get(item.resource_type, 15), depth
+
+    ordered_ids = sorted(item_ids, key=lambda value: (
+        restore_rank(by_item_id[value]) if value in by_item_id else (15, 0), item_ids.index(value),
+    ))
+    for item_id in ordered_ids:
         try:
             result = restore_recycle_item(db, item_id, actor)
             receipts.append({**result, "id": item_id})
@@ -1777,6 +1827,19 @@ def purge_preview(db: Session, item_id: int, actor: User) -> dict[str, Any]:
         ).count()
         if recycle_references:
             dependencies.append(f"该项目仍有 {recycle_references} 条其他回收站记录，需先逐项处理")
+    elif item.resource_type == "organization":
+        project_count = db.query(Project.id).execution_options(include_deleted=True).filter(
+            Project.organization_id == row.id,
+        ).count()
+        member_items = db.query(RecycleBinItem.id).filter(
+            RecycleBinItem.organization_id == row.id,
+            RecycleBinItem.resource_type == "organization_member",
+            RecycleBinItem.deletion_status == "ACTIVE",
+        ).count()
+        if project_count:
+            dependencies.append(f"仍有 {project_count} 个（含回收站）项目关联该组织")
+        if member_items:
+            dependencies.append(f"仍有 {member_items} 条成员关系回收站记录，需先恢复或清理")
     elif item.resource_type == "mock_service":
         endpoint_count = db.query(MockEndpoint.id).execution_options(include_deleted=True).filter(
             MockEndpoint.mock_service_id == row.id,

@@ -18,6 +18,9 @@ from app.features.api_catalog.schemas.interfaces import ApiInterfaceMove
 from app.features.api_catalog.schemas.interfaces import ApiInterfaceResponse
 from app.features.api_catalog.schemas.interfaces import ApiInterfaceUpdate
 from app.features.api_catalog.schemas.modules import ApiModuleCreate
+from app.features.api_catalog.schemas.modules import ApiModuleDeletePreview
+from app.features.api_catalog.schemas.modules import ApiModuleDeleteRequest
+from app.features.api_catalog.schemas.modules import ApiModuleDeleteResponse
 from app.features.api_catalog.schemas.modules import ApiModuleMove
 from app.features.api_catalog.schemas.modules import ApiModuleResponse
 from app.features.api_catalog.schemas.modules import ApiModuleUpdate
@@ -74,6 +77,9 @@ __all__ = [
     'InternalResponse',
     'InternalApiSchema',
     'ApiModuleCreate',
+    'ApiModuleDeletePreview',
+    'ApiModuleDeleteRequest',
+    'ApiModuleDeleteResponse',
     'ApiModuleUpdate',
     'ApiModuleMove',
     'ApiModuleResponse',

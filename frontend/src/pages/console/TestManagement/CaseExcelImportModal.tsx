@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, App, Button, Descriptions, Modal, Space, Table, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { DownloadOutlined, InboxOutlined } from '@ant-design/icons';
@@ -26,6 +26,22 @@ export function CaseExcelImportModal({
   const [requestKey, setRequestKey] = useState('');
   const [previewing, setPreviewing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const lastRejectedFile = useRef<{ reason: string; at: number } | null>(null);
+
+  const clearSelectedFile = () => {
+    setFile(null);
+    setFileList([]);
+    setPreview(null);
+    setRequestKey('');
+  };
+
+  const rejectFile = (reason: string) => {
+    clearSelectedFile();
+    const previous = lastRejectedFile.current;
+    if (previous?.reason !== reason || Date.now() - previous.at > 500) message.error(reason);
+    lastRejectedFile.current = { reason, at: Date.now() };
+    return Upload.LIST_IGNORE;
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +49,7 @@ export function CaseExcelImportModal({
     setFileList([]);
     setPreview(null);
     setRequestKey('');
+    lastRejectedFile.current = null;
   }, [open]);
 
   const downloadTemplate = async () => {
@@ -94,25 +111,43 @@ export function CaseExcelImportModal({
           <Descriptions.Item label="测试方向">{DIRECTION_LABELS[direction] ?? direction}</Descriptions.Item>
           <Descriptions.Item label="目标目录">{scopeNode?.name ?? (scopeNodeId == null ? '对应方向的待整理' : `目录 #${scopeNodeId}`)}</Descriptions.Item>
         </Descriptions>
-        <Space wrap>
-          <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>下载 Excel 模板</Button>
-          <Upload
-            accept=".xlsx"
-            maxCount={1}
-            fileList={fileList}
-            beforeUpload={(next) => {
-              setFile(next);
-              setFileList([{ uid: next.uid, name: next.name, status: 'done' }]);
-              setPreview(null);
-              setRequestKey(crypto.randomUUID());
-              return false;
-            }}
-            onRemove={() => { setFile(null); setFileList([]); setPreview(null); setRequestKey(''); return true; }}
-          >
-            <Button icon={<InboxOutlined />}>选择 .xlsx 文件</Button>
-          </Upload>
-          <Button type="primary" loading={previewing} disabled={!file} onClick={previewFile}>上传并预览</Button>
-        </Space>
+        <Button icon={<DownloadOutlined />} onClick={downloadTemplate}>下载 Excel 模板</Button>
+        <Upload.Dragger
+          accept=".xlsx"
+          multiple
+          disabled={previewing || confirming}
+          showUploadList={false}
+          fileList={fileList}
+          beforeUpload={(next, batch) => {
+            if (batch.length > 1) return rejectFile('一次只能选择或拖入一个 Excel 文件，请重新选择。');
+            if (!next.name.toLowerCase().endsWith('.xlsx')) return rejectFile('文件格式错误，请选择 .xlsx 文件。');
+            if (next.size > 5 * 1024 * 1024) return rejectFile('文件超过 5 MiB 限制，请选择较小的 .xlsx 文件。');
+            setFile(next);
+            setFileList([{ uid: next.uid, name: next.name, status: 'done' }]);
+            setPreview(null);
+            setRequestKey(crypto.randomUUID());
+            lastRejectedFile.current = null;
+            return false;
+          }}
+          onDrop={(event) => {
+            const dropped = Array.from(event.dataTransfer.files);
+            if (dropped.length > 1) return rejectFile('一次只能选择或拖入一个 Excel 文件，请重新选择。');
+            const candidate = dropped[0];
+            if (!candidate) return;
+            if (!candidate.name.toLowerCase().endsWith('.xlsx')) return rejectFile('文件格式错误，请选择 .xlsx 文件。');
+            if (candidate.size > 5 * 1024 * 1024) return rejectFile('文件超过 5 MiB 限制，请选择较小的 .xlsx 文件。');
+          }}
+          onRemove={() => { clearSelectedFile(); return true; }}
+        >
+          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+          <p className="ant-upload-text">点击选择或将 .xlsx 文件拖到此处</p>
+          <p className="ant-upload-hint">仅支持单个 .xlsx 文件，最大 5 MiB、最多 1000 条用例。{file ? '再次选择可替换当前文件。' : ''}</p>
+        </Upload.Dragger>
+        {file && <Space>
+          <Tag color="blue">{file.name}</Tag>
+          <Button type="link" size="small" onClick={clearSelectedFile} disabled={previewing || confirming}>移除文件</Button>
+          <Button type="primary" loading={previewing} disabled={confirming} onClick={previewFile}>上传并预览</Button>
+        </Space>}
         <Typography.Text type="secondary">模板只支持用例名称、优先级、测试维度和描述；最大 5 MiB、最多 1000 条。预览期间目标项目、方向和目录固定。</Typography.Text>
         {preview && (
           <>

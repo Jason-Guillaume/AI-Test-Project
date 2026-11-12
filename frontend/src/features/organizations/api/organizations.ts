@@ -1,5 +1,5 @@
 import { api } from '@/shared/api/client';
-import type { Organization, OrganizationMember, UserCandidate } from '@/features/organizations/contracts';
+import type { Organization, OrganizationDeletePreview, OrganizationDeleteResult, OrganizationMember, UserCandidate } from '@/features/organizations/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
 import type { OrganizationCreate, OrganizationUpdate, MemberGrant, ModelOption } from '../contracts';
@@ -26,6 +26,8 @@ export const organizationsApi = {
   /** 修改组织信息。 */
   update: (id: number, body: OrganizationUpdate) =>
     api.patch<Organization>(`/organizations/${id}`, body),
+  previewDelete: (id: number) => api.get<OrganizationDeletePreview>(`/organizations/${id}/delete-preview`),
+  remove: (id: number) => api.delete<OrganizationDeleteResult>(`/organizations/${id}`),
   /** 查询组织成员列表，返回 { items, total } 结构（不是分页信封）。 */
   members: (id: number) =>
     api.get<{ items: OrganizationMember[]; total: number }>(

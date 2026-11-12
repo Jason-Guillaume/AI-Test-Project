@@ -17,6 +17,22 @@ export interface MemberGrant {
   allowed_model_ids: string[]; // 模型白名单
 }
 
+export interface OrganizationDeletePreview {
+  id: number;
+  name: string;
+  member_count: number;
+  project_count: number;
+  projects: { id: number; name: string; is_in_recycle_bin: boolean }[];
+}
+
+export interface OrganizationDeleteResult {
+  id: number;
+  name: string;
+  deleted_member_count: number;
+  recycle_bin_item_id: number;
+  deletion_batch_id: string;
+}
+
 /** 组织可选用的模型条目，供成员权限弹窗里的模型白名单选择器使用。 */
 export interface ModelOption {
   domain_id: string; // 模型配置 ID，勾选后放进 allowed_model_ids 提交

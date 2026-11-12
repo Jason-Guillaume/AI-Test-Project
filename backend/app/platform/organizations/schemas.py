@@ -46,6 +46,28 @@ class OrganizationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)  # 允许直接从 ORM 实例取值
 
 
+class OrganizationProjectReference(BaseModel):
+    id: int
+    name: str
+    is_in_recycle_bin: bool = False
+
+
+class OrganizationDeletePreview(BaseModel):
+    id: int
+    name: str
+    member_count: int
+    project_count: int
+    projects: list[OrganizationProjectReference]
+
+
+class OrganizationDeleteResponse(BaseModel):
+    id: int
+    name: str
+    deleted_member_count: int
+    recycle_bin_item_id: int
+    deletion_batch_id: str
+
+
 class MemberGrant(BaseModel):
     """新增或更新组织成员。角色、Agent 开关与模型授权一起提交。"""
 
@@ -131,7 +153,10 @@ __all__ = [
     "ModelOption",
     "ModelOptionsResponse",
     "OrganizationCreate",
+    "OrganizationDeletePreview",
+    "OrganizationDeleteResponse",
     "OrganizationMemberResponse",
+    "OrganizationProjectReference",
     "OrganizationResponse",
     "OrganizationRole",
     "OrganizationUpdate",

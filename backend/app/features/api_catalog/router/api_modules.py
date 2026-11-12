@@ -6,6 +6,9 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from app.features.api_catalog.schemas import (
     ApiModuleCreate,
+    ApiModuleDeletePreview,
+    ApiModuleDeleteRequest,
+    ApiModuleDeleteResponse,
     ApiModuleMove,
     ApiModuleResponse,
     ApiModuleUpdate,
@@ -67,10 +70,28 @@ def move_module(
     return _API.move_module(db, module_id, body, actor=user)
 
 
+@router.post("/projects/{project_id}/api-modules/delete-preview", response_model=ApiModuleDeletePreview,
+             summary="预览模块批量删除影响")
+def preview_delete_modules(
+    project_id: int, body: ApiModuleDeleteRequest,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    return _API.preview_module_delete(db, project_id, body.module_ids, actor=user)
+
+
+@router.post("/projects/{project_id}/api-modules/batch-delete", response_model=ApiModuleDeleteResponse,
+             summary="将模块子树批量移入回收站")
+def batch_delete_modules(
+    project_id: int, body: ApiModuleDeleteRequest,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    return _API.delete_modules(db, project_id, body.module_ids, actor=user)
+
+
 @router.delete(
     "/api-modules/{module_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="软删除模块（未分类不可删；有接口或子模块时需先移动）",
+    summary="将模块子树移入回收站",
 )
 def delete_module(
     module_id: int,

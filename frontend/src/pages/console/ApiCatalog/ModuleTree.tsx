@@ -2,7 +2,7 @@
 // 模块 CRUD：顶部「新建模块」+ 节点内重命名/删除按钮（未分类不可删/改名）。
 // 点击文件夹选中并展开模块；点击接口回调 onSelectApi。
 import { useMemo, useState } from 'react';
-import { App, Button, Form, Input, Modal, Select, Space, Tag } from 'antd';
+import { App, Button, Checkbox, Form, Input, Modal, Select, Space, Tag } from 'antd';
 import { DeleteOutlined, DownOutlined, EditOutlined, FolderOutlined, PlusOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
@@ -49,6 +49,7 @@ export function ModuleTree({
   const [createForm] = Form.useForm<ApiModuleCreate & { parent_id?: number | null }>();
   const [renameForm] = Form.useForm<{ name: string }>();
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
+  const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
 
   const modulesQuery = useQuery({
     queryKey: ['api-catalog', projectId, 'modules'],
@@ -92,9 +93,12 @@ export function ModuleTree({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiCatalogApi.removeModule(id),
-    onSuccess: () => {
-      message.success('模块已删除');
+    mutationFn: (ids: number[]) => apiCatalogApi.deleteModules(projectId, ids),
+    onSuccess: (result) => {
+      message.success(`已将 ${result.module_count} 个模块和 ${result.interface_count} 个接口移入回收站`);
+      setSelectedModuleIds((ids) => ids.filter((id) => !result.deleted_module_ids.includes(id)));
+      if (selectedModuleId != null && result.deleted_module_ids.includes(selectedModuleId)) onSelectModule(null);
+      if (selectedApiId != null && result.deleted_interface_ids.includes(selectedApiId)) onSelectApi(null);
       queryClient.invalidateQueries({ queryKey: ['api-catalog', projectId] });
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
@@ -160,6 +164,26 @@ export function ModuleTree({
       : [...current, key]);
   };
 
+  const requestDelete = async (ids: number[]) => {
+    try {
+      const impact = await apiCatalogApi.previewModuleDelete(projectId, ids);
+      modal.confirm({
+        title: `移入回收站：${impact.root_names.join('、')}`,
+        content: <div>
+          <p>将删除整棵所选模块子树，包括隐藏在分页或筛选之外的内容：</p>
+          <p><strong>{impact.module_count} 个模块，{impact.interface_count} 个接口</strong></p>
+          <p>接口、模块层级及接口归属可从回收站恢复。</p>
+        </div>,
+        okText: '移入回收站',
+        okType: 'danger',
+        cancelText: '取消',
+        onOk: () => deleteMutation.mutateAsync(ids),
+      });
+    } catch (error) {
+      message.error(getErrorMessage(error, '无法获取模块删除影响'));
+    }
+  };
+
   const renderNode = (node: TreeDataNode): React.ReactNode => {
     if (node.kind === 'api') {
       const { api } = node;
@@ -169,12 +193,13 @@ export function ModuleTree({
           type="button"
           className={`api-module-api-row${selectedApiId === api.id ? ' is-selected' : ''}`}
           title={`${api.method} ${api.path} · ${api.name}`}
+          aria-label={`${api.method} ${api.path} · ${api.name}`}
           onClick={() => {
             onSelectModule(null);
             onSelectApi(api.id);
           }}
         >
-          <Tag color={METHOD_COLOR[api.method] ?? 'default'}>{api.method}</Tag>
+          <Tag color={METHOD_COLOR[api.method] ?? 'default'} title={api.method}>{api.method}</Tag>
           <span className="api-module-api-name">{api.name}</span>
         </button>
       );
@@ -200,6 +225,13 @@ export function ModuleTree({
           </button>
           {!module.is_default && (
             <span className="api-module-actions">
+              <Checkbox
+                aria-label={`选择模块 ${module.name}`}
+                checked={selectedModuleIds.includes(module.id)}
+                onChange={(event) => setSelectedModuleIds((current) => event.target.checked
+                  ? [...current, module.id]
+                  : current.filter((id) => id !== module.id))}
+              />
               <Button
                 type="text"
                 size="small"
@@ -216,16 +248,7 @@ export function ModuleTree({
                 danger
                 icon={<DeleteOutlined />}
                 aria-label={`删除模块 ${module.name}`}
-                onClick={() => {
-                  modal.confirm({
-                    title: `删除模块「${module.name}」？`,
-                    content: '此操作会将模块移入回收站。仍有接口或子模块时，请先显式移动这些资源。',
-                    okText: '删除',
-                    okType: 'danger',
-                    cancelText: '取消',
-                    onOk: () => deleteMutation.mutateAsync(module.id),
-                  });
-                }}
+                onClick={() => requestDelete([module.id])}
               />
             </span>
           )}
@@ -244,6 +267,10 @@ export function ModuleTree({
       <Space style={{ marginBottom: 8 }}>
         <Button size="small" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>
           新建模块
+        </Button>
+        <Button size="small" danger disabled={!selectedModuleIds.length} loading={deleteMutation.isPending}
+          onClick={() => requestDelete(selectedModuleIds)}>
+          批量删除模块 {selectedModuleIds.length ? `(${selectedModuleIds.length})` : ''}
         </Button>
       </Space>
       <div className="api-module-tree-scroll">

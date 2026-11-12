@@ -54,3 +54,20 @@ class ApiModuleResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ApiModuleDeletePreview(BaseModel):
+    project_id: int
+    root_names: list[str]
+    module_count: int
+    interface_count: int
+
+
+class ApiModuleDeleteResponse(ApiModuleDeletePreview):
+    deleted_module_ids: list[int]
+    deleted_interface_ids: list[int]
+    recycle_bin_item_ids: list[int]
+
+
+class ApiModuleDeleteRequest(BaseModel):
+    module_ids: list[int] = Field(..., min_length=1, max_length=100)

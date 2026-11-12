@@ -37,9 +37,13 @@ export const apiCatalogApi = {
   /** 移动模块（改 parent_id，校验两级与无环）。 */
   moveModule: (moduleId: number, body: ApiModuleMove) =>
     api.patch<ApiModule>(`/api-modules/${moduleId}/move`, body),
-  /** 软删除空模块；子模块或接口需先移动。 */
+  /** 软删除模块整棵子树。 */
   removeModule: (moduleId: number) =>
     api.delete<void>(`/api-modules/${moduleId}`),
+  previewModuleDelete: (projectId: number, moduleIds: number[]) =>
+    api.post<ApiModuleDeletePreview>(`/projects/${projectId}/api-modules/delete-preview`, { module_ids: moduleIds }),
+  deleteModules: (projectId: number, moduleIds: number[]) =>
+    api.post<ApiModuleDeleteResult>(`/projects/${projectId}/api-modules/batch-delete`, { module_ids: moduleIds }),
 
   // ---- 接口 ----
   /** 接口列表，支持 keyword/method/module_id/status 过滤。 */
@@ -124,3 +128,16 @@ export const apiCatalogApi = {
   debug: (apiId: number, body: ApiDebugRequest) =>
     api.post<ApiDebugResult>(`/apis/${apiId}/debug`, body),
 };
+
+export interface ApiModuleDeletePreview {
+  project_id: number;
+  root_names: string[];
+  module_count: number;
+  interface_count: number;
+}
+
+export interface ApiModuleDeleteResult extends ApiModuleDeletePreview {
+  deleted_module_ids: number[];
+  deleted_interface_ids: number[];
+  recycle_bin_item_ids: number[];
+}

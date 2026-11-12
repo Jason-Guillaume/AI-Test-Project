@@ -25,7 +25,7 @@ from app.features.api_catalog.services.interface_service import create_interface
 from app.features.api_catalog.services.module_service import create_module
 from app.features.api_catalog.services.relation_service import create_relation
 from app.features.api_catalog.services.interface_service import delete_interface
-from app.features.api_catalog.services.module_service import delete_module
+from app.features.api_catalog.services.module_service import delete_module, delete_modules, preview_module_delete
 from app.features.api_catalog.services.relation_service import delete_relation
 from app.features.api_catalog.services.interface_service import get_interface
 from app.features.api_catalog.services.request_service import get_request
@@ -63,9 +63,15 @@ class ApiService:
         """委托规范职责入口，保留调用契约。"""
         return move_module(db, module_id, body, actor=actor)
 
-    def delete_module(self, db: Session, module_id: int, *, actor: User) -> None:
+    def delete_module(self, db: Session, module_id: int, *, actor: User):
         """委托规范职责入口，保留调用契约。"""
         return delete_module(db, module_id, actor=actor)
+
+    def preview_module_delete(self, db: Session, project_id: int, module_ids: list[int], *, actor: User):
+        return preview_module_delete(db, project_id, module_ids, actor=actor)
+
+    def delete_modules(self, db: Session, project_id: int, module_ids: list[int], *, actor: User):
+        return delete_modules(db, project_id, module_ids, actor=actor)
 
 
     def list_interfaces(self, db: Session, project_id: int, user: User, *, keyword: str | None=None, method: str | None=None, module_id: int | None=None, status: str | None=None, page: int=1, page_size: int=20) -> ApiInterfaceListResponse:

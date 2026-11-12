@@ -1,6 +1,7 @@
 // 组织管理：组织列表 + 成员/组织角色/模型授权管理。
 import {
   App,
+  Alert,
   Button,
   Drawer,
   Form,
@@ -46,7 +47,7 @@ const ORG_ROLE_OPTIONS: { label: string; value: OrganizationRole }[] = [
 export function AdminOrganizationsPage() {
   const { user } = useAuth();
   const canManage = user?.role === 'admin';
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   // 当前选中的组织 ID；null 表示尚未选中（默认回退到列表第一项）
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -129,6 +130,20 @@ export function AdminOrganizationsPage() {
     onError: (e) => message.error(getErrorMessage(e)),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: ({ id }: { id: number; nextId: number | null }) => organizationsApi.remove(id),
+    onSuccess: (result, variables) => {
+      message.success(`组织「${result.name}」已移入回收站，用户账号保留`);
+      queryClient.setQueryData(['organizations'], (current: typeof listQuery.data | undefined) => current
+        ? { ...current, items: current.items.filter((item) => item.id !== result.id), total: Math.max(current.total - 1, 0) }
+        : current);
+      setActiveId(variables.nextId);
+      queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      queryClient.invalidateQueries({ queryKey: ['organizations', result.id] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '删除组织失败')),
+  });
+
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
   if (listQuery.isPending) return <LoadingState />;
   if (listQuery.isError)
@@ -142,6 +157,37 @@ export function AdminOrganizationsPage() {
   // 默认回退：activeId 未选中或对应组织已删除时，取列表第一项
   const activeOrg = orgs.find((o) => o.id === effectiveOrgId) ?? null;
   const activeOrgId = activeOrg?.id ?? null;
+
+  const confirmDelete = async (org: Organization) => {
+    try {
+      const impact = await organizationsApi.previewDelete(org.id);
+      const index = orgs.findIndex((item) => item.id === org.id);
+      const nextId = activeOrgId === org.id
+        ? (orgs[index + 1]?.id ?? orgs[index - 1]?.id ?? null)
+        : activeOrgId;
+      modal.confirm({
+        title: `删除组织「${impact.name}」？`,
+        width: 560,
+        content: <Space direction="vertical" style={{ width: '100%' }}>
+          <p>成员关系将解除，用户账号保留。可在回收站恢复组织和成员关系。</p>
+          <p>成员：{impact.member_count} 人；关联项目：{impact.project_count} 个</p>
+          {impact.project_count > 0 ? <>
+            <Alert type="warning" showIcon message="请先迁移或处理关联项目，避免项目归属丢失。当前不能删除此组织。" />
+            <List size="small" dataSource={impact.projects} renderItem={(project) => (
+              <List.Item>#{project.id} {project.name}{project.is_in_recycle_bin ? '（在回收站）' : ''}</List.Item>
+            )} />
+          </> : null}
+        </Space>,
+        okText: '移入回收站',
+        okType: 'danger',
+        okButtonProps: { disabled: impact.project_count > 0, loading: deleteMutation.isPending },
+        cancelText: '取消',
+        onOk: () => deleteMutation.mutateAsync({ id: org.id, nextId }),
+      });
+    } catch (error) {
+      message.error(getErrorMessage(error, '无法获取组织删除影响'));
+    }
+  };
 
   return (
     <PageContainer>
@@ -161,6 +207,10 @@ export function AdminOrganizationsPage() {
           dataSource={orgs}
           renderItem={(org: Organization) => (
             <List.Item
+              actions={canManage ? [<Button key="delete" size="small" danger type="link"
+                onClick={(event) => { event.stopPropagation(); void confirmDelete(org); }}>
+                删除组织
+              </Button>] : undefined}
               style={{
                 cursor: 'pointer',
                 background:
@@ -265,7 +315,9 @@ export function AdminOrganizationsPage() {
               />
             </>
           ) : (
-            <div style={{ color: '#999' }}>请选择左侧组织</div>
+            <div style={{ color: '#999', padding: 24 }}>
+              {orgs.length === 0 ? (canManage ? '暂无组织，请新建组织并添加成员。' : '等待平台管理员分配组织') : '请选择左侧组织'}
+            </div>
           )}
         </div>
       </div>

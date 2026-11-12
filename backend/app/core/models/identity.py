@@ -9,7 +9,6 @@
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String
 from sqlalchemy.sql import func, text
 
-from app.core.database.base import Base
 from app.core.database.soft_delete import SoftDeleteBase
 
 
@@ -39,7 +38,7 @@ class User(SoftDeleteBase):
                         comment="更新时间")
 
 
-class Organization(Base):
+class Organization(SoftDeleteBase):
     """组织边界及负责人。"""
 
     __tablename__ = "organization"
