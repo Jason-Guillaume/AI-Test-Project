@@ -105,7 +105,12 @@ function toTreeData(nodes: ScopeNode[]): DataNode[] {
     .map((node) => ({
       key: String(node.id),
       icon: nodeIcon(node),
-      title: `${node.name}  ${node.case_count} 用例 / ${node.point_count} 测试点`,
+      title: (
+        <span className="scope-tree-title" title={`${node.name} · ${node.case_count} 用例 / ${node.point_count} 测试点`}>
+          <span className="scope-tree-name">{node.name}</span>
+          <span className="scope-tree-count">{node.case_count} 用例</span>
+        </span>
+      ),
       children: build(node.id),
     }));
   return build(null);
@@ -333,10 +338,10 @@ export function ConsoleTestCasesPage() {
           />
         </Space>
       </Space>
-      <Row gutter={16} style={{ marginTop: 12 }} wrap={false}>
-        <Col flex="320px">
+      <Row gutter={[16, 16]} style={{ marginTop: 12 }}>
+        <Col xs={24} xl={8} style={{ minWidth: 0 }}>
           <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 8, height: 'calc(100vh - 250px)', minHeight: 420, display: 'flex', flexDirection: 'column' }}>
-            <Space style={{ marginBottom: 8 }}>
+            <Space wrap style={{ marginBottom: 8 }}>
               <Button size="small" type="primary" onClick={() => setNodeModal({ mode: 'create', parentId: null })}>新建目录</Button>
               <Button size="small" disabled={selectedNodeId == null} onClick={() => setNodeModal({ mode: 'create', parentId: selectedNodeId })}>子目录</Button>
             </Space>
@@ -344,6 +349,7 @@ export function ConsoleTestCasesPage() {
             <div style={{ overflow: 'auto', flex: 1 }}>
               {treeQuery.isPending ? <LoadingState /> : treeQuery.isError ? <ErrorState error={treeQuery.error} onRetry={treeQuery.refetch} /> : (
                 <Tree
+                  className="scope-tree"
                   showIcon
                   blockNode
                   draggable
@@ -356,12 +362,13 @@ export function ConsoleTestCasesPage() {
             </div>
           </div>
         </Col>
-        <Col flex="1 1 0" style={{ minWidth: 0 }}>
+        <Col xs={24} xl={16} style={{ minWidth: 0 }}>
           <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, height: 'calc(100vh - 250px)', minHeight: 420, overflow: 'auto' }}>
             {!selected ? <EmptyState description="请选择左侧范围" /> : (
               <>
-                <Space style={{ marginBottom: 8 }} wrap>
-                  <Typography.Title level={4} style={{ margin: 0 }}>{selected.name}</Typography.Title>
+                <div className="scope-detail-head">
+                  <Typography.Title level={4} ellipsis={{ tooltip: selected.name }}>{selected.name}</Typography.Title>
+                  <Space wrap size={8}>
                   <Button size="small" disabled={selected.is_system} onClick={() => setNodeModal({ mode: 'edit', node: selected })}>编辑</Button>
                   <Button size="small" danger disabled={selected.is_system} onClick={() => modal.confirm({
                     title: '删除这个范围？',
@@ -370,7 +377,8 @@ export function ConsoleTestCasesPage() {
                   })}>删除</Button>
                   <Button size="small" onClick={() => setCreateOpen(true)}>手工用例</Button>
                   <Button size="small" type="primary" onClick={() => setGenerateOpen(true)}>生成草稿</Button>
-                </Space>
+                  </Space>
+                </div>
                 <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
                   {selected.path.map((item) => item.name).join(' / ') || selected.name}
                 </Typography.Paragraph>
@@ -381,8 +389,8 @@ export function ConsoleTestCasesPage() {
                 {selected.children.length > 0 ? (
                   <Space wrap style={{ marginBottom: 12 }}>
                     {selected.children.map((child) => (
-                      <Tag key={child.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedNodeId(child.id)}>
-                        {child.name} {child.case_count}
+                      <Tag key={child.id} title={child.name} style={{ cursor: 'pointer', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => setSelectedNodeId(child.id)}>
+                        {child.name} · {child.case_count}
                       </Tag>
                     ))}
                   </Space>

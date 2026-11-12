@@ -44,12 +44,38 @@ def _add_soft_columns(table: str) -> None:
     op.create_index(f"ix_{table}_deleted_at", table, ["deleted_at"])
 
 
+def _drop_unique_if_present(name: str, table: str) -> None:
+    """旧库可能把唯一性建成索引，新库则是同名约束。两边都要能升级。"""
+    bind = op.get_bind()
+    constraint = bind.execute(
+        sa.text(
+            "SELECT 1 FROM pg_constraint con "
+            "JOIN pg_class c ON c.oid = con.conrelid "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE con.conname = :name AND con.contype = 'u' AND n.nspname = current_schema()"
+        ),
+        {"name": name},
+    ).first()
+    if constraint:
+        op.drop_constraint(name, table, type_="unique")
+        return
+    index = bind.execute(
+        sa.text(
+            "SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = :name"
+        ),
+        {"name": name},
+    ).first()
+    if index:
+        op.drop_index(name, table_name=table)
+
+
 def upgrade():
     """增加软删除列，并只对未删除行保留会阻止同名重建的唯一约束。"""
     for table in _TABLES:
         _add_soft_columns(table)
 
-    op.drop_constraint("model_configuration_domain_id_key", "model_configuration", type_="unique")
+    _drop_unique_if_present("model_configuration_domain_id_key", "model_configuration")
+    _drop_unique_if_present("ix_model_configuration_domain_id", "model_configuration")
     op.create_index(
         "uq_model_configuration_domain_id_live", "model_configuration", ["domain_id"],
         unique=True, postgresql_where=sa.text("deleted_at IS NULL"),

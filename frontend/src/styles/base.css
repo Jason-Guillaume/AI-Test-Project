@@ -140,9 +140,22 @@ body {
 .page-container .ant-card { border-color: #e9edf3; box-shadow: 0 3px 14px rgb(31 48 79 / 3%); }
 .app-layout-dark .page-container .ant-card { border-color: #343a44; box-shadow: none; }
 .page-container .ant-card, .page-container .ant-table-wrapper { border-radius: 12px; }
-.page-container .ant-table-wrapper { overflow: hidden; padding: 8px 14px 12px; border: 1px solid #e9edf3; background: #fff; box-shadow: 0 3px 14px rgb(31 48 79 / 3%); }
+.page-container .ant-table-wrapper { overflow: auto; padding: 8px 14px 12px; border: 1px solid #e9edf3; background: #fff; box-shadow: 0 3px 14px rgb(31 48 79 / 3%); }
 .app-layout-dark .page-container .ant-table-wrapper { border-color: #343a44; background: #1f242c; box-shadow: none; }
 .page-container .ant-input-affix-wrapper, .page-container .ant-select-selector, .page-container .ant-picker { border-radius: 8px !important; }
+/* 页面顶层工具条默认是 inline-flex，连续两组会排进同一行并被内容区裁切。 */
+.page-container > .ant-space { display: flex; width: 100%; max-width: 100%; }
+.console-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; width: 100%; max-width: 100%; margin-bottom: 12px; }
+.console-toolbar .ant-input-search { width: min(280px, 100%); }
+.console-toolbar .ant-select { max-width: 100%; }
+.scope-tree.ant-tree .ant-tree-treenode { align-items: center; width: 100%; }
+.scope-tree.ant-tree .ant-tree-node-content-wrapper { display: flex; min-width: 0; flex: 1; align-items: center; overflow: hidden; }
+.scope-tree.ant-tree .ant-tree-title { min-width: 0; flex: 1; overflow: hidden; }
+.scope-tree-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.scope-tree-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scope-tree-count { flex: none; color: #8792a3; font-size: 12px; white-space: nowrap; }
+.scope-detail-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 8px; }
+.scope-detail-head .ant-typography { min-width: 0; flex: 1 1 220px; margin: 0; }
 .ant-drawer .ant-drawer-content-wrapper { max-width: 100vw; }
 .skill-file-editor { display: grid; width: 100%; grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 12px; }
 .skill-file-editor__tree, .skill-file-editor__content { min-width: 0; }
