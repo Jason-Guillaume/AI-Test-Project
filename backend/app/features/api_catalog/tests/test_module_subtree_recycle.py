@@ -14,9 +14,10 @@ from app.core.models.project import Project, ProjectMember
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_module import ApiModule
 from app.features.api_catalog.models.api_relation import ApiRelation
+from app.features.api_catalog.services.interface_service import list_interfaces
 from app.features.api_catalog.services.module_service import delete_modules, preview_module_delete
 from app.features.test_management.models.test_case import TestCase as CaseModel
-from app.lifecycle.service import batch_restore
+from app.lifecycle.service import batch_delete, batch_restore
 
 
 @event.listens_for(Session, "do_orm_execute")
@@ -108,4 +109,57 @@ def test_module_subtree_delete_rolls_back_all_rows_when_one_interface_is_referen
         assert db.get(ApiModule, root.id).deleted_at is None
         assert db.get(ApiModule, child.id).deleted_at is None
         assert db.get(ApiInterface, interface.id).deleted_at is None
+    engine.dispose()
+
+
+def test_empty_module_can_be_deleted_and_restored():
+    engine = _database()
+    with Session(engine) as db:
+        admin, project, _root, _child, _interface, _relation = _module_fixture(db)
+        empty = ApiModule(project_id=project.id, name="empty")
+        db.add(empty)
+        db.commit()
+
+        preview = preview_module_delete(db, project.id, [empty.id], actor=admin)
+        assert preview.root_names == ["empty"]
+        assert (preview.module_count, preview.interface_count) == (1, 0)
+
+        deleted = delete_modules(db, project.id, [empty.id], actor=admin)
+        assert deleted.deleted_module_ids == [empty.id]
+        assert deleted.deleted_interface_ids == []
+        restored = batch_restore(db, deleted.recycle_bin_item_ids, admin)
+        assert restored["failed"] == 0, restored
+        assert db.get(ApiModule, empty.id).deleted_at is None
+    engine.dispose()
+
+
+def test_ungrouped_interface_batch_delete_only_removes_selected_rows():
+    engine = _database()
+    with Session(engine) as db:
+        admin, project, _root, _child, _interface, _relation = _module_fixture(db)
+        default_module = ApiModule(project_id=project.id, name="未分类", is_default=True)
+        db.add(default_module)
+        db.flush()
+        selected = ApiInterface(
+            project_id=project.id, module_id=None, name="selected ungrouped",
+            method="POST", path="/ungrouped/selected",
+        )
+        untouched = ApiInterface(
+            project_id=project.id, module_id=default_module.id, name="untouched ungrouped",
+            method="GET", path="/ungrouped/untouched",
+        )
+        db.add_all([selected, untouched])
+        db.commit()
+
+        ungrouped = list_interfaces(db, project.id, admin, module_id=default_module.id)
+        assert {row.id for row in ungrouped.items} == {selected.id, untouched.id}
+
+        receipt = batch_delete(
+            db, "api_interface", project.id, [selected.id],
+            actor=admin, reason="删除选中的未分类接口",
+        )
+        assert receipt["succeeded"] == 1
+        assert receipt["failed"] == 0
+        assert db.get(ApiInterface, selected.id).deleted_at is not None
+        assert db.get(ApiInterface, untouched.id).deleted_at is None
     engine.dispose()
