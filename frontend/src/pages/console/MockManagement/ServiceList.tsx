@@ -1,0 +1,389 @@
+// 接口 Mock 服务列表页；明文 Token 只经独立一次性弹窗展示。
+import { collectPages } from '@/shared/api/pagination';
+// 接口 Mock 与依赖异常模拟 · 服务管理页。
+//
+// 数据：
+//   - GET/POST /projects/{pid}/mock-services        服务列表 / 新建
+//   - GET/PATCH/DELETE /mock-services/{id}          详情 / 编辑 / 删除
+//   - POST   /mock-services/{id}/reset-token       重置 Runtime Token
+//   - POST   /projects/{pid}/mock-from-api/{api_id} 从接口一键创建
+//
+// 安全红线：Runtime Token 只存 hash，明文仅在新建 / 重置的响应里返回一次。
+// 本页只把明文放在「一次性弹窗」里，关闭即消失，不在表格里展示、不写入 localStorage，
+// 也不在任何接口响应回读中期待它存在（只读 runtime_token_set 布尔值）。
+import { useState } from 'react';
+import { Alert, App, Button, Card, Flex, Popconfirm, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { DeleteOutlined, EditOutlined, EyeOutlined, HistoryOutlined, KeyOutlined, PlusOutlined, SafetyOutlined } from '@ant-design/icons';
+import { Link, useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { TableColumnsType } from 'antd';
+import { getErrorMessage } from '@/shared/api/client';
+import { mockManagementApi } from '@/features/mocking/api/mockManagement';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { fmtTime } from '@/shared/lib/format';
+import type { CreateMockFromApiRequest, MockService, MockServiceUpdate } from '@/features/mocking/contracts';
+import { TokenResultModal } from './components/TokenResultModal';
+import { ServiceFormModal, type ServiceFormValues } from './components/ServiceFormModal';
+import { FromApiModal } from './components/FromApiModal';
+
+export function ConsoleMockManagementPage() {
+  const { currentProjectId } = useConsoleScope();
+  const { message: msg, modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<MockService | null>(null);
+  const [fromApiOpen, setFromApiOpen] = useState(false);
+  const [oneTimeToken, setOneTimeToken] = useState<{ token: string; key: string; title: string } | null>(null);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
+
+  const servicesQuery = useQuery({
+    queryKey: ['mock-services', currentProjectId],
+    queryFn: () => collectPages((page) => mockManagementApi.listServices(currentProjectId!, { page, page_size: 100 })),
+    enabled: currentProjectId != null,
+  });
+  const services = servicesQuery.data?.items ?? [];
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['mock-services', currentProjectId] });
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => dataLifecycleApi.deleteMany('mock_service', currentProjectId!, ids),
+    onSuccess: async (receipt) => {
+      setSelectedServiceIds([]);
+      await invalidate();
+      await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      const failures = receipt.items.filter((item) => !item.succeeded);
+      modal.info({
+        title: `批量删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+        width: 620,
+        content: failures.length ? (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            {failures.map((item) => (
+              <Alert key={item.id} type="error" showIcon message={`Mock 服务 #${item.id}`} description={item.error ?? '删除失败'} />
+            ))}
+          </Space>
+        ) : '成功项已移入回收站。',
+        okText: '查看回收站',
+        onOk: () => navigate('/console/recycle-bin'),
+      });
+    },
+    onError: (error) => msg.error(getErrorMessage(error, '批量删除 Mock 服务失败')),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (values: ServiceFormValues) =>
+      mockManagementApi.createService(currentProjectId!, {
+        name: values.name,
+        service_key: values.service_key,
+        base_path: values.base_path || null,
+        description: values.description || null,
+        enabled: values.enabled,
+        public_runtime: values.public_runtime,
+        runtime_token: values.runtime_token || null,
+      }),
+    onSuccess: (data) => {
+      invalidate();
+      setModalOpen(false);
+      setEditing(null);
+      setOneTimeToken({ token: data.runtime_token, key: data.service.service_key, title: 'Mock 服务已创建 · Token 只显示这一次' });
+    },
+    onError: (e) => msg.error(getErrorMessage(e, '创建 Mock 服务失败')),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, values }: { id: number; values: MockServiceUpdate }) =>
+      mockManagementApi.updateService(id, values),
+    onSuccess: () => {
+      invalidate();
+      msg.success('Mock 服务已更新');
+      setModalOpen(false);
+      setEditing(null);
+    },
+    onError: (e) => msg.error(getErrorMessage(e, '更新 Mock 服务失败')),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => mockManagementApi.removeService(id),
+    onSuccess: () => {
+      invalidate();
+      msg.success('Mock 服务已移入回收站；调用记录保留');
+    },
+    onError: (e) => msg.error(getErrorMessage(e, '删除 Mock 服务失败')),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (id: number) => mockManagementApi.resetToken(id),
+    onSuccess: (data) => {
+      invalidate();
+      setOneTimeToken({ token: data.runtime_token, key: data.service.service_key, title: 'Token 已重置 · 只显示这一次' });
+    },
+    onError: (e) => msg.error(getErrorMessage(e, '重置 Token 失败')),
+  });
+
+  const fromApiMutation = useMutation({
+    mutationFn: ({ apiId, values }: { apiId: number; values: CreateMockFromApiRequest }) =>
+      mockManagementApi.createFromApi(currentProjectId!, apiId, values),
+    onSuccess: (data) => {
+      invalidate();
+      setFromApiOpen(false);
+      if (data.runtime_token) {
+        setOneTimeToken({ token: data.runtime_token, key: data.service.service_key, title: '已从接口创建 Mock · Token 只显示这一次' });
+      } else if (data.service.public_runtime) {
+        msg.success('已从接口创建 Mock（公共执行面，无需 Token）');
+      } else if (data.service.runtime_token_set) {
+        // 后端只在「复用已存在的 service_key」时不返回明文 Token——那把 Token 早在
+        // 服务创建时显示过一次，这里若报「无需 Token」会让人以为可以直接调，实际 401。
+        msg.warning('已从接口创建 Mock，但复用了已存在的服务：Token 在创建该服务时已显示过一次，请到服务列表「重置 Token」重新获取');
+      } else {
+        msg.warning('已从接口创建 Mock，但复用了已存在的服务且尚未设置执行面 Token，请到服务列表设置');
+      }
+    },
+    onError: (e) => msg.error(getErrorMessage(e, '从接口创建 Mock 失败')),
+  });
+
+  if (currentProjectId == null) {
+    return (
+      <PageContainer>
+        <EmptyState description="请先在顶部选择一个项目" />
+      </PageContainer>
+    );
+  }
+
+  const handleForm = (values: ServiceFormValues) => {
+    if (editing) {
+      updateMutation.mutate({
+        id: editing.id,
+        values: {
+          name: values.name,
+          description: values.description || null,
+          base_path: values.base_path || null,
+          enabled: values.enabled,
+          public_runtime: values.public_runtime,
+          revision: editing.revision,
+        },
+      });
+    } else {
+      createMutation.mutate(values);
+    }
+  };
+
+  const columns: TableColumnsType<MockService> = [
+    { title: 'ID', dataIndex: 'id', width: 60 },
+    {
+      title: '服务键',
+      dataIndex: 'service_key',
+      width: 200,
+      render: (v: string, row) => (
+        <Tooltip title={`${v} · 已配置接口 ${row.endpoint_count} 个 / 场景 ${row.scenario_count} 个`}>
+          <Tag color="geekblue">{v}</Tag>
+        </Tooltip>
+      ),
+    },
+    { title: '名称', dataIndex: 'name', width: 180 },
+    {
+      title: '基础路径',
+      dataIndex: 'base_path',
+      width: 160,
+      render: (v: string | null) => v || '-',
+    },
+    {
+      title: '接口 / 场景',
+      width: 110,
+      render: (_, row) => `${row.endpoint_count} / ${row.scenario_count}`,
+    },
+    {
+      title: '执行面',
+      width: 110,
+      render: (_, row) =>
+        row.public_runtime ? (
+          <Tag color="orange">匿名可调用</Tag>
+        ) : row.runtime_token_set ? (
+          <Tag color="green">需 Token</Tag>
+        ) : (
+          <Tag color="red">未配置</Tag>
+        ),
+    },
+    {
+      title: '启用',
+      dataIndex: 'enabled',
+      width: 80,
+      render: (v: boolean) => (v ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>),
+    },
+    { title: '创建时间', dataIndex: 'created_at', width: 160, render: (v: string) => fmtTime(v) },
+    {
+      title: '操作',
+      width: 300,
+      fixed: 'right',
+      render: (_, row) => (
+        <Space size="small" wrap>
+          <Link to={`/console/mock-management/services/${row.id}`}>
+            <Button size="small" icon={<EyeOutlined />}>
+              接口 / 场景
+            </Button>
+          </Link>
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => {
+              setEditing(row);
+              setModalOpen(true);
+            }}
+          >
+            编辑
+          </Button>
+          <Popconfirm
+            title="确认重置 Token？"
+            description="旧 Token 将立即失效，已配置的被测系统需要重新配置。"
+            onConfirm={() => resetMutation.mutate(row.id)}
+          >
+            <Button size="small" icon={<KeyOutlined />} loading={resetMutation.isPending}>
+              重置 Token
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title="确认删除该 Mock 服务？"
+            description="服务下仍有接口或测试用例引用时会拒绝删除；调用记录保留。"
+            onConfirm={() => deleteMutation.mutate(row.id)}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} loading={deleteMutation.isPending}>
+              删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <PageContainer>
+      <Flex justify="space-between" align="center" style={{ marginBottom: 16 }} wrap="wrap" gap="middle">
+        <Flex vertical gap="2">
+          <Typography.Title level={5} style={{ margin: 0 }}>
+            接口 Mock 与依赖异常模拟
+          </Typography.Title>
+          <Typography.Text type="secondary">
+            在测试执行期间控制依赖服务的表现：正常返回、业务异常、HTTP 错误、空数据、延迟、超时与条件响应。
+          </Typography.Text>
+        </Flex>
+        <Space wrap>
+          <Link to="/console/recycle-bin">
+            <Button>回收站</Button>
+          </Link>
+          <Link to="/console/mock-management/executions">
+            <Button icon={<HistoryOutlined />}>调用记录</Button>
+          </Link>
+          <Button icon={<EyeOutlined />} onClick={() => setFromApiOpen(true)}>
+            从接口一键创建
+          </Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditing(null);
+              setModalOpen(true);
+            }}
+          >
+            新建 Mock 服务
+          </Button>
+        </Space>
+      </Flex>
+
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Flex gap="middle" wrap="wrap">
+          <Alert
+            type="info"
+            showIcon
+            style={{ flex: 1, minWidth: 320 }}
+            message="管理面 / 执行面分离"
+            description="本页需要平台登录态；被测系统改调 /api/v1/mock/{项目ID}/{服务键}/{路径} 并携带 X-Mock-Token，不需要平台 JWT。"
+          />
+          <Alert
+            type="warning"
+            showIcon
+            icon={<SafetyOutlined />}
+            style={{ flex: 1, minWidth: 320 }}
+            message="Token 与快照安全"
+            description="Token 只存哈希、明文只返回一次；调用记录的请求 / 响应快照已按敏感字段脱敏（Authorization、X-Api-Key、password、token 等）。"
+          />
+        </Flex>
+      </Card>
+
+      {servicesQuery.isLoading ? (
+        <LoadingState />
+      ) : servicesQuery.isError ? (
+        <ErrorState error={servicesQuery.error} onRetry={servicesQuery.refetch} />
+      ) : services.length === 0 ? (
+        <EmptyState description="尚未配置 Mock 服务，可点「新建 Mock 服务」或「从接口一键创建」开始" />
+      ) : (
+        <Table<MockService>
+          rowKey="id"
+          size="middle"
+          columns={columns}
+          dataSource={services}
+          rowSelection={{
+            selectedRowKeys: selectedServiceIds,
+            onChange: (keys) => setSelectedServiceIds(keys.map(Number)),
+          }}
+          scroll={{ x: 1380 }}
+          pagination={false}
+        />
+      )}
+
+      {selectedServiceIds.length > 0 && (
+        <Flex justify="space-between" align="center" style={{ marginTop: 12 }}>
+          <Typography.Text>已选择 {selectedServiceIds.length} 个 Mock 服务</Typography.Text>
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            loading={batchDeleteMutation.isPending}
+            onClick={() => {
+              const ids = [...selectedServiceIds];
+              modal.confirm({
+                title: `确认删除选中的 ${ids.length} 个 Mock 服务？`,
+                content: '仍有接口或测试用例引用的服务会逐条拒绝；执行历史不会删除。',
+                okText: '删除并移入回收站',
+                okType: 'danger',
+                cancelText: '取消',
+                onOk: () => batchDeleteMutation.mutateAsync(ids),
+              });
+            }}
+          >
+            批量删除
+          </Button>
+        </Flex>
+      )}
+
+      <ServiceFormModal
+        open={modalOpen}
+        editing={editing}
+        loading={createMutation.isPending || updateMutation.isPending}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(null);
+        }}
+        onSubmit={handleForm}
+      />
+
+      {fromApiOpen && (
+        <FromApiModal
+          projectId={currentProjectId}
+          open={fromApiOpen}
+          loading={fromApiMutation.isPending}
+          onClose={() => setFromApiOpen(false)}
+          onSubmit={(apiId, values) => fromApiMutation.mutate({ apiId, values })}
+        />
+      )}
+
+      <TokenResultModal
+        token={oneTimeToken?.token ?? null}
+        serviceKey={oneTimeToken?.key ?? ''}
+        projectId={currentProjectId}
+        title={oneTimeToken?.title ?? ''}
+        onClose={() => setOneTimeToken(null)}
+      />
+    </PageContainer>
+  );
+}

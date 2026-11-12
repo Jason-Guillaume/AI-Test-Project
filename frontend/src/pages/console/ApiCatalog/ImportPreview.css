@@ -1,0 +1,137 @@
+.api-import-preview {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.api-import-preview-heading,
+.api-import-preview-total,
+.api-import-toolbar,
+.api-import-preview-footer,
+.api-import-module-override {
+  display: flex;
+  align-items: center;
+}
+
+.api-import-preview-heading,
+.api-import-toolbar,
+.api-import-preview-footer {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.api-import-preview-heading .ant-typography { margin: 0; }
+.api-import-preview-heading .ant-typography-secondary { display: block; margin-top: 4px; font-size: 12px; }
+
+.api-import-preview-total {
+  flex: 0 0 auto;
+  gap: 7px;
+  padding: 9px 13px;
+  border: 1px solid #e7ebf2;
+  border-radius: 10px;
+  background: #f8faff;
+  color: #63718a;
+  font-size: 12px;
+}
+
+.api-import-preview-total strong { color: #304d91; font-size: 19px; line-height: 1; }
+
+.api-import-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.api-import-summary-card {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 15px;
+  border: 1px solid #e9edf3;
+  border-left: 3px solid #d6dce6;
+  border-radius: 9px;
+  background: #fff;
+  color: #66738a;
+  font-size: 13px;
+}
+
+.api-import-summary-card strong { color: #29364c; font-size: 20px; font-weight: 650; }
+.api-import-summary-card.is-new { border-left-color: #49a977; }
+.api-import-summary-card.is-new strong { color: #268354; }
+.api-import-summary-card.is-changed { border-left-color: #e7a43b; }
+.api-import-summary-card.is-changed strong { color: #bd7814; }
+.api-import-summary-card.is-existing { border-left-color: #8b95a5; }
+.api-import-summary-card.is-unchanged { border-left-color: #c0c7d2; }
+
+.api-import-toolbar { min-height: 34px; }
+.api-import-search { width: 310px; }
+.api-import-filter { width: 138px; }
+.api-import-visible-count { flex: 0 0 auto; font-size: 12px; }
+
+.api-import-preview-table { min-width: 0; }
+.api-import-preview-table .ant-table-container {
+  overflow: hidden;
+  border: 1px solid #e8edf4;
+  border-radius: 10px;
+}
+.api-import-preview-table .ant-table-thead > tr > th {
+  padding-block: 11px;
+  background: #f6f8fb;
+  color: #657187;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.api-import-preview-table .ant-table-tbody > tr > td { padding-block: 11px; }
+.api-import-preview-table .ant-table-tbody > tr:hover > td { background: #f8faff; }
+.api-import-preview-table .ant-pagination { margin: 12px 4px 0; }
+.api-import-preview-table .ant-table-cell { min-width: 0; }
+
+.api-import-request-cell { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.api-import-request-cell .ant-tag,
+.api-import-status,
+.api-import-module { flex: 0 0 auto; margin-inline-end: 0; }
+.api-import-path {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #41536e;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-import-name,
+.api-import-warning {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-import-module { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
+.api-import-preview-footer {
+  min-height: 56px;
+  padding-top: 14px;
+  border-top: 1px solid #edf0f5;
+}
+.api-import-module-override { min-width: 0; gap: 9px; }
+.api-import-module-override .ant-select { width: 300px; max-width: 100%; }
+.api-import-module-override > .ant-typography { flex: 0 0 auto; font-size: 12px; }
+.api-import-confirm-count { margin-left: 3px; font-weight: 700; }
+
+@media (max-width: 760px) {
+  .api-import-preview { gap: 12px; }
+  .api-import-preview-heading,
+  .api-import-toolbar,
+  .api-import-preview-footer { align-items: stretch; flex-direction: column; }
+  .api-import-preview-total { align-self: flex-start; }
+  .api-import-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .api-import-summary-card { min-height: 54px; padding: 8px 11px; }
+  .api-import-toolbar > .ant-space { width: 100%; }
+  .api-import-search { width: 100%; }
+  .api-import-filter { flex: 0 0 130px; }
+  .api-import-visible-count { align-self: flex-start; }
+  .api-import-module-override .ant-select { width: 100%; }
+  .api-import-preview-footer > .ant-space { justify-content: flex-end; }
+}

@@ -1,0 +1,133 @@
+........................................................................ [  6%]
+........................................................................ [ 12%]
+........................................................................ [ 18%]
+........................................................................ [ 25%]
+........................................................................ [ 31%]
+........................................................................ [ 37%]
+........................................................................ [ 43%]
+........................................................................ [ 50%]
+........................................................................ [ 56%]
+........................................................................ [ 62%]
+........................................................................ [ 68%]
+........................................................................ [ 75%]
+........................................................................ [ 81%]
+........................................................................ [ 87%]
+........................................................................ [ 93%]
+.....................................................................    [100%]
+=============================== warnings summary ===============================
+.venv/lib/python3.14/site-packages/starlette/testclient.py:45
+  /Users/a1/Desktop/ai-test-project/backend/.venv/lib/python3.14/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+app/features/api_catalog/schemas/requests.py:11
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/requests.py:11: UserWarning: Field name "schema_json" in "ApiParameterIn" shadows an attribute in parent "BaseModel"
+    class ApiParameterIn(BaseModel):
+
+app/features/api_catalog/schemas/requests.py:25
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/requests.py:25: UserWarning: Field name "schema_json" in "ApiBodyIn" shadows an attribute in parent "BaseModel"
+    class ApiBodyIn(BaseModel):
+
+app/features/api_catalog/schemas/requests.py:34
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/requests.py:34: UserWarning: Field name "schema_json" in "ApiResponseIn" shadows an attribute in parent "BaseModel"
+    class ApiResponseIn(BaseModel):
+
+app/features/api_catalog/schemas/requests.py:44
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/requests.py:44: UserWarning: Field name "schema_json" in "ApiParameterResponse" shadows an attribute in parent "BaseModel"
+    class ApiParameterResponse(BaseModel):
+
+app/features/api_catalog/schemas/requests.py:62
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/requests.py:62: UserWarning: Field name "schema_json" in "ApiRequestBodyResponse" shadows an attribute in parent "BaseModel"
+    class ApiRequestBodyResponse(BaseModel):
+
+app/features/api_catalog/schemas/requests.py:75
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/requests.py:75: UserWarning: Field name "schema_json" in "ApiResponseResponse" shadows an attribute in parent "BaseModel"
+    class ApiResponseResponse(BaseModel):
+
+app/features/api_catalog/schemas/internal.py:12
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/internal.py:12: UserWarning: Field name "schema_json" in "InternalParameter" shadows an attribute in parent "BaseModel"
+    class InternalParameter(BaseModel):
+
+app/features/api_catalog/schemas/internal.py:26
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/internal.py:26: UserWarning: Field name "schema_json" in "InternalBody" shadows an attribute in parent "BaseModel"
+    class InternalBody(BaseModel):
+
+app/features/api_catalog/schemas/internal.py:35
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/internal.py:35: UserWarning: Field name "schema_json" in "InternalResponse" shadows an attribute in parent "BaseModel"
+    class InternalResponse(BaseModel):
+
+app/features/api_catalog/schemas/imports.py:23
+  /Users/a1/Desktop/ai-test-project/backend/app/features/api_catalog/schemas/imports.py:23: UserWarning: Field name "schema" in "ImportPreviewItem" shadows an attribute in parent "BaseModel"
+    class ImportPreviewItem(BaseModel):
+
+app/features/reports/models/report.py:27
+  /Users/a1/Desktop/ai-test-project/backend/app/features/reports/models/report.py:27: PytestCollectionWarning: cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_16_agent.py)
+    class TestReport(Base):
+
+app/features/test_management/models/execution.py:21
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/execution.py:21: PytestCollectionWarning: cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_16_agent.py)
+    class TestRun(Base):
+
+app/features/reports/models/report.py:27
+  /Users/a1/Desktop/ai-test-project/backend/app/features/reports/models/report.py:27: PytestCollectionWarning: cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_17_report_notification.py)
+    class TestReport(Base):
+
+app/features/test_management/models/execution.py:21
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/execution.py:21: PytestCollectionWarning: cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_17_report_notification.py)
+    class TestRun(Base):
+
+app/features/test_management/models/test_case.py:22
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/test_case.py:22: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_17_report_notification.py)
+    class TestCase(Base):
+
+app/features/test_management/models/execution.py:21
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/execution.py:21: PytestCollectionWarning: cannot collect test class 'TestRun' because it has a __init__ constructor (from: tests/test_25_security_execution.py)
+    class TestRun(Base):
+
+app/features/test_management/models/test_case.py:22
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/test_case.py:22: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_25_security_execution.py)
+    class TestCase(Base):
+
+app/features/test_management/models/test_step.py:19
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/test_step.py:19: PytestCollectionWarning: cannot collect test class 'TestStep' because it has a __init__ constructor (from: tests/test_25_security_execution.py)
+    class TestStep(Base):
+
+app/features/reports/models/report.py:27
+  /Users/a1/Desktop/ai-test-project/backend/app/features/reports/models/report.py:27: PytestCollectionWarning: cannot collect test class 'TestReport' because it has a __init__ constructor (from: tests/test_26_security_agent_report.py)
+    class TestReport(Base):
+
+app/features/test_management/models/test_case.py:22
+  /Users/a1/Desktop/ai-test-project/backend/app/features/test_management/models/test_case.py:22: PytestCollectionWarning: cannot collect test class 'TestCase' because it has a __init__ constructor (from: tests/test_26_security_agent_report.py)
+    class TestCase(Base):
+
+tests/test_02_auth_flow.py: 1 warning
+tests/test_04_admin_authorization.py: 3 warnings
+tests/test_08_defects.py: 3 warnings
+tests/test_13_test_asset.py: 1 warning
+tests/test_18_test_data_crud.py: 1 warning
+tests/test_21_mock_management.py: 1 warning
+tests/test_22_security_strategy.py: 6 warnings
+tests/test_25_security_execution.py: 1 warning
+tests/test_30_web_ui.py: 2 warnings
+tests/test_33_web_agent_loop.py: 1 warning
+tests/test_35_tasks.py: 2 warnings
+  /Users/a1/Desktop/ai-test-project/backend/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py:59: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    response = await handler(conn, exc)
+
+tests/test_03_token_revocation.py::test_expired_token_is_rejected
+  /Users/a1/Desktop/ai-test-project/backend/.venv/lib/python3.14/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 12 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_17_report_notification.py::TestSecretBoundary::test_llm_echoed_webhook_is_scrubbed_before_persist
+  /Users/a1/Desktop/ai-test-project/backend/tests/test_17_report_notification.py:726: SAWarning: fully NULL primary key identity cannot load any object.  This condition may raise an error in a future release.
+    rows = [(ce, db.get(TestCase, ce.test_case_id))
+
+tests/test_21_mock_management.py::test_mock_execution_plane_separation_and_masking
+  /Users/a1/Desktop/ai-test-project/backend/.venv/lib/python3.14/site-packages/httpx/_models.py:408: DeprecationWarning: Use 'content=<...>' to upload raw bytes/text content.
+    headers, stream = encode_request(
+
+tests/test_business_capability_extraction.py::test_main_registers_zap_management_routes_by_method_and_path
+  /Users/a1/Desktop/ai-test-project/backend/.venv/lib/python3.14/site-packages/fastapi/openapi/utils.py:303: UserWarning: Duplicate Operation ID mock_runtime_api_v1_mock__project_id___service_key___path__delete for function mock_runtime at /Users/a1/Desktop/ai-test-project/backend/app/features/mocking/runtime_router.py
+    warnings.warn(message, stacklevel=1)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1149 passed, 47 warnings in 405.33s (0:06:45)

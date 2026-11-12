@@ -33,7 +33,8 @@ from app.features.api_catalog.services.module_resolver import infer_module_name_
 _SENSITIVE_HEADERS: frozenset[str] = frozenset(
     {
         "authorization", "token", "cookie", "set-cookie",
-        "x-api-key", "api-key", "x-auth-token", "proxy-authorization",
+        "x-api-key", "api-key", "x-auth-token", "x-token", "x-access-token",
+        "proxy-authorization",
     }
 )
 # 这些 header 不作为 HEADER 参数落库（Cookie 路由到 COOKIE 参数，Content-Type 进 body）。
@@ -74,6 +75,7 @@ class _Parsed:
     """curl 扫描中间结果。"""
 
     def __init__(self) -> None:
+        """初始化对象状态。"""
         self.method: str = "GET"
         self.url: str = ""
         self.headers: list[tuple[str, str]] = []
@@ -202,7 +204,7 @@ def _parse_urlencode(chunk: str) -> list[tuple[str, str]]:
 
 
 def _parse_form_field(chunk: str) -> tuple[str, str, bool]:
-    """-F key=value / key=@file / key=<file → (key, value, is_file)。"""
+    """解析 curl -F 表单字段格式：key=value、key=@file 或 key=<file，并返回字段名、字段值和文件标记。"""
     if "=" in chunk:
         key, _, value = chunk.partition("=")
         key = key.strip()
@@ -348,9 +350,13 @@ def _build_parameters(
             ))
         sort += 1
     for name, value in cookies.items():
+        # Cookie 一律不落库真实值：example 写占位串（调试/用例侧再填真值）。
+        # 否则 sessionid / JSESSIONID 这类真实会话值会经 api_parameter.example 明文入库，
+        # 并被 get_interface 详情原样回给项目内任意成员；而 schema_json 的 sensitive 标记
+        # 全仓库无人消费，纯属装饰。
         params.append(InternalParameter(
             name=name, location="COOKIE", type="string", required=False,
-            example=value, schema_json={"sensitive": True} if _looks_sensitive_cookie(name) else None,
+            example="${cookie}", schema_json={"sensitive": True} if _looks_sensitive_cookie(name) else None,
             sort=sort,
         ))
         sort += 1
@@ -454,11 +460,13 @@ def _build_body(state: _Parsed, content_type: str | None) -> InternalBody:
 
 
 def _looks_json(raw: str) -> bool:
+    """判断文本是否为 JSON 格式。"""
     s = raw.lstrip()
     return s.startswith("{") or s.startswith("[")
 
 
 def _looks_form(raw: str) -> bool:
+    """判断请求体是否为表单格式。"""
     s = raw.strip()
     if not s or s[0] in "{[":
         return False
@@ -485,7 +493,7 @@ def _form_schema(fields: list[tuple[str, str]]) -> dict:
 
 
 def _multipart_schema(state: _Parsed) -> dict:
-    """multipart → {properties, files}。"""
+    """将 multipart 请求体转换为 properties 与 files 结构。"""
     props: dict[str, dict] = {}
     for name, value in state.multipart_fields:
         entry: dict = {"type": "string", "example": value}

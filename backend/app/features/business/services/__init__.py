@@ -17,4 +17,13 @@ __all__ = [
     "FlowService",
     "RefService",
     "RuleService",
+    "resolve_flow_project_id",
+    "resolve_action_project_id",
+    "resolve_binding_project_id",
 ]
+
+from app.features.business.services.access_service import (
+    resolve_flow_project_id,
+    resolve_action_project_id,
+    resolve_binding_project_id,
+)

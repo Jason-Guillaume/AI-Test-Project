@@ -1,0 +1,2879 @@
+[
+  {
+    "file": "backend/app/agents/router.py",
+    "function": "create_session",
+    "method": "POST",
+    "path": "'/projects/{project_id}/agent/sessions'",
+    "contract": "router.post('/projects/{project_id}/agent/sessions', response_model=AgentSessionResponse, status_code=status.HTTP_201_CREATED, summary='新建 Agent 会话')"
+  },
+  {
+    "file": "backend/app/agents/router.py",
+    "function": "list_sessions",
+    "method": "GET",
+    "path": "'/projects/{project_id}/agent/sessions'",
+    "contract": "router.get('/projects/{project_id}/agent/sessions', response_model=list[AgentSessionResponse], summary='会话列表')"
+  },
+  {
+    "file": "backend/app/agents/router.py",
+    "function": "get_session_detail",
+    "method": "GET",
+    "path": "'/agent/sessions/{session_id}'",
+    "contract": "router.get('/agent/sessions/{session_id}', response_model=AgentSessionDetailResponse, summary='会话详情 + 消息历史')"
+  },
+  {
+    "file": "backend/app/agents/router.py",
+    "function": "delete_session",
+    "method": "DELETE",
+    "path": "'/agent/sessions/{session_id}'",
+    "contract": "router.delete('/agent/sessions/{session_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除会话')"
+  },
+  {
+    "file": "backend/app/agents/router.py",
+    "function": "get_workspace",
+    "method": "GET",
+    "path": "'/agent/sessions/{session_id}/workspace'",
+    "contract": "router.get('/agent/sessions/{session_id}/workspace', response_model=AgentWorkspace, summary='工作区快照（plan/points/cases/result）')"
+  },
+  {
+    "file": "backend/app/agents/router.py",
+    "function": "send_message",
+    "method": "POST",
+    "path": "'/agent/sessions/{session_id}/messages'",
+    "contract": "router.post('/agent/sessions/{session_id}/messages', response_model=AgentTurnResponse, summary='发送消息 / action 推进 Agent')"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "list_workflows",
+    "method": "GET",
+    "path": "'/workflows'",
+    "contract": "router.get('/workflows')"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "list_tools",
+    "method": "GET",
+    "path": "'/tools'",
+    "contract": "router.get('/tools')"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "update_tool",
+    "method": "PUT",
+    "path": "'/tools/{tool_key}'",
+    "contract": "router.put('/tools/{tool_key}')"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "restore_tool_defaults",
+    "method": "POST",
+    "path": "'/tools/{tool_key}/restore-defaults'",
+    "contract": "router.post('/tools/{tool_key}/restore-defaults')"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "list_agents",
+    "method": "GET",
+    "path": "'/agents'",
+    "contract": "router.get('/agents', response_model=list[AgentDefinitionResponse])"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "create_agent",
+    "method": "POST",
+    "path": "'/agents'",
+    "contract": "router.post('/agents', response_model=AgentDefinitionResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "update_agent",
+    "method": "PATCH",
+    "path": "'/agents/{agent_id}'",
+    "contract": "router.patch('/agents/{agent_id}', response_model=AgentDefinitionResponse)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "agent_versions",
+    "method": "GET",
+    "path": "'/agents/{agent_id}/versions'",
+    "contract": "router.get('/agents/{agent_id}/versions', response_model=list[DefinitionVersionResponse])"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "restore_agent_version",
+    "method": "POST",
+    "path": "'/agents/{agent_id}/versions/{version}/restore'",
+    "contract": "router.post('/agents/{agent_id}/versions/{version}/restore', response_model=AgentDefinitionResponse)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "delete_agent",
+    "method": "DELETE",
+    "path": "'/agents/{agent_id}'",
+    "contract": "router.delete('/agents/{agent_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "list_skills",
+    "method": "GET",
+    "path": "'/skills'",
+    "contract": "router.get('/skills', response_model=list[SkillResponse])"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "create_skill",
+    "method": "POST",
+    "path": "'/skills'",
+    "contract": "router.post('/skills', response_model=SkillResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "import_skill_zip",
+    "method": "POST",
+    "path": "'/skills/import-zip'",
+    "contract": "router.post('/skills/import-zip', response_model=SkillResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "update_skill",
+    "method": "PATCH",
+    "path": "'/skills/{skill_id}'",
+    "contract": "router.patch('/skills/{skill_id}', response_model=SkillResponse)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "skill_versions",
+    "method": "GET",
+    "path": "'/skills/{skill_id}/versions'",
+    "contract": "router.get('/skills/{skill_id}/versions', response_model=list[DefinitionVersionResponse])"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "restore_skill_version",
+    "method": "POST",
+    "path": "'/skills/{skill_id}/versions/{version}/restore'",
+    "contract": "router.post('/skills/{skill_id}/versions/{version}/restore', response_model=SkillResponse)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "skill_usage",
+    "method": "GET",
+    "path": "'/skills/{skill_id}/usage'",
+    "contract": "router.get('/skills/{skill_id}/usage')"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "delete_skill",
+    "method": "DELETE",
+    "path": "'/skills/{skill_id}'",
+    "contract": "router.delete('/skills/{skill_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "list_mcp_servers",
+    "method": "GET",
+    "path": "'/mcp-servers'",
+    "contract": "router.get('/mcp-servers', response_model=list[MCPServerResponse])"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "create_mcp_server",
+    "method": "POST",
+    "path": "'/mcp-servers'",
+    "contract": "router.post('/mcp-servers', response_model=MCPServerResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "update_mcp_server",
+    "method": "PATCH",
+    "path": "'/mcp-servers/{server_id}'",
+    "contract": "router.patch('/mcp-servers/{server_id}', response_model=MCPServerResponse)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "delete_mcp_server",
+    "method": "DELETE",
+    "path": "'/mcp-servers/{server_id}'",
+    "contract": "router.delete('/mcp-servers/{server_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "discover_mcp_tools",
+    "method": "POST",
+    "path": "'/mcp-servers/{server_id}/discover'",
+    "contract": "router.post('/mcp-servers/{server_id}/discover', response_model=MCPServerResponse)"
+  },
+  {
+    "file": "backend/app/features/agent_governance/router.py",
+    "function": "update_mcp_approvals",
+    "method": "PUT",
+    "path": "'/mcp-servers/{server_id}/approved-tools'",
+    "contract": "router.put('/mcp-servers/{server_id}/approved-tools', response_model=MCPServerResponse)"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "list_modules",
+    "method": "GET",
+    "path": "'/projects/{project_id}/api-modules'",
+    "contract": "router.get('/projects/{project_id}/api-modules', response_model=list[ApiModuleResponse], summary='模块树（含未分类）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "create_module",
+    "method": "POST",
+    "path": "'/projects/{project_id}/api-modules'",
+    "contract": "router.post('/projects/{project_id}/api-modules', response_model=ApiModuleResponse, status_code=status.HTTP_201_CREATED, summary='新建模块（≤2级）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "update_module",
+    "method": "PATCH",
+    "path": "'/api-modules/{module_id}'",
+    "contract": "router.patch('/api-modules/{module_id}', response_model=ApiModuleResponse, summary='编辑模块')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "move_module",
+    "method": "PATCH",
+    "path": "'/api-modules/{module_id}/move'",
+    "contract": "router.patch('/api-modules/{module_id}/move', response_model=ApiModuleResponse, summary='移动模块')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "delete_module",
+    "method": "DELETE",
+    "path": "'/api-modules/{module_id}'",
+    "contract": "router.delete('/api-modules/{module_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除模块（未分类不可删；子接口归未分类）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "list_interfaces",
+    "method": "GET",
+    "path": "'/projects/{project_id}/apis'",
+    "contract": "router.get('/projects/{project_id}/apis', response_model=ApiInterfaceListResponse, summary='接口列表（keyword/method/module_id/status 过滤）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "create_interface",
+    "method": "POST",
+    "path": "'/projects/{project_id}/apis'",
+    "contract": "router.post('/projects/{project_id}/apis', response_model=ApiInterfaceDetailResponse, status_code=status.HTTP_201_CREATED, summary='手工创建接口（source_type=MANUAL）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "get_interface",
+    "method": "GET",
+    "path": "'/apis/{api_id}'",
+    "contract": "router.get('/apis/{api_id}', response_model=ApiInterfaceDetailResponse, summary='接口详情')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "update_interface",
+    "method": "PATCH",
+    "path": "'/apis/{api_id}'",
+    "contract": "router.patch('/apis/{api_id}', response_model=ApiInterfaceDetailResponse, summary='编辑基本信息')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "delete_interface",
+    "method": "DELETE",
+    "path": "'/apis/{api_id}'",
+    "contract": "router.delete('/apis/{api_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除接口（级联子表）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "move_interface",
+    "method": "PATCH",
+    "path": "'/apis/{api_id}/move'",
+    "contract": "router.patch('/apis/{api_id}/move', response_model=ApiInterfaceDetailResponse, summary='移动接口到指定模块')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "get_request",
+    "method": "GET",
+    "path": "'/apis/{api_id}/request'",
+    "contract": "router.get('/apis/{api_id}/request', response_model=ApiRequestBundleResponse, summary='请求参数+body')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "save_request",
+    "method": "PUT",
+    "path": "'/apis/{api_id}/request'",
+    "contract": "router.put('/apis/{api_id}/request', response_model=ApiRequestBundleResponse, summary='整体替换参数+body')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "get_responses",
+    "method": "GET",
+    "path": "'/apis/{api_id}/responses'",
+    "contract": "router.get('/apis/{api_id}/responses', response_model=ApiResponsesBundleResponse, summary='响应列表')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "save_responses",
+    "method": "PUT",
+    "path": "'/apis/{api_id}/responses'",
+    "contract": "router.put('/apis/{api_id}/responses', response_model=ApiResponsesBundleResponse, summary='整体替换响应')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "list_relations",
+    "method": "GET",
+    "path": "'/apis/{api_id}/relations'",
+    "contract": "router.get('/apis/{api_id}/relations', response_model=ApiRelationListResponse, summary='关联列表')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "create_relation",
+    "method": "POST",
+    "path": "'/apis/{api_id}/relations'",
+    "contract": "router.post('/apis/{api_id}/relations', response_model=ApiRelationResponse, status_code=status.HTTP_201_CREATED, summary='新增关联')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "delete_relation",
+    "method": "DELETE",
+    "path": "'/api-relations/{relation_id}'",
+    "contract": "router.delete('/api-relations/{relation_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除关联')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "list_history",
+    "method": "GET",
+    "path": "'/apis/{api_id}/history'",
+    "contract": "router.get('/apis/{api_id}/history', response_model=ApiChangeLogListResponse, summary='变更记录')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "import_preview",
+    "method": "POST",
+    "path": "'/projects/{project_id}/apis/import/preview'",
+    "contract": "router.post('/projects/{project_id}/apis/import/preview', response_model=ImportPreviewResponse, summary='导入预览（curl/openapi → 分类）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "import_confirm",
+    "method": "POST",
+    "path": "'/projects/{project_id}/apis/import/confirm'",
+    "contract": "router.post('/projects/{project_id}/apis/import/confirm', response_model=ImportConfirmResponse, status_code=status.HTTP_201_CREATED, summary='导入确认（幂等：重新解析+去重+入库）')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "list_import_records",
+    "method": "GET",
+    "path": "'/projects/{project_id}/api-import-records'",
+    "contract": "router.get('/projects/{project_id}/api-import-records', response_model=ApiImportRecordListResponse, summary='导入记录列表')"
+  },
+  {
+    "file": "backend/app/features/api_catalog/router.py",
+    "function": "debug_execute",
+    "method": "POST",
+    "path": "'/apis/{api_id}/debug'",
+    "contract": "router.post('/apis/{api_id}/debug', response_model=ApiDebugResponse, summary='调试发送真实请求（平台管理员 + 出站白名单）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_domains",
+    "method": "GET",
+    "path": "'/projects/{project_id}/business-domains'",
+    "contract": "router.get('/projects/{project_id}/business-domains', response_model=BusinessDomainListResponse, summary='业务域列表（keyword/status 过滤）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_domain",
+    "method": "POST",
+    "path": "'/projects/{project_id}/business-domains'",
+    "contract": "router.post('/projects/{project_id}/business-domains', response_model=BusinessDomainResponse, status_code=status.HTTP_201_CREATED, summary='新建业务域')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "get_domain",
+    "method": "GET",
+    "path": "'/business-domains/{domain_id}'",
+    "contract": "router.get('/business-domains/{domain_id}', response_model=BusinessDomainResponse, summary='业务域详情')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_domain",
+    "method": "PATCH",
+    "path": "'/business-domains/{domain_id}'",
+    "contract": "router.patch('/business-domains/{domain_id}', response_model=BusinessDomainResponse, summary='编辑业务域')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_domain",
+    "method": "DELETE",
+    "path": "'/business-domains/{domain_id}'",
+    "contract": "router.delete('/business-domains/{domain_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务域（级联清理下属流程/动作/绑定）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_flows",
+    "method": "GET",
+    "path": "'/projects/{project_id}/business-flows'",
+    "contract": "router.get('/projects/{project_id}/business-flows', response_model=BusinessFlowListResponse, summary='业务流程列表（domain_id/status/keyword 过滤）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_flow",
+    "method": "POST",
+    "path": "'/projects/{project_id}/business-flows'",
+    "contract": "router.post('/projects/{project_id}/business-flows', response_model=BusinessFlowResponse, status_code=status.HTTP_201_CREATED, summary='新建业务流程')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "get_flow",
+    "method": "GET",
+    "path": "'/business-flows/{flow_id}'",
+    "contract": "router.get('/business-flows/{flow_id}', response_model=BusinessFlowResponse, summary='业务流程基本信息')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "get_flow_detail",
+    "method": "GET",
+    "path": "'/business-flows/{flow_id}/detail'",
+    "contract": "router.get('/business-flows/{flow_id}/detail', response_model=BusinessFlowDetailResponse, summary='业务流程聚合详情（动作/前置条件/变量/状态/绑定/映射/引用/规则）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_flow",
+    "method": "PATCH",
+    "path": "'/business-flows/{flow_id}'",
+    "contract": "router.patch('/business-flows/{flow_id}', response_model=BusinessFlowResponse, summary='编辑业务流程')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_flow",
+    "method": "DELETE",
+    "path": "'/business-flows/{flow_id}'",
+    "contract": "router.delete('/business-flows/{flow_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务流程（级联清理动作及子配置）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_actions",
+    "method": "GET",
+    "path": "'/business-flows/{flow_id}/actions'",
+    "contract": "router.get('/business-flows/{flow_id}/actions', response_model=list[BusinessActionResponse], summary='业务动作列表（按 sort 升序）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_action",
+    "method": "POST",
+    "path": "'/business-flows/{flow_id}/actions'",
+    "contract": "router.post('/business-flows/{flow_id}/actions', response_model=BusinessActionResponse, status_code=status.HTTP_201_CREATED, summary='新增业务动作（默认追加到末尾）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_action",
+    "method": "PATCH",
+    "path": "'/business-actions/{action_id}'",
+    "contract": "router.patch('/business-actions/{action_id}', response_model=BusinessActionResponse, summary='编辑业务动作')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_action",
+    "method": "DELETE",
+    "path": "'/business-actions/{action_id}'",
+    "contract": "router.delete('/business-actions/{action_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务动作（级联清理子配置与绑定）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "reorder_actions",
+    "method": "PATCH",
+    "path": "'/business-flows/{flow_id}/actions/reorder'",
+    "contract": "router.patch('/business-flows/{flow_id}/actions/reorder', response_model=list[BusinessActionResponse], summary='批量重排业务动作顺序')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_preconditions",
+    "method": "GET",
+    "path": "'/business-actions/{action_id}/preconditions'",
+    "contract": "router.get('/business-actions/{action_id}/preconditions', response_model=list[BusinessPreconditionResponse], summary='前置条件列表')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_precondition",
+    "method": "POST",
+    "path": "'/business-actions/{action_id}/preconditions'",
+    "contract": "router.post('/business-actions/{action_id}/preconditions', response_model=BusinessPreconditionResponse, status_code=status.HTTP_201_CREATED, summary='新增前置条件')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_precondition",
+    "method": "PATCH",
+    "path": "'/business-preconditions/{precondition_id}'",
+    "contract": "router.patch('/business-preconditions/{precondition_id}', response_model=BusinessPreconditionResponse, summary='编辑前置条件')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_precondition",
+    "method": "DELETE",
+    "path": "'/business-preconditions/{precondition_id}'",
+    "contract": "router.delete('/business-preconditions/{precondition_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除前置条件')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_variables",
+    "method": "GET",
+    "path": "'/business-actions/{action_id}/variables'",
+    "contract": "router.get('/business-actions/{action_id}/variables', response_model=list[BusinessVariableResponse], summary='业务变量列表（INPUT/OUTPUT 混排）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_variable",
+    "method": "POST",
+    "path": "'/business-actions/{action_id}/variables'",
+    "contract": "router.post('/business-actions/{action_id}/variables', response_model=BusinessVariableResponse, status_code=status.HTTP_201_CREATED, summary='新增业务变量')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_variable",
+    "method": "PATCH",
+    "path": "'/business-variables/{variable_id}'",
+    "contract": "router.patch('/business-variables/{variable_id}', response_model=BusinessVariableResponse, summary='编辑业务变量')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_variable",
+    "method": "DELETE",
+    "path": "'/business-variables/{variable_id}'",
+    "contract": "router.delete('/business-variables/{variable_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务变量')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_states",
+    "method": "GET",
+    "path": "'/business-actions/{action_id}/states'",
+    "contract": "router.get('/business-actions/{action_id}/states', response_model=list[BusinessStateResponse], summary='业务状态列表')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_state",
+    "method": "POST",
+    "path": "'/business-actions/{action_id}/states'",
+    "contract": "router.post('/business-actions/{action_id}/states', response_model=BusinessStateResponse, status_code=status.HTTP_201_CREATED, summary='新增业务状态（每动作每实体一组 Pre/Post）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_state",
+    "method": "PATCH",
+    "path": "'/business-states/{state_id}'",
+    "contract": "router.patch('/business-states/{state_id}', response_model=BusinessStateResponse, summary='编辑业务状态')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_state",
+    "method": "DELETE",
+    "path": "'/business-states/{state_id}'",
+    "contract": "router.delete('/business-states/{state_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务状态')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_bindings",
+    "method": "GET",
+    "path": "'/business-actions/{action_id}/bindings'",
+    "contract": "router.get('/business-actions/{action_id}/bindings', response_model=list[BusinessBindingDetailResponse], summary='业务绑定列表（含失效判定与映射）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_binding",
+    "method": "POST",
+    "path": "'/business-actions/{action_id}/bindings'",
+    "contract": "router.post('/business-actions/{action_id}/bindings', response_model=BusinessBindingDetailResponse, status_code=status.HTTP_201_CREATED, summary='新增业务绑定（第一阶段仅 API 通道）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "get_binding",
+    "method": "GET",
+    "path": "'/business-bindings/{binding_id}'",
+    "contract": "router.get('/business-bindings/{binding_id}', response_model=BusinessBindingDetailResponse, summary='业务绑定详情（含失效判定与输入/输出映射）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_binding",
+    "method": "PATCH",
+    "path": "'/business-bindings/{binding_id}'",
+    "contract": "router.patch('/business-bindings/{binding_id}', response_model=BusinessBindingDetailResponse, summary='编辑业务绑定')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_binding",
+    "method": "DELETE",
+    "path": "'/business-bindings/{binding_id}'",
+    "contract": "router.delete('/business-bindings/{binding_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务绑定（级联清理映射）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_mappings",
+    "method": "GET",
+    "path": "'/business-bindings/{binding_id}/mappings'",
+    "contract": "router.get('/business-bindings/{binding_id}/mappings', response_model=list[BusinessApiMappingResponse], summary='业务变量 ↔ 接口参数映射列表')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_mapping",
+    "method": "POST",
+    "path": "'/business-bindings/{binding_id}/mappings'",
+    "contract": "router.post('/business-bindings/{binding_id}/mappings', response_model=BusinessApiMappingResponse, status_code=status.HTTP_201_CREATED, summary='新增映射（project_id→body.project_id / $.data.id→task_id 等）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_mapping",
+    "method": "PATCH",
+    "path": "'/business-api-mappings/{mapping_id}'",
+    "contract": "router.patch('/business-api-mappings/{mapping_id}', response_model=BusinessApiMappingResponse, summary='编辑映射')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_mapping",
+    "method": "DELETE",
+    "path": "'/business-api-mappings/{mapping_id}'",
+    "contract": "router.delete('/business-api-mappings/{mapping_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除映射')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_variable_refs",
+    "method": "GET",
+    "path": "'/business-flows/{flow_id}/variable-refs'",
+    "contract": "router.get('/business-flows/{flow_id}/variable-refs', response_model=list[BusinessVariableRefResponse], summary='变量引用列表（动作间输出→输入）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_variable_ref",
+    "method": "POST",
+    "path": "'/business-flows/{flow_id}/variable-refs'",
+    "contract": "router.post('/business-flows/{flow_id}/variable-refs', response_model=BusinessVariableRefResponse, status_code=status.HTTP_201_CREATED, summary='新增变量引用')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_variable_ref",
+    "method": "DELETE",
+    "path": "'/business-variable-refs/{ref_id}'",
+    "contract": "router.delete('/business-variable-refs/{ref_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除变量引用')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_rules",
+    "method": "GET",
+    "path": "'/projects/{project_id}/business-rules'",
+    "contract": "router.get('/projects/{project_id}/business-rules', response_model=BusinessRuleListResponse, summary='业务规则列表（flow_id/action_id 过滤）')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "create_rule",
+    "method": "POST",
+    "path": "'/projects/{project_id}/business-rules'",
+    "contract": "router.post('/projects/{project_id}/business-rules', response_model=BusinessRuleResponse, status_code=status.HTTP_201_CREATED, summary='新增业务规则')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "update_rule",
+    "method": "PATCH",
+    "path": "'/business-rules/{rule_id}'",
+    "contract": "router.patch('/business-rules/{rule_id}', response_model=BusinessRuleResponse, summary='编辑业务规则')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "delete_rule",
+    "method": "DELETE",
+    "path": "'/business-rules/{rule_id}'",
+    "contract": "router.delete('/business-rules/{rule_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除业务规则')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "execute_flow_endpoint",
+    "method": "POST",
+    "path": "'/business-flows/{flow_id}/execute'",
+    "contract": "router.post('/business-flows/{flow_id}/execute', response_model=FlowExecutionResponse, status_code=status.HTTP_200_OK, summary='执行业务流程')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "get_execution",
+    "method": "GET",
+    "path": "'/business-executions/{execution_id}'",
+    "contract": "router.get('/business-executions/{execution_id}', response_model=FlowExecutionResponse, summary='执行记录详情')"
+  },
+  {
+    "file": "backend/app/features/business/router.py",
+    "function": "list_execution_actions",
+    "method": "GET",
+    "path": "'/business-executions/{execution_id}/actions'",
+    "contract": "router.get('/business-executions/{execution_id}/actions', response_model=FlowExecutionActionListResponse, summary='执行记录的步骤执行列表')"
+  },
+  {
+    "file": "backend/app/features/dashboard/router.py",
+    "function": "overview",
+    "method": "GET",
+    "path": "'/overview'",
+    "contract": "router.get('/overview', response_model=DashboardOverviewResponse)"
+  },
+  {
+    "file": "backend/app/features/dashboard/router.py",
+    "function": "charts",
+    "method": "GET",
+    "path": "'/charts'",
+    "contract": "router.get('/charts', response_model=DashboardChartsResponse)"
+  },
+  {
+    "file": "backend/app/features/dashboard/router.py",
+    "function": "projects",
+    "method": "GET",
+    "path": "'/projects'",
+    "contract": "router.get('/projects', response_model=ProjectSummaryResponse)"
+  },
+  {
+    "file": "backend/app/features/dashboard/router.py",
+    "function": "ready",
+    "method": "GET",
+    "path": "'/ready'",
+    "contract": "router.get('/ready', response_model=ReadyResponse)"
+  },
+  {
+    "file": "backend/app/features/dashboard/router.py",
+    "function": "platform",
+    "method": "GET",
+    "path": "'/platform'",
+    "contract": "router.get('/platform', response_model=DashboardOverviewResponse)"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "list_bugs",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=BugListResponse)"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "source_context",
+    "method": "GET",
+    "path": "'/sources/context'",
+    "contract": "router.get('/sources/context')"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "list_source_links",
+    "method": "GET",
+    "path": "'/sources'",
+    "contract": "router.get('/sources', response_model=list[DefectSourceResponse])"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "link_source",
+    "method": "POST",
+    "path": "'/sources'",
+    "contract": "router.post('/sources', response_model=DefectSourceResponse)"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "list_bug_sources",
+    "method": "GET",
+    "path": "'/{bug_id}/sources'",
+    "contract": "router.get('/{bug_id}/sources', response_model=list[DefectSourceResponse])"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "get_bug",
+    "method": "GET",
+    "path": "'/{bug_id}'",
+    "contract": "router.get('/{bug_id}', response_model=BugResponse)"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "create_bug",
+    "method": "POST",
+    "path": "''",
+    "contract": "router.post('', response_model=BugResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "update_bug",
+    "method": "PUT",
+    "path": "'/{bug_id}'",
+    "contract": "router.put('/{bug_id}', response_model=BugResponse)"
+  },
+  {
+    "file": "backend/app/features/defects/router.py",
+    "function": "delete_bug",
+    "method": "DELETE",
+    "path": "'/{bug_id}'",
+    "contract": "router.delete('/{bug_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/environment_configuration/router.py",
+    "function": "list_environments_endpoint",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=EnvironmentListResponse)"
+  },
+  {
+    "file": "backend/app/features/environment_configuration/router.py",
+    "function": "create",
+    "method": "POST",
+    "path": "''",
+    "contract": "router.post('', response_model=EnvironmentResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/environment_configuration/router.py",
+    "function": "get_environment",
+    "method": "GET",
+    "path": "'/{name}'",
+    "contract": "router.get('/{name}', response_model=EnvironmentResponse)"
+  },
+  {
+    "file": "backend/app/features/environment_configuration/router.py",
+    "function": "update",
+    "method": "PATCH",
+    "path": "'/{name}'",
+    "contract": "router.patch('/{name}', response_model=EnvironmentResponse)"
+  },
+  {
+    "file": "backend/app/features/environment_configuration/router.py",
+    "function": "mark_default",
+    "method": "POST",
+    "path": "'/{name}/set-default'",
+    "contract": "router.post('/{name}/set-default', response_model=EnvironmentResponse)"
+  },
+  {
+    "file": "backend/app/features/environment_configuration/router.py",
+    "function": "delete",
+    "method": "DELETE",
+    "path": "'/{name}'",
+    "contract": "router.delete('/{name}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "list_mock_services",
+    "method": "GET",
+    "path": "'/projects/{project_id}/mock-services'",
+    "contract": "router.get('/projects/{project_id}/mock-services', response_model=MockServiceListResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "create_mock_service",
+    "method": "POST",
+    "path": "'/projects/{project_id}/mock-services'",
+    "contract": "router.post('/projects/{project_id}/mock-services', response_model=MockServiceCreateResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "get_mock_service",
+    "method": "GET",
+    "path": "'/mock-services/{service_id}'",
+    "contract": "router.get('/mock-services/{service_id}', response_model=MockServiceResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "update_mock_service",
+    "method": "PATCH",
+    "path": "'/mock-services/{service_id}'",
+    "contract": "router.patch('/mock-services/{service_id}', response_model=MockServiceResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "delete_mock_service",
+    "method": "DELETE",
+    "path": "'/mock-services/{service_id}'",
+    "contract": "router.delete('/mock-services/{service_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "reset_mock_token",
+    "method": "POST",
+    "path": "'/mock-services/{service_id}/reset-token'",
+    "contract": "router.post('/mock-services/{service_id}/reset-token', response_model=MockServiceCreateResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "list_mock_endpoints",
+    "method": "GET",
+    "path": "'/mock-services/{service_id}/endpoints'",
+    "contract": "router.get('/mock-services/{service_id}/endpoints', response_model=MockEndpointListResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "create_mock_endpoint",
+    "method": "POST",
+    "path": "'/mock-services/{service_id}/endpoints'",
+    "contract": "router.post('/mock-services/{service_id}/endpoints', response_model=MockEndpointResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "get_mock_endpoint",
+    "method": "GET",
+    "path": "'/mock-endpoints/{endpoint_id}'",
+    "contract": "router.get('/mock-endpoints/{endpoint_id}', response_model=MockEndpointResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "update_mock_endpoint",
+    "method": "PATCH",
+    "path": "'/mock-endpoints/{endpoint_id}'",
+    "contract": "router.patch('/mock-endpoints/{endpoint_id}', response_model=MockEndpointResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "delete_mock_endpoint",
+    "method": "DELETE",
+    "path": "'/mock-endpoints/{endpoint_id}'",
+    "contract": "router.delete('/mock-endpoints/{endpoint_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "list_mock_scenarios",
+    "method": "GET",
+    "path": "'/mock-endpoints/{endpoint_id}/scenarios'",
+    "contract": "router.get('/mock-endpoints/{endpoint_id}/scenarios', response_model=MockScenarioListResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "create_mock_scenario",
+    "method": "POST",
+    "path": "'/mock-endpoints/{endpoint_id}/scenarios'",
+    "contract": "router.post('/mock-endpoints/{endpoint_id}/scenarios', response_model=MockScenarioResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "get_mock_scenario",
+    "method": "GET",
+    "path": "'/mock-scenarios/{scenario_id}'",
+    "contract": "router.get('/mock-scenarios/{scenario_id}', response_model=MockScenarioResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "update_mock_scenario",
+    "method": "PATCH",
+    "path": "'/mock-scenarios/{scenario_id}'",
+    "contract": "router.patch('/mock-scenarios/{scenario_id}', response_model=MockScenarioResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "delete_mock_scenario",
+    "method": "DELETE",
+    "path": "'/mock-scenarios/{scenario_id}'",
+    "contract": "router.delete('/mock-scenarios/{scenario_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "replace_mock_matchers",
+    "method": "PUT",
+    "path": "'/mock-scenarios/{scenario_id}/matchers'",
+    "contract": "router.put('/mock-scenarios/{scenario_id}/matchers', response_model=MockScenarioResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "set_default_scenario",
+    "method": "POST",
+    "path": "'/mock-scenarios/{scenario_id}/set-default'",
+    "contract": "router.post('/mock-scenarios/{scenario_id}/set-default', response_model=MockScenarioResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "duplicate_scenario",
+    "method": "POST",
+    "path": "'/mock-scenarios/{scenario_id}/duplicate'",
+    "contract": "router.post('/mock-scenarios/{scenario_id}/duplicate', response_model=MockScenarioResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "test_scenario",
+    "method": "POST",
+    "path": "'/mock-scenarios/{scenario_id}/test'",
+    "contract": "router.post('/mock-scenarios/{scenario_id}/test', response_model=ScenarioTestResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "list_mock_executions",
+    "method": "GET",
+    "path": "'/projects/{project_id}/mock-executions'",
+    "contract": "router.get('/projects/{project_id}/mock-executions', response_model=MockExecutionListResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "get_mock_execution",
+    "method": "GET",
+    "path": "'/mock-executions/{execution_id}'",
+    "contract": "router.get('/mock-executions/{execution_id}', response_model=MockExecutionResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "list_mock_contexts",
+    "method": "GET",
+    "path": "'/projects/{project_id}/mock-contexts'",
+    "contract": "router.get('/projects/{project_id}/mock-contexts', response_model=list[MockContextResponse])"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "get_mock_context",
+    "method": "GET",
+    "path": "'/mock-contexts/{context_id}'",
+    "contract": "router.get('/mock-contexts/{context_id}', response_model=MockContextResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "close_mock_context",
+    "method": "POST",
+    "path": "'/mock-contexts/{context_id}/close'",
+    "contract": "router.post('/mock-contexts/{context_id}/close', response_model=MockContextResponse)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "create_mock_from_api",
+    "method": "POST",
+    "path": "'/projects/{project_id}/mock-from-api/{api_id}'",
+    "contract": "router.post('/projects/{project_id}/mock-from-api/{api_id}', response_model=CreateMockFromApiResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "list_case_mocks",
+    "method": "GET",
+    "path": "'/test-cases/{test_case_id}/mocks'",
+    "contract": "router.get('/test-cases/{test_case_id}/mocks', response_model=list[TestCaseMockResponse])"
+  },
+  {
+    "file": "backend/app/features/mock_management/router.py",
+    "function": "replace_case_mocks",
+    "method": "PUT",
+    "path": "'/test-cases/{test_case_id}/mocks'",
+    "contract": "router.put('/test-cases/{test_case_id}/mocks', response_model=list[TestCaseMockResponse])"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "list_providers",
+    "method": "GET",
+    "path": "'/providers'",
+    "contract": "router.get('/providers', response_model=list[ProviderCatalogItem])"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "list_configurations",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=ModelConfigurationListResponse)"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "create",
+    "method": "POST",
+    "path": "''",
+    "contract": "router.post('', response_model=ModelConfigurationResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "get_config",
+    "method": "GET",
+    "path": "'/{config_id}'",
+    "contract": "router.get('/{config_id}', response_model=ModelConfigurationResponse)"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "update",
+    "method": "PATCH",
+    "path": "'/{config_id}'",
+    "contract": "router.patch('/{config_id}', response_model=ModelConfigurationResponse)"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "mark_default",
+    "method": "POST",
+    "path": "'/{config_id}/set-default'",
+    "contract": "router.post('/{config_id}/set-default', response_model=ModelConfigurationResponse)"
+  },
+  {
+    "file": "backend/app/features/model_configuration/router.py",
+    "function": "delete",
+    "method": "DELETE",
+    "path": "'/{config_id}'",
+    "contract": "router.delete('/{config_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "create_channel",
+    "method": "POST",
+    "path": "'/projects/{project_id}/notification-channels'",
+    "contract": "router.post('/projects/{project_id}/notification-channels', response_model=ChannelResponse, status_code=status.HTTP_201_CREATED, summary='新建飞书通知渠道')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "list_channels",
+    "method": "GET",
+    "path": "'/projects/{project_id}/notification-channels'",
+    "contract": "router.get('/projects/{project_id}/notification-channels', response_model=ChannelListResponse, summary='项目通知渠道列表')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "get_channel",
+    "method": "GET",
+    "path": "'/notification-channels/{channel_id}'",
+    "contract": "router.get('/notification-channels/{channel_id}', response_model=ChannelResponse, summary='通知渠道详情')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "update_channel",
+    "method": "PATCH",
+    "path": "'/notification-channels/{channel_id}'",
+    "contract": "router.patch('/notification-channels/{channel_id}', response_model=ChannelResponse, summary='编辑通知渠道')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "delete_channel",
+    "method": "DELETE",
+    "path": "'/notification-channels/{channel_id}'",
+    "contract": "router.delete('/notification-channels/{channel_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除通知渠道')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "test_channel",
+    "method": "POST",
+    "path": "'/notification-channels/{channel_id}/test'",
+    "contract": "router.post('/notification-channels/{channel_id}/test', response_model=SendResultResponse, summary='通知渠道连通性测试（发送测试卡片）')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "notify_report",
+    "method": "POST",
+    "path": "'/reports/{report_id}/notify'",
+    "contract": "router.post('/reports/{report_id}/notify', response_model=SendResultResponse, summary='手动触发报告飞书通知')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "list_channel_records",
+    "method": "GET",
+    "path": "'/notification-channels/{channel_id}/records'",
+    "contract": "router.get('/notification-channels/{channel_id}/records', response_model=NotificationRecordListResponse, summary='渠道的飞书通知发送记录')"
+  },
+  {
+    "file": "backend/app/features/notifications/channel_router.py",
+    "function": "list_report_notifications",
+    "method": "GET",
+    "path": "'/reports/{report_id}/notifications'",
+    "contract": "router.get('/reports/{report_id}/notifications', response_model=NotificationRecordListResponse, summary='报告的飞书通知发送记录')"
+  },
+  {
+    "file": "backend/app/features/notifications/router.py",
+    "function": "list_notifications",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=NotificationListResponse)"
+  },
+  {
+    "file": "backend/app/features/notifications/router.py",
+    "function": "notification_summary",
+    "method": "GET",
+    "path": "'/summary'",
+    "contract": "router.get('/summary', response_model=NotificationSummaryResponse)"
+  },
+  {
+    "file": "backend/app/features/notifications/router.py",
+    "function": "list_event_types",
+    "method": "GET",
+    "path": "'/events'",
+    "contract": "router.get('/events', response_model=list[EventCatalogItem])"
+  },
+  {
+    "file": "backend/app/features/notifications/router.py",
+    "function": "mark_read",
+    "method": "POST",
+    "path": "'/{notification_id}/read'",
+    "contract": "router.post('/{notification_id}/read', response_model=NotificationResponse)"
+  },
+  {
+    "file": "backend/app/features/notifications/router.py",
+    "function": "mark_all_read",
+    "method": "POST",
+    "path": "'/read-all'",
+    "contract": "router.post('/read-all', response_model=NotificationListResponse)"
+  },
+  {
+    "file": "backend/app/features/notifications/router.py",
+    "function": "delete_notification",
+    "method": "DELETE",
+    "path": "'/{notification_id}'",
+    "contract": "router.delete('/{notification_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "list_organizations",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=PaginatedOrganizationResponse)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "create_organization",
+    "method": "POST",
+    "path": "''",
+    "contract": "router.post('', response_model=OrganizationResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "update_organization",
+    "method": "PATCH",
+    "path": "'/{organization_id}'",
+    "contract": "router.patch('/{organization_id}', response_model=OrganizationResponse)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "list_members",
+    "method": "GET",
+    "path": "'/{organization_id}/members'",
+    "contract": "router.get('/{organization_id}/members', response_model=MemberListResponse)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "find_candidate",
+    "method": "GET",
+    "path": "'/{organization_id}/candidates'",
+    "contract": "router.get('/{organization_id}/candidates', response_model=CandidateResponse)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "available_models",
+    "method": "GET",
+    "path": "'/{organization_id}/models'",
+    "contract": "router.get('/{organization_id}/models', response_model=ModelOptionsResponse)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "put_member",
+    "method": "PUT",
+    "path": "'/{organization_id}/members/{member_id}'",
+    "contract": "router.put('/{organization_id}/members/{member_id}', response_model=OrganizationMemberResponse)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "delete_member",
+    "method": "DELETE",
+    "path": "'/{organization_id}/members/{member_id}'",
+    "contract": "router.delete('/{organization_id}/members/{member_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/organizations/router.py",
+    "function": "transfer_ownership",
+    "method": "POST",
+    "path": "'/{organization_id}/members/{member_id}/upgrade'",
+    "contract": "router.post('/{organization_id}/members/{member_id}/upgrade', response_model=OrganizationResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "list_projects",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=PaginatedProjectResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "create_project",
+    "method": "POST",
+    "path": "''",
+    "contract": "router.post('', response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "get_project",
+    "method": "GET",
+    "path": "'/{project_id}'",
+    "contract": "router.get('/{project_id}', response_model=ProjectDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "list_project_environments",
+    "method": "GET",
+    "path": "'/{project_id}/environments'",
+    "contract": "router.get('/{project_id}/environments', response_model=EnvironmentListResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "create_project_environment_endpoint",
+    "method": "POST",
+    "path": "'/{project_id}/environments'",
+    "contract": "router.post('/{project_id}/environments', response_model=EnvironmentResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "update_project_environment_endpoint",
+    "method": "PATCH",
+    "path": "'/{project_id}/environments/{environment_id}'",
+    "contract": "router.patch('/{project_id}/environments/{environment_id}', response_model=EnvironmentResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "set_project_default_environment_endpoint",
+    "method": "POST",
+    "path": "'/{project_id}/environments/{environment_id}/set-default'",
+    "contract": "router.post('/{project_id}/environments/{environment_id}/set-default', response_model=EnvironmentResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "deactivate_project_environment_endpoint",
+    "method": "DELETE",
+    "path": "'/{project_id}/environments/{environment_id}'",
+    "contract": "router.delete('/{project_id}/environments/{environment_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "update_project",
+    "method": "PATCH",
+    "path": "'/{project_id}'",
+    "contract": "router.patch('/{project_id}', response_model=ProjectResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "delete_project",
+    "method": "DELETE",
+    "path": "'/{project_id}'",
+    "contract": "router.delete('/{project_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "transfer_owner",
+    "method": "POST",
+    "path": "'/{project_id}/owner'",
+    "contract": "router.post('/{project_id}/owner', response_model=ProjectResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "list_members",
+    "method": "GET",
+    "path": "'/{project_id}/members'",
+    "contract": "router.get('/{project_id}/members', response_model=ProjectMemberListResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "upsert_member",
+    "method": "PUT",
+    "path": "'/{project_id}/members/{member_id}'",
+    "contract": "router.put('/{project_id}/members/{member_id}', response_model=ProjectMemberResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "update_member_role",
+    "method": "PATCH",
+    "path": "'/{project_id}/members/{member_id}'",
+    "contract": "router.patch('/{project_id}/members/{member_id}', response_model=ProjectMemberResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "remove_member",
+    "method": "DELETE",
+    "path": "'/{project_id}/members/{member_id}'",
+    "contract": "router.delete('/{project_id}/members/{member_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "list_targets",
+    "method": "GET",
+    "path": "'/{project_id}/targets'",
+    "contract": "router.get('/{project_id}/targets', response_model=list[OutboundTargetResponse])"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "create_target",
+    "method": "POST",
+    "path": "'/{project_id}/targets'",
+    "contract": "router.post('/{project_id}/targets', response_model=OutboundTargetResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "update_target",
+    "method": "PATCH",
+    "path": "'/{project_id}/targets/{target_id}'",
+    "contract": "router.patch('/{project_id}/targets/{target_id}', response_model=OutboundTargetResponse)"
+  },
+  {
+    "file": "backend/app/features/projects/router.py",
+    "function": "delete_target",
+    "method": "DELETE",
+    "path": "'/{project_id}/targets/{target_id}'",
+    "contract": "router.delete('/{project_id}/targets/{target_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/reports/router.py",
+    "function": "generate_report",
+    "method": "POST",
+    "path": "'/test-runs/{run_id}/report'",
+    "contract": "router.post('/test-runs/{run_id}/report', response_model=ReportGenerateResponse, status_code=status.HTTP_200_OK, summary='为测试执行生成报告')"
+  },
+  {
+    "file": "backend/app/features/reports/router.py",
+    "function": "list_reports",
+    "method": "GET",
+    "path": "'/projects/{project_id}/reports'",
+    "contract": "router.get('/projects/{project_id}/reports', response_model=TestReportListResponse, summary='项目测试报告列表')"
+  },
+  {
+    "file": "backend/app/features/reports/router.py",
+    "function": "get_report",
+    "method": "GET",
+    "path": "'/reports/{report_id}'",
+    "contract": "router.get('/reports/{report_id}', response_model=TestReportDetailResponse, summary='测试报告详情')"
+  },
+  {
+    "file": "backend/app/features/reports/router.py",
+    "function": "delete_report",
+    "method": "DELETE",
+    "path": "'/reports/{report_id}'",
+    "contract": "router.delete('/reports/{report_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试报告')"
+  },
+  {
+    "file": "backend/app/features/reports/router.py",
+    "function": "regenerate_ai_summary",
+    "method": "POST",
+    "path": "'/reports/{report_id}/regenerate-ai-summary'",
+    "contract": "router.post('/reports/{report_id}/regenerate-ai-summary', response_model=TestReportResponse, summary='重生成报告 AI 总结（统计字段不变）')"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "get_security_setting",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security-setting'",
+    "contract": "router.get('/projects/{project_id}/security-setting', response_model=SecuritySettingRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "update_security_setting",
+    "method": "PUT",
+    "path": "'/projects/{project_id}/security-setting'",
+    "contract": "router.put('/projects/{project_id}/security-setting', response_model=SecuritySettingRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "list_security_strategies",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security-strategies'",
+    "contract": "router.get('/projects/{project_id}/security-strategies', response_model=SecurityStrategyListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "create_security_strategy",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security-strategies'",
+    "contract": "router.post('/projects/{project_id}/security-strategies', response_model=SecurityStrategyResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "get_security_strategy",
+    "method": "GET",
+    "path": "'/security-strategies/{strategy_id}'",
+    "contract": "router.get('/security-strategies/{strategy_id}', response_model=SecurityStrategyResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "update_security_strategy",
+    "method": "PATCH",
+    "path": "'/security-strategies/{strategy_id}'",
+    "contract": "router.patch('/security-strategies/{strategy_id}', response_model=SecurityStrategyResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "delete_security_strategy",
+    "method": "DELETE",
+    "path": "'/security-strategies/{strategy_id}'",
+    "contract": "router.delete('/security-strategies/{strategy_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "create_mutation_rule",
+    "method": "POST",
+    "path": "'/security-strategies/{strategy_id}/rules'",
+    "contract": "router.post('/security-strategies/{strategy_id}/rules', response_model=MutationRuleResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "update_mutation_rule",
+    "method": "PATCH",
+    "path": "'/security-rules/{rule_id}'",
+    "contract": "router.patch('/security-rules/{rule_id}', response_model=MutationRuleResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "delete_mutation_rule",
+    "method": "DELETE",
+    "path": "'/security-rules/{rule_id}'",
+    "contract": "router.delete('/security-rules/{rule_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "preview_security_plan",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security-plans/preview'",
+    "contract": "router.post('/projects/{project_id}/security-plans/preview', response_model=PlanPreviewResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "confirm_security_plan",
+    "method": "POST",
+    "path": "'/security-plans/{plan_id}/confirm'",
+    "contract": "router.post('/security-plans/{plan_id}/confirm', response_model=PlanConfirmResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "discard_security_plan",
+    "method": "POST",
+    "path": "'/security-plans/{plan_id}/discard'",
+    "contract": "router.post('/security-plans/{plan_id}/discard', response_model=SecurityPlanRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "list_security_cases",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security-cases'",
+    "contract": "router.get('/projects/{project_id}/security-cases', response_model=SecurityCaseListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "get_security_case",
+    "method": "GET",
+    "path": "'/security-cases/{security_case_id}'",
+    "contract": "router.get('/security-cases/{security_case_id}', response_model=SecurityCaseDetail)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "update_security_case",
+    "method": "PATCH",
+    "path": "'/security-cases/{security_case_id}'",
+    "contract": "router.patch('/security-cases/{security_case_id}', response_model=SecurityCaseRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "confirm_security_risk",
+    "method": "POST",
+    "path": "'/security-cases/{security_case_id}/confirm-risk'",
+    "contract": "router.post('/security-cases/{security_case_id}/confirm-risk', response_model=SecurityCaseRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "run_security_cases",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security-runs'",
+    "contract": "router.post('/projects/{project_id}/security-runs', response_model=TestRunResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "get_security_execution",
+    "method": "GET",
+    "path": "'/security-executions/{security_execution_id}'",
+    "contract": "router.get('/security-executions/{security_execution_id}', response_model=SecurityExecutionRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "list_security_findings",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security-findings'",
+    "contract": "router.get('/projects/{project_id}/security-findings', response_model=SecurityFindingListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "get_security_finding",
+    "method": "GET",
+    "path": "'/security-findings/{finding_id}'",
+    "contract": "router.get('/security-findings/{finding_id}', response_model=SecurityFindingRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/router.py",
+    "function": "update_security_finding",
+    "method": "PATCH",
+    "path": "'/security-findings/{finding_id}'",
+    "contract": "router.patch('/security-findings/{finding_id}', response_model=SecurityFindingRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_zap_health",
+    "method": "GET",
+    "path": "'/security/zap/health'",
+    "contract": "router.get('/security/zap/health', response_model=ZapHealthRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_zap_capabilities",
+    "method": "GET",
+    "path": "'/security/zap/capabilities'",
+    "contract": "router.get('/security/zap/capabilities')"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_targets",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-targets'",
+    "contract": "router.get('/projects/{project_id}/security/scan-targets', response_model=ScanTargetListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "create_scan_target",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security/scan-targets'",
+    "contract": "router.post('/projects/{project_id}/security/scan-targets', response_model=ScanTargetRead, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_target",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-targets/{target_id}'",
+    "contract": "router.get('/projects/{project_id}/security/scan-targets/{target_id}', response_model=ScanTargetRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "update_scan_target",
+    "method": "PATCH",
+    "path": "'/projects/{project_id}/security/scan-targets/{target_id}'",
+    "contract": "router.patch('/projects/{project_id}/security/scan-targets/{target_id}', response_model=ScanTargetRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "delete_scan_target",
+    "method": "DELETE",
+    "path": "'/projects/{project_id}/security/scan-targets/{target_id}'",
+    "contract": "router.delete('/projects/{project_id}/security/scan-targets/{target_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_profiles",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-profiles'",
+    "contract": "router.get('/projects/{project_id}/security/scan-profiles', response_model=ScanProfileListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "create_scan_profile",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security/scan-profiles'",
+    "contract": "router.post('/projects/{project_id}/security/scan-profiles', response_model=ScanProfileRead, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_profile",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-profiles/{profile_id}'",
+    "contract": "router.get('/projects/{project_id}/security/scan-profiles/{profile_id}', response_model=ScanProfileRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "update_scan_profile",
+    "method": "PATCH",
+    "path": "'/projects/{project_id}/security/scan-profiles/{profile_id}'",
+    "contract": "router.patch('/projects/{project_id}/security/scan-profiles/{profile_id}', response_model=ScanProfileRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "delete_scan_profile",
+    "method": "DELETE",
+    "path": "'/projects/{project_id}/security/scan-profiles/{profile_id}'",
+    "contract": "router.delete('/projects/{project_id}/security/scan-profiles/{profile_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_auth_profiles",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-auth-profiles'",
+    "contract": "router.get('/projects/{project_id}/security/scan-auth-profiles', response_model=ScanAuthProfileListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "create_scan_auth_profile",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security/scan-auth-profiles'",
+    "contract": "router.post('/projects/{project_id}/security/scan-auth-profiles', response_model=ScanAuthProfileRead, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_auth_profile",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-auth-profiles/{profile_id}'",
+    "contract": "router.get('/projects/{project_id}/security/scan-auth-profiles/{profile_id}', response_model=ScanAuthProfileRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "update_scan_auth_profile",
+    "method": "PATCH",
+    "path": "'/projects/{project_id}/security/scan-auth-profiles/{profile_id}'",
+    "contract": "router.patch('/projects/{project_id}/security/scan-auth-profiles/{profile_id}', response_model=ScanAuthProfileRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "delete_scan_auth_profile",
+    "method": "DELETE",
+    "path": "'/projects/{project_id}/security/scan-auth-profiles/{profile_id}'",
+    "contract": "router.delete('/projects/{project_id}/security/scan-auth-profiles/{profile_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "plan_scan_job",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security/scan-jobs/plan'",
+    "contract": "router.post('/projects/{project_id}/security/scan-jobs/plan', response_model=ScanPlanRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "create_scan_job",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security/scan-jobs'",
+    "contract": "router.post('/projects/{project_id}/security/scan-jobs', response_model=ScanJobRead, status_code=202)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_jobs",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs', response_model=ScanJobListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_job",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}', response_model=ScanJobRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "cancel_scan_job",
+    "method": "POST",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/cancel'",
+    "contract": "router.post('/projects/{project_id}/security/scan-jobs/{job_id}/cancel', response_model=ScanJobRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_progress",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/progress'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}/progress', response_model=ScanJobProgressRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_events",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/events'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}/events', response_model=ScanEventListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_alerts",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/alerts'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}/alerts', response_model=ScanAlertListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "list_scan_findings",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/findings'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}/findings', response_model=ScanFindingListResponse)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_coverage",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/coverage'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}/coverage', response_model=CoverageRead)"
+  },
+  {
+    "file": "backend/app/features/security_testing/zap/router.py",
+    "function": "get_scan_report",
+    "method": "GET",
+    "path": "'/projects/{project_id}/security/scan-jobs/{job_id}/report'",
+    "contract": "router.get('/projects/{project_id}/security/scan-jobs/{job_id}/report', response_model=ScanReportRead)"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "create_task",
+    "method": "POST",
+    "path": "'/projects/{project_id}/tasks'",
+    "contract": "router.post('/projects/{project_id}/tasks', response_model=TaskResponse, status_code=status.HTTP_201_CREATED, summary='创建统一 API 测试任务')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "get_task_web_authoring",
+    "method": "GET",
+    "path": "'/task-runs/{run_id}/web-authoring'",
+    "contract": "router.get('/task-runs/{run_id}/web-authoring', summary='读取任务内 Web 编写工作区')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "restart_task_web_authoring",
+    "method": "POST",
+    "path": "'/task-runs/{run_id}/web-authoring/restart'",
+    "contract": "router.post('/task-runs/{run_id}/web-authoring/restart', summary='启动或重启任务受控浏览器')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "close_task_web_authoring",
+    "method": "POST",
+    "path": "'/task-runs/{run_id}/web-authoring/close'",
+    "contract": "router.post('/task-runs/{run_id}/web-authoring/close', summary='关闭任务受控浏览器')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "send_task_web_authoring_message",
+    "method": "POST",
+    "path": "'/task-runs/{run_id}/web-authoring/messages'",
+    "contract": "router.post('/task-runs/{run_id}/web-authoring/messages', summary='推进任务内 Web Agent')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "promote_task_web_authoring_draft",
+    "method": "POST",
+    "path": "'/task-runs/{run_id}/web-authoring/draft'",
+    "contract": "router.post('/task-runs/{run_id}/web-authoring/draft', status_code=status.HTTP_201_CREATED, summary='从任务内浏览器生成未确认 Web 草稿')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "list_available_agents",
+    "method": "GET",
+    "path": "'/projects/{project_id}/available-agents'",
+    "contract": "router.get('/projects/{project_id}/available-agents', response_model=list[AvailableTaskAgentResponse], summary='列出项目可用的任务 Agent')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "list_tasks",
+    "method": "GET",
+    "path": "'/tasks'",
+    "contract": "router.get('/tasks', response_model=TaskListResponse, summary='当前用户可见任务')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "get_task",
+    "method": "GET",
+    "path": "'/tasks/{task_id}'",
+    "contract": "router.get('/tasks/{task_id}', response_model=TaskResponse, summary='任务详情')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "get_run_detail",
+    "method": "GET",
+    "path": "'/task-runs/{run_id}'",
+    "contract": "router.get('/task-runs/{run_id}', response_model=TaskRunDetailResponse, summary='运行与团队详情')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "list_messages",
+    "method": "GET",
+    "path": "'/task-runs/{run_id}/messages'",
+    "contract": "router.get('/task-runs/{run_id}/messages', response_model=list[TaskMessageResponse], summary='运行内会话')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "send_message",
+    "method": "POST",
+    "path": "'/task-runs/{run_id}/messages'",
+    "contract": "router.post('/task-runs/{run_id}/messages', response_model=dict, status_code=status.HTTP_202_ACCEPTED, summary='发送任务消息')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "create_command",
+    "method": "POST",
+    "path": "'/task-runs/{run_id}/commands'",
+    "contract": "router.post('/task-runs/{run_id}/commands', response_model=TaskCommandResponse, summary='任务控制命令')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "list_events",
+    "method": "GET",
+    "path": "'/task-runs/{run_id}/events'",
+    "contract": "router.get('/task-runs/{run_id}/events', response_model=list[TaskEventResponse], summary='续读持久化事件')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "list_resources",
+    "method": "GET",
+    "path": "'/task-runs/{run_id}/resources'",
+    "contract": "router.get('/task-runs/{run_id}/resources', response_model=list[TaskResourceRefResponse], summary='运行资源与产物')"
+  },
+  {
+    "file": "backend/app/features/tasks/router.py",
+    "function": "find_tasks_for_resource",
+    "method": "GET",
+    "path": "'/task-resources'",
+    "contract": "router.get('/task-resources', response_model=list[TaskResourceRefResponse], summary='按业务资源反查来源任务')"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_fixtures",
+    "method": "GET",
+    "path": "'/projects/{project_id}/fixtures'",
+    "contract": "router.get('/projects/{project_id}/fixtures', response_model=FixtureListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "create_fixture",
+    "method": "POST",
+    "path": "'/projects/{project_id}/fixtures'",
+    "contract": "router.post('/projects/{project_id}/fixtures', response_model=FixtureDetailResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "get_fixture",
+    "method": "GET",
+    "path": "'/fixtures/{fixture_id}'",
+    "contract": "router.get('/fixtures/{fixture_id}', response_model=FixtureDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "update_fixture",
+    "method": "PATCH",
+    "path": "'/fixtures/{fixture_id}'",
+    "contract": "router.patch('/fixtures/{fixture_id}', response_model=FixtureDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "delete_fixture",
+    "method": "DELETE",
+    "path": "'/fixtures/{fixture_id}'",
+    "contract": "router.delete('/fixtures/{fixture_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "replace_fixture_steps",
+    "method": "PUT",
+    "path": "'/fixtures/{fixture_id}/steps'",
+    "contract": "router.put('/fixtures/{fixture_id}/steps', response_model=FixtureDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "replace_fixture_outputs",
+    "method": "PUT",
+    "path": "'/fixtures/{fixture_id}/outputs'",
+    "contract": "router.put('/fixtures/{fixture_id}/outputs', response_model=FixtureDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "fixture_dependency_tree",
+    "method": "GET",
+    "path": "'/fixtures/{fixture_id}/dependencies'",
+    "contract": "router.get('/fixtures/{fixture_id}/dependencies', response_model=list[FixtureTreeNodeResponse])"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "generate_fixture",
+    "method": "POST",
+    "path": "'/fixtures/{fixture_id}/generate'",
+    "contract": "router.post('/fixtures/{fixture_id}/generate', response_model=DataExecutionDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "cleanup_fixture",
+    "method": "POST",
+    "path": "'/fixtures/{fixture_id}/cleanup'",
+    "contract": "router.post('/fixtures/{fixture_id}/cleanup', response_model=DataExecutionDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_assets",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-data-assets'",
+    "contract": "router.get('/projects/{project_id}/test-data-assets', response_model=TestDataAssetListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "create_asset",
+    "method": "POST",
+    "path": "'/projects/{project_id}/test-data-assets'",
+    "contract": "router.post('/projects/{project_id}/test-data-assets', response_model=TestDataAssetResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "get_asset",
+    "method": "GET",
+    "path": "'/test-data-assets/{asset_id}'",
+    "contract": "router.get('/test-data-assets/{asset_id}', response_model=TestDataAssetResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "update_asset",
+    "method": "PATCH",
+    "path": "'/test-data-assets/{asset_id}'",
+    "contract": "router.patch('/test-data-assets/{asset_id}', response_model=TestDataAssetResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "delete_asset",
+    "method": "DELETE",
+    "path": "'/test-data-assets/{asset_id}'",
+    "contract": "router.delete('/test-data-assets/{asset_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_providers",
+    "method": "GET",
+    "path": "'/projects/{project_id}/data-providers'",
+    "contract": "router.get('/projects/{project_id}/data-providers', response_model=DataProviderListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "create_provider",
+    "method": "POST",
+    "path": "'/projects/{project_id}/data-providers'",
+    "contract": "router.post('/projects/{project_id}/data-providers', response_model=DataProviderResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "get_provider",
+    "method": "GET",
+    "path": "'/data-providers/{provider_id}'",
+    "contract": "router.get('/data-providers/{provider_id}', response_model=DataProviderResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "update_provider",
+    "method": "PATCH",
+    "path": "'/data-providers/{provider_id}'",
+    "contract": "router.patch('/data-providers/{provider_id}', response_model=DataProviderResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "enable_provider",
+    "method": "POST",
+    "path": "'/data-providers/{provider_id}/enable'",
+    "contract": "router.post('/data-providers/{provider_id}/enable', response_model=DataProviderResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "disable_provider",
+    "method": "POST",
+    "path": "'/data-providers/{provider_id}/disable'",
+    "contract": "router.post('/data-providers/{provider_id}/disable', response_model=DataProviderResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "delete_provider",
+    "method": "DELETE",
+    "path": "'/data-providers/{provider_id}'",
+    "contract": "router.delete('/data-providers/{provider_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "test_provider",
+    "method": "POST",
+    "path": "'/data-providers/{provider_id}/test'",
+    "contract": "router.post('/data-providers/{provider_id}/test', response_model=DataExecutionDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_pools",
+    "method": "GET",
+    "path": "'/projects/{project_id}/data-pools'",
+    "contract": "router.get('/projects/{project_id}/data-pools', response_model=DataPoolListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "create_pool",
+    "method": "POST",
+    "path": "'/projects/{project_id}/data-pools'",
+    "contract": "router.post('/projects/{project_id}/data-pools', response_model=DataPoolResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "get_pool",
+    "method": "GET",
+    "path": "'/data-pools/{pool_id}'",
+    "contract": "router.get('/data-pools/{pool_id}', response_model=DataPoolResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "update_pool",
+    "method": "PATCH",
+    "path": "'/data-pools/{pool_id}'",
+    "contract": "router.patch('/data-pools/{pool_id}', response_model=DataPoolResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "delete_pool",
+    "method": "DELETE",
+    "path": "'/data-pools/{pool_id}'",
+    "contract": "router.delete('/data-pools/{pool_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_pool_items",
+    "method": "GET",
+    "path": "'/data-pools/{pool_id}/items'",
+    "contract": "router.get('/data-pools/{pool_id}/items', response_model=DataPoolItemListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "create_pool_item",
+    "method": "POST",
+    "path": "'/data-pools/{pool_id}/items'",
+    "contract": "router.post('/data-pools/{pool_id}/items', response_model=DataPoolItemResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "update_pool_item",
+    "method": "PATCH",
+    "path": "'/data-pool-items/{item_id}'",
+    "contract": "router.patch('/data-pool-items/{item_id}', response_model=DataPoolItemResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "release_pool_item",
+    "method": "POST",
+    "path": "'/data-pool-items/{item_id}/release'",
+    "contract": "router.post('/data-pool-items/{item_id}/release', response_model=DataPoolItemResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "delete_pool_item",
+    "method": "DELETE",
+    "path": "'/data-pool-items/{item_id}'",
+    "contract": "router.delete('/data-pool-items/{item_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_pool_leases",
+    "method": "GET",
+    "path": "'/data-pools/{pool_id}/leases'",
+    "contract": "router.get('/data-pools/{pool_id}/leases', response_model=DataPoolLeaseListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_target_databases",
+    "method": "GET",
+    "path": "'/projects/{project_id}/target-databases'",
+    "contract": "router.get('/projects/{project_id}/target-databases', response_model=TargetDbConnectionListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "create_target_database",
+    "method": "POST",
+    "path": "'/projects/{project_id}/target-databases'",
+    "contract": "router.post('/projects/{project_id}/target-databases', response_model=TargetDbConnectionResponse, status_code=201)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "get_target_database",
+    "method": "GET",
+    "path": "'/target-databases/{connection_id}'",
+    "contract": "router.get('/target-databases/{connection_id}', response_model=TargetDbConnectionResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "update_target_database",
+    "method": "PATCH",
+    "path": "'/target-databases/{connection_id}'",
+    "contract": "router.patch('/target-databases/{connection_id}', response_model=TargetDbConnectionResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "delete_target_database",
+    "method": "DELETE",
+    "path": "'/target-databases/{connection_id}'",
+    "contract": "router.delete('/target-databases/{connection_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "ping_target_database",
+    "method": "POST",
+    "path": "'/target-databases/{connection_id}/ping'",
+    "contract": "router.post('/target-databases/{connection_id}/ping')"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_database_policies",
+    "method": "GET",
+    "path": "'/projects/{project_id}/database-policies'",
+    "contract": "router.get('/projects/{project_id}/database-policies', response_model=DatabasePolicyListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "upsert_database_policy",
+    "method": "PUT",
+    "path": "'/projects/{project_id}/database-policies/{environment_id}'",
+    "contract": "router.put('/projects/{project_id}/database-policies/{environment_id}', response_model=DatabasePolicyResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "list_data_executions",
+    "method": "GET",
+    "path": "'/projects/{project_id}/data-executions'",
+    "contract": "router.get('/projects/{project_id}/data-executions', response_model=DataExecutionListResponse)"
+  },
+  {
+    "file": "backend/app/features/test_data/router.py",
+    "function": "get_data_execution",
+    "method": "GET",
+    "path": "'/data-executions/{data_execution_id}'",
+    "contract": "router.get('/data-executions/{data_execution_id}', response_model=DataExecutionDetailResponse)"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_strategies",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-strategies'",
+    "contract": "router.get('/projects/{project_id}/test-strategies', response_model=list, summary='测试策略列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_strategy",
+    "method": "POST",
+    "path": "'/projects/{project_id}/test-strategies'",
+    "contract": "router.post('/projects/{project_id}/test-strategies', status_code=status.HTTP_201_CREATED, summary='新建测试策略')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_strategy",
+    "method": "GET",
+    "path": "'/test-strategies/{strategy_id}'",
+    "contract": "router.get('/test-strategies/{strategy_id}', summary='测试策略详情')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_strategy",
+    "method": "PATCH",
+    "path": "'/test-strategies/{strategy_id}'",
+    "contract": "router.patch('/test-strategies/{strategy_id}', summary='编辑测试策略')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_strategy",
+    "method": "DELETE",
+    "path": "'/test-strategies/{strategy_id}'",
+    "contract": "router.delete('/test-strategies/{strategy_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试策略')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_points",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-points'",
+    "contract": "router.get('/projects/{project_id}/test-points', response_model=list, summary='测试点列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_point",
+    "method": "POST",
+    "path": "'/projects/{project_id}/test-points'",
+    "contract": "router.post('/projects/{project_id}/test-points', status_code=status.HTTP_201_CREATED, summary='新建测试点')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_point",
+    "method": "GET",
+    "path": "'/test-points/{point_id}'",
+    "contract": "router.get('/test-points/{point_id}', summary='测试点详情')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_point",
+    "method": "PATCH",
+    "path": "'/test-points/{point_id}'",
+    "contract": "router.patch('/test-points/{point_id}', summary='编辑测试点')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_point",
+    "method": "DELETE",
+    "path": "'/test-points/{point_id}'",
+    "contract": "router.delete('/test-points/{point_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试点')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_cases",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-cases'",
+    "contract": "router.get('/projects/{project_id}/test-cases', response_model=list, summary='测试用例列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_case",
+    "method": "POST",
+    "path": "'/projects/{project_id}/test-cases'",
+    "contract": "router.post('/projects/{project_id}/test-cases', status_code=status.HTTP_201_CREATED, summary='新建测试用例')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_case",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}'",
+    "contract": "router.get('/test-cases/{case_id}', summary='测试用例基本信息')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_case_detail",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}/detail'",
+    "contract": "router.get('/test-cases/{case_id}/detail', summary='测试用例聚合详情（前置条件/数据/步骤/断言）')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_case",
+    "method": "PATCH",
+    "path": "'/test-cases/{case_id}'",
+    "contract": "router.patch('/test-cases/{case_id}', summary='编辑测试用例（乐观锁）')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_case",
+    "method": "DELETE",
+    "path": "'/test-cases/{case_id}'",
+    "contract": "router.delete('/test-cases/{case_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试用例')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_preconditions",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}/preconditions'",
+    "contract": "router.get('/test-cases/{case_id}/preconditions', response_model=list, summary='前置条件列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_precondition",
+    "method": "POST",
+    "path": "'/test-cases/{case_id}/preconditions'",
+    "contract": "router.post('/test-cases/{case_id}/preconditions', status_code=status.HTTP_201_CREATED, summary='新增前置条件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_precondition",
+    "method": "PATCH",
+    "path": "'/test-case-preconditions/{precondition_id}'",
+    "contract": "router.patch('/test-case-preconditions/{precondition_id}', summary='编辑前置条件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_precondition",
+    "method": "DELETE",
+    "path": "'/test-case-preconditions/{precondition_id}'",
+    "contract": "router.delete('/test-case-preconditions/{precondition_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除前置条件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_data",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}/data'",
+    "contract": "router.get('/test-cases/{case_id}/data', response_model=list, summary='测试数据列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_data",
+    "method": "POST",
+    "path": "'/test-cases/{case_id}/data'",
+    "contract": "router.post('/test-cases/{case_id}/data', status_code=status.HTTP_201_CREATED, summary='新增测试数据')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_data",
+    "method": "PATCH",
+    "path": "'/test-case-data/{data_id}'",
+    "contract": "router.patch('/test-case-data/{data_id}', summary='编辑测试数据')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_data",
+    "method": "DELETE",
+    "path": "'/test-case-data/{data_id}'",
+    "contract": "router.delete('/test-case-data/{data_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试数据')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_case_fixtures",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}/fixtures'",
+    "contract": "router.get('/test-cases/{case_id}/fixtures', response_model=list, summary='所需 Fixture 列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "replace_case_fixtures",
+    "method": "PUT",
+    "path": "'/test-cases/{case_id}/fixtures'",
+    "contract": "router.put('/test-cases/{case_id}/fixtures', summary='整体替换所需 Fixture')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_steps",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}/steps'",
+    "contract": "router.get('/test-cases/{case_id}/steps', response_model=list, summary='测试步骤列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_step",
+    "method": "POST",
+    "path": "'/test-cases/{case_id}/steps'",
+    "contract": "router.post('/test-cases/{case_id}/steps', status_code=status.HTTP_201_CREATED, summary='新增测试步骤')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_step",
+    "method": "PATCH",
+    "path": "'/test-steps/{step_id}'",
+    "contract": "router.patch('/test-steps/{step_id}', summary='编辑测试步骤')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_step",
+    "method": "DELETE",
+    "path": "'/test-steps/{step_id}'",
+    "contract": "router.delete('/test-steps/{step_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试步骤')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_assertions",
+    "method": "GET",
+    "path": "'/test-cases/{case_id}/assertions'",
+    "contract": "router.get('/test-cases/{case_id}/assertions', response_model=list, summary='断言列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_assertion",
+    "method": "POST",
+    "path": "'/test-cases/{case_id}/assertions'",
+    "contract": "router.post('/test-cases/{case_id}/assertions', status_code=status.HTTP_201_CREATED, summary='新增断言')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_assertion",
+    "method": "PATCH",
+    "path": "'/test-assertions/{assertion_id}'",
+    "contract": "router.patch('/test-assertions/{assertion_id}', summary='编辑断言')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_assertion",
+    "method": "DELETE",
+    "path": "'/test-assertions/{assertion_id}'",
+    "contract": "router.delete('/test-assertions/{assertion_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除断言')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_suites",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-suites'",
+    "contract": "router.get('/projects/{project_id}/test-suites', response_model=list, summary='测试套件列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_suite",
+    "method": "POST",
+    "path": "'/projects/{project_id}/test-suites'",
+    "contract": "router.post('/projects/{project_id}/test-suites', status_code=status.HTTP_201_CREATED, summary='新建测试套件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_suite",
+    "method": "GET",
+    "path": "'/test-suites/{suite_id}'",
+    "contract": "router.get('/test-suites/{suite_id}', summary='测试套件详情')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_suite",
+    "method": "PATCH",
+    "path": "'/test-suites/{suite_id}'",
+    "contract": "router.patch('/test-suites/{suite_id}', summary='编辑测试套件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_suite",
+    "method": "DELETE",
+    "path": "'/test-suites/{suite_id}'",
+    "contract": "router.delete('/test-suites/{suite_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试套件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_suite_cases",
+    "method": "GET",
+    "path": "'/test-suites/{suite_id}/cases'",
+    "contract": "router.get('/test-suites/{suite_id}/cases', response_model=list, summary='套件下的用例列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "add_suite_case",
+    "method": "POST",
+    "path": "'/test-suites/{suite_id}/cases'",
+    "contract": "router.post('/test-suites/{suite_id}/cases', status_code=status.HTTP_201_CREATED, summary='把用例加入套件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "remove_suite_case",
+    "method": "DELETE",
+    "path": "'/test-suite-cases/{suite_case_id}'",
+    "contract": "router.delete('/test-suite-cases/{suite_case_id}', status_code=status.HTTP_204_NO_CONTENT, summary='从套件移除用例')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_plans",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-plans'",
+    "contract": "router.get('/projects/{project_id}/test-plans', response_model=list, summary='测试计划列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_plan",
+    "method": "POST",
+    "path": "'/projects/{project_id}/test-plans'",
+    "contract": "router.post('/projects/{project_id}/test-plans', status_code=status.HTTP_201_CREATED, summary='新建测试计划')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_plan",
+    "method": "GET",
+    "path": "'/test-plans/{plan_id}'",
+    "contract": "router.get('/test-plans/{plan_id}', summary='测试计划详情')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "update_plan",
+    "method": "PATCH",
+    "path": "'/test-plans/{plan_id}'",
+    "contract": "router.patch('/test-plans/{plan_id}', summary='编辑测试计划')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "delete_plan",
+    "method": "DELETE",
+    "path": "'/test-plans/{plan_id}'",
+    "contract": "router.delete('/test-plans/{plan_id}', status_code=status.HTTP_204_NO_CONTENT, summary='删除测试计划')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_plan_suites",
+    "method": "GET",
+    "path": "'/test-plans/{plan_id}/suites'",
+    "contract": "router.get('/test-plans/{plan_id}/suites', response_model=list, summary='计划下的套件列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "add_plan_suite",
+    "method": "POST",
+    "path": "'/test-plans/{plan_id}/suites'",
+    "contract": "router.post('/test-plans/{plan_id}/suites', status_code=status.HTTP_201_CREATED, summary='把套件加入计划')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "remove_plan_suite",
+    "method": "DELETE",
+    "path": "'/test-plan-suites/{plan_suite_id}'",
+    "contract": "router.delete('/test-plan-suites/{plan_suite_id}', status_code=status.HTTP_204_NO_CONTENT, summary='从计划移除套件')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "create_run",
+    "method": "POST",
+    "path": "'/test-plans/{plan_id}/runs'",
+    "contract": "router.post('/test-plans/{plan_id}/runs', response_model=TestRunResponse, status_code=status.HTTP_200_OK, summary='触发测试计划执行（同步执行，返回完成的 TestRun）')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "get_run",
+    "method": "GET",
+    "path": "'/test-runs/{run_id}'",
+    "contract": "router.get('/test-runs/{run_id}', response_model=TestRunResponse, summary='测试执行记录详情')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_case_executions",
+    "method": "GET",
+    "path": "'/test-runs/{run_id}/cases'",
+    "contract": "router.get('/test-runs/{run_id}/cases', response_model=CaseExecutionListResponse, summary='用例执行记录列表')"
+  },
+  {
+    "file": "backend/app/features/test_management/router.py",
+    "function": "list_runs",
+    "method": "GET",
+    "path": "'/projects/{project_id}/test-runs'",
+    "contract": "router.get('/projects/{project_id}/test-runs', response_model=TestRunListResponse, summary='项目测试执行记录列表')"
+  },
+  {
+    "file": "backend/app/features/users/admin.py",
+    "function": "create_user",
+    "method": "POST",
+    "path": "''",
+    "contract": "router.post('', response_model=UserResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/users/admin.py",
+    "function": "list_users",
+    "method": "GET",
+    "path": "''",
+    "contract": "router.get('', response_model=UserListResponse)"
+  },
+  {
+    "file": "backend/app/features/users/admin.py",
+    "function": "get_user",
+    "method": "GET",
+    "path": "'/{user_id}'",
+    "contract": "router.get('/{user_id}', response_model=UserResponse)"
+  },
+  {
+    "file": "backend/app/features/users/admin.py",
+    "function": "update_user",
+    "method": "PATCH",
+    "path": "'/{user_id}'",
+    "contract": "router.patch('/{user_id}', response_model=UserResponse)"
+  },
+  {
+    "file": "backend/app/features/users/admin.py",
+    "function": "delete_user",
+    "method": "DELETE",
+    "path": "'/{user_id}'",
+    "contract": "router.delete('/{user_id}', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "register_user",
+    "method": "POST",
+    "path": "'/register'",
+    "contract": "router.post('/register', response_model=TokenResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "register_browser_session",
+    "method": "POST",
+    "path": "'/session/register'",
+    "contract": "router.post('/session/register', response_model=UserResponse, status_code=status.HTTP_201_CREATED)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "login_user",
+    "method": "POST",
+    "path": "'/login'",
+    "contract": "router.post('/login', response_model=TokenResponse)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "login_browser_session",
+    "method": "POST",
+    "path": "'/session/login'",
+    "contract": "router.post('/session/login', response_model=UserResponse)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "get_me",
+    "method": "GET",
+    "path": "'/me'",
+    "contract": "router.get('/me', response_model=UserResponse)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "update_me",
+    "method": "PATCH",
+    "path": "'/me'",
+    "contract": "router.patch('/me', response_model=UserResponse)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "my_organizations",
+    "method": "GET",
+    "path": "'/me/organizations'",
+    "contract": "router.get('/me/organizations', response_model=PaginatedOrganizationResponse)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "logout",
+    "method": "POST",
+    "path": "'/logout'",
+    "contract": "router.post('/logout', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/users/auth.py",
+    "function": "logout_browser_session",
+    "method": "POST",
+    "path": "'/session/logout'",
+    "contract": "router.post('/session/logout', status_code=status.HTTP_204_NO_CONTENT)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "pages",
+    "method": "GET",
+    "path": "'/projects/{project_id}/web-pages'",
+    "contract": "router.get('/projects/{project_id}/web-pages')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "create_page",
+    "method": "POST",
+    "path": "'/projects/{project_id}/web-pages'",
+    "contract": "router.post('/projects/{project_id}/web-pages', status_code=201, response_model=PageResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "update_page",
+    "method": "PUT",
+    "path": "'/projects/{project_id}/web-pages/{page_id}'",
+    "contract": "router.put('/projects/{project_id}/web-pages/{page_id}', response_model=PageResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "delete_page",
+    "method": "DELETE",
+    "path": "'/web-pages/{page_id}'",
+    "contract": "router.delete('/web-pages/{page_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "cases",
+    "method": "GET",
+    "path": "'/projects/{project_id}/web-cases'",
+    "contract": "router.get('/projects/{project_id}/web-cases')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "case_detail",
+    "method": "GET",
+    "path": "'/web-cases/{case_id}'",
+    "contract": "router.get('/web-cases/{case_id}', response_model=CaseResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "create_case",
+    "method": "POST",
+    "path": "'/projects/{project_id}/web-cases'",
+    "contract": "router.post('/projects/{project_id}/web-cases', status_code=201, response_model=CaseResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "update_case",
+    "method": "PUT",
+    "path": "'/projects/{project_id}/web-cases/{case_id}'",
+    "contract": "router.put('/projects/{project_id}/web-cases/{case_id}', response_model=CaseResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "delete_case",
+    "method": "DELETE",
+    "path": "'/web-cases/{case_id}'",
+    "contract": "router.delete('/web-cases/{case_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "confirm",
+    "method": "POST",
+    "path": "'/web-cases/{case_id}/confirm'",
+    "contract": "router.post('/web-cases/{case_id}/confirm', response_model=CaseResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "debug",
+    "method": "POST",
+    "path": "'/web-cases/{case_id}/debug'",
+    "contract": "router.post('/web-cases/{case_id}/debug', response_model=TestRunResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "auth_profiles",
+    "method": "GET",
+    "path": "'/projects/{project_id}/web-auth-profiles'",
+    "contract": "router.get('/projects/{project_id}/web-auth-profiles')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "create_auth",
+    "method": "POST",
+    "path": "'/projects/{project_id}/web-auth-profiles'",
+    "contract": "router.post('/projects/{project_id}/web-auth-profiles', status_code=201, response_model=AuthResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "update_auth",
+    "method": "PUT",
+    "path": "'/projects/{project_id}/web-auth-profiles/{auth_id}'",
+    "contract": "router.put('/projects/{project_id}/web-auth-profiles/{auth_id}', response_model=AuthResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "delete_auth",
+    "method": "DELETE",
+    "path": "'/web-auth-profiles/{auth_id}'",
+    "contract": "router.delete('/web-auth-profiles/{auth_id}', status_code=204)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "history",
+    "method": "GET",
+    "path": "'/projects/{project_id}/web-executions'",
+    "contract": "router.get('/projects/{project_id}/web-executions')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "artifact",
+    "method": "GET",
+    "path": "'/web-artifacts/{artifact_id}'",
+    "contract": "router.get('/web-artifacts/{artifact_id}')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "generate",
+    "method": "POST",
+    "path": "'/projects/{project_id}/web-agent/draft'",
+    "contract": "router.post('/projects/{project_id}/web-agent/draft', status_code=201, response_model=CaseResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "start_session",
+    "method": "POST",
+    "path": "'/projects/{project_id}/web-agent/sessions'",
+    "contract": "router.post('/projects/{project_id}/web-agent/sessions', status_code=201, response_model=SessionResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "list_sessions",
+    "method": "GET",
+    "path": "'/projects/{project_id}/web-agent/sessions'",
+    "contract": "router.get('/projects/{project_id}/web-agent/sessions')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "get_session",
+    "method": "GET",
+    "path": "'/web-agent/sessions/{session_id}'",
+    "contract": "router.get('/web-agent/sessions/{session_id}', response_model=SessionResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "observe_session",
+    "method": "POST",
+    "path": "'/web-agent/sessions/{session_id}/observe'",
+    "contract": "router.post('/web-agent/sessions/{session_id}/observe', response_model=SessionObserveResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "close_session",
+    "method": "POST",
+    "path": "'/web-agent/sessions/{session_id}/close'",
+    "contract": "router.post('/web-agent/sessions/{session_id}/close', response_model=SessionResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "promote_session",
+    "method": "POST",
+    "path": "'/web-agent/sessions/{session_id}/promote'",
+    "contract": "router.post('/web-agent/sessions/{session_id}/promote', status_code=201, response_model=CaseResponse)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "bind_action",
+    "method": "POST",
+    "path": "'/business-actions/{action_id}/web-binding'",
+    "contract": "router.post('/business-actions/{action_id}/web-binding', status_code=201)"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "trace_events",
+    "method": "GET",
+    "path": "'/web-artifacts/{artifact_id}/events'",
+    "contract": "router.get('/web-artifacts/{artifact_id}/events')"
+  },
+  {
+    "file": "backend/app/features/web_ui/router.py",
+    "function": "environment_options",
+    "method": "GET",
+    "path": "'/projects/{project_id}/web-environments'",
+    "contract": "router.get('/projects/{project_id}/web-environments')"
+  },
+  {
+    "file": "backend/app/main.py",
+    "function": "healthz",
+    "method": "GET",
+    "path": "'/healthz'",
+    "contract": "application.get('/healthz', tags=['系统'], summary='存活探针')"
+  },
+  {
+    "file": "backend/app/main.py",
+    "function": "health_check",
+    "method": "GET",
+    "path": "'/health'",
+    "contract": "application.get('/health', tags=['系统'], summary='进程健康检查')"
+  },
+  {
+    "file": "backend/app/main.py",
+    "function": "meta",
+    "method": "GET",
+    "path": "f'{API_PREFIX}/meta'",
+    "contract": "application.get(f'{API_PREFIX}/meta', tags=['系统'], summary='应用元信息')"
+  }
+]

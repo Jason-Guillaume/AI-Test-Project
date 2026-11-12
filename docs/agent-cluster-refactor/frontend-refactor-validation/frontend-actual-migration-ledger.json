@@ -1,0 +1,2006 @@
+{
+  "generatedAt": "2026-10-30",
+  "summary": {
+    "baselineSources": 174,
+    "baselineRetained": 102,
+    "baselineMoved": 54,
+    "baselineSplit": 18,
+    "currentSourceFiles": 245,
+    "newCurrentFilesNotMappedFromBaseline": 12,
+    "currentLines": 41997,
+    "currentFilesOver500Lines": []
+  },
+  "entries": [
+    {
+      "source": "frontend/src/App.tsx",
+      "baselineSha256": "699f6361eed7f382f90344139e844621bd0700ed821b7d17a325bd234d675a21",
+      "baselineLines": 236,
+      "workPackage": "U1",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/app/App.tsx",
+        "frontend/src/app/providers/AuthProvider.tsx",
+        "frontend/src/app/providers/ConsoleScopeProvider.tsx",
+        "frontend/src/app/router/AppErrorBoundary.tsx"
+      ],
+      "action": "拆分路由与应用装配"
+    },
+    {
+      "source": "frontend/src/api/agent.ts",
+      "baselineSha256": "8d3d802b1c88983475f09814ee7fa746a5655e75ae3e3d6e0b78c1f279c30ed4",
+      "baselineLines": 43,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/agent/api/agent.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/agentGovernance.ts",
+      "baselineSha256": "00cda03b6c929cb26edaa4e3c84b1b248fb082bf700e03c06f9cbd88e10b2d10",
+      "baselineLines": 193,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/agent-governance/api/agentGovernance.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/apiCatalog.ts",
+      "baselineSha256": "c76d784a7d2de07f41548f494b30b09395d4848e78f164c0a32d97c0f589f30d",
+      "baselineLines": 163,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/api-catalog/api/apiCatalog.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/auth.ts",
+      "baselineSha256": "662fbd36a39ed7772b411c0d4905784ee95332c2a97c46e2844911971776354c",
+      "baselineLines": 44,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/identity/api/auth.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/business.ts",
+      "baselineSha256": "1ff20a2025b449f38904fe3839124caf85d6c56bd43b611e093bf7096cd7b7c7",
+      "baselineLines": 185,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/business/api/business.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/client.ts",
+      "baselineSha256": "28356bb83344562c4a1edea714b0df571d307bb365f02f09925847e96b9e964b",
+      "baselineLines": 150,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/api/client.ts"
+      ],
+      "action": "拆传输、存储和会话事件，保持单一客户端"
+    },
+    {
+      "source": "frontend/src/api/dashboard.ts",
+      "baselineSha256": "f6d2b63f3179028ddd6ce6342274281a8541ce4ed915fcef78ca925c05468d50",
+      "baselineLines": 28,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/dashboard/api/dashboard.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/defects.ts",
+      "baselineSha256": "f5edbcf9b139c4ff2eda51d669d3f5cf256ad50ddf9120c94080f55949bae0e8",
+      "baselineLines": 66,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/defects/api/defects.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/environments.ts",
+      "baselineSha256": "9636b71506299ac93b9b3612333191f40633e22eb1e1d1f1fd9b5cb0332a1c5e",
+      "baselineLines": 63,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/environments/api/environments.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/mockManagement.ts",
+      "baselineSha256": "9143ee087416dffd42ed3d83b29f1521efa29dea7c240aee0756979aa79c9bb7",
+      "baselineLines": 186,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/mocking/api/mockManagement.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/modelConfigs.ts",
+      "baselineSha256": "53fecde6c2aef80d57dd599d122dc72deab1bbda6dc3564db024e17d7532a24a",
+      "baselineLines": 63,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/model-configuration/api/modelConfigs.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/notificationChannels.ts",
+      "baselineSha256": "2c3db4f01f74c35b718e4bb5258ddf90cece0caaa5e994e34a5cc251b1b4eadb",
+      "baselineLines": 66,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/notifications/api/notificationChannels.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/notifications.ts",
+      "baselineSha256": "23430d2c92c3bfa0183f87b85e9e08190ebb9752fc6978ab53e3c3e0bcc50fde",
+      "baselineLines": 35,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/notifications/api/notifications.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/organizations.ts",
+      "baselineSha256": "7b8da2c965e6d6bc2fba9787a7d04d49373d38cacc6248f453337922b4594761",
+      "baselineLines": 81,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/organizations/api/organizations.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/pagination.ts",
+      "baselineSha256": "13072b9906e2ca8e050fafc65ea9824dee8edaa565a99aa2d56711ecb1a4881c",
+      "baselineLines": 51,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/api/pagination.ts"
+      ],
+      "action": "迁移并核对全部消费者"
+    },
+    {
+      "source": "frontend/src/api/projects.ts",
+      "baselineSha256": "28178c5d7c96ff999126872193507580ad21915c923f265f9972b993870180cb",
+      "baselineLines": 117,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/projects/api/projects.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/reports.ts",
+      "baselineSha256": "b80a2a13de33a37f01aedafac606213756b5c44611297164d31f2ccbef51cfce",
+      "baselineLines": 42,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/reports/api/reports.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/securityTesting.ts",
+      "baselineSha256": "9ea00bd8fbb16f69f391fce515e246804197258d9173ec14f39b898f592af47e",
+      "baselineLines": 731,
+      "workPackage": "U2",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/features/security-testing/api/securityTesting.ts",
+        "frontend/src/features/security-testing/zap/api.ts",
+        "frontend/src/features/security-testing/contracts.ts",
+        "frontend/src/features/security-testing/zap/contracts.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/tasks.ts",
+      "baselineSha256": "a50eddea5518253aff9cc536a3096b5cd06715462d92ca0ae0a25f7698ded233",
+      "baselineLines": 213,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/tasks/api/tasks.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/testData.ts",
+      "baselineSha256": "0a2581e02716537864f45dcc256366aafd8deb028e5fc41c8b822bb5639fc785",
+      "baselineLines": 226,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/test-data/api/testData.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/testManagement.ts",
+      "baselineSha256": "dbb4798684606152def679287853b7873bc2d36a6a35f4d6f90be1e83e2a81ee",
+      "baselineLines": 256,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/test-management/api/testManagement.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/users.ts",
+      "baselineSha256": "5741eea75d0ed401178d0d601a3b4960e60cb7c0ffa1bc19f5981c2f90210783",
+      "baselineLines": 43,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/users/api/users.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/api/webUI.ts",
+      "baselineSha256": "c990f492d5f35a8c9e2aafed411d0e639b5b17e6ca3c009fc3512e4e3e2cc124",
+      "baselineLines": 87,
+      "workPackage": "U2",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/features/web-testing/api/webUI.ts",
+        "frontend/src/features/browser-authoring/api.ts",
+        "frontend/src/features/browser-authoring/contracts.ts"
+      ],
+      "action": "按领域迁移 API，混合 DTO 分离"
+    },
+    {
+      "source": "frontend/src/components/DetailDrawer.tsx",
+      "baselineSha256": "60eb24fb42a15135da57e0b98315188f143b6ce914ed1d51d043f9ce2dc262e9",
+      "baselineLines": 76,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/DetailDrawer.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/FilterToolbar.tsx",
+      "baselineSha256": "7fe61966f250a3e83ee083fdbaa672cc1c9bb64d3d15e3433981574f41f00b2d",
+      "baselineLines": 120,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/FilterToolbar.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/JsonView.tsx",
+      "baselineSha256": "436e50f4eedb75fd97ed46bcfc06eb2951e1c48c39230c74a691f9e0d0c26461",
+      "baselineLines": 96,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/JsonView.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/MetricCard.tsx",
+      "baselineSha256": "daf4b8dece4d01e5cda54f374c73c3521b204f3f2f006fdbe6c4633223fdeabe",
+      "baselineLines": 98,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/MetricCard.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/PageHeader.tsx",
+      "baselineSha256": "5b22f2cb387a36b12a4b10336842034da99bac05b198f4caedf91145151fd1d5",
+      "baselineLines": 103,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/PageHeader.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/PageState.tsx",
+      "baselineSha256": "ed8a2fe53356b1ef90ad4a157ebba35df1130133013085a1e4a7378593b52c46",
+      "baselineLines": 69,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/PageState.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/QueryProvider.tsx",
+      "baselineSha256": "9578defbb1ef24dd108a12b6e87b6aec15173506a3e308495ac223219270aa17",
+      "baselineLines": 39,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/app/providers/AppProviders.tsx"
+      ],
+      "action": "拆应用 Provider 与通用配置"
+    },
+    {
+      "source": "frontend/src/components/ResourceTable.tsx",
+      "baselineSha256": "6456d1c630f2e614ecfeea16fc745f439eb2442599124e31aa58902c544c39e1",
+      "baselineLines": 73,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/ResourceTable.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/ResultPages.tsx",
+      "baselineSha256": "38d8fcebe585d6cc5157529c8a305767615be0bfa2a58622c9bfd9e299230276",
+      "baselineLines": 43,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/pages/errors/ResultPages.tsx"
+      ],
+      "action": "迁移并核对全部消费者"
+    },
+    {
+      "source": "frontend/src/components/RoleTag.tsx",
+      "baselineSha256": "f4a7c549cae790164503c3e9b3e3fab19253cfc99c529495a085623c14c8196a",
+      "baselineLines": 70,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/identity/components/RoleTag.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/RouteGuards.tsx",
+      "baselineSha256": "51844edff9dfffae1c727506957602b00418960c96083a787b65289fc38db2fc",
+      "baselineLines": 80,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/app/router/RouteGuards.tsx"
+      ],
+      "action": "迁移并核对全部消费者"
+    },
+    {
+      "source": "frontend/src/components/StatusBadge.tsx",
+      "baselineSha256": "c0f31a7494334f779fd9a4c06df1021f869411d35ecfa74b0e0865bedf0e94cd",
+      "baselineLines": 59,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/ui/StatusBadge.tsx"
+      ],
+      "action": "通用展示迁移；若含领域枚举则参数化或归领域，不整包盲搬"
+    },
+    {
+      "source": "frontend/src/components/exec/AssertionViewer.tsx",
+      "baselineSha256": "757d958efc14250fc9425aaa1bf150d60717796faaa40c036b86fa9067877759",
+      "baselineLines": 237,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/AssertionViewer.tsx"
+      ],
+      "action": "迁移跨领域执行组合，复杂面板继续拆分"
+    },
+    {
+      "source": "frontend/src/components/exec/CaseExecutionDetail.tsx",
+      "baselineSha256": "1c9d5b833e4a9e4ed5767340a2b7bb143ccb676d0d25e5134c7f2eaa6fda6ccd",
+      "baselineLines": 584,
+      "workPackage": "U8",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/CaseExecutionDetail.tsx",
+        "frontend/src/widgets/execution-detail/ExecutionDetailPanel.tsx"
+      ],
+      "action": "迁移跨领域执行组合，复杂面板继续拆分"
+    },
+    {
+      "source": "frontend/src/components/exec/DefectOrigins.tsx",
+      "baselineSha256": "1821b81ce9ab07291024cb22fc64c5565c8ffa65fb87d49750f5ae9342990c08",
+      "baselineLines": 28,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/DefectOrigins.tsx"
+      ],
+      "action": "迁移跨领域执行组合，复杂面板继续拆分"
+    },
+    {
+      "source": "frontend/src/components/exec/DefectSourceLinks.tsx",
+      "baselineSha256": "c21192bd071ec55ddefe57c4d20fd951121f660b75726fff4ffc3d131fdaaf2b",
+      "baselineLines": 51,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/DefectSourceLinks.tsx"
+      ],
+      "action": "迁移跨领域执行组合，复杂面板继续拆分"
+    },
+    {
+      "source": "frontend/src/components/exec/ExecutionTimeline.tsx",
+      "baselineSha256": "276c991d2d38f4f1a924ef9e328a84809126c3cecafa3e4abe207c2a8f7add9d",
+      "baselineLines": 253,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/ExecutionTimeline.tsx"
+      ],
+      "action": "迁移跨领域执行组合，复杂面板继续拆分"
+    },
+    {
+      "source": "frontend/src/components/exec/ScreenshotViewer.tsx",
+      "baselineSha256": "1fd24564c4344ffa35ad3c9ff4185734cd94424d13460791f5f5f3bc00c2e8a5",
+      "baselineLines": 216,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/ScreenshotViewer.tsx"
+      ],
+      "action": "附件领域展示供执行 widget 组合"
+    },
+    {
+      "source": "frontend/src/components/exec/TraceViewer.tsx",
+      "baselineSha256": "6eefa8322781641f4762a1a086a491b0840ac88bc12f35caac4cb26125e69240",
+      "baselineLines": 301,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/TraceViewer.tsx"
+      ],
+      "action": "附件领域展示供执行 widget 组合"
+    },
+    {
+      "source": "frontend/src/components/exec/types.ts",
+      "baselineSha256": "9a06802fba1de645a9a99fc66a4d156f5a8212596732ba4bb5185c4412670da4",
+      "baselineLines": 56,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/execution-detail/types.ts"
+      ],
+      "action": "迁移跨领域执行组合，复杂面板继续拆分"
+    },
+    {
+      "source": "frontend/src/components/tasks/TaskCreateModal.tsx",
+      "baselineSha256": "0d8b3403b735aef315843a5e0cd6c639c72a7dd344d8eabb5e6835a40898a600",
+      "baselineLines": 343,
+      "workPackage": "U9",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/task-assistant/TaskCreateModal.tsx"
+      ],
+      "action": "迁移全局任务组合，领域请求使用公开接口"
+    },
+    {
+      "source": "frontend/src/components/tasks/TaskSchedulerDrawer.tsx",
+      "baselineSha256": "db2e470608bcaf77b764c54ecff4114619ca33daa580da881bf00ddc29c4f038",
+      "baselineLines": 78,
+      "workPackage": "U9",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/widgets/task-assistant/TaskSchedulerDrawer.tsx"
+      ],
+      "action": "迁移全局任务组合，领域请求使用公开接口"
+    },
+    {
+      "source": "frontend/src/components/tasks/TaskSourceLinks.tsx",
+      "baselineSha256": "263d6f1ae00eaacfa9318c4d5ebb3d2445ce2748630d1d3f0c6409ecffe8cfad",
+      "baselineLines": 40,
+      "workPackage": "U9",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/tasks/components/TaskSourceLinks.tsx"
+      ],
+      "action": "迁移并核对全部消费者"
+    },
+    {
+      "source": "frontend/src/hooks/useAuth.tsx",
+      "baselineSha256": "458dca9377a6da378a2f0b367aa6f7c1fc18bc36d98a570638cfeb419df16a16",
+      "baselineLines": 161,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/app/providers/AuthProvider.tsx"
+      ],
+      "action": "拆契约和协调实现，修复会话边界"
+    },
+    {
+      "source": "frontend/src/hooks/useCapabilities.ts",
+      "baselineSha256": "981ca8f76a34ebc533daeb6fa88731e7ca319f1604c6dfe9a2af53dd743ad21a",
+      "baselineLines": 100,
+      "workPackage": "U3",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/identity/hooks/useCapabilities.ts"
+      ],
+      "action": "项目角色能力归领域"
+    },
+    {
+      "source": "frontend/src/hooks/useConsoleScope.tsx",
+      "baselineSha256": "630b7cdb0e9453ddb75993771205cd0a706d63e24244a8cb836fd1b4e3484cf8",
+      "baselineLines": 127,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/app/providers/ConsoleScopeProvider.tsx"
+      ],
+      "action": "拆契约和协调实现，校验范围及授权"
+    },
+    {
+      "source": "frontend/src/layouts/AdminLayout.tsx",
+      "baselineSha256": "0ec575fec7726d88f6f3ee73b0b53dad89599ca9e5b5ddc6567e889600c6ccf8",
+      "baselineLines": 142,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/app/layouts/AdminLayout.tsx"
+      ],
+      "action": "迁移壳层，提取真实导航与范围装配"
+    },
+    {
+      "source": "frontend/src/layouts/ConsoleLayout.tsx",
+      "baselineSha256": "41e647ef8dcad35a7338ac9d6ed38f69e0154053ad162cde2b6a17f88d60a57d",
+      "baselineLines": 406,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/app/layouts/ConsoleLayout.tsx"
+      ],
+      "action": "迁移壳层，提取真实导航与范围装配"
+    },
+    {
+      "source": "frontend/src/main.tsx",
+      "baselineSha256": "8ba54b43040baa46fd1af13dcf53e45e3701855debdd86d7081baf89213a421b",
+      "baselineLines": 24,
+      "workPackage": "U1",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/main.tsx"
+      ],
+      "action": "保留薄启动入口，更新装配导入"
+    },
+    {
+      "source": "frontend/src/pages/admin/AgentGovernance.tsx",
+      "baselineSha256": "bcf8b1b16da541abe54fa472794b0ba13d7291627f55ea3395ca740f11c0a884",
+      "baselineLines": 997,
+      "workPackage": "U3",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/admin/AgentGovernance.tsx",
+        "frontend/src/pages/admin/AgentGovernance/AgentPane.tsx",
+        "frontend/src/pages/admin/AgentGovernance/McpPane.tsx",
+        "frontend/src/pages/admin/AgentGovernance/SkillPane.tsx",
+        "frontend/src/pages/admin/AgentGovernance/ToolsPane.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/admin/Dashboard.tsx",
+      "baselineSha256": "dddae4823d375e1cda53560104a126add9c089616ac923ae9dc513ada7d0a4a9",
+      "baselineLines": 184,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/admin/Dashboard.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/admin/Environments.tsx",
+      "baselineSha256": "0c4985bf8c6d04acef2529e65793d085094daae7ac34564d21eddecc27db2df5",
+      "baselineLines": 369,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/admin/Environments.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/admin/ModelConfigs.tsx",
+      "baselineSha256": "4d13ceb540fd1eba1261780124f7bd61b832c3cade4becaff1bc09c12f8268cf",
+      "baselineLines": 411,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/admin/ModelConfigs.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/admin/Organizations.tsx",
+      "baselineSha256": "3163fd2252c8dca81111216588e194d79c200d59116172506e997a0507159d1f",
+      "baselineLines": 431,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/admin/Organizations.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/admin/Projects.tsx",
+      "baselineSha256": "0dd2823d4ba119765d9b89f6bfcc72861e2b6cd956b322cd9f738ae64cdc49f0",
+      "baselineLines": 449,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/admin/Projects.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/admin/Users.tsx",
+      "baselineSha256": "38071e400e2279b300b4ca134d5ea1caaa2184652209c26b0b0a47897b917f5f",
+      "baselineLines": 441,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/admin/Users.tsx"
+      ],
+      "action": "保留真实路由容器，领域表单/数据/面板分拆"
+    },
+    {
+      "source": "frontend/src/pages/auth/AuthFrame.tsx",
+      "baselineSha256": "da4280a28a530a03bf003980e6309b06aad7a60c48af63eadbdd962465253733",
+      "baselineLines": 35,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/auth/AuthFrame.tsx"
+      ],
+      "action": "路由页保持真实容器；表单与展示抽至 identity"
+    },
+    {
+      "source": "frontend/src/pages/auth/Login.tsx",
+      "baselineSha256": "55b7dabfd86f6497c0d2b877486f8cffca635b9efc66c422b3d4e0c0897e9c77",
+      "baselineLines": 126,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/auth/Login.tsx"
+      ],
+      "action": "路由页保持真实容器；表单与展示抽至 identity"
+    },
+    {
+      "source": "frontend/src/pages/auth/Register.tsx",
+      "baselineSha256": "6818fc53a078907c32b185d35413ded2496a74ee81fb857ef2b3426ea8f281f2",
+      "baselineLines": 133,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/auth/Register.tsx"
+      ],
+      "action": "路由页保持真实容器；表单与展示抽至 identity"
+    },
+    {
+      "source": "frontend/src/pages/console/Agent/AgentPage.tsx",
+      "baselineSha256": "aea99db4de23f631523ae5c7308bb75f02770c58000ddd3cbd676c34cf79cc20",
+      "baselineLines": 870,
+      "workPackage": "U5",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/Agent/AgentPage.tsx",
+        "frontend/src/pages/console/Agent/AgentPanels.tsx",
+        "frontend/src/pages/console/Agent/AgentWorkspacePanel.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ApiCatalog.css",
+      "baselineSha256": "fc71b5a873adaed897c060d86442da7b7930a064af53d6c708212bcd39faca31",
+      "baselineLines": 142,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ApiCatalog.css"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ApiDetail.tsx",
+      "baselineSha256": "8571a1ffc97b8a7196589308113ca93254807e0b707a5af290550f0445c9669e",
+      "baselineLines": 84,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ApiDetail.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ApiToolbar.tsx",
+      "baselineSha256": "ad54e77ad89ec6e0724c9622256c4b6e04bec3a07a93e683a67e48641c95d7bf",
+      "baselineLines": 72,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ApiToolbar.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ImportDialog.tsx",
+      "baselineSha256": "67cdcec71950a1f829efe55fe15bd2fdfc6e307daa139622e3dc46b9ee1bd57f",
+      "baselineLines": 256,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ImportDialog.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ImportPreview.css",
+      "baselineSha256": "0ba40821247238c360f06d00b15a6555c45fda794a239b1be2e8877b4986b5d8",
+      "baselineLines": 137,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ImportPreview.css"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ImportPreview.tsx",
+      "baselineSha256": "c53a57321105fc8fae5d548ebf02ba2b65ee2914473203648b3b3470c24c4ff9",
+      "baselineLines": 295,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ImportPreview.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/JsonView.tsx",
+      "baselineSha256": "bd012889227484b1d85595663de83f46167eba6dad05863ea557648d2ec093d0",
+      "baselineLines": 135,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/JsonView.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ModuleApiList.tsx",
+      "baselineSha256": "9f1706dbd3f199b4228c39f0973d3ee323cd818a44ab0bf5b7586d3e330e82f1",
+      "baselineLines": 127,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ModuleApiList.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/ModuleTree.tsx",
+      "baselineSha256": "d1f5337496603a3c79bbe49061e4595b32361524e0d0ee6c4eee305748d2c394",
+      "baselineLines": 316,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/ModuleTree.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/constants.ts",
+      "baselineSha256": "a51fec6dd963ba93f60406e40d16e4145e40f9e2e323f7ef11c0898fb62a449e",
+      "baselineLines": 86,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/index.tsx",
+      "baselineSha256": "be53a1c285c70c2692ba4371730b9b7c74bf79105df8bd120feb0e4f72d5077e",
+      "baselineLines": 348,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/tabs/DebugTab.tsx",
+      "baselineSha256": "781e4d8fa05e4b7be08f5cd6ca3c7f1238e1dc7e8a54003c694fb0a7d43fdc03",
+      "baselineLines": 284,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/tabs/DebugTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/tabs/HistoryTab.tsx",
+      "baselineSha256": "cbc64cd870738ea32f313476b72d8982e9198ba4e173a5ddab1e53aeada5a36e",
+      "baselineLines": 102,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/tabs/HistoryTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/tabs/OverviewTab.tsx",
+      "baselineSha256": "4d7f7ca8ade70999c31bea93213adad9f2cc8f14da108c89db0a90e0a75901cb",
+      "baselineLines": 187,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/tabs/OverviewTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/tabs/RelationTab.tsx",
+      "baselineSha256": "a10c0cf9d7e6243787a52b212345cc4fce7ef004d7e3197b90ff69c90f401671",
+      "baselineLines": 258,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/tabs/RelationTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/tabs/RequestTab.tsx",
+      "baselineSha256": "2bfd63566c44f60ce13d952dbf828868c0132ef349728ba94927f4282f287537",
+      "baselineLines": 383,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/tabs/RequestTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/ApiCatalog/tabs/ResponseTab.tsx",
+      "baselineSha256": "9dfdc888dd59e7577c6de8985f10fc258dd8eeb772d3b1020fc28960cea92211",
+      "baselineLines": 204,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/ApiCatalog/tabs/ResponseTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/ActionDrawer.tsx",
+      "baselineSha256": "507e42aad589a06670bad4903a6eb31efccfe39a204c0feed18a6d63327e0c0b",
+      "baselineLines": 160,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/ActionDrawer.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/BindingEditor.tsx",
+      "baselineSha256": "74d6f85ee03af0b43587ebce1346341b6f5187e138259a96e6d35c7e6c34a048",
+      "baselineLines": 496,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/BindingEditor.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/DomainTree.tsx",
+      "baselineSha256": "1abc6629762de34221b85a2e69b07ba13d47fd8fd2519d11514f9ff11ea7ea49",
+      "baselineLines": 231,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/DomainTree.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/FlowDetail.tsx",
+      "baselineSha256": "2e3a4edf64c424023fda503864a4b3f42a2b9d79efbae52a80639e495c818e27",
+      "baselineLines": 446,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/FlowDetail.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/FlowSteps.tsx",
+      "baselineSha256": "5de93f9e7550443f9e742f8fea080234cfd93d7525c19e110cac8856c28c2fef",
+      "baselineLines": 132,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/FlowSteps.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/PreconditionEditor.tsx",
+      "baselineSha256": "6b790d440935df905e5dad9fa30d049cde118d13464c353d37f885b9a6cda444",
+      "baselineLines": 193,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/PreconditionEditor.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/RulePanel.tsx",
+      "baselineSha256": "2222ceaa52d7700bfda4d3a5e5d432316186d22ffad27d2b80b6846ada12765d",
+      "baselineLines": 242,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/RulePanel.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/StateEditor.tsx",
+      "baselineSha256": "53d592cec2e1b6ba94e2ad5ca5d56c5c3f2440214843c5db1b8125cf0884bf75",
+      "baselineLines": 183,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/StateEditor.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/VariableEditor.tsx",
+      "baselineSha256": "2b61e815393ade1ae3290fffcdbf5389cc912cc37b3b0960a626d15042bfda17",
+      "baselineLines": 239,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/VariableEditor.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/VariableRefPanel.tsx",
+      "baselineSha256": "8a50ed12166d443435e867e5e90857a61c972c90e52f0dbdae38c8af2cfe9d18",
+      "baselineLines": 216,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/VariableRefPanel.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/constants.ts",
+      "baselineSha256": "a8dea1d9ca70c17a43091572d58a9a35e7cbaba7234c519935af0f5d13e2aae0",
+      "baselineLines": 76,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/BusinessManagement/index.tsx",
+      "baselineSha256": "47995c77098dbdc01c0923e82862aab1d6cf8c8882a1f38c248b417a6cf5e827",
+      "baselineLines": 253,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/BusinessManagement/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Defects/index.tsx",
+      "baselineSha256": "5e2eba05f8e3cd3b14987436801824f35f2e16199722321d0644e0c85e362b62",
+      "baselineLines": 484,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Defects/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/MockManagement/EndpointView.tsx",
+      "baselineSha256": "0a49458abac28c770f1d625821d2ac2ecc61df85e6ec01543ff89b3cd4187530",
+      "baselineLines": 323,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/MockManagement/EndpointView.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/MockManagement/ExecutionList.tsx",
+      "baselineSha256": "a09230307a14d32a3348e9b219246840f6143fcc3dcdf0a30420c28914c2aa6b",
+      "baselineLines": 595,
+      "workPackage": "U7",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/MockManagement/ExecutionList.tsx",
+        "frontend/src/pages/console/MockManagement/components/MockContextsCard.tsx",
+        "frontend/src/pages/console/MockManagement/components/MockExecutionDrawer.tsx",
+        "frontend/src/pages/console/MockManagement/components/contextPresentation.ts"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/MockManagement/ScenarioEditor.tsx",
+      "baselineSha256": "23215b93831e26f7bb7d752b3e9aee05dd9724d5236f1fbcbf9f01732c161193",
+      "baselineLines": 525,
+      "workPackage": "U7",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/MockManagement/ScenarioEditor.tsx",
+        "frontend/src/pages/console/MockManagement/ScenarioTestDrawer.tsx",
+        "frontend/src/pages/console/MockManagement/scenarioFormUtils.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/MockManagement/ServiceDetail.tsx",
+      "baselineSha256": "021ce247baf3f461948df2bb7b51f33363edd7b36891212471154716e1d4579c",
+      "baselineLines": 456,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/MockManagement/ServiceDetail.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/MockManagement/ServiceList.tsx",
+      "baselineSha256": "e408f7bcc0101933c29a5a342ae080a5d74588b030aa33f2c8fea8e0dabea186",
+      "baselineLines": 611,
+      "workPackage": "U7",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/MockManagement/ServiceList.tsx",
+        "frontend/src/pages/console/MockManagement/components/TokenResultModal.tsx",
+        "frontend/src/pages/console/MockManagement/components/ServiceFormModal.tsx",
+        "frontend/src/pages/console/MockManagement/components/FromApiModal.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/MockManagement/constants.ts",
+      "baselineSha256": "a020aac282ec7d0bb6f55b85f2abd302f17edb20549ed18ba35ea457a4ab2f58",
+      "baselineLines": 96,
+      "workPackage": "U7",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/MockManagement/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/NotificationChannels/index.tsx",
+      "baselineSha256": "63e7824e0aabc4034753317873630611af1fc8b66d10142afbc5d5e0207fc251",
+      "baselineLines": 461,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/NotificationChannels/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Notifications/index.tsx",
+      "baselineSha256": "a39cfa6c15d86e56663afabb4e4feb28a780cd1e745b75debbe9e389e471bc06",
+      "baselineLines": 192,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Notifications/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Profile/index.tsx",
+      "baselineSha256": "30fcdfc776e96593bde39c7416b6052970b49135d74cc749a21260882ed4fc29",
+      "baselineLines": 275,
+      "workPackage": "U3",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Profile/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Projects/ProjectDetail.tsx",
+      "baselineSha256": "140ec0c22e9f2de0a863e57f2b2d3785422ceb6d789480e8faab603f16ec6aec",
+      "baselineLines": 154,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Projects/ProjectDetail.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Projects/index.tsx",
+      "baselineSha256": "4be77db24d519a1ac663c267e0bc8d33cd0adc6df8488ae1302b6459434e6e49",
+      "baselineLines": 104,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Projects/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Reports/ReportDetail.tsx",
+      "baselineSha256": "ed25875ce9e378b9c5ae125ac6685d9354fbb24c8eb585dc49bb82041b03d31d",
+      "baselineLines": 986,
+      "workPackage": "U8",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/Reports/ReportDetail.tsx",
+        "frontend/src/pages/console/Reports/ReportOverview.tsx",
+        "frontend/src/pages/console/Reports/ReportWorkspace.tsx",
+        "frontend/src/pages/console/Reports/ReportSummaryPanels.tsx",
+        "frontend/src/pages/console/Reports/ReportFailureClusterGrid.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Reports/ReportList.tsx",
+      "baselineSha256": "bad71f2d3d1484498c741330246c16a871394e20fb9c8a6cdf3466e6da339ecb",
+      "baselineLines": 210,
+      "workPackage": "U8",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Reports/ReportList.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Reports/constants.ts",
+      "baselineSha256": "1632f5ca11b6bdf92dff6fa96ddbc7ab0fd5352924a14e18772c61f78c648b93",
+      "baselineLines": 35,
+      "workPackage": "U8",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Reports/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/CasesTab.tsx",
+      "baselineSha256": "7c85d91f1f028d72f17ef3965a503ec77ad568a8d2d5a192519fe5dcc3206bfa",
+      "baselineLines": 700,
+      "workPackage": "U6",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/CasesTab.tsx",
+        "frontend/src/pages/console/SecurityTesting/PlanPreviewModal.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/FindingsTab.tsx",
+      "baselineSha256": "0bef2a7c73de059067185276e84accf146c18562b1e638ea36fb1b4ad9349a89",
+      "baselineLines": 207,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/FindingsTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/StrategyTab.tsx",
+      "baselineSha256": "d71a567f6fe501c97a552f969d0c1a77ed3d7fba7e48363689bf2fc6b956701b",
+      "baselineLines": 719,
+      "workPackage": "U6",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/StrategyTab.tsx",
+        "frontend/src/pages/console/SecurityTesting/StrategyFormModals.tsx",
+        "frontend/src/pages/console/SecurityTesting/SecuritySettingModal.tsx",
+        "frontend/src/pages/console/SecurityTesting/strategyConstants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/ZapScanTab.tsx",
+      "baselineSha256": "f20731abd7966582d35915f6abe62864703f018fcdf523a9be84879cbf98d0cb",
+      "baselineLines": 48,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/ZapScanTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/constants.ts",
+      "baselineSha256": "fbb907fd4828fbd1c5034783e3d6cdac6176cb1142f60f04f4f0f0365056f0ef",
+      "baselineLines": 109,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/index.tsx",
+      "baselineSha256": "7a8821837768ec6939d198d3df0c69e3020c879b48b4f1679054c842ace79a83",
+      "baselineLines": 239,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/constants.ts",
+      "baselineSha256": "ea62c7ff23490961e3092f05d82fb08a58b7689e4a4d52f3ef4ccd948acc8090",
+      "baselineLines": 159,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/jobDetail.tsx",
+      "baselineSha256": "8981879299b5594d8f74d1ea10f8a1c59eee02cf8a35913af6c1f0fe9ca2fae2",
+      "baselineLines": 243,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/jobDetail.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/jobPanels.tsx",
+      "baselineSha256": "f3fac497921da992168e0c0d9d1eaee9518d0cd63626f79e55284d0b56f7037b",
+      "baselineLines": 706,
+      "workPackage": "U6",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/panels/JobEventsPanel.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/panels/JobAlertsPanel.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/panels/JobCoveragePanel.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/panels/JobFindingsPanel.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/panels/JobReportPanel.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/panels/ScanJobStatusBadge.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/panels/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/jobs.tsx",
+      "baselineSha256": "9ad91a04c7130ab71f802888c5d63bc665545da3de45a36c59ba93f3c0532112",
+      "baselineLines": 286,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/jobs.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/policies.tsx",
+      "baselineSha256": "f1a5950ab294e3cadfd1f677b4e2b466a2719ea62a97984a7c6b5cedb4dd733b",
+      "baselineLines": 855,
+      "workPackage": "U6",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/policies.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/ScanProfiles.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/AuthProfiles.tsx",
+        "frontend/src/pages/console/SecurityTesting/zap/policyUtils.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/results.tsx",
+      "baselineSha256": "23cc4d1e6515e73e9ffc6ab25061b33f482a263bf6ab7e0b760c53973e0e467d",
+      "baselineLines": 162,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/results.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/targets.tsx",
+      "baselineSha256": "93f5c161154e267e4a405bf0635c331bdc9894f48ef39cebf27fcdc30fc2dcb9",
+      "baselineLines": 466,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/targets.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/SecurityTesting/zap/wizard.tsx",
+      "baselineSha256": "0f9cbc58256cc746083126be50bbac374f05d411243b735530cccd5f0dd93804",
+      "baselineLines": 483,
+      "workPackage": "U6",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/SecurityTesting/zap/wizard.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/Tasks/TaskDetailActivity.tsx",
+      "baselineSha256": "d68032b6400b0ebdba1b9c32fd1a5f754d90fedc3da1aa50afd3e21e4d9c8943",
+      "baselineLines": 77,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Tasks/TaskDetailActivity.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/Tasks/TaskDetailPage.tsx",
+      "baselineSha256": "bc2e104fa7fc30b02abb064e85a8c36a38138a061470b04d7b73f27bfc4b3195",
+      "baselineLines": 286,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Tasks/TaskDetailPage.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Tasks/TaskListPage.tsx",
+      "baselineSha256": "9a441441569b6460de3d5279cf8e48784d1f772d5adaa68ef975daf4a7cfe1c3",
+      "baselineLines": 83,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Tasks/TaskListPage.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Tasks/TaskRunPanels.tsx",
+      "baselineSha256": "eb0dbe340a3f74a2586343d5ed5e00d7d3ba95ffd251342057b61e63a095a8b2",
+      "baselineLines": 312,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Tasks/TaskRunPanels.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/Tasks/taskLabels.ts",
+      "baselineSha256": "d0d01621630004bd4d02d82c6b2c4b642d2b96c6ead3b41d2b17530f08c75e0a",
+      "baselineLines": 37,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Tasks/taskLabels.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/Tasks/taskTypes.ts",
+      "baselineSha256": "d88b6100b1fa75673dfb80289381c12d9deaf5645b89d3de6c4fa6c4dc78d0bb",
+      "baselineLines": 52,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Tasks/taskTypes.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ExecutionDetailDrawer.tsx",
+      "baselineSha256": "53cf76e74ab5bb8fe9c2ba2934737bb4c98efa560402dde404ff3ab3caa15ecd",
+      "baselineLines": 270,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ExecutionDetailDrawer.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ExecutionTab.tsx",
+      "baselineSha256": "1613d9cc1dafea1f191042d775415866c24a6c4797b4c2fb925f2e05b0f63aed",
+      "baselineLines": 132,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ExecutionTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureBasicForm.tsx",
+      "baselineSha256": "cd5c2d3b4c86f15ddc58a3f1b6b05019004f6b792d6f499c4bcd7234bfecace4",
+      "baselineLines": 101,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureBasicForm.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureCleanupList.tsx",
+      "baselineSha256": "c49604c38cc5b18f7cad8da9a1c406cda58327a8df89fb0b32aa7004bea57562",
+      "baselineLines": 10,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureCleanupList.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureDependencyTree.tsx",
+      "baselineSha256": "0bad10496411e582aef4581633a426eb4ff46e9fdae67e88a852e751072cccdb",
+      "baselineLines": 57,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureDependencyTree.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureDetail.tsx",
+      "baselineSha256": "e232b4654af28fc19e2d75f1369193e764639c6a6122877c68f2ed00cf450139",
+      "baselineLines": 108,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureDetail.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureOutputTable.tsx",
+      "baselineSha256": "39a5b214e7d855bad7b6c4e27461c7dfe16df097a6d86c431f8269dd69339908",
+      "baselineLines": 170,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureOutputTable.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureReferenceList.tsx",
+      "baselineSha256": "2e48bf2a9fb371ddce83763db09d37971105598bf1139f9bd760e0e513f94932",
+      "baselineLines": 35,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureReferenceList.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureStepList.tsx",
+      "baselineSha256": "30a122fd87f59bad026da127fd17d44d6efb1921f4ea2ad48764c33dea62711c",
+      "baselineLines": 305,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureStepList.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureTab.tsx",
+      "baselineSha256": "c8b4bbd39771c59b86ee4623710694a2e679bc59d9baa54d4bc8a2363e40542c",
+      "baselineLines": 268,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/FixtureTree.tsx",
+      "baselineSha256": "4aeb6bd0dfae3b9082e515fe1b070ef9a019c5d45e6506cb060d60745d007d5a",
+      "baselineLines": 94,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/FixtureTree.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderConfigApi.tsx",
+      "baselineSha256": "e9904070a45c72cb4ec219ee2ff0f7fc204248c35220fcf98cc11250bb9e3072",
+      "baselineLines": 102,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderConfigApi.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderConfigBusiness.tsx",
+      "baselineSha256": "9ff2a95904fefa6fa157e4cd374cd4e1c08ab39f98d0d00b858cf6623d49c7df",
+      "baselineLines": 64,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderConfigBusiness.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderConfigDatabase.tsx",
+      "baselineSha256": "35bb93512cca78cbe67d1eb243109ec4a3eb9cd2b46db9357ec844d76edb0ab4",
+      "baselineLines": 114,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderConfigDatabase.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderConfigFaker.tsx",
+      "baselineSha256": "49cd770ce735d40f7a66e759d610c0c4e796fe64914ddf1dd8cf3e3760c7b6a9",
+      "baselineLines": 54,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderConfigFaker.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderConfigPool.tsx",
+      "baselineSha256": "80e5c93bf147e7e50516c654f5a5d70614da7aff45f00c2565fd5fea8f06970b",
+      "baselineLines": 29,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderConfigPool.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderConfigStatic.tsx",
+      "baselineSha256": "ad05de4c2c46ecf2ef88edddf35a4bd90b132afe63b404788be21be1caaaa60b",
+      "baselineLines": 44,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderConfigStatic.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderModal.tsx",
+      "baselineSha256": "f1373eec6e4127bc616bec6d626bf498f7249f02cc65c3a12a726426e5aca44a",
+      "baselineLines": 206,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderModal.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/ProviderTab.tsx",
+      "baselineSha256": "91ed2ccd22bf698a7d0097ba13d0768a7af7aa574efe3499dad67726ec4beaa1",
+      "baselineLines": 213,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/ProviderTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/TestDataModal.tsx",
+      "baselineSha256": "7d27ee4ee810bf17f23a0aa0c035d9141ffcb41ab6d298d427699d52fff80314",
+      "baselineLines": 197,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/TestDataModal.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/TestDataTab.tsx",
+      "baselineSha256": "c967cccd59010030c1c376247435ffb4892241503c121848e1a90822601e8a78",
+      "baselineLines": 201,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/TestDataTab.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/constants.ts",
+      "baselineSha256": "8a8122a17d6d0ee6e7092bc5c4d6342fc89a1bc7797db3d90dc790491117c684",
+      "baselineLines": 210,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/TestData/index.tsx",
+      "baselineSha256": "8661f93cd2279c4b6a9a46108d3536c591349731305bd4347d8901891442de30",
+      "baselineLines": 114,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestData/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/TestManagement/ExecutionCenter.tsx",
+      "baselineSha256": "eec34197219a0c9825fbb5cbfbcdde2db178d572b330eaa4272d439416f4322d",
+      "baselineLines": 219,
+      "workPackage": "U4",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestManagement/ExecutionCenter.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/TestManagement/ExecutionHistory.tsx",
+      "baselineSha256": "36e0cc0f3d214ecb5bf43525902608a6a1285b97d1c43de00177eedcb739a24b",
+      "baselineLines": 265,
+      "workPackage": "U4",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestManagement/ExecutionHistory.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/TestManagement/TestAsset.tsx",
+      "baselineSha256": "faf5d289010254402529ff36cfb686f7236daa214b27e00f3367d6c1d3b937e5",
+      "baselineLines": 1256,
+      "workPackage": "U4",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/TestManagement/TestAsset.tsx",
+        "frontend/src/pages/console/TestManagement/TestAssetWorkspace.tsx",
+        "frontend/src/pages/console/TestManagement/TestAssetDialogs.tsx",
+        "frontend/src/pages/console/TestManagement/TestAssetEditTabs.tsx",
+        "frontend/src/pages/console/TestManagement/TestAssetExecutionTabs.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/TestManagement/TestPlans.tsx",
+      "baselineSha256": "924ac740fdaf2e2038ba196c9d5afca9c5ba0d1b35244e277801788364c2a5c2",
+      "baselineLines": 382,
+      "workPackage": "U4",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestManagement/TestPlans.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/TestManagement/TestSuites.tsx",
+      "baselineSha256": "3538474994b639bf92b5846baa1418aded9d03f57d800b6bc39f17ba1ae52f29",
+      "baselineLines": 391,
+      "workPackage": "U4",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestManagement/TestSuites.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/TestManagement/constants.ts",
+      "baselineSha256": "9adafa38ff6c6e99a06a30128a54db4fb570cccab0ad297549c4e0f05afbaa99",
+      "baselineLines": 182,
+      "workPackage": "U4",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/TestManagement/constants.ts"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/WebUI/Artifacts.tsx",
+      "baselineSha256": "5a593bae9c8b82847760dea90d11129e476b2979f183225c803724b8b8a66772",
+      "baselineLines": 59,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/WebUI/Artifacts.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/WebUI/Editors.tsx",
+      "baselineSha256": "b5aa1acc768ce8316780c80f8331d8d350f1417f8e84d638ebdd8c2f200e1aef",
+      "baselineLines": 76,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/WebUI/Editors.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/WebUI/StepEditor.tsx",
+      "baselineSha256": "ec3a84d19549db4eefc1f9f5fa99dde198198eb05c48c394b7663d27c165c080",
+      "baselineLines": 58,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/WebUI/StepEditor.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/WebUI/index.tsx",
+      "baselineSha256": "a973d3195607d6c34bca6a713de70034be9e3e4248aab2213afae533f3c081d2",
+      "baselineLines": 167,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/WebUI/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/WebUIAgent/index.tsx",
+      "baselineSha256": "9a90849274708dc74173dd04a632f06b22213c5a69781b39a3372cd97d54db11",
+      "baselineLines": 840,
+      "workPackage": "U5",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/pages/console/WebUIAgent/index.tsx",
+        "frontend/src/pages/console/WebUIAgent/webAgentPanels.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/pages/console/Workbench/DashboardCharts.tsx",
+      "baselineSha256": "5427f87b1a9131a007cf824c38863894274c71f514c3e81c56ad4f90a57c30d7",
+      "baselineLines": 315,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Workbench/DashboardCharts.tsx"
+      ],
+      "action": "迁移现有职责单元并调整领域依赖"
+    },
+    {
+      "source": "frontend/src/pages/console/Workbench/index.tsx",
+      "baselineSha256": "370ab83d5904f302f399ab5d2e4c74f3e0997527b37dd894b288a54e4793431c",
+      "baselineLines": 190,
+      "workPackage": "U9",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/pages/console/Workbench/index.tsx"
+      ],
+      "action": "页面只留实际路由组合；领域职责分拆"
+    },
+    {
+      "source": "frontend/src/shared/format.ts",
+      "baselineSha256": "841495051e8f9833be096ce8ca59bf42ded2174736f418e6ba811dbfd3e1a1be",
+      "baselineLines": 80,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/lib/format.ts"
+      ],
+      "action": "逐导出区分通用函数与业务枚举，领域语义移所属 feature"
+    },
+    {
+      "source": "frontend/src/shared/notify.ts",
+      "baselineSha256": "def4f6f2fa389623823cb448e0e960c976848bd1099b8d91b4b74894789f369e",
+      "baselineLines": 31,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/notifications/constants.ts"
+      ],
+      "action": "逐导出区分通用函数与业务枚举，领域语义移所属 feature"
+    },
+    {
+      "source": "frontend/src/shared/options.ts",
+      "baselineSha256": "bab015136bf9f0ee4aa5c22fbe7749df614d10514dec8f9c00cd28604becfe92",
+      "baselineLines": 51,
+      "workPackage": "U2",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/lib/options.ts"
+      ],
+      "action": "逐导出区分通用函数与业务枚举，领域语义移所属 feature"
+    },
+    {
+      "source": "frontend/src/shared/status.ts",
+      "baselineSha256": "df659c40b392a93ac18da2d7586916b26cb4f3c47f245959abf3887dd3c204fb",
+      "baselineLines": 90,
+      "workPackage": "U2",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/features/test-management/status.ts",
+        "frontend/src/features/reports/status.ts",
+        "frontend/src/features/web-testing/status.ts"
+      ],
+      "action": "逐导出区分通用函数与业务枚举，领域语义移所属 feature"
+    },
+    {
+      "source": "frontend/src/shared/webSnapshot.ts",
+      "baselineSha256": "895a7c47cbfec2f72861d0f389179ed6df8f0658d14ba73e5fc6ba7132c8194f",
+      "baselineLines": 159,
+      "workPackage": "U8",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/features/web-testing/lib/webSnapshot.ts"
+      ],
+      "action": "快照安全读取归领域，区分严格 Locator 与宽松投影"
+    },
+    {
+      "source": "frontend/src/styles/app.css",
+      "baselineSha256": "68ce0abdd176a26e133b185699b12d0dc1032f4c4cf2084c0d34607ba1cc73d1",
+      "baselineLines": 456,
+      "workPackage": "U10",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/styles/app.css"
+      ],
+      "action": "按选择器所有权分拆并保持实际加载顺序"
+    },
+    {
+      "source": "frontend/src/theme/index.ts",
+      "baselineSha256": "443fcce1a4a645002c236a344a79938c4b58e3511c9e8536e307ca9c8779115a",
+      "baselineLines": 218,
+      "workPackage": "U10",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/theme/index.ts"
+      ],
+      "action": "迁移唯一主题并保留已修 token 行为"
+    },
+    {
+      "source": "frontend/src/types/index.ts",
+      "baselineSha256": "50c97b25b6a416f8089b15a09f98e8b6fed267ae17e151a1a12cee150f475a9d",
+      "baselineLines": 3072,
+      "workPackage": "U2",
+      "outcome": "split",
+      "actualTargets": [
+        "frontend/src/features/agent/contracts.ts",
+        "frontend/src/features/agent-governance/contracts.ts",
+        "frontend/src/features/api-catalog/contracts.ts",
+        "frontend/src/features/browser-authoring/contracts.ts",
+        "frontend/src/features/defects/contracts.ts",
+        "frontend/src/features/environments/contracts.ts",
+        "frontend/src/features/identity/contracts.ts",
+        "frontend/src/features/mocking/contracts.ts",
+        "frontend/src/features/notifications/contracts.ts",
+        "frontend/src/features/projects/contracts.ts",
+        "frontend/src/features/reports/contracts.ts",
+        "frontend/src/features/security-testing/contracts.ts",
+        "frontend/src/features/tasks/contracts.ts",
+        "frontend/src/features/test-data/contracts.ts",
+        "frontend/src/features/test-management/contracts.ts",
+        "frontend/src/features/web-testing/contracts.ts",
+        "frontend/src/shared/api/contracts.ts"
+      ],
+      "action": "逐声明分发并删除集中旧入口"
+    },
+    {
+      "source": "frontend/src/utils/safeRedirect.ts",
+      "baselineSha256": "a408c06a0792539c372108ac70fa0863e011660e5d98f58df011770ebfb40044",
+      "baselineLines": 20,
+      "workPackage": "U1",
+      "outcome": "moved",
+      "actualTargets": [
+        "frontend/src/shared/lib/safeRedirect.ts"
+      ],
+      "action": "迁移并核对全部消费者"
+    },
+    {
+      "source": "frontend/src/vite-env.d.ts",
+      "baselineSha256": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+      "baselineLines": 1,
+      "workPackage": "U10",
+      "outcome": "retained",
+      "actualTargets": [
+        "frontend/src/vite-env.d.ts"
+      ],
+      "action": "保留全局声明"
+    }
+  ],
+  "newFiles": [
+    "frontend/src/features/business/contracts.ts",
+    "frontend/src/features/dashboard/contracts.ts",
+    "frontend/src/features/model-configuration/contracts.ts",
+    "frontend/src/features/organizations/contracts.ts",
+    "frontend/src/features/test-data/executionContracts.ts",
+    "frontend/src/features/users/contracts.ts",
+    "frontend/src/shared/session/sessionLifecycle.mjs",
+    "frontend/src/styles/admin.css",
+    "frontend/src/styles/authentication.css",
+    "frontend/src/styles/base.css",
+    "frontend/src/styles/responsive.css",
+    "frontend/src/styles/workspace.css"
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "javascriptAssets": 137,
+  "totalBytes": 2221697,
+  "totalGzipBytes": 758617,
+  "largestAssets": [
+    {
+      "file": "index-pwMeFYxz.js",
+      "bytes": 340377,
+      "gzipBytes": 110995
+    },
+    {
+      "file": "Table-DD7dWB9y.js",
+      "bytes": 160571,
+      "gzipBytes": 51807
+    },
+    {
+      "file": "vendor-react-BjaZNbMK.js",
+      "bytes": 142401,
+      "gzipBytes": 45557
+    },
+    {
+      "file": "ExecutionList-PgK3xwWE.js",
+      "bytes": 110775,
+      "gzipBytes": 35510
+    },
+    {
+      "file": "Pagination-BUGNSbHf.js",
+      "bytes": 101295,
+      "gzipBytes": 31627
+    },
+    {
+      "file": "index-CkG-pqjE.js",
+      "bytes": 77357,
+      "gzipBytes": 19488
+    },
+    {
+      "file": "vendor-utilities-IQdxTmLg.js",
+      "bytes": 67882,
+      "gzipBytes": 25783
+    },
+    {
+      "file": "index-D7ULqIHL.js",
+      "bytes": 60124,
+      "gzipBytes": 19300
+    },
+    {
+      "file": "index-iXSiPt6l.js",
+      "bytes": 56144,
+      "gzipBytes": 16978
+    },
+    {
+      "file": "AgentGovernance-DNaqLzBZ.js",
+      "bytes": 52277,
+      "gzipBytes": 15420
+    },
+    {
+      "file": "index-CfUwVnkf.js",
+      "bytes": 49909,
+      "gzipBytes": 18256
+    },
+    {
+      "file": "index-ChzonAjg.js",
+      "bytes": 43698,
+      "gzipBytes": 15265
+    }
+  ]
+}

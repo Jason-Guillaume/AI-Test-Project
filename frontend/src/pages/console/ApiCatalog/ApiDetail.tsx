@@ -2,15 +2,16 @@
 // 各 Tab 自行发请求与 mutation；本组件只负责装配与加载态。
 import { Tabs } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { ErrorState, EmptyState, LoadingState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
 import { OverviewTab } from './tabs/OverviewTab';
 import { RequestTab } from './tabs/RequestTab';
 import { ResponseTab } from './tabs/ResponseTab';
 import { RelationTab } from './tabs/RelationTab';
 import { DebugTab } from './tabs/DebugTab';
 import { HistoryTab } from './tabs/HistoryTab';
-import type { ApiModule } from '@/types';
+import type { ApiModule } from '@/features/api-catalog/contracts';
+
 
 /**
  * 接口详情面板。
@@ -41,6 +42,9 @@ export function ApiDetail({
     return <ErrorState error={detailQuery.error} onRetry={detailQuery.refetch} />;
 
   const api = detailQuery.data;
+  // 防止接口被删除、响应体为空等异常情况导致右侧面板静默空白。
+  if (!api) return <EmptyState description="没有获取到接口信息，请重新选择接口" />;
+
   return (
     <Tabs
       defaultActiveKey="overview"
@@ -68,7 +72,7 @@ export function ApiDetail({
         {
           key: 'debug',
           label: '调试',
-          children: <DebugTab api={api} />,
+          children: <DebugTab api={api} projectId={projectId} />,
         },
         {
           key: 'history',

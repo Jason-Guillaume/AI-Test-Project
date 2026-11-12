@@ -10,10 +10,10 @@ feature-local 表，由迁移 0004 建立。
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessRule(Base):
+class BusinessRule(SoftDeleteBase):
     """业务规则：项目/流程/动作级业务知识配置。"""
 
     __tablename__ = "business_rule"

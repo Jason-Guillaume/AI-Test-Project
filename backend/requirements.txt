@@ -13,12 +13,25 @@ python-multipart>=0.0.9
 PyJWT>=2.9,<3
 bcrypt>=4.2,<5
 cryptography>=43,<51
-# 图形验证码图片渲染依赖 Pillow（含 C 扩展，PyPI 有 wheel，Python 3.11+ 全平台可用）
-Pillow>=10,<13
 # 接口管理：OpenAPI/Swagger YAML 解析（safe_load，不执行任意对象）
 PyYAML>=6,<7
 # 接口管理：调试执行器发真实出站请求（runtime 用；测试也复用）
 httpx>=0.27,<1
+# 接口测试 Agent：用 langgraph StateGraph 编排节点/边与 human-in-the-loop 暂停
+# （LLMProvider 仍自写 httpx 调 OpenAI 兼容；持久化仍用自建 agent_session 表，不用 langgraph checkpointer）
+langgraph>=1.2,<2
+# 测试数据中心 Data Factory：FAKER Provider 只调固定白名单方法生成假数据（不执行用户代码）
+Faker>=33,<40
+# Agent LLM 可观测：Langfuse 埋点（未配置 key 时全链路 no-op，不阻塞主流程）
+langfuse>=3,<6
+# 开发机走 SOCKS 代理时 httpx（Langfuse SDK 内部）需要 socksio；无代理环境下无副作用
+socksio>=1,<2
+
+# Web UI 自动化：固定结构化操作，浏览器二进制用 python -m playwright install chromium 安装
+playwright==1.64.0
 
 # 测试
 pytest>=8.0,<10
+
+# Text PDF knowledge extraction
+pypdf>=5,<7

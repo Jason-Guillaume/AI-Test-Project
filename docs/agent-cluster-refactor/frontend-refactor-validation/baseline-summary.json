@@ -1,0 +1,147 @@
+{
+  "date": "2026-10-30",
+  "sourceFiles": 174,
+  "sourceLines": 41582,
+  "auditSummary": {
+    "sourceFiles": 174,
+    "sourceLines": 41582,
+    "tsTsxFiles": 171,
+    "filesOver500": 15,
+    "filesOver800": 7,
+    "queryDeclarations": 346,
+    "mutationHooks": 183,
+    "apiCalls": 400,
+    "routes": 46,
+    "parseErrors": 0,
+    "duplicateExportedTypeNames": 3,
+    "cycles": 0,
+    "byArea": {
+      "App.tsx": {
+        "files": 1,
+        "lines": 236
+      },
+      "api": {
+        "files": 23,
+        "lines": 3132
+      },
+      "components": {
+        "files": 23,
+        "lines": 3113
+      },
+      "hooks": {
+        "files": 3,
+        "lines": 388
+      },
+      "layouts": {
+        "files": 2,
+        "lines": 548
+      },
+      "main.tsx": {
+        "files": 1,
+        "lines": 24
+      },
+      "pages/admin": {
+        "files": 7,
+        "lines": 3282
+      },
+      "pages/auth": {
+        "files": 3,
+        "lines": 294
+      },
+      "pages/console/Agent": {
+        "files": 1,
+        "lines": 870
+      },
+      "pages/console/ApiCatalog": {
+        "files": 17,
+        "lines": 3416
+      },
+      "pages/console/BusinessManagement": {
+        "files": 12,
+        "lines": 2867
+      },
+      "pages/console/Defects": {
+        "files": 1,
+        "lines": 484
+      },
+      "pages/console/MockManagement": {
+        "files": 6,
+        "lines": 2606
+      },
+      "pages/console/NotificationChannels": {
+        "files": 1,
+        "lines": 461
+      },
+      "pages/console/Notifications": {
+        "files": 1,
+        "lines": 192
+      },
+      "pages/console/Profile": {
+        "files": 1,
+        "lines": 275
+      },
+      "pages/console/Projects": {
+        "files": 2,
+        "lines": 258
+      },
+      "pages/console/Reports": {
+        "files": 3,
+        "lines": 1231
+      },
+      "pages/console/SecurityTesting": {
+        "files": 14,
+        "lines": 5382
+      },
+      "pages/console/Tasks": {
+        "files": 6,
+        "lines": 847
+      },
+      "pages/console/TestData": {
+        "files": 23,
+        "lines": 3098
+      },
+      "pages/console/TestManagement": {
+        "files": 6,
+        "lines": 2695
+      },
+      "pages/console/WebUI": {
+        "files": 4,
+        "lines": 360
+      },
+      "pages/console/WebUIAgent": {
+        "files": 1,
+        "lines": 840
+      },
+      "pages/console/Workbench": {
+        "files": 2,
+        "lines": 505
+      },
+      "shared": {
+        "files": 5,
+        "lines": 411
+      },
+      "styles": {
+        "files": 1,
+        "lines": 456
+      },
+      "theme": {
+        "files": 1,
+        "lines": 218
+      },
+      "types": {
+        "files": 1,
+        "lines": 3072
+      },
+      "utils": {
+        "files": 1,
+        "lines": 20
+      },
+      "vite-env.d.ts": {
+        "files": 1,
+        "lines": 1
+      }
+    }
+  },
+  "routesFile": "baseline-routes.json",
+  "apiCallsFile": "baseline-api-calls.json"
+}

@@ -10,18 +10,19 @@ ondelete=CASCADE（项目删除时业务域一并清理）。status 为字符串
 feature-local 表，由迁移 0004 显式建立。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessDomain(Base):
+class BusinessDomain(SoftDeleteBase):
     """业务域：项目下的业务流程分组容器。"""
 
     __tablename__ = "business_domain"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_business_domain_project_name"),
+        Index("uq_business_domain_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_business_domain_project_sort", "project_id", "sort"),
         {"comment": "业务域：项目下的业务流程分组容器"},
     )

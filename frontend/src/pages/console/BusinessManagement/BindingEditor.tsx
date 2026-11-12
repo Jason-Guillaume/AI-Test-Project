@@ -6,18 +6,12 @@ import { useState } from 'react';
 import { App, Alert, Button, Empty, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { PlusOutlined, LinkOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { businessApi } from '@/api/business';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
+import { businessApi } from '@/features/business/api/business';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
 import { API_LOCATION_INPUT_OPTIONS, API_LOCATION_OUTPUT_OPTIONS } from './constants';
-import type {
-  BusinessActionDetail,
-  BusinessApiMapping,
-  BusinessApiMappingCreate,
-  BusinessApiMappingUpdate,
-  BusinessBindingCreate,
-  BusinessBindingUpdate,
-} from '@/types';
+import type { BusinessActionDetail, BusinessApiMapping, BusinessApiMappingCreate, BusinessApiMappingUpdate, BusinessBindingCreate, BusinessBindingUpdate } from '@/features/business/contracts';
+
 
 export function BindingEditor({
   action,
@@ -104,6 +98,18 @@ export function BindingEditor({
         </Button>
       </div>
     );
+  }
+
+  if (binding.binding_type === 'WEB') {
+    return <Space direction="vertical" style={{ width: '100%' }}>
+      <Alert type={binding.valid ? 'success' : 'warning'} message={`WEB 绑定：${binding.name ?? ''}`}
+        description={binding.invalid_reason ?? '结构化浏览器步骤由 Web UI 自动化模块维护；可通过运行时输出变量连接后续 API 动作。'} />
+      <Space>
+        <Switch checked={binding.enabled} checkedChildren="启用" unCheckedChildren="停用" onChange={checked => updateMutation.mutate({ id: binding.id, body: { enabled: checked } })} />
+        <Button href="/console/web-ui">管理 Web 用例</Button>
+        <Popconfirm title="删除 WEB 绑定？" onConfirm={() => deleteMutation.mutate()}><Button danger>删除绑定</Button></Popconfirm>
+      </Space>
+    </Space>;
   }
 
   const apis = createApisQuery.data?.items ?? [];

@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import os
+import hashlib
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +20,7 @@ from tests.conftest import (
     EXPECTED_TABLES,
     TEST_DATABASE_NAME,
     TEST_DSN,
+    TEST_DB_PASSWORD,
     psycopg,
 )
 
@@ -28,7 +30,7 @@ SEED_USER = "seed-admin-001"
 SEED_PASSWORD = "Seed-Password-789"
 
 
-def test_alembic_upgrades_empty_database_to_head(db):
+def test_alembic_upgrades_empty_database_to_head(db, test_database_head):
     """不变量：表结构唯一来源是 Alembic 迁移，而不是应用启动期 create_all。
 
     验收点：
@@ -37,8 +39,7 @@ def test_alembic_upgrades_empty_database_to_head(db):
     - 连接对象是全新 Session（db fixture），说明写进的是数据库而不是内存。
     """
     head = db.execute(text("select version_num from alembic_version")).scalar()
-    # head 随版本链演进；当前基线是 0004（新增业务管理 10 张表）。
-    assert head == "0004"
+    assert head == test_database_head
 
     tables = {
         row[0]
@@ -60,7 +61,7 @@ ADMIN_CRED_ENV_KEYS = ("INIT_ADMIN_USERNAME", "INIT_ADMIN_PASSWORD")
 def _run_seed(extra_env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     """在独立进程中执行初始化脚本；凭据环境变量一律置空以验证「必须显式提供」。
 
-    注意不能直接删掉这两个键：app.shared.config 在导入时会 load_dotenv()，
+    注意不能直接删掉这两个键：app.core.config 在导入时会 load_dotenv()，
     工作目录下 backend/.env 里的开发凭据会被重新灌进环境变量，导致「未提供
     凭据」分支测不到。置为空串后 dotenv 不会覆盖已有值，脚本读到空值即跳过。
 
@@ -128,20 +129,24 @@ def test_seed_admin_requires_env_and_is_idempotent(db):
 def test_seed_admin_does_not_print_credentials(db):
     """不变量：初始化输出不得回显数据库密码或管理员密码（密钥掩码约定）。
 
-    顺带覆盖两类敏感串：开发库口令（backend/.env 里的那个）与历史遗留的
-    占位默认管理员密码，它们都不该出现在 stdout/stderr 中。
+    顺带覆盖隔离测试库密码与历史遗留的占位默认管理员密码；测试库密码从
+    环境配置读取，避免将真实凭据字面量留在仓库里。
     """
     result = _run_seed(
         {"INIT_ADMIN_USERNAME": SEED_USER, "INIT_ADMIN_PASSWORD": SEED_PASSWORD}
     )
     combined = result.stdout + result.stderr
     assert SEED_PASSWORD not in combined
-    for sensitive in ("fangzhou123", "Admin-Change-Me-123"):
+    sensitive_values = ["Admin-Change-Me-123"]
+    if TEST_DB_PASSWORD:
+        sensitive_values.append(TEST_DB_PASSWORD)
+    for sensitive in sensitive_values:
         assert sensitive not in combined
 
 
 TARGET_ADMIN = "seed-target-admin"
-TARGET_DATABASE = "testplatform_seedtarget"
+# 以本次唯一测试库名派生，避免并发测试或其他用户的同名库被删除。
+TARGET_DATABASE = f"testplatform_seedtarget_{hashlib.sha256(TEST_DATABASE_NAME.encode()).hexdigest()[:16]}"
 
 
 def _seed_into_target_database() -> str:
@@ -183,7 +188,7 @@ def _run_seed_into(target_dsn: str) -> subprocess.CompletedProcess[str]:
 def test_seed_admin_targets_the_database_named_on_the_command_line(db):
     """--database-url 与 .env 里的库不同时，种子数据必须写进命令行指定的那个库。
 
-    回归用例：app.shared.database 在首次导入时用 settings.DATABASE_URL 建好 engine，
+    回归用例：app.core.database.session 在首次导入时用 settings.DATABASE_URL 建好 engine，
     若 --database-url 的覆盖发生在导入之后，就会出现「迁移打到目标库、种子数据
     却写进 .env 库」的静默错库。
 

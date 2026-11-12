@@ -5,13 +5,14 @@ import { Alert, App, Button, Card, Input, InputNumber, Select, Space, Tag, Typog
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { environmentsApi } from '@/api/environments';
-import { getErrorMessage } from '@/api/client';
-import { useAuth } from '@/hooks/useAuth';
-import { LoadingState } from '@/components/PageState';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { projectsApi } from '@/features/projects/api/projects';
+import { getErrorMessage } from '@/shared/api/client';
+import { useAuth } from '@/app/providers/AuthProvider';
+import { LoadingState } from '@/shared/ui/PageState';
 import { JsonView } from '../JsonView';
-import type { ApiDebugRequest, ApiDebugResult, ApiInterfaceDetail } from '@/types';
+import type { ApiDebugRequest, ApiDebugResult, ApiInterfaceDetail } from '@/features/api-catalog/contracts';
+
 
 interface KV {
   key: string;
@@ -32,13 +33,15 @@ function prefillKv(
  * 调试 Tab。
  *
  * 权限：非平台管理员只读提示，不展示表单。
- * 查询：环境列表（environmentsApi.list，page_size=100 含停用项 false 即只看启用）。
+ * 查询：当前项目已启用的环境列表（不包含项目默认请求头）。
  * 发送：拼装 override_* 入参 → POST /apis/{id}/debug；白名单未命中由后端 403。
  */
 export function DebugTab({
   api,
+  projectId,
 }: {
   api: ApiInterfaceDetail;
+  projectId: number;
 }) {
   const { isPlatformAdmin } = useAuth();
   const { message } = App.useApp();
@@ -52,8 +55,8 @@ export function DebugTab({
   const [result, setResult] = useState<ApiDebugResult | null>(null);
 
   const envsQuery = useQuery({
-    queryKey: ['environments', { page: 1, page_size: 100 }],
-    queryFn: () => environmentsApi.list({ page: 1, page_size: 100 }),
+    queryKey: ['project-environments', projectId],
+    queryFn: () => projectsApi.listEnvironments(projectId),
   });
 
   const sendMutation = useMutation({
@@ -78,19 +81,19 @@ export function DebugTab({
     kvs: KV[],
     setKvs: (v: KV[]) => void,
   ) => (
-    <Card size="small" title={label}>
+    <Card className="api-debug-kv-card" size="small" title={label}>
       {kvs.length === 0 ? (
         <Typography.Text type="secondary">（空）</Typography.Text>
       ) : (
         kvs.map((kv, idx) => (
-          <Space key={idx} style={{ display: 'flex', marginBottom: 8 }} align="center">
+          <div key={idx} className="api-debug-kv-row">
             <Input
               value={kv.key}
               onChange={(e) =>
                 setKvs(kvs.map((k, i) => (i === idx ? { ...k, key: e.target.value } : k)))
               }
               placeholder="key"
-              style={{ width: 180 }}
+              aria-label={`${label} key ${idx + 1}`}
             />
             <Input
               value={kv.value}
@@ -98,15 +101,16 @@ export function DebugTab({
                 setKvs(kvs.map((k, i) => (i === idx ? { ...k, value: e.target.value } : k)))
               }
               placeholder="value"
-              style={{ width: 280 }}
+              aria-label={`${label} value ${idx + 1}`}
             />
             <Button
               type="text"
               danger
               icon={<MinusCircleOutlined />}
+              aria-label={`删除${label}第 ${idx + 1} 行`}
               onClick={() => setKvs(kvs.filter((_, i) => i !== idx))}
             />
-          </Space>
+          </div>
         ))
       )}
       <Button

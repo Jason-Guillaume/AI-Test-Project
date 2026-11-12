@@ -38,6 +38,40 @@ class DashboardOverviewResponse(BaseModel):
     stats: list[StatCard]
 
 
+class DashboardExecutionTrendItem(BaseModel):
+    """单日用例执行统计。"""
+
+    date: str
+    total: int
+    passed: int
+    failed: int
+
+
+class DashboardDailyCount(BaseModel):
+    """单日数量统计。"""
+
+    date: str
+    count: int
+
+
+class DashboardDefectSeverityItem(BaseModel):
+    """按严重程度汇总的缺陷数量。"""
+
+    severity: int
+    label: str
+    value: int
+
+
+class DashboardChartsResponse(BaseModel):
+    """工作台图表数据，统一按当前用户可见项目和作用域过滤。"""
+
+    scope: DashboardScopeResponse
+    days: int
+    execution_trend: list[DashboardExecutionTrendItem]
+    defect_severity: list[DashboardDefectSeverityItem]
+    case_generation: list[DashboardDailyCount]
+
+
 class ProjectSummaryItem(BaseModel):
     """项目概况列表项。"""
 
@@ -82,6 +116,10 @@ class ReadyResponse(BaseModel):
 
 __all__ = [
     "DashboardOverviewResponse",
+    "DashboardChartsResponse",
+    "DashboardDailyCount",
+    "DashboardDefectSeverityItem",
+    "DashboardExecutionTrendItem",
     "DashboardScopeResponse",
     "ProjectSummaryItem",
     "ProjectSummaryResponse",

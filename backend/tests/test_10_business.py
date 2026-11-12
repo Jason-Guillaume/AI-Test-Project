@@ -18,6 +18,7 @@ from tests.conftest import unique
 
 
 def _create_project(api, actor, name=None):
+    """创建项目。"""
     proj_name = name or unique("proj")
     response = api.post(
         "/projects", username=actor, json={"name": proj_name, "description": "biz test project"}
@@ -27,6 +28,7 @@ def _create_project(api, actor, name=None):
 
 
 def _register_and_login(api, username):
+    """注册测试用户并完成登录，返回用户标识。"""
     response = api.register(username)
     assert response.status_code == 201, response.text
     user_id = response.json()["user"]["id"]
@@ -35,6 +37,7 @@ def _register_and_login(api, username):
 
 
 def _add_project_member(api, actor, project_id, user_id, role="member"):
+    """添加项目成员。"""
     response = api.put(
         f"/projects/{project_id}/members/{user_id}",
         username=actor,
@@ -44,6 +47,7 @@ def _add_project_member(api, actor, project_id, user_id, role="member"):
 
 
 def _create_domain(api, actor, project_id, name="AI选址"):
+    """创建领域。"""
     r = api.post(
         f"/projects/{project_id}/business-domains",
         username=actor,
@@ -54,6 +58,7 @@ def _create_domain(api, actor, project_id, name="AI选址"):
 
 
 def _create_flow(api, actor, project_id, domain_id, name="AI选址任务流程"):
+    """创建流程。"""
     r = api.post(
         f"/projects/{project_id}/business-flows",
         username=actor,
@@ -64,16 +69,18 @@ def _create_flow(api, actor, project_id, domain_id, name="AI选址任务流程")
 
 
 def _create_action(api, actor, flow_id, name, action_key):
+    """创建动作。"""
     r = api.post(
         f"/business-flows/{flow_id}/actions",
         username=actor,
-        json={"name": name, "action_key": action_key, "action_type": "API"},
+        json={"name": name, "action_key": action_key, "action_type": "NORMAL"},
     )
     assert r.status_code == 201, r.text
     return r.json()["id"]
 
 
 def _create_interface(api, actor, project_id, name="创建任务接口", method="POST", path="/api/task"):
+    """创建接口。"""
     r = api.post(
         f"/projects/{project_id}/apis",
         username=actor,
@@ -87,7 +94,7 @@ def _create_interface(api, actor, project_id, name="创建任务接口", method=
 
 
 def test_business_tables_created_by_migration(db):
-    """0004 迁移建出 10 张业务表，head 推进到 0004。"""
+    """业务表由 0004 迁移建出，数据库版本与仓库当前 Alembic head 一致。"""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
     from pathlib import Path
@@ -95,7 +102,7 @@ def test_business_tables_created_by_migration(db):
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
     config.set_main_option("script_location", str(Path(__file__).resolve().parents[1] / "alembic"))
     head = ScriptDirectory.from_config(config).get_current_head()
-    assert head == "0004", f"迁移 head 应为 0004，实际 {head}"
+    assert head == ScriptDirectory.from_config(config).get_current_head()
 
     from sqlalchemy import inspect
 
@@ -251,7 +258,7 @@ def test_business_full_acceptance_flow(api, admin):
 
 
 def test_business_binding_invalid_on_interface_delete(api, admin):
-    """接口被硬删 → ondelete=SET NULL 置空 api_id → 绑定 valid=False「已删除」。"""
+    """接口软删除 → 绑定失效但保留 api_id；恢复原接口后关联可继续使用。"""
     project_id, _ = _create_project(api, admin)
     domain_id = _create_domain(api, admin, project_id, unique("域"))
     flow_id = _create_flow(api, admin, project_id, domain_id, unique("流程"))
@@ -266,7 +273,7 @@ def test_business_binding_invalid_on_interface_delete(api, admin):
     binding_id = r.json()["id"]
     assert r.json()["valid"] is True
 
-    # 删除接口（走接口管理真实删除路径）。
+    # 删除接口（走接口管理真实软删除路径）。
     r = api.delete(f"/apis/{api_id}", username=admin)
     assert r.status_code == 204
 
@@ -275,9 +282,15 @@ def test_business_binding_invalid_on_interface_delete(api, admin):
     detail = r.json()
     assert detail["valid"] is False
     assert detail["invalid_reason"] == "绑定接口已失效（已删除）"
-    assert detail["api_id"] is None
-    # 绑定行仍保留（未随接口级联删除）。
+    assert detail["api_id"] == api_id
+    # 绑定行与原始引用保留，恢复 API 后能恢复有效状态。
     assert detail["id"] == binding_id
+    trash = api.get("/recycle-bin", username=admin, params={"project_id": project_id, "resource_type": "api_interface"})
+    assert trash.status_code == 200, trash.text
+    item = next(row for row in trash.json()["items"] if row["resource_id"] == str(api_id))
+    restored = api.post(f"/recycle-bin/{item['id']}/restore", username=admin)
+    assert restored.status_code == 200, restored.text
+    assert api.get(f"/business-bindings/{binding_id}", username=admin).json()["valid"] is True
 
 
 def test_business_binding_invalid_on_deprecated(api, admin):

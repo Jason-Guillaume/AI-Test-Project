@@ -1,0 +1,488 @@
+"""统一任务与可恢复运行的 ORM 结构。
+
+本模块导出任务、运行、计划、参与者、工作项、尝试、消息、命令、事件、产物引用、工具回执和调度配额模型。
+它们由 tasks 服务与运行时协作；所有新表由 Alembic 0015 显式建表，运行时不依赖 create_all。
+"""
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    JSON,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.sql import func, text
+
+from app.core.database.base import Base
+
+
+class Task(Base):
+    """跨管理页面的统一工作任务；项目与发起人是权限事实来源。"""
+
+    __tablename__ = "task"
+    __table_args__ = (
+        UniqueConstraint("created_by", "request_key", name="uq_task_creator_request_key"),
+        Index("ix_task_project_status_created", "project_id", "status", "created_at"),
+        {"comment": "统一工作任务；原有测试资产继续由各业务表持有"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_definition_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="RESTRICT"), nullable=True, index=True)
+    title = Column(String(200), nullable=False)
+    goal = Column(Text, nullable=False)
+    environment_id = Column(Integer, ForeignKey("environment.id", ondelete="SET NULL"), nullable=True)
+    input_case_ids = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    security_scan_json = Column(JSON, nullable=True, comment="历史 ZAP 扫描配置；新任务不再创建该流程")
+    security_assessment_json = Column(JSON, nullable=True, comment="自研安全评估范围：登记 API 与安全策略快照")
+    request_key = Column(String(100), nullable=True)
+    request_digest = Column(String(64), nullable=True, comment="规范化创建请求摘要，用于幂等键内容校验")
+    status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
+    task_mode = Column(String(32), nullable=False, default="TEST_EXECUTION", server_default=text("'TEST_EXECUTION'"))
+    web_authoring_json = Column(JSON, nullable=True, comment="交互式 Web 编写的环境、认证引用与目标范围")
+    archived = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TaskTemplate(Base):
+    """项目共享的可复用任务配置；只保存可重新校验的业务引用。"""
+
+    __tablename__ = "task_template"
+    __table_args__ = (
+        Index("ix_task_template_project_active_updated", "project_id", "is_active", "updated_at"),
+        {"comment": "项目共享任务模板，不保存运行状态、消息或临时会话"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    name = Column(String(120), nullable=False)
+    description = Column(String(500), nullable=False, default="", server_default=text("''"))
+    config_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TaskRun(Base):
+    """任务运行版本；保存状态机、输入快照、租约与事件游标。"""
+
+    __tablename__ = "task_run"
+    __table_args__ = (
+        UniqueConstraint("task_id", "run_number", name="uq_task_run_number"),
+        UniqueConstraint("id", "task_id", name="uq_task_run_id_task"),
+        ForeignKeyConstraint(
+            ["execution_root_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_task_run_execution_root", deferrable=True, initially="DEFERRED",
+        ),
+        Index("ix_task_run_status_lease", "status", "lease_expires_at"),
+        {"comment": "统一任务运行与恢复状态"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_number = Column(Integer, nullable=False)
+    execution_root_run_id = Column(Integer, nullable=True, index=True)
+    trace_id = Column(String(32), nullable=True, index=True)
+    deadline_at = Column(DateTime, nullable=True)
+    created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(32), nullable=False, default="QUEUED", server_default=text("'QUEUED'"))
+    stage = Column(String(40), nullable=False, default="PLANNING", server_default=text("'PLANNING'"))
+    goal_snapshot = Column(Text, nullable=False)
+    input_snapshot = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    current_plan_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    event_seq = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    lease_owner = Column(String(160), nullable=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TaskPlan(Base):
+    """不可变的编排方案版本；人工确认只改变状态，不覆盖方案内容。"""
+
+    __tablename__ = "task_plan"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "version", name="uq_task_plan_run_version"),
+        {"comment": "统一任务的版本化编排方案"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    version = Column(Integer, nullable=False)
+    status = Column(String(24), nullable=False, default="PROPOSED", server_default=text("'PROPOSED'"))
+    plan_json = Column(JSON, nullable=False)
+    created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    accepted_at = Column(DateTime, nullable=True)
+
+
+class TaskAgentInstance(Base):
+    """某个运行内的独立参与者会话与不可变角色配置快照。"""
+
+    __tablename__ = "task_agent_instance"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "instance_key", name="uq_task_agent_run_key"),
+        Index("ix_task_agent_run_role", "task_run_id", "role"),
+        {"comment": "任务运行内的 Agent 实例及会话配置"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_definition_revision_id = Column(Integer, ForeignKey("agent_definition_revision.id", name="fk_task_agent_revision", deferrable=True, initially="DEFERRED"), nullable=True)
+    parent_agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", name="fk_task_agent_parent", ondelete="SET NULL"), nullable=True)
+    instance_key = Column(String(80), nullable=False)
+    role = Column(String(32), nullable=False)
+    display_name = Column(String(120), nullable=False)
+    status = Column(String(24), nullable=False, default="READY", server_default=text("'READY'"))
+    model_config_id = Column(Integer, ForeignKey("model_configuration.id", ondelete="SET NULL"), nullable=True)
+    config_snapshot = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    skills_json = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    tool_allowlist_json = Column(JSON, nullable=False, default=list, server_default=text("'[]'"))
+    result_json = Column(JSON, nullable=True, comment="可恢复子 Agent 的成功输出检查点及输入指纹")
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class TaskWorkItem(Base):
+    """可单独领取、依赖、重试和审计的工作单元。"""
+
+    __tablename__ = "task_work_item"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "work_key", name="uq_task_work_run_key"),
+        Index("ix_task_work_status_created", "status", "created_at"),
+        {"comment": "统一任務调度工作项"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    work_key = Column(String(100), nullable=False)
+    kind = Column(String(32), nullable=False)
+    sequence = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    status = Column(String(24), nullable=False, default="PENDING", server_default=text("'PENDING'"))
+    input_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    output_json = Column(JSON, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    max_attempts = Column(Integer, nullable=False, default=3, server_default=text("3"))
+    idempotency_key = Column(String(160), nullable=False)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    claimed_at = Column(DateTime, nullable=True)
+    available_at = Column(DateTime, nullable=True, index=True, comment="外部任务轮询或延迟重试的最早领取时间")
+    finished_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class TaskWorkItemDependency(Base):
+    """工作项依赖边；服务端在领取前验证依赖已成功。"""
+
+    __tablename__ = "task_work_item_dependency"
+    __table_args__ = (
+        UniqueConstraint("work_item_id", "depends_on_id", name="uq_task_work_dependency"),
+        {"comment": "统一任务工作项依赖关系"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False, index=True)
+    depends_on_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
+class TaskAttempt(Base):
+    """某工作项的一次执行尝试、所有者租约、检查点与失败原因。"""
+
+    __tablename__ = "task_attempt"
+    __table_args__ = (
+        UniqueConstraint("work_item_id", "attempt_number", name="uq_task_attempt_number"),
+        Index("ix_task_attempt_status_heartbeat", "status", "heartbeat_at"),
+        {"comment": "统一任务工作项执行尝试"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False, index=True)
+    attempt_number = Column(Integer, nullable=False)
+    lease_generation = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    deadline_at = Column(DateTime, nullable=True)
+    owner = Column(String(160), nullable=False)
+    status = Column(String(24), nullable=False, default="RUNNING", server_default=text("'RUNNING'"))
+    checkpoint_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=False, server_default=func.now())
+    heartbeat_at = Column(DateTime, nullable=False, server_default=func.now())
+    finished_at = Column(DateTime, nullable=True)
+
+
+class TaskMessage(Base):
+    """参与者邮箱消息；接收、处理状态按任务运行与实例隔离。"""
+
+    __tablename__ = "task_message"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "client_message_id", name="uq_task_message_client_id"),
+        Index("ix_task_message_instance_status", "agent_instance_id", "status", "id"),
+        {"comment": "任务内独立参与者会话消息"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="CASCADE"), nullable=False)
+    sender_type = Column(String(16), nullable=False)
+    sender_user_id = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    sender_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    message_type = Column(String(24), nullable=False, default="TEXT", server_default=text("'TEXT'"))
+    content = Column(Text, nullable=False)
+    metadata_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    status = Column(String(20), nullable=False, default="RECEIVED", server_default=text("'RECEIVED'"))
+    client_message_id = Column(String(100), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    processed_at = Column(DateTime, nullable=True)
+
+
+class TaskCommand(Base):
+    """暂停、继续、取消、确认与重试等显式幂等命令。"""
+
+    __tablename__ = "task_command"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "idempotency_key", name="uq_task_command_idempotency"),
+        {"comment": "统一任务可靠命令"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    requested_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    command_type = Column(String(32), nullable=False)
+    idempotency_key = Column(String(100), nullable=False)
+    payload = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    status = Column(String(20), nullable=False, default="ACCEPTED", server_default=text("'ACCEPTED'"))
+    response_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    processed_at = Column(DateTime, nullable=True)
+
+
+class TaskEvent(Base):
+    """已提交事实的递增游标事件，不承载模型隐藏推理。"""
+
+    __tablename__ = "task_event"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "event_seq", name="uq_task_event_sequence"),
+        Index("ix_task_event_run_created", "task_run_id", "created_at"),
+        {"comment": "统一任务持久化事件游标"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_seq = Column(Integer, nullable=False)
+    event_type = Column(String(60), nullable=False)
+    actor_user_id = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    payload = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class TaskResourceRef(Base):
+    """统一任务输入与产物引用；业务数据仍由原业务模块持有。"""
+
+    __tablename__ = "task_resource_ref"
+    __table_args__ = (
+        Index("ix_task_resource_business_ref", "resource_type", "resource_id"),
+        Index("ix_task_resource_run_kind", "task_run_id", "direction", "resource_type"),
+        {"comment": "任务与原有业务资源的双向引用"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    direction = Column(String(12), nullable=False)
+    resource_type = Column(String(40), nullable=False)
+    resource_id = Column(String(64), nullable=False)
+    version = Column(String(80), nullable=True)
+    metadata_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class TaskToolInvocation(Base):
+    """有副作用工具的幂等回执；STARTED 中断后必须核对，禁止盲目重放。"""
+
+    __tablename__ = "task_tool_invocation"
+    __table_args__ = (
+        UniqueConstraint("task_run_id", "invocation_key", name="uq_task_tool_invocation_key"),
+        {"comment": "任务工具调用幂等回执与恢复边界"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_run_id = Column(Integer, ForeignKey("task_run.id", ondelete="CASCADE"), nullable=False, index=True)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    invocation_key = Column(String(160), nullable=False)
+    tool_name = Column(String(80), nullable=False)
+    status = Column(String(24), nullable=False, default="STARTED", server_default=text("'STARTED'"))
+    input_json = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    result_json = Column(JSON, nullable=True)
+    error_code = Column(String(80), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    finished_at = Column(DateTime, nullable=True)
+
+
+class TaskSchedulerControl(Base):
+    """数据库级调度闸门，串行化领取并约束全局运行并发。"""
+
+    __tablename__ = "task_scheduler_control"
+    __table_args__ = {"comment": "统一任务调度全局并发控制"}
+
+    id = Column(Integer, primary_key=True)
+    max_concurrent_runs = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class RuntimeCallFact(Base):
+    """可重建的模型调用事实；只存关联、状态、时延与用量，不复制 Trace 正文。"""
+
+    __tablename__ = "runtime_call_fact"
+    __table_args__ = (
+        UniqueConstraint("call_id", name="uq_runtime_call_fact_call_id"),
+        ForeignKeyConstraint(
+            ["task_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_call_fact_run_task", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["execution_root_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_call_fact_root_task", ondelete="CASCADE",
+        ),
+        Index("ix_runtime_call_fact_project_created", "project_id", "created_at"),
+        Index("ix_runtime_call_fact_run_created", "task_run_id", "created_at"),
+        Index("ix_runtime_call_fact_root", "execution_root_run_id"),
+        Index("ix_runtime_call_fact_model_created", "model_config_id", "created_at"),
+        {"comment": "模型调用数值事实与任务/Trace/Agent 关联"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    call_id = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_run_id = Column(Integer, nullable=False)
+    execution_root_run_id = Column(Integer, nullable=False)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=False)
+    attempt_id = Column(Integer, ForeignKey("task_attempt.id", ondelete="CASCADE"), nullable=False)
+    agent_session_id = Column(Integer, ForeignKey("agent_session.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_revision_id = Column(Integer, ForeignKey("agent_definition_revision.id", ondelete="SET NULL"), nullable=True)
+    model_config_id = Column(Integer, ForeignKey("model_configuration.id", ondelete="SET NULL"), nullable=True)
+    model_name = Column(String(160), nullable=False)
+    model_revision = Column(String(80), nullable=True)
+    trace_id = Column(String(32), nullable=True, index=True)
+    span_id = Column(String(64), nullable=True)
+    request_count = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    status = Column(String(24), nullable=False)
+    error_code = Column(String(80), nullable=True)
+    input_tokens = Column(Integer, nullable=True)
+    output_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    usage_status = Column(String(20), nullable=False, default="UNKNOWN", server_default=text("'UNKNOWN'"))
+    duration_ms = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    cost_amount = Column(Numeric(18, 8), nullable=True)
+    cost_currency = Column(String(3), nullable=True)
+    pricing_revision = Column(String(80), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class RuntimeEventFact(Base):
+    """工具、检索与上下文事件索引；Trace 正文仍由 Langfuse 持有。"""
+
+    __tablename__ = "runtime_event_fact"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_runtime_event_fact_event_id"),
+        ForeignKeyConstraint(
+            ["task_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_event_fact_run_task", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["execution_root_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_event_fact_root_task", ondelete="CASCADE",
+        ),
+        Index("ix_runtime_event_fact_project_time", "project_id", "occurred_at"),
+        Index("ix_runtime_event_fact_run_time", "task_run_id", "occurred_at"),
+        Index("ix_runtime_event_fact_root_time", "execution_root_run_id", "occurred_at"),
+        Index("ix_runtime_event_fact_type_time", "event_type", "occurred_at"),
+        {"comment": "工具调用、检索与上下文事件索引，不复制 Langfuse Trace 正文"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=True)
+    task_run_id = Column(Integer, nullable=True)
+    execution_root_run_id = Column(Integer, nullable=True)
+    work_item_id = Column(Integer, ForeignKey("task_work_item.id", ondelete="CASCADE"), nullable=True)
+    attempt_id = Column(Integer, ForeignKey("task_attempt.id", ondelete="CASCADE"), nullable=True)
+    agent_session_id = Column(Integer, ForeignKey("agent_session.id", ondelete="SET NULL"), nullable=True, index=True)
+    agent_instance_id = Column(Integer, ForeignKey("task_agent_instance.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_id = Column(Integer, ForeignKey("agent_definition.id", ondelete="SET NULL"), nullable=True)
+    agent_definition_revision_id = Column(Integer, ForeignKey("agent_definition_revision.id", ondelete="SET NULL"), nullable=True)
+    trace_id = Column(String(32), nullable=True, index=True)
+    span_id = Column(String(64), nullable=True)
+    event_type = Column(String(32), nullable=False)
+    event_name = Column(String(160), nullable=False)
+    status = Column(String(24), nullable=False)
+    error_code = Column(String(80), nullable=True)
+    duration_ms = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    event_metadata = Column(JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    occurred_at = Column(DateTime, nullable=False, server_default=func.now())
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class RuntimeTraceProjection(Base):
+    """Langfuse 投影回执；只存事实引用和同步状态，不保存 Trace 正文。"""
+
+    __tablename__ = "runtime_trace_projection"
+    __table_args__ = (
+        UniqueConstraint("projection_key", name="uq_runtime_trace_projection_key"),
+        UniqueConstraint("source_type", "source_key", name="uq_runtime_trace_projection_source"),
+        ForeignKeyConstraint(
+            ["task_run_id", "task_id"], ["task_run.id", "task_run.task_id"],
+            name="fk_runtime_trace_projection_run_task", ondelete="CASCADE",
+        ),
+        Index("ix_runtime_trace_projection_due", "status", "next_attempt_at", "lease_expires_at"),
+        Index("ix_runtime_trace_projection_run", "task_run_id", "created_at"),
+        {"comment": "Langfuse 投影 outbox，仅持有业务事实引用及投递状态"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    projection_key = Column(String(64), nullable=False)
+    source_type = Column(String(24), nullable=False)
+    source_key = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False)
+    task_id = Column(Integer, ForeignKey("task.id", ondelete="CASCADE"), nullable=False)
+    task_run_id = Column(Integer, nullable=False)
+    execution_root_run_id = Column(Integer, nullable=False)
+    trace_id = Column(String(32), nullable=False, index=True)
+    span_id = Column(String(64), nullable=True)
+    status = Column(String(16), nullable=False, default="PENDING", server_default="PENDING")
+    attempt_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    next_attempt_at = Column(DateTime, nullable=False, server_default=func.now())
+    last_attempt_at = Column(DateTime, nullable=True)
+    last_delivery_at = Column(DateTime, nullable=True)
+    lease_owner = Column(String(120), nullable=True)
+    lease_expires_at = Column(DateTime, nullable=True)
+    last_error_code = Column(String(80), nullable=True)
+    projected_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

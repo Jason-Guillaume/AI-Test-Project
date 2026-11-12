@@ -1,8 +1,9 @@
 """测试夹具：隔离测试数据库 + Alembic 迁移 + 共享 TestClient + API 助手。
 
 约定：
-- 每个测试会话使用独立数据库（默认 ``testplatform_test``），与开发库隔离，
-  绝不复用 ``testplatform_dev``，也不对生产库执行任何写操作。
+- 每个测试会话使用独立数据库（默认 ``testplatform_test-p<pid>``），与开发库隔离，
+  绝不复用 ``testplatform_dev``，也不对生产库执行任何写操作；pid 后缀保证两个
+  pytest 进程并发跑时互不删库。
 - 表结构一律由 Alembic 从 base 迁移到 head 生成，测试不依赖应用启动期建表。
 - 密钥与速率限制通过环境变量固定/放宽，避免测试之间相互影响。
 - 本模块被 tests/ 下所有测试文件隐式复用：pytest 自动发现 fixture，测试函数
@@ -26,9 +27,19 @@ if str(BACKEND_DIR) not in sys.path:
 TEST_DB_HOST = os.environ.get("TEST_POSTGRES_HOST", "127.0.0.1")
 TEST_DB_PORT = os.environ.get("TEST_POSTGRES_PORT", "5432")
 TEST_DB_USER = os.environ.get("TEST_POSTGRES_USER", "root")
-TEST_DB_PASSWORD = os.environ.get("TEST_POSTGRES_PASSWORD", "fangzhou123")
-# 测试库名固定为 testplatform_test：与开发库、生产库物理分离。
-TEST_DATABASE_NAME = os.environ.get("TEST_DATABASE_NAME", "testplatform_test")
+TEST_DB_PASSWORD = os.environ.get("TEST_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", ""))
+if not TEST_DB_PASSWORD:
+    raise RuntimeError("运行后端测试前请显式设置 TEST_POSTGRES_PASSWORD")
+# 测试库名在物理上仍与开发库、生产库分离，但按进程加唯一后缀：两个 pytest 进程
+# 并发跑（本地一份 + CI 一份，或两个人各起一份）时各用各的库，后启动的会话不再
+# DROP 掉前者仍在用的库、也不再 terminate 掉其连接——否则两边会批量报
+# connection already closed / database does not exist，看起来像产品缺陷。
+# 这里定义一次即为单一事实源：test_01 / test_07 都靠 TEST_DSN 里的库名派生自己
+# 的目标库，不需要各自重复拼后缀。PostgreSQL 标识符上限 63 字符，
+# "testplatform_test-p12345678" 远未越界。
+TEST_DATABASE_NAME = (
+    os.environ.get("TEST_DATABASE_NAME") or f"testplatform_test-p{os.getpid()}"
+)
 
 # 应用侧 DSN 用 SQLAlchemy 方言 psycopg。
 TEST_DSN = (
@@ -42,8 +53,16 @@ ADMIN_DSN = (
 )
 
 # 必须在导入 app 之前设置，Settings 在导入时即读取环境变量。
+# 库名回写环境变量：test_07 等文件直接从 os.environ 读库名，与 TEST_DSN 里的
+# 库名不一致时 TEST_DSN.replace 会留下 "-p<pid>" 尾巴，探测库名整个错掉。
+os.environ["TEST_DATABASE_NAME"] = TEST_DATABASE_NAME
 os.environ["DATABASE_URL"] = TEST_DSN
 os.environ["AUTO_CREATE_SCHEMA"] = "false"
+# 测试进程绝不启动 ZAP 扫描 Worker；需要验证 job_service 的用例会在应用 lifespan
+# 启动后单独切换设置，因此不会对外部扫描器发出网络请求。
+os.environ["ZAP_ENABLED"] = "false"
+# 自动化轮询会访问云效，测试进程默认关闭；需要同步行为的用例直接调用服务方法。
+os.environ["AUTOMATION_POLL_ENABLED"] = "false"
 os.environ["SECRET_KEY"] = os.environ.get(
     "TEST_SECRET_KEY", "unit-test-secret-not-for-production"
 )
@@ -51,7 +70,6 @@ os.environ["SECRET_KEY"] = os.environ.get(
 os.environ["AUTH_LOGIN_IP_LIMIT_PER_MINUTE"] = "1000000"
 os.environ["AUTH_LOGIN_USERNAME_LIMIT_PER_MINUTE"] = "1000000"
 os.environ["AUTH_REGISTER_IP_LIMIT_PER_HOUR"] = "1000000"
-os.environ["AUTH_CAPTCHA_IP_LIMIT_PER_MINUTE"] = "1000000"
 
 import psycopg  # noqa: E402
 import pytest  # noqa: E402
@@ -120,23 +138,39 @@ def _run_migrations() -> str:
     return ScriptDirectory.from_config(config).get_current_head()
 
 
+def migration_head() -> str:
+    """读取仓库当前 Alembic head，避免功能测试把迁移版本写死。"""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    return ScriptDirectory.from_config(config).get_current_head()
+
+
 @pytest.fixture(scope="session")
 def test_database():
-    """准备隔离测试数据库并执行迁移；会话结束时保留数据便于排查。
+    """准备隔离测试数据库并执行迁移；会话结束后删除自己派生的库。
 
     隔离手法：会话开始就 DROP + CREATE 一个全新库，因此绝不继承上一次
     运行残留的行；表结构只由 Alembic 生成，不依赖应用 create_all。
 
+    库名带 pid 后缀（见 TEST_DATABASE_NAME），两个 pytest 进程并发跑时各建各的
+    库，不会互相 DROP。teardown 只删自己的库名，因此两个后缀一起才安全：pid
+    复用后可能撞上上一次会话留下的同名旧库，靠 teardown 让残留变得无关紧要。
+
     Yields:
         str: 本次会话使用的测试库名。
     """
+    # CREATE / DROP DATABASE 不能在事务里执行，必须 autocommit + 走维护库。
     with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT 1 FROM pg_database WHERE datname=%s", (TEST_DATABASE_NAME,)
             )
             if cursor.fetchone():
-                # 库里已有残留连接时先全部断开，否则 DROP 会被拒绝。
+                # 库里已有残留连接时先全部断开，否则 DROP 会被拒绝。残留通常来自
+                # 上一次会话没走到 teardown，或 pid 被复用撞上旧库。
                 _terminate_connections(TEST_DATABASE_NAME)
                 cursor.execute(f'DROP DATABASE "{TEST_DATABASE_NAME}"')
             cursor.execute(f'CREATE DATABASE "{TEST_DATABASE_NAME}"')
@@ -144,7 +178,60 @@ def test_database():
     _run_migrations()
     yield TEST_DATABASE_NAME
 
-    # 测试库保留，便于复现排查；下次会话开始前会强制重建。
+    # 只删除本会话派生的库名：pid 后缀保证了这个库名唯一属于本进程。要先断开
+    # 残留连接（SQLAlchemy engine 池在会话结束时并不会自动 dispose）。
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
+        with connection.cursor() as cursor:
+            _terminate_connections(TEST_DATABASE_NAME)
+            cursor.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE_NAME}"')
+
+
+@pytest.fixture(scope="session")
+def test_database_head(test_database):
+    """Capture the isolated database revision after its startup migration.
+
+    Migration-head assertions must compare against this session snapshot instead of
+    rescanning Alembic files during tests, because another checkout may add a revision
+    while the suite is running.
+    """
+    psycopg_dsn = TEST_DSN.replace("postgresql+psycopg://", "postgresql://", 1)
+    with psycopg.connect(psycopg_dsn) as connection:
+        return connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
+
+
+@pytest.fixture()
+def isolated_migration_database(test_database, test_database_head, monkeypatch):
+    """Provide a disposable clean schema for tests that downgrade across revisions.
+
+    Lifecycle downgrade guards intentionally refuse to erase recoverable rows. Migration
+    shape tests therefore run on a separate empty database rather than the shared test
+    database, where preceding API tests may have created recycle-bin records.
+    """
+    # Initialize the application engine against the session test database before
+    # temporarily redirecting Alembic's environment variable to the scratch database.
+    assert test_database == TEST_DATABASE_NAME
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    database_name = f"testplatform_migration_{os.getpid()}_{uuid.uuid4().hex[:8]}"
+    with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
+        connection.execute(f'CREATE DATABASE "{database_name}"')
+    dsn = TEST_DSN.replace(f"/{TEST_DATABASE_NAME}", f"/{database_name}")
+    monkeypatch.setenv("DATABASE_URL", dsn)
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", dsn.replace("%", "%%"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    engine = create_engine(dsn)
+    try:
+        command.stamp(config, "base")
+        command.upgrade(config, test_database_head)
+        yield config, engine
+    finally:
+        engine.dispose()
+        with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
+            _terminate_connections(database_name)
+            connection.execute(f'DROP DATABASE IF EXISTS "{database_name}"')
 
 
 @pytest.fixture(scope="session")
@@ -173,7 +260,7 @@ def db(test_database):
     Yields:
         Session: 与隔离测试库绑定的数据库会话。
     """
-    from app.shared.database import SessionLocal
+    from app.core.database.session import SessionLocal
 
     session = SessionLocal()
     try:
@@ -217,10 +304,10 @@ def admin(api, admin_user):
     """
     if admin_user in api.tokens:
         return admin_user
-    from app.models.identity import Organization, User
-    from app.shared.database import SessionLocal
-    from app.shared.passwords import hash_password
-    from app.features.organizations.service import ensure_personal_organization
+    from app.core.models.identity import Organization, User
+    from app.core.database.session import SessionLocal
+    from app.core.security.passwords import hash_password
+    from app.platform.organizations.services.organization_service import ensure_personal_organization
 
     with SessionLocal() as session:
         existing = (
@@ -263,34 +350,13 @@ class ApiClient:
     def register(self, username: str, password: str = DEFAULT_PASSWORD):
         """调用 POST /register 创建账号，返回原始响应（由调用方断言状态码）。
 
-        注册接口需要图形验证码，本 helper 直接写入内存 challenge 存储
-        （见 app.features.captcha.service._STORAGE），保证既有测试无需改动即可通过。
-        需要验证验证码失败分支的用例请显式构造 challenge_id / captcha_code。
-
         Args:
             username: 新用户名的用户名，约定由 unique() 生成以避免冲突。
             password: 注册密码，默认使用测试统一初始密码。
         """
-        from datetime import datetime, timedelta
-        from uuid import uuid4
-
-        from app.features.captcha.service import _STORAGE
-
-        # 每个测试独立 challenge：避免多次 register 复用同一个 ID。
-        challenge_id = f"test-{uuid4().hex[:8]}"
-        code = "TEST12"
-        _STORAGE[challenge_id] = {
-            "code": code,
-            "expires_at": datetime.now() + timedelta(minutes=5),
-        }
         return self.client.post(
             f"{API}/register",
-            json={
-                "username": username,
-                "password": password,
-                "captcha_id": challenge_id,
-                "captcha_code": code,
-            },
+            json={"username": username, "password": password},
         )
 
     def login(self, username: str, password: str = DEFAULT_PASSWORD) -> str:

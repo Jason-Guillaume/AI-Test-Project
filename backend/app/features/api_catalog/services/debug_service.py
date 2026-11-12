@@ -16,21 +16,23 @@
 from __future__ import annotations
 
 import json as _json
-import time
-from urllib.parse import urlsplit
-
-import httpx
 from sqlalchemy.orm import Session
 
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.schemas import ApiDebugRequest, ApiDebugResponse
-from app.features.api_catalog.services.api_service import _load_body, _load_params
-from app.models.configuration import Environment
-from app.models.project import ProjectOutboundTarget
-from app.shared.errors import bad_request, forbidden, not_found
-
-# 响应体截断上限，避免超大响应撑爆上下文。
-_MAX_RESPONSE_BODY = 200_000
+from app.features.api_catalog.services.request_service import (
+    load_interface_request_body,
+    load_interface_request_params,
+)
+from app.platform.environment_configuration.services.environment_service import resolve_project_environment_by_name
+from app.execution.http.executor import send_http_request
+from app.execution.http.outbound_policy import resolve_project_outbound_target
+from app.execution.http.request_builder import (
+    build_environment_url,
+    get_environment_headers,
+    merge_request_fields,
+)
+from app.core.http.errors import bad_request, forbidden, not_found
 
 
 class DebugService:
@@ -39,8 +41,9 @@ class DebugService:
     def execute(
         self, db: Session, api_id: int, body: ApiDebugRequest, *, actor
     ) -> ApiDebugResponse:
+        """执行对应数据。"""
         # actor 已由 require_platform_admin 保证为平台管理员；二次校验防御误挂。
-        from app.shared.roles import is_platform_admin
+        from app.core.security.roles import is_platform_admin
 
         if not is_platform_admin(actor):
             raise forbidden("调试仅限平台管理员")
@@ -49,97 +52,65 @@ class DebugService:
         if iface is None:
             raise not_found("接口不存在")
 
-        environment = (
-            db.query(Environment)
-            .filter(Environment.name == body.environment_name, Environment.is_active.is_(True))
-            .one_or_none()
-        )
-        if environment is None:
-            raise not_found("环境不存在或已停用")
+        environment = resolve_project_environment_by_name(db, iface.project_id, body.environment_name)
 
-        # 拼接 URL 并替换 path 参数。
-        base = (environment.base_url or "").rstrip("/")
-        gateway = (environment.gateway_prefix or "").rstrip("/")
-        path = iface.path or ""
-        path_params = body.override_path_params or {}
-        if path_params:
-            for k, v in path_params.items():
-                path = path.replace(f"{{{k}}}", str(v))
-        url = f"{base}{gateway}{path}"
+        url = build_environment_url(environment, iface.path or "", body.override_path_params or {})
 
-        parsed = urlsplit(url)
-        scheme = (parsed.scheme or "http").lower()
-        host = (parsed.hostname or "").lower()
-        # 显式端口用之；http 默认 80，https 默认 443。
-        port = parsed.port or (443 if scheme == "https" else 80)
-
-        # 出站白名单校验。
-        target = (
-            db.query(ProjectOutboundTarget)
-            .filter(
-                ProjectOutboundTarget.project_id == iface.project_id,
-                ProjectOutboundTarget.scheme == scheme,
-                ProjectOutboundTarget.host == host,
-                ProjectOutboundTarget.port == port,
-                ProjectOutboundTarget.enabled.is_(True),
-            )
-            .first()
-        )
-        if target is None:
+        # 非法端口发生在任何网络 I/O 之前，维持调试接口原有的 400 错误契约。
+        try:
+            decision = resolve_project_outbound_target(db, url, iface.project_id)
+        except ValueError as exc:
+            raise bad_request(f"调试目标地址端口非法：{url}") from exc
+        if decision.target is None:
             raise forbidden("目标不在项目出站白名单")
 
-        # 合并 headers：环境默认 < 接口 HEADER 参数 < override。
-        headers: dict[str, str] = {}
-        if isinstance(environment.default_headers, dict):
-            headers.update({str(k): str(v) for k, v in environment.default_headers.items()})
-        for p in _load_params(db, iface.id):
-            if p.location == "HEADER" and p.example:
-                headers[p.name] = p.example
-        if body.override_headers:
-            headers.update({str(k): str(v) for k, v in body.override_headers.items()})
+        # 覆盖顺序保持为环境默认、接口示例、调试覆盖，后值只替换同名字段。
+        params = load_interface_request_params(db, iface.id)
+        interface_headers: dict[str, str] = {}
+        interface_query: dict[str, str] = {}
+        for parameter in params:
+            if parameter.location == "HEADER" and parameter.example:
+                interface_headers[parameter.name] = parameter.example
+            if parameter.location == "QUERY" and parameter.example:
+                interface_query[parameter.name] = parameter.example
+        headers = merge_request_fields(
+            get_environment_headers(environment),
+            interface_headers,
+            {str(key): str(value) for key, value in (body.override_headers or {}).items()},
+        )
+        query = merge_request_fields(interface_query, body.override_query)
 
-        # query：接口 QUERY 参数 < override。
-        query: dict[str, str] = {}
-        for p in _load_params(db, iface.id):
-            if p.location == "QUERY" and p.example:
-                query[p.name] = p.example
-        if body.override_query:
-            query.update({str(k): str(v) for k, v in body.override_query.items()})
-
-        # 请求体组装。
-        body_obj = _load_body(db, iface.id)
+        body_obj = load_interface_request_body(db, iface.id)
         send_kwargs = self._build_send_kwargs(body_obj, body)
-
-        method = iface.method.upper()
-        started = time.perf_counter()
-        try:
-            # trust_env=False：调试请求直连白名单目标，不沿用环境代理（HTTP_PROXY/ALL_PROXY）。
-            # 白名单已控制目的地；经环境代理转发既不安全也会引入 SOCKS 等可选依赖问题。
-            with httpx.Client(timeout=body.timeout, follow_redirects=False, trust_env=False) as client:
-                resp = client.request(method, url, headers=headers, params=query, **send_kwargs)
-        except httpx.ConnectError as exc:
-            raise bad_request(f"连接失败：{exc}")
-        except httpx.TimeoutException:
+        # 调试仅将共享发送结果映射成原 HTTP 错误和响应字段。
+        result = send_http_request(
+            method=iface.method.upper(),
+            url=url,
+            headers=headers,
+            query=query,
+            json_body=send_kwargs.get("json"),
+            json_body_present="json" in send_kwargs,
+            form_body=send_kwargs.get("data"),
+            files=send_kwargs.get("files"),
+            raw_body=send_kwargs.get("content"),
+            timeout=body.timeout,
+        )
+        if result.transport_error_kind == "connect":
+            raise bad_request(f"连接失败：{result.transport_error_detail}")
+        if result.transport_error_kind == "timeout":
             raise bad_request(f"请求超时（{body.timeout}s）")
-        except httpx.HTTPError as exc:
-            raise bad_request(f"请求失败：{exc}")
-        except ImportError as exc:
-            # 缺少可选传输依赖（如 socksio）：归为可读的 400 而非 500。
-            raise bad_request(f"请求依赖缺失：{exc}")
-        elapsed_ms = int((time.perf_counter() - started) * 1000)
-
-        resp_body = resp.text or ""
-        if len(resp_body) > _MAX_RESPONSE_BODY:
-            resp_body = resp_body[:_MAX_RESPONSE_BODY] + "\n...[已截断]"
-        resp_headers = {str(k): str(v) for k, v in resp.headers.items()}
+        if result.transport_error_kind == "http":
+            raise bad_request(f"请求失败：{result.transport_error_detail}")
+        if result.transport_error_kind == "dependency":
+            raise bad_request(f"请求依赖缺失：{result.transport_error_detail}")
 
         return ApiDebugResponse(
-            status_code=resp.status_code,
-            response_body=resp_body,
-            response_headers=resp_headers,
-            response_time_ms=elapsed_ms,
-            request_url=str(resp.request.url),
-            outbound_target_id=target.id,
+            status_code=result.status_code,
+            response_body=result.response_body,
+            response_headers=result.response_headers,
+            response_time_ms=result.response_time_ms,
+            request_url=result.request_url,
+            outbound_target_id=decision.target.id,
         )
 
     def _build_send_kwargs(self, body_obj, body: ApiDebugRequest) -> dict:
@@ -159,7 +130,10 @@ class DebugService:
                 try:
                     return {"json": _json.loads(raw)}
                 except (ValueError, TypeError):
-                    return {"content": raw, "headers": {}}
+                    # 不能带 "headers" 键：调用点已用 headers= 关键字传入，重复即
+                    # 异常说明：传入 headers 关键字参数时重复赋值会触发 TypeError。
+                    # 且该 TypeError 不在下面的 except 列表里 → 直接 500。
+                    return {"content": raw}
             if isinstance(body_obj.schema_json, dict) and "example" in body_obj.schema_json:
                 return {"json": body_obj.schema_json["example"]}
             return {}
@@ -174,6 +148,7 @@ class DebugService:
         return {}
 
     def _form_fields(self, body_obj) -> dict[str, str]:
+        """提取表单请求字段。"""
         props = (body_obj.schema_json or {}).get("properties") or {}
         out: dict[str, str] = {}
         for name, info in props.items():
@@ -183,6 +158,7 @@ class DebugService:
         return out
 
     def _multipart_fields(self, body_obj) -> list[tuple[str, str]]:
+        """提取 multipart 请求字段及文件信息。"""
         props = (body_obj.schema_json or {}).get("properties") or {}
         out: list[tuple[str, str]] = []
         for name, info in props.items():

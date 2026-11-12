@@ -1,0 +1,422 @@
+"""领域职责提取；保留原权限、事务和执行顺序。"""
+
+from __future__ import annotations
+
+from app.orchestration.tasks.services import assembly_service
+from app.orchestration.tasks.services import state_service
+from concurrent.futures import ThreadPoolExecutor
+from app.core.config import settings
+import logging
+import os
+import platform
+import secrets
+import threading
+from datetime import datetime
+from typing import Callable
+from uuid import uuid4
+from sqlalchemy.orm import Session
+from app.llm import LLMError
+from app.llm.providers import ProductionLLMProvider
+from app.llm.tracing import runtime_attempt_observation
+from app.orchestration.tasks.models import RuntimeCallFact, Task, TaskAgentInstance, TaskAttempt, TaskRun, TaskWorkItem
+from app.agents.models.session import AgentSession
+from app.orchestration.tasks.services.resource_service import TaskResourceService
+from app.orchestration.tasks.runtime.contracts import TaskHandlerContext, TaskHandlerServices
+from app.core.models.configuration import ModelConfiguration
+from app.core.models.identity import User
+from app.core.database.session import SessionLocal
+from app.orchestration.tasks.runtime.contracts import ClaimedWork
+from app.orchestration.tasks.runtime.access import assert_current_project_write
+from app.orchestration.tasks.runtime.lease_service import claim_work
+from app.orchestration.tasks.runtime.completion_service import complete_work
+from app.orchestration.tasks.runtime.completion_service import defer_at_control_boundary
+from app.orchestration.tasks.services.state_service import enqueue_work
+from app.orchestration.tasks.runtime.completion_service import fail_work
+from app.orchestration.tasks.runtime.handlers.api_execution import handle_api_execution
+from app.orchestration.tasks.runtime.handlers.chat import handle_chat
+from app.orchestration.tasks.runtime.handlers.finalizing import handle_finalize
+from app.orchestration.tasks.runtime.handlers.planning import handle_plan
+from app.orchestration.tasks.runtime.handlers.reporting import handle_report
+from app.orchestration.tasks.runtime.handlers.reviewing import handle_review
+from app.orchestration.tasks.runtime.handlers.security_execution import handle_security_execution
+from app.orchestration.tasks.runtime.handlers.web_authoring import handle_web_authoring_start
+from app.orchestration.tasks.runtime.lease_service import heartbeat_loop
+from app.orchestration.tasks.runtime.lease_service import recover_expired
+
+
+log = logging.getLogger(__name__)
+
+
+_ACTIVE_STATUSES = ("RUNNING", "PAUSE_REQUESTED", "CANCEL_REQUESTED")
+
+
+_RECOVERY_SECONDS = 300
+
+
+def _attempt_trace_metadata(db: Session, task: Task | None, run: TaskRun,
+                            work: TaskWorkItem, attempt: TaskAttempt,
+                            agent: TaskAgentInstance | None) -> dict:
+    """从已装配的数据库实体生成不含业务正文与凭据的 Trace 元数据。"""
+    run_snapshot = run.input_snapshot or {}
+    agent_snapshot = run_snapshot.get("agent_definition") or run_snapshot.get("agent") or {}
+    agent_config = agent.config_snapshot or {} if agent is not None else {}
+    if agent is not None:
+        agent_snapshot = {**agent_snapshot, **agent_config}
+    session_id = db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar()
+    return {
+        "project_id": task.project_id if task else None,
+        "task_id": task.id if task else run.task_id,
+        "task_run_id": run.id,
+        "execution_root_run_id": run.execution_root_run_id or run.id,
+        "trace_id": run.trace_id,
+        "work_item_id": work.id,
+        "work_kind": work.kind,
+        "attempt_id": attempt.id,
+        "attempt_number": attempt.attempt_number,
+        "agent_session_id": session_id,
+        "agent_run_id": agent.id if agent else None,
+        "parent_agent_run_id": agent.parent_agent_instance_id if agent else None,
+        "agent_id": agent_config.get("agent_definition_id") or agent_snapshot.get("id") or agent_snapshot.get("agent_id"),
+        "agent_revision_id": agent.agent_definition_revision_id if agent else None,
+        "agent_version": agent_config.get("agent_version") or agent_snapshot.get("version") or agent_snapshot.get("agent_version"),
+        "model_config_id": agent.model_config_id if agent else agent_snapshot.get("model_config_id"),
+        "batch_id": work.input_json.get("batch_id") or run_snapshot.get("batch_id"),
+    }
+
+
+class TaskWorker:
+    """唯一调度生命周期与可信装配入口。"""
+
+    def __init__(
+        self,
+        *,
+        db_factory: Callable[[], Session] = SessionLocal,
+        owner: str | None = None,
+        poll_interval_seconds: float = 1.0,
+        lease_seconds: int = _RECOVERY_SECONDS,
+    ) -> None:
+        """初始化进程内轮询器；空闲时按秒轮询以降低数据库空查，所有权与恢复数据保存在数据库。"""
+        self._db_factory = db_factory
+        self._owner = owner or f"{platform.node() or 'unknown'}:{os.getpid()}:{secrets.token_hex(4)}"
+        self._poll_interval = max(0.2, poll_interval_seconds)
+        self._lease_seconds = max(30, lease_seconds)
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+        self._processed = 0
+        # 只把报告/审阅实际需要的有限能力传给处理器，不暴露整个 Worker。
+        self._report_review_services = TaskHandlerServices(
+            provider_for_agent=self._provider_for_agent,
+            enqueue_work=enqueue_work,
+            add_worker_resource=TaskResourceService.add_worker_resource_ref,
+            append_event=state_service.append_event,
+            defer_at_control_boundary=defer_at_control_boundary,
+        )
+
+    @property
+    def is_running(self) -> bool:
+        """读取守护线程是否仍在运行。"""
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> None:
+        """应用启动时开始轮询；重复调用保持幂等。"""
+        with self._lock:
+            if self.is_running:
+                return
+            self._stop_event.clear()
+            self._thread = threading.Thread(target=self._loop, name="task-scheduler", daemon=True)
+            self._thread.start()
+            log.info("统一任务调度器已启动 owner=%s", self._owner)
+
+    def stop(self, timeout_seconds: float = 8.0) -> None:
+        """应用关闭时等待当前安全边界并停止领取新工作。"""
+        self._stop_event.set()
+        with self._lock:
+            thread = self._thread
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=max(0.1, timeout_seconds))
+        with self._lock:
+            # 在途请求尚未返回时保留线程身份，禁止 start() 清除停止标记并复制执行池。
+            if self._thread is thread and (thread is None or not thread.is_alive()):
+                self._thread = None
+        log.info("统一任务调度器%s", "正在等待安全停止" if thread is not None and thread.is_alive() else "已停止")
+
+    def tick(self) -> int:
+        """执行一轮过期租约恢复与工作项领取，供定向验证直接调用。"""
+        recover_expired(db_factory=self._db_factory)
+        claimed = claim_work(db_factory=self._db_factory, owner=self._owner, lease_seconds=self._lease_seconds)
+        if claimed is None:
+            return 0
+        self._run_claimed(claimed)
+        self._processed += 1
+        return 1
+
+    def _loop(self) -> None:
+        """主循环；单轮数据库或工具异常不会永久打挂调度线程。"""
+        slots = min(settings.TASK_WORKER_CONCURRENCY, max(1, settings.DB_POOL_SIZE // 2))
+        with ThreadPoolExecutor(max_workers=slots, thread_name_prefix="task-work") as pool:
+            pending = set()
+            while not self._stop_event.is_set():
+                try:
+                    for future in list(pending):
+                        if future.done():
+                            pending.remove(future)
+                            future.result()
+                    if len(pending) >= slots:
+                        self._stop_event.wait(self._poll_interval)
+                        continue
+                    recover_expired(db_factory=self._db_factory)
+                    claim = claim_work(db_factory=self._db_factory, owner=self._owner, lease_seconds=self._lease_seconds)
+                    if claim is None:
+                        self._stop_event.wait(self._poll_interval)
+                    else:
+                        pending.add(pool.submit(self._run_claimed, claim))
+                except Exception:  # noqa: BLE001
+                    log.exception("统一任务调度轮询失败")
+                    self._stop_event.wait(self._poll_interval)
+
+    def _run_claimed(self, claim: ClaimedWork) -> None:
+        """运行已领取的工作项并启动独立心跳，避免长模型调用租约过期。"""
+        heartbeat_stop = threading.Event()
+        heartbeat = threading.Thread(
+            target=heartbeat_loop,
+            args=(claim, heartbeat_stop),
+            kwargs={"db_factory": self._db_factory, "owner": self._owner, "lease_seconds": self._lease_seconds},
+            name=f"task-heartbeat-{claim.run_id}",
+            daemon=True,
+        )
+        heartbeat.start()
+        db = self._db_factory()
+        trace_observation = None
+        trace_error: Exception | None = None
+        try:
+            work = db.get(TaskWorkItem, claim.work_item_id)
+            run = db.get(TaskRun, claim.run_id)
+            attempt = db.get(TaskAttempt, claim.attempt_id)
+            if work is None or run is None or attempt is None:
+                return
+            if (run.lease_owner != self._owner or attempt.owner != self._owner
+                    or work.attempt_count != attempt.lease_generation or work.status != 'RUNNING'
+                    or attempt.status != 'RUNNING' or not run.lease_expires_at
+                    or run.lease_expires_at <= datetime.now()):
+                return
+            task = db.get(Task, run.task_id)
+            actor = db.get(User, task.created_by) if task and task.created_by else None
+            agent = db.get(TaskAgentInstance, work.agent_instance_id) if work.agent_instance_id else None
+            if run.execution_root_run_id is None or not run.trace_id:
+                from app.orchestration.tasks.runtime.fencing import has_live_claim
+                if not has_live_claim(db, run.id, work.id, attempt.id, attempt.owner, attempt.lease_generation):
+                    db.rollback()
+                    return
+                run.execution_root_run_id = run.execution_root_run_id or run.id
+                run.trace_id = run.trace_id or uuid4().hex
+                db.commit()
+            trace_observation = runtime_attempt_observation(
+                _attempt_trace_metadata(db, task, run, work, attempt, agent)
+            )
+            span_id = trace_observation.__enter__()
+            if span_id:
+                # 检查点只保存 Trace 关联 ID；fencing 后短事务提交，不跨外部请求持有事务。
+                from app.orchestration.tasks.runtime.fencing import has_live_claim
+                if has_live_claim(db, run.id, work.id, attempt.id, attempt.owner, attempt.lease_generation):
+                    attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "agent_span_id": span_id}
+                    db.commit()
+                else:
+                    db.rollback()
+            if work.kind in {"CASE_GENERATE", "CASE_REVIEW"}:
+                from app.orchestration.tasks.runtime.handlers.case_generation import execute
+                execute(db, task, run, work, attempt, actor)
+                return
+            if task is None or actor is None or not actor.is_active:
+                raise RuntimeError("任务发起账号不可用，已停止新的业务操作")
+            assert_current_project_write(db, task.project_id, actor)
+            assembly_service.assert_agent_runtime_access(db, task, run, actor)
+            if work.kind == "PLAN":
+                handle_plan(db, task, run, work, attempt, agent, actor, provider_for_agent=self._provider_for_agent)
+            elif work.kind == "EXECUTE_WEB_AUTHORING":
+                handle_web_authoring_start(db, task, run, work, attempt, agent, actor)
+            elif work.kind == "EXECUTE_SECURITY":
+                handle_security_execution(db, task, run, work, attempt, agent, actor)
+            elif work.kind in {"EXECUTE_API", "EXECUTE_WEB"}:
+                handle_api_execution(db, task, run, work, attempt, agent, actor, provider_for_agent=self._provider_for_agent)
+            elif work.kind == "SECURITY_SCAN":
+                reason = "历史扫描器工作项已停用，未调用扫描器；请创建自研安全评估任务"
+                work.status = "FAILED"
+                work.error_code = "LEGACY_SECURITY_SCAN_DISABLED"
+                work.error_message = reason
+                work.finished_at = datetime.now()
+                attempt.status = "FAILED"
+                attempt.error_code = work.error_code
+                attempt.error_message = reason
+                attempt.finished_at = datetime.now()
+                if agent is not None:
+                    agent.status = "FAILED"
+                run.status = "FAILED"
+                run.stage = "LEGACY_SECURITY_SCAN_DISABLED"
+                run.error_code = work.error_code
+                run.error_message = reason
+                run.finished_at = datetime.now()
+                run.lease_owner = None
+                run.lease_expires_at = None
+                state_service.append_event(
+                    db, run, "legacy_security_scan.disabled",
+                    {"work_item_id": work.id}, actor_user_id=actor.id,
+                )
+                state_service.sync_task_status(db, task, run)
+                db.commit()
+                return
+            elif work.kind == "REPORT":
+                handle_report(TaskHandlerContext(db, task, run, work, attempt, agent, actor), self._report_review_services)
+            elif work.kind == "REVIEW":
+                handle_review(TaskHandlerContext(db, task, run, work, attempt, agent, actor), self._report_review_services)
+            elif work.kind == "FINALIZE":
+                handle_finalize(db, task, run, work, attempt, agent, actor, provider_for_agent=self._provider_for_agent)
+            elif work.kind == "CHAT":
+                handle_chat(db, task, run, work, attempt, agent, actor, provider_for_agent=self._provider_for_agent)
+            else:
+                raise RuntimeError(f"未知工作项类型：{work.kind}")
+            complete_work(db, task, run, work, attempt, agent)
+        except Exception as exc:  # noqa: BLE001
+            trace_error = exc
+            db.rollback()
+            fail_work(claim, exc, db_factory=self._db_factory)
+            if 'work' in locals() and work is not None and work.kind in {"CASE_GENERATE", "CASE_REVIEW"}:
+                log.error("生成工作项失败 run_id=%s work_item_id=%s error_type=%s", claim.run_id, claim.work_item_id, type(exc).__name__)
+            else:
+                log.exception("任务工作项执行失败 run_id=%s work_item_id=%s", claim.run_id, claim.work_item_id)
+        finally:
+            if trace_observation is not None:
+                if trace_error is not None:
+                    trace_observation.__exit__(type(trace_error), trace_error, trace_error.__traceback__)
+                else:
+                    trace_observation.__exit__(None, None, None)
+            heartbeat_stop.set()
+            heartbeat.join(timeout=2.0)
+            db.close()
+
+    def _provider_for_agent(
+        self, db: Session, task: Task, run: TaskRun, work: TaskWorkItem,
+        attempt: TaskAttempt, agent: TaskAgentInstance, actor: User,
+    ) -> ProductionLLMProvider:
+        """构造已授权的有序模型路由，并把每次调用记录到当前工作项检查点。"""
+        snapshot = agent.config_snapshot or {}
+        agent_session_id = db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar()
+        primary_id = agent.model_config_id or snapshot.get("model_config_id")
+        configured_ids = [primary_id, *(snapshot.get("fallback_model_config_ids") or [])]
+        from app.orchestration.tasks.services.runtime_fact_service import model_revision_admitted
+
+        candidate_ids: list[int] = []
+        denied = False
+        revision_blocked = False
+        for config_id in dict.fromkeys(item for item in configured_ids if item is not None):
+            model = db.get(ModelConfiguration, int(config_id))
+            if model is None or not model.is_enabled:
+                continue
+            if not model_revision_admitted(db, model.id):
+                revision_blocked = True
+                continue
+            try:
+                # 备用模型也必须在当前组织授权集合内，不能因主模型故障扩大模型权限。
+                assembly_service.assert_agent_model_access(db, task.project_id, actor, model.id)
+            except RuntimeError as exc:
+                if any(word in str(exc) for word in ("组织", "授权", "开放")):
+                    denied = True
+                    continue
+                raise
+            candidate_ids.append(model.id)
+        if not candidate_ids:
+            if revision_blocked and not denied:
+                raise LLMError("MODEL_REVISION_BLOCKED", "当前模型修订未准入，已停止新的模型调用", retryable=False)
+            if denied:
+                raise RuntimeError("当前任务没有仍获授权的模型，已停止新的模型调用")
+            raise LLMError("MODEL_UNAVAILABLE", "主模型及备用模型均未启用", retryable=True)
+
+        def record_model_attempt(item: dict[str, object]) -> None:
+            """保存脱敏模型尝试，并用独立短事务记下真实外部模型请求事实。"""
+            history = [*(attempt.checkpoint_json or {}).get("model_attempts", []), item]
+            attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), "model_attempts": history}
+            if not item.get("call_id") or not int(item.get("request_count") or 0):
+                return
+            now = datetime.now()
+            duration_ms = max(0, int(item.get("duration_ms") or 0))
+            usage = item.get("usage") if isinstance(item.get("usage"), dict) else {}
+            fact_db = self._db_factory()
+            try:
+                fact_db.add(RuntimeCallFact(
+                    call_id=str(item["call_id"]),
+                    project_id=task.project_id,
+                    task_id=task.id,
+                    task_run_id=run.id,
+                    execution_root_run_id=run.execution_root_run_id or run.id,
+                    work_item_id=work.id,
+                    attempt_id=attempt.id,
+                    agent_session_id=agent_session_id,
+                    agent_instance_id=agent.id,
+                    agent_definition_id=int(snapshot.get("id")) if snapshot.get("id") else None,
+                    agent_definition_revision_id=agent.agent_definition_revision_id,
+                    model_config_id=int(item["model_config_id"]) if item.get("model_config_id") else None,
+                    model_name=str(item.get("model_name") or "unknown"),
+                    model_revision=str(item["model_revision"]) if item.get("model_revision") else None,
+                    trace_id=run.trace_id,
+                    span_id=str(item["span_id"]) if item.get("span_id") else None,
+                    request_count=max(1, int(item.get("request_count") or 1)),
+                    status=str(item.get("status") or "UNKNOWN"),
+                    error_code=str(item["error_code"]) if item.get("error_code") else None,
+                    input_tokens=usage.get("prompt_tokens"),
+                    output_tokens=usage.get("completion_tokens"),
+                    total_tokens=usage.get("total_tokens"),
+                    usage_status="KNOWN" if usage else "UNKNOWN",
+                    duration_ms=duration_ms,
+                    started_at=now - timedelta(milliseconds=duration_ms),
+                    finished_at=now,
+                ))
+                from app.orchestration.tasks.services.trace_projection_service import enqueue_projection
+                enqueue_projection(
+                    fact_db, source_type="MODEL_CALL", source_key=str(item["call_id"]),
+                    project_id=task.project_id, task_id=task.id, task_run_id=run.id,
+                    execution_root_run_id=run.execution_root_run_id or run.id,
+                    trace_id=run.trace_id, span_id=str(item["span_id"]) if item.get("span_id") else None,
+                )
+                fact_db.commit()
+            except Exception as exc:  # noqa: BLE001 —— 计量故障不应让已完成的模型调用变为任务失败
+                fact_db.rollback()
+                log.warning("模型调用事实保存失败 run_id=%s call_id=%s error_type=%s",
+                            run.id, item.get("call_id"), type(exc).__name__)
+            finally:
+                fact_db.close()
+
+        def recheck_access():
+            """复核运行者和来源授权，并在真实网络请求前结束数据库事务。"""
+            from app.orchestration.tasks.runtime.fencing import has_live_claim
+            from app.orchestration.tasks.services.runtime_fact_service import (
+                assert_token_quota, model_revision_admitted,
+            )
+            if not has_live_claim(db, run.id, work.id, attempt.id, attempt.owner, attempt.lease_generation):
+                db.rollback()
+                raise LLMError('STALE_EXECUTION', '任务执行租约已失效')
+            assert_token_quota(db, project_id=task.project_id, user_id=actor.id)
+            # Provider reloads the actual candidate immediately before each request.
+            # A disabled primary must not block an explicitly configured live fallback.
+            revision_blocked = False
+            admitted = False
+            for candidate_id in candidate_ids:
+                model = db.get(ModelConfiguration, candidate_id, populate_existing=True)
+                if model is None or not model.is_enabled:
+                    continue
+                if not model_revision_admitted(db, model.id):
+                    revision_blocked = True
+                    continue
+                assembly_service.assert_agent_model_access(db, task.project_id, actor, candidate_id)
+                admitted = True
+                break
+            if not admitted:
+                if revision_blocked:
+                    raise LLMError("MODEL_REVISION_BLOCKED", "当前模型修订未准入，已停止新的模型调用", retryable=False)
+                raise RuntimeError('任务主模型及配置的备用模型均已停用')
+            from app.knowledge.service import search
+            profile = (run.input_snapshot or {}).get('agent_definition') or {}
+            if profile.get('knowledge'):
+                search(db, profile['knowledge'], actor, '', limit=0)
+            # Provider 已读取模型配置；授权/配置查询不能跨长模型请求持有事务。
+            db.commit()
+        return ProductionLLMProvider(db, model_config_ids=candidate_ids, attempt_callback=record_model_attempt, before_request=recheck_access)

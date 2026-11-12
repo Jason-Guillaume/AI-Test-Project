@@ -1,0 +1,89 @@
+{
+  "run_id": "20261029-post-fix",
+  "phase": "F4 后端全量回归",
+  "timestamp": "2026-10-29T11:26:01.694264+08:00",
+  "code_state": {
+    "head": "e46cbc9fde7ad387a29f934dbce26f30f37d2b2c",
+    "worktree_had_preexisting_changes_at_f0": true,
+    "changed_path_count_at_f0": 426,
+    "untracked_path_count_at_f0": 51,
+    "rollback_constraint": "Do not reset/restore whole files or the worktree; F0 already contained unrelated edits and deleted compatibility paths.",
+    "status_entry_count_at_delivery": 432
+  },
+  "database": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "credentials": "User-supplied test credentials were provided to the process environment and are not persisted here.",
+    "database_name_policy": "TEST_DATABASE_NAME unset; backend/tests/conftest.py created/dropped only testplatform_test-p<PID>.",
+    "development_database_used": false
+  },
+  "run": {
+    "command": "cd backend && env -u TEST_DATABASE_NAME TEST_POSTGRES_USER=root TEST_POSTGRES_PASSWORD=<user-provided test secret> TEST_POSTGRES_HOST=127.0.0.1 TEST_POSTGRES_PORT=5432 .venv/bin/python -m pytest -q --tb=no -ra --junitxml=<temporary JUnit XML>",
+    "exit_code": 0,
+    "collected": 1042,
+    "passed": 1042,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "warnings": 47,
+    "duration_seconds": 295.221,
+    "junit_xml_path_at_run": "/private/tmp/backend-stabilization-postfix-final.xml",
+    "warning_categories": {
+      "DeprecationWarning": 24,
+      "UserWarning": 11,
+      "PytestCollectionWarning": 10,
+      "InsecureKeyLengthWarning": 1,
+      "SAWarning": 1
+    },
+    "warning_category_detail": "24 deprecations: 1 anyio BlockingPortal alias, 22 Starlette HTTP_422 and 1 httpx raw-content call; 11 UserWarning: 10 Pydantic field-shadow warnings and 1 duplicate FastAPI operation id; 10 PytestCollectionWarning for imported ORM model classes; 1 short test JWT key warning; 1 SQLAlchemy warning in an existing report boundary test."
+  },
+  "comparison": {
+    "f0_tests_dir": {
+      "collected": 1032,
+      "passed": 963,
+      "failed": 69,
+      "errors": 0,
+      "skipped": 0
+    },
+    "f0_default": {
+      "collected": 1035,
+      "passed": 963,
+      "failed": 69,
+      "errors": 3,
+      "skipped": 0
+    },
+    "post_fix": {
+      "collected": 1042,
+      "passed": 1042,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "baseline_failures_now_passing": 69,
+    "baseline_failures_remaining": 0,
+    "new_failures": 0,
+    "new_tests_added_since_f0_tests_dir": 10,
+    "removed_tests_since_f0_tests_dir": 0,
+    "default_only_production_function_collection_errors_removed": 3,
+    "skipped_in_post_fix": 0,
+    "historical_nodeid_origin": "Unknown for F0 baseline failures; earlier nodeid-level data was unavailable.",
+    "not_run_within_final_collected_suite": 0,
+    "coverage_limitations": [
+      "No live external OWASP ZAP engine job was run; API, worker lifecycle and human approval behavior were exercised by backend tests.",
+      "The browser regression verifies the login/proxy route and the existing console workflow; the separate Agent screen does not yet render the ZAP plan and approval-note controls."
+    ]
+  },
+  "browser_focused_run": {
+    "command": "pytest -q tests/test_31_web_ui_console.py::test_real_console_create_confirm_debug_report --tb=short",
+    "exit_code": 0,
+    "collected": 1,
+    "passed": 1,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "warnings": 11,
+    "duration_seconds": 20.73,
+    "junit_xml_path_at_run": "/private/tmp/backend-stabilization-browser-final.xml",
+    "console_warning_policy": "Only three exact Ant Design deprecation messages are classified as known; all other console errors fail."
+  }
+}

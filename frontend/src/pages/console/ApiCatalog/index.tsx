@@ -6,26 +6,24 @@
 //   - 读 = 项目可见（viewer+）；写 = 项目成员（member+）；调试 = 平台管理员。
 //   - 跨项目越权按 404 返回，前端不展示。
 //
-// 未接入（明确标记，不虚报）：批量导出、接口版本对比、Mock 服务、AI 用例生成。
-import { useState } from 'react';
+// Mock 服务由独立的 Mock 管理工作区提供。
+import { useEffect, useState } from 'react';
 import { App, Button, Col, Form, Input, Modal, Row, Select, Space, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
-import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/components/PageState';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { useConsoleScope } from '@/hooks/useConsoleScope';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
+import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { API_STATUS_OPTIONS, METHOD_OPTIONS } from './constants';
 import { ApiToolbar } from './ApiToolbar';
 import { ModuleTree } from './ModuleTree';
 import { ApiDetail } from './ApiDetail';
 import { ImportDialog } from './ImportDialog';
-import type {
-  ApiImportRecord,
-  ApiInterfaceCreate,
-  ApiModule,
-  ApiStatus,
-} from '@/types';
+import { ModuleApiList } from './ModuleApiList';
+import './ApiCatalog.css';
+import type { ApiImportRecord, ApiInterfaceCreate, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
+
 
 interface CreateFormValues {
   name: string;
@@ -44,6 +42,11 @@ interface CreateFormValues {
  * 依赖当前项目作用域：未选项目时整页空态。切换项目由 useConsoleScope 失效 ['api-catalog']。
  */
 export function ConsoleApiCatalogPage() {
+  const { currentProjectId } = useConsoleScope();
+  return <ApiCatalogWorkspace key={currentProjectId ?? 'none'} />;
+}
+
+function ApiCatalogWorkspace() {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
@@ -52,6 +55,7 @@ export function ConsoleApiCatalogPage() {
   const [method, setMethod] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<ApiStatus | undefined>(undefined);
   const [selectedApiId, setSelectedApiId] = useState<number | null>(null);
+  const [selectedModuleId, setSelectedModuleId] = useState<number | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
@@ -65,6 +69,16 @@ export function ConsoleApiCatalogPage() {
   });
   const modules: ApiModule[] = modulesQuery.data ?? [];
 
+  useEffect(() => {
+    if (
+      selectedModuleId != null &&
+      modulesQuery.data &&
+      !modulesQuery.data.some((module) => module.id === selectedModuleId)
+    ) {
+      setSelectedModuleId(null);
+    }
+  }, [modulesQuery.data, selectedModuleId]);
+
   const createMutation = useMutation({
     mutationFn: (body: ApiInterfaceCreate) =>
       apiCatalogApi.createApi(currentProjectId!, body),
@@ -73,6 +87,7 @@ export function ConsoleApiCatalogPage() {
       queryClient.invalidateQueries({ queryKey: ['api-catalog'] });
       setCreateOpen(false);
       setSelectedApiId(data.id);
+      setSelectedModuleId(null);
     },
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
   });
@@ -89,6 +104,11 @@ export function ConsoleApiCatalogPage() {
     label: m.is_default ? `${m.name}（默认）` : m.name,
     value: m.id,
   }));
+  const selectedModule = modules.find((module) => module.id === selectedModuleId) ?? null;
+  const selectApi = (id: number | null) => {
+    setSelectedApiId(id);
+    if (id != null) setSelectedModuleId(null);
+  };
 
   return (
     <PageContainer>
@@ -107,8 +127,8 @@ export function ConsoleApiCatalogPage() {
         onShowRecords={() => setRecordsOpen(true)}
       />
 
-      <Row gutter={16}>
-        <Col flex="320px">
+      <Row gutter={16} wrap={false} className="api-catalog-layout">
+        <Col flex="320px" className="api-catalog-sidebar">
           <div
             style={{
               border: '1px solid #f0f0f0',
@@ -125,11 +145,13 @@ export function ConsoleApiCatalogPage() {
               method={method}
               status={status}
               selectedApiId={selectedApiId}
-              onSelectApi={setSelectedApiId}
+              selectedModuleId={selectedModuleId}
+              onSelectApi={selectApi}
+              onSelectModule={setSelectedModuleId}
             />
           </div>
         </Col>
-        <Col flex="auto">
+        <Col flex="1 1 0" style={{ minWidth: 0 }} className="api-catalog-detail">
           <div
             style={{
               border: '1px solid #f0f0f0',
@@ -140,11 +162,22 @@ export function ConsoleApiCatalogPage() {
               overflow: 'auto',
             }}
           >
-            <ApiDetail
-              apiId={selectedApiId}
-              modules={modules}
-              projectId={currentProjectId}
-            />
+            {selectedModule ? (
+              <ModuleApiList
+                projectId={currentProjectId}
+                module={selectedModule}
+                keyword={keyword}
+                method={method}
+                status={status}
+                onSelectApi={(id) => selectApi(id)}
+              />
+            ) : (
+              <ApiDetail
+                apiId={selectedApiId}
+                modules={modules}
+                projectId={currentProjectId}
+              />
+            )}
           </div>
         </Col>
       </Row>
@@ -182,7 +215,7 @@ export function ConsoleApiCatalogPage() {
           <Form.Item name="module_id" label="所属模块" tooltip="留空归入未分类">
             <Select allowClear placeholder="未分类" options={moduleOptions} showSearch optionFilterProp="label" />
           </Form.Item>
-          <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+          <div className="form-field-row">
             <Form.Item
               name="method"
               label="方法"
@@ -198,7 +231,7 @@ export function ConsoleApiCatalogPage() {
             >
               <Select options={API_STATUS_OPTIONS} style={{ width: '100%' }} />
             </Form.Item>
-          </Space>
+          </div>
           <Form.Item
             name="path"
             label="路径"

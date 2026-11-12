@@ -1,11 +1,15 @@
 # 测试开发平台 · 阶段一（统一身份与权限 + 平台基础台）
 
+> 本文主体记录阶段一的历史基线，测试数量及未接入清单不代表当前全部能力。当前项目审查与验证边界见 [项目审查报告](docs/2026-10-28-project-audit-report.md)，启动和联调以 [启动指南](local-startup-guide.md) 为准。
+
 旧项目（`~/Desktop/test-projects`）的重构落地。**旧项目只作分析参考，从未被修改**；
 本仓库是新项目，所有代码、迁移与文档都在这里。
 
 阶段一交付的是「身份、权限、组织/项目骨架、看板与就绪检查」这套底座，
 以及后续测试业务能力（AI 用例、接口执行、UI 自动化……）接入所需的明确扩展点。
 **尚未接入的业务能力全部标记「未接入」，不做假数据、不假装可用。**
+
+本地首次启动与日常开发请看 [根目录启动指南](local-startup-guide.md)；更完整的联调说明见 [docs/getting-started.md](docs/getting-started.md)。
 
 ---
 
@@ -16,26 +20,29 @@ ai-test-project/
 ├── backend/                     FastAPI 后端
 │   ├── app/
 │   │   ├── main.py              应用装配（无启动期建表、无内置种子）
+│   │   ├── models/              平台核心 ORM 模型
 │   │   ├── shared/              配置 / 数据库 / 错误信封 / 角色 / 认证依赖 / 分页
-│   │   └── features/            users · organizations · projects · environment_configuration
-│   │                            model_configuration · dashboard · notifications
+│   │   └── features/            按业务域组织，模块内部按 router / schemas / services / models 拆分
+│   │                            复杂模块按需增加 executors / providers / runtime 等子目录
 │   ├── alembic/                 唯一合法的表结构来源
 │   ├── scripts/seed_admin.py    初始化命令（建库 + 迁移 + 管理员 + 内置环境）
 │   ├── scripts/e2e_smoke.sh     端到端冒烟（13 组，118 项断言）
 │   └── tests/                   pytest（隔离库 testplatform_test）
 ├── frontend/                    React 18 + TS 5.6 + Vite 5 + antd 5
 │   └── src/
-│       ├── App.tsx              单应用双入口的路由表（共享登录态与权限上下文）
-│       ├── layouts/             AdminLayout.tsx · ConsoleLayout.tsx
-│       ├── pages/
-│       │   ├── auth/            登录 / 注册
-│       │   ├── admin/           /admin/*  平台管理端
-│       │   └── console/         /console/* 用户控制台
-│       └── api/ components/ hooks/ types/    请求客户端 · 基础组件 · hooks · 类型
+│       ├── app/                 App.tsx、providers/、router/、layouts/
+│       ├── features/            按业务域组织 API、contracts 与域内能力
+│       ├── pages/               auth/、admin/、console/ 路由页面
+│       ├── shared/              api/、lib/、session/、theme/、ui/
+│       ├── widgets/             执行详情、任务助手等跨页面组合
+│       └── styles/              基础、工作区、管理端、认证与响应式样式
 ├── docs/
+│   ├── README.md                    文档索引（全部文档分类导航）
+│   ├── getting-started.md           前后端本地联调启动指南
 │   ├── current-system-analysis.md   旧项目现状分析（逐模块、逐端点）
 │   ├── target-architecture.md       目标架构与阶段一设计
 │   └── migration-plan.md            旧→新 API 映射、字段与状态码差异
+├── local-startup-guide.md       本地首次初始化与日常启动
 ├── compose.yaml                 本地 PostgreSQL（仅平台主库）
 └── README.md
 ```
@@ -43,7 +50,7 @@ ai-test-project/
 技术栈（实际安装版本）：Python 3.14 / FastAPI 0.141.1 / SQLAlchemy 2.0.54 / Alembic 1.20.0 /
 psycopg 3.3.6 / PyJWT 2.15.1 / bcrypt 4.3.0 / pydantic 2.14 / uvicorn 0.53.0；
 React 18.3 / TypeScript 5.6（strict）/ Vite 5.4 / antd 5.21 / @tanstack/react-query 5.59 /
-react-router-dom 6.26 / dayjs。
+react-router-dom 6.26 / dayjs；图标包 `@ant-design/icons` 5.6.1。
 
 依赖来源只有一处：后端是 `backend/requirements.txt`（**没有** `pyproject.toml`，所以装依赖用
 `pip install -r requirements.txt`，不能用 `pip install -e .`）；前端是 `frontend/package-lock.json`
@@ -55,34 +62,7 @@ react-router-dom 6.26 / dayjs。
 
 ## 2. 快速开始
 
-```bash
-# 0) 起库（首次；数据落在 compose 卷 postgres-data 里）
-docker compose up -d postgres
-docker compose ps                                   # 等 healthcheck 变 healthy
-
-# 1) 后端依赖（backend/ 只有 requirements.txt，没有 pyproject.toml，不要 pip install -e .）
-cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-
-# 2) 配置（仓库里只有不带凭据的样例）
-cp .env.example .env
-#   编辑 .env：DATABASE_URL 指向你的库、SECRET_KEY 换成足够长的随机串
-#   SECRET_KEY 生成：python -c "import secrets;print(secrets.token_urlsafe(48))"
-
-# 3) 初始化数据库 + 首个管理员（凭据只走环境变量，不在 .env、不内置默认值）
-INIT_ADMIN_USERNAME=admin \
-INIT_ADMIN_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(18))')" \
-  .venv/bin/python scripts/seed_admin.py
-
-# 4) 起后端（注意：本项目不自动建表，表结构一律来自 Alembic）
-.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8001
-
-# 5) 起前端（另一个终端）
-cd ../frontend && npm install && npm run dev        # http://localhost:5173
-```
-
-浏览器打开 `http://localhost:5173/` 用第 3 步的账号登录；平台管理端在 `/admin/*`，
-用户控制台在 `/console/*`。两个入口共用同一套登录态与权限上下文。
+首次初始化、管理员安全设置、数据库迁移、日常启动和测试命令统一维护在[根目录启动指南](local-startup-guide.md)，避免 README 与实际配置分叉。
 
 ---
 
@@ -110,7 +90,7 @@ cd ../frontend && npm install && npm run dev        # http://localhost:5173
   .venv/bin/python -m alembic upgrade head          # 只升级
   .venv/bin/python scripts/seed_admin.py            # 建库 + 升级 + 种子
   .venv/bin/python scripts/seed_admin.py --drop     # 先删库再重建（仅本地）
-  .venv/bin/python scripts/seed_admin.py --database-url 'postgresql+psycopg://...'   # 指定库
+  .venv/bin/python scripts/seed_admin.py --database-url "${DATABASE_URL:?请先设置 DATABASE_URL}"   # 指定库
   ```
 
 - 管理员初始化**幂等**：账号已存在则跳过（**绝不覆盖历史密码**）；内置环境按名称去重。
@@ -132,7 +112,7 @@ cd ../frontend && npm install && npm run dev        # http://localhost:5173
 
 ## 5. 验证
 
-三条命令，本地均已跑通：
+以下是 README 早期的验证记录（历史结果）；当前后端回归见 [稳定化交付记录](docs/agent-cluster-refactor/backend-stabilization-delivery.md)：
 
 ```bash
 # 后端单测（隔离库 testplatform_test）
@@ -140,19 +120,21 @@ cd backend && .venv/bin/python -m pytest -q tests/
 #   52 passed, 6 warnings in 39.63s
 
 # 前端类型检查 + 生产构建
-cd frontend && npm run typecheck && npm run build
-#   exit 0（1 条 antd 体积提示，非错误）
+cd frontend && npm test && npm run lint && npm run typecheck && npm run build
+#   exit 0（2026-10-28 修复后无超过 500 kB 的 chunk 提示）
 
 # 端到端冒烟（隔离库 testplatform_e2e，退出即删除）
 cd backend
-INIT_ADMIN_USERNAME=e2e-admin INIT_ADMIN_PASSWORD='E2E-Password-456' \
+INIT_ADMIN_USERNAME=e2e-admin INIT_ADMIN_PASSWORD="$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')" \
   bash scripts/e2e_smoke.sh \
-    --database-url 'postgresql+psycopg://root:fangzhou123@127.0.0.1:5432/testplatform_e2e' \
+    --database-url "${DATABASE_URL:?请先设置 DATABASE_URL}" \
     --port 8001 --frontend-url http://localhost:5173
 #   == 结果：118 通过，0 失败 ==
 ```
 
-6 条 warning 都是无害的：Starlette `TestClient` 弃用、`HTTP_422_UNPROCESSABLE_ENTITY`
+2026-10-29 后端全量回归：`1042 passed, 47 warnings`（F0–F4 稳定化后，隔离测试库，0 skipped）；逐项基线、失败 nodeid 与差异见 [验证资产](docs/agent-cluster-refactor/backend-stabilization-validation/20261029-post-fix/summary.json)。
+
+该 52 passed 历史运行记录了 6 条 warning，包括 Starlette `TestClient` 弃用、`HTTP_422_UNPROCESSABLE_ENTITY`
 弃用、以及一处**故意**用 12 字节密钥触发的 `InsecureKeyLengthWarning`
 （用来验证「密钥过短会被 PyJWT 警告」的行为）。
 
@@ -279,14 +261,28 @@ AI 智能体编排 · 用例自动生成 · API 用例执行 · UI 自动化执�
    同类教训已固化到脚本里：`e2e_smoke.sh` 的连接串改走环境变量而不是 argv，
    清理失败必须打印出来，不再静默。
 
-3. **遗留脚本**：`backend/app/scripts/seed_admin.py` 是迁移初期的旧式入口，已不被引用，
-   初始化请用 `backend/scripts/seed_admin.py`。
+3. **Compose 数据库安全：** 端口仅发布到 `127.0.0.1`；数据库用户、密码和库名必须通过环境变量显式设置，生产凭据由部署密钥管理提供。
 
-4. **`compose.yaml` 里的 `root` / `fangzhou123` 是单机开发默认值**（监听 127.0.0.1、
-   数据在 compose 卷里）。只要 5432 会暴露给局域网或共享机器，先改它并同步 `backend/.env`。
-
-5. **`/healthz` 不带版本前缀**，是部署探活用的；`/readyz`、`/status`、`/ping` 都不存在。
+4. **`/healthz` 不带版本前缀**，是部署探活用的；`/readyz`、`/status`、`/ping` 都不存在。
    API 文档在 `/docs`、`/redoc`、`/openapi.json`。
 # AI-Test-Project
 # AI-Test-Project
 # AI-Test-Project
+
+## Web UI Automation Phase 1
+
+控制台入口：`/console/web-ui`。支持页面对象、结构化 UI 步骤、加密登录态、人工确认、
+Chromium 调试、API + WEB 混合业务执行，以及原有测试报告中的截图/Trace 查看。
+
+```bash
+cd backend
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m playwright install chromium
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python -m pytest tests/test_30_web_ui.py tests/test_31_web_ui_console.py -q
+```
+
+执行前在项目中授权目标 scheme/host/port，配置平台环境；创建用例并保存步骤，人工审核确认后执行。
+Fixture、Mock、测试套件/计划与原有测试用例共用。飞书扫码登录需人工完成后导入 storage_state。
+
+详见 [Web UI Automation Phase 1 交付报告](docs/web-ui-automation-phase1-delivery-report.md)。

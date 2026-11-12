@@ -9,9 +9,9 @@ from __future__ import annotations
 import jwt
 from sqlalchemy import select
 
-from app.models.identity import User
-from app.shared.auth import ALGORITHM
-from app.shared.config import settings
+from app.core.models.identity import User
+from app.core.security.auth import ALGORITHM
+from app.core.config import settings
 
 from tests.conftest import API, DEFAULT_NEW_PASSWORD, DEFAULT_PASSWORD, unique
 

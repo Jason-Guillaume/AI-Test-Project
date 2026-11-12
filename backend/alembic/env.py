@@ -1,7 +1,7 @@
 """Alembic 运行环境。
 
 连接串只从环境变量 DATABASE_URL 读取（与运行期使用同一份配置），
-并把 app.models 的全部表注册进 metadata，便于 autogenerate。
+并把 core 基线模型与各能力包模型注册进 metadata，便于 autogenerate。
 """
 
 from __future__ import annotations
@@ -12,10 +12,33 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from app.shared.database import Base
+from app.core.config import settings
+from app.core.database.base import Base
 
 # 确保所有 ORM 模型被导入并注册进 Base.metadata。
-import app.models  # noqa: F401
+import app.core.models  # noqa: F401
+# 领域 ORM 模型由 Alembic 明确发现，不反向扩展 app.core.models/__init__.py。
+from app.knowledge import models as knowledge_models
+from app.agents import models as agent_models  # noqa: F401
+from app.mcp import models as mcp_models  # noqa: F401
+from app.skills import models as skill_models  # noqa: F401
+from app.tools import models as tool_models  # noqa: F401
+from app.platform.environment_configuration import models as environment_models  # noqa: F401
+from app.platform.notifications import models as notification_models  # noqa: F401
+from app.platform.model_configuration import models as model_center_models  # noqa: F401
+from app.features.api_catalog import models as api_catalog_models  # noqa: F401
+from app.features.business import models as business_models  # noqa: F401
+from app.features.business.models.execution import ActionExecution, FlowExecution  # noqa: F401
+from app.features.defects import models as defect_models  # noqa: F401
+from app.features.mocking import models as mock_models  # noqa: F401
+from app.features.reports import models as report_models  # noqa: F401
+from app.features.security_testing import models as security_models  # noqa: F401
+from app.features.security_testing.zap import models as zap_models  # noqa: F401
+from app.orchestration.tasks import models as task_models  # noqa: F401
+from app.features.test_data import models as test_data_models  # noqa: F401
+from app.features.test_management import models as test_management_models  # noqa: F401
+from app.features.web_testing import models as web_ui_models  # noqa: F401
+from app.features.asr_evaluation import models as asr_evaluation_models  # noqa: F401
 
 # Alembic 传入的运行时配置对象，后面会覆盖其中的数据库 URL。
 config = context.config
@@ -27,10 +50,12 @@ if config.config_file_name is not None:
 # 迁移内容应始终由模型推导，而不是手写 SQL。
 target_metadata = Base.metadata
 
-# 环境变量优先于 alembic.ini 中的占位符。
-database_url = os.getenv("DATABASE_URL")
-if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+# 与应用保持同一配置来源：进程环境变量优先，其次读取 backend/.env。
+database_url = os.getenv("DATABASE_URL") or settings.DATABASE_URL
+if not database_url:
+    raise RuntimeError("运行 Alembic 前必须配置 DATABASE_URL")
+# ConfigParser 将百分号视作插值标记；密码包含百分号时要先转义。
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

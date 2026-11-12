@@ -22,24 +22,25 @@ from app.features.business.schemas import (
     BusinessVariableResponse,
     BusinessVariableUpdate,
 )
-from app.features.business.services._access import (
-    get_project_or_404,
-    require_writable_project,
-    resolve_action_project_id,
-)
-from app.models.identity import User
-from app.shared.errors import conflict, not_found
+from app.features.business.services.access_service import resolve_action_project_id
+from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.models.identity import User
+from app.core.http.errors import conflict, not_found
+from app.lifecycle.service import delete_resource
 
 
 def _precondition_response(p: BusinessPrecondition) -> BusinessPreconditionResponse:
+    """构造`precondition`响应数据。"""
     return BusinessPreconditionResponse.model_validate(p)
 
 
 def _variable_response(v: BusinessVariable) -> BusinessVariableResponse:
+    """构造`variable`响应数据。"""
     return BusinessVariableResponse.model_validate(v)
 
 
 def _state_response(s: BusinessState) -> BusinessStateResponse:
+    """构造状态响应数据。"""
     return BusinessStateResponse.model_validate(s)
 
 
@@ -51,6 +52,7 @@ class ConfigService:
     def list_preconditions(
         self, db: Session, action_id: int, user: User
     ) -> list[BusinessPreconditionResponse]:
+        """列出`preconditions`。"""
         get_project_or_404(db, resolve_action_project_id(db, action_id), user)
         items = (
             db.query(BusinessPrecondition)
@@ -63,6 +65,7 @@ class ConfigService:
     def create_precondition(
         self, db: Session, action_id: int, body: BusinessPreconditionCreate, *, actor: User
     ) -> BusinessPreconditionResponse:
+        """创建前置条件。"""
         require_writable_project(db, resolve_action_project_id(db, action_id), actor)
         precondition = BusinessPrecondition(
             action_id=action_id,
@@ -82,6 +85,7 @@ class ConfigService:
     def update_precondition(
         self, db: Session, precondition_id: int, body: BusinessPreconditionUpdate, *, actor: User
     ) -> BusinessPreconditionResponse:
+        """更新前置条件。"""
         precondition = self._get_writable_precondition_or_404(db, precondition_id, actor)
         data = body.model_dump(exclude_unset=True)
         # 过滤 NOT NULL 字段的 None 值，避免写入空值导致 DB 错误
@@ -95,15 +99,16 @@ class ConfigService:
         return _precondition_response(precondition)
 
     def delete_precondition(self, db: Session, precondition_id: int, *, actor: User) -> None:
+        """删除前置条件。"""
         precondition = self._get_writable_precondition_or_404(db, precondition_id, actor)
-        db.delete(precondition)
-        db.commit()
+        delete_resource(db, "business_precondition", precondition.id, actor=actor)
 
     # ---------------------------------------------------------------- 变量
 
     def list_variables(
         self, db: Session, action_id: int, user: User
     ) -> list[BusinessVariableResponse]:
+        """列出`variables`。"""
         get_project_or_404(db, resolve_action_project_id(db, action_id), user)
         items = (
             db.query(BusinessVariable)
@@ -116,6 +121,7 @@ class ConfigService:
     def create_variable(
         self, db: Session, action_id: int, body: BusinessVariableCreate, *, actor: User
     ) -> BusinessVariableResponse:
+        """创建变量。"""
         require_writable_project(db, resolve_action_project_id(db, action_id), actor)
         _ensure_unique_variable(db, action_id, body.direction, body.name)
         variable = BusinessVariable(
@@ -136,6 +142,7 @@ class ConfigService:
     def update_variable(
         self, db: Session, variable_id: int, body: BusinessVariableUpdate, *, actor: User
     ) -> BusinessVariableResponse:
+        """更新变量。"""
         variable = self._get_writable_variable_or_404(db, variable_id, actor)
         data = body.model_dump(exclude_unset=True)
         # 过滤 NOT NULL 字段的 None 值，避免写入空值导致 DB 错误
@@ -155,13 +162,14 @@ class ConfigService:
         return _variable_response(variable)
 
     def delete_variable(self, db: Session, variable_id: int, *, actor: User) -> None:
+        """删除变量。"""
         variable = self._get_writable_variable_or_404(db, variable_id, actor)
-        db.delete(variable)
-        db.commit()
+        delete_resource(db, "business_variable", variable.id, actor=actor)
 
     # ---------------------------------------------------------------- 状态
 
     def list_states(self, db: Session, action_id: int, user: User) -> list[BusinessStateResponse]:
+        """列出`states`。"""
         get_project_or_404(db, resolve_action_project_id(db, action_id), user)
         items = (
             db.query(BusinessState)
@@ -174,6 +182,7 @@ class ConfigService:
     def create_state(
         self, db: Session, action_id: int, body: BusinessStateCreate, *, actor: User
     ) -> BusinessStateResponse:
+        """创建状态。"""
         require_writable_project(db, resolve_action_project_id(db, action_id), actor)
         _ensure_unique_state(db, action_id, body.entity)
         state = BusinessState(
@@ -191,6 +200,7 @@ class ConfigService:
     def update_state(
         self, db: Session, state_id: int, body: BusinessStateUpdate, *, actor: User
     ) -> BusinessStateResponse:
+        """更新状态。"""
         state = self._get_writable_state_or_404(db, state_id, actor)
         data = body.model_dump(exclude_unset=True)
         # 过滤 NOT NULL 字段的 None 值，避免写入空值导致 DB 错误
@@ -207,15 +217,16 @@ class ConfigService:
         return _state_response(state)
 
     def delete_state(self, db: Session, state_id: int, *, actor: User) -> None:
+        """删除状态。"""
         state = self._get_writable_state_or_404(db, state_id, actor)
-        db.delete(state)
-        db.commit()
+        delete_resource(db, "business_state", state.id, actor=actor)
 
     # ---------------------------------------------------------------- 取实体
 
     def _get_writable_precondition_or_404(
         self, db: Session, precondition_id: int, actor: User
     ) -> BusinessPrecondition:
+        """获取可写前置条件或。"""
         precondition = db.get(BusinessPrecondition, precondition_id)
         if precondition is None:
             raise not_found("前置条件不存在")
@@ -225,6 +236,7 @@ class ConfigService:
     def _get_writable_variable_or_404(
         self, db: Session, variable_id: int, actor: User
     ) -> BusinessVariable:
+        """获取可写变量或。"""
         variable = db.get(BusinessVariable, variable_id)
         if variable is None:
             raise not_found("业务变量不存在")
@@ -234,6 +246,7 @@ class ConfigService:
     def _get_writable_state_or_404(
         self, db: Session, state_id: int, actor: User
     ) -> BusinessState:
+        """获取可写状态或。"""
         state = db.get(BusinessState, state_id)
         if state is None:
             raise not_found("业务状态不存在")
@@ -244,6 +257,7 @@ class ConfigService:
 def _ensure_unique_variable(
     db: Session, action_id: int, direction: str, name: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique`变量。"""
     query = db.query(BusinessVariable).filter(
         BusinessVariable.action_id == action_id,
         BusinessVariable.direction == direction,
@@ -258,6 +272,7 @@ def _ensure_unique_variable(
 def _ensure_unique_state(
     db: Session, action_id: int, entity: str, *, exclude_id: int | None = None
 ) -> None:
+    """确保`unique`状态。"""
     query = db.query(BusinessState).filter(
         BusinessState.action_id == action_id, BusinessState.entity == entity
     )

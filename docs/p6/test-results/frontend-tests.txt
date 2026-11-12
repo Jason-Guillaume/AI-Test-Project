@@ -1,0 +1,53 @@
+
+> testplatform-frontend@1.0.0 test
+> node --test
+
+✔ module filtering preserves parent path and selected child (3.176652ms)
+✔ model filtering finds fixed child and preserves inheritance label (0.414436ms)
+✔ matching parent does not expose nonmatching children; cards use direct matches (0.492168ms)
+✔ 显式选择拒绝零选和已失效资产，并保留合法子集 (2.75973ms)
+✔ 全选控制只选择当前工作区资产，完整选择后可清空 (0.369834ms)
+✔ three-step job submit validates every step and returns audio plus all model slots (12.503444ms)
+✔ final wizard validation rejects a missing field from an earlier step (7.250094ms)
+✔ delayed review success clears only the submitted block and unchanged draft revision (17.915447ms)
+✔ TanStack delayed save keeps another block and a newer same-block edit after selection moves (8.576275ms)
+✔ draft navigation controller protects programmatic push, back, forward, and unload; cancel preserves route state (1.665921ms)
+✔ playback window collects dense and overlapping segments beyond the first 100 rows with bounded concurrency (20.325034ms)
+✔ speaker rename reverting to saved value removes dirty state and confirmed discard clears all names (0.588916ms)
+✔ batch summary remains live for ASR and both review types, and terminal transition triggers one closeout (0.321648ms)
+✔ experiment labels distinguish uncertain state, missing baseline snapshot, and no parameter changes (0.680601ms)
+✔ same-audio model switch options show frozen slot, connection name, model and status (0.573114ms)
+✔ batch audio paste parses pairs and reports the original line on incomplete records (4.831511ms)
+✔ audio duration uses compact mm:ss and hh:mm:ss formats (0.471705ms)
+✔ answer and recent-run failures never collapse to an unbound or unassessed state (0.607101ms)
+✔ audio page wires audition, batch concurrency, project-scoped wizard context and JSON preview confirmation (19.210747ms)
+✔ same audio route switch restores position and active playback state (2.636381ms)
+✔ changing audio source discards the prior playback position (0.324984ms)
+✔ all original route declarations remain registered after relocation and new task, ASR and model-center pages are additive (1.695245ms)
+✔ 待审核统计只数 PENDING，模块去重保序 (2.566512ms)
+✔ 失败模块判定不含 SKIPPED (0.305872ms)
+✔ 批量审核请求体强制 confirm，模块范围必须带 module (0.882784ms)
+✔ 质量汇总按级别计数，未知级别忽略 (2.100318ms)
+✔ 指标文本含耗时与 token，缺省有兜底 (0.96017ms)
+✔ P6 活跃任务轮询，终态停止且存储按账号项目方向隔离 (0.625179ms)
+✔ collects every page and preserves response metadata (2.415544ms)
+✔ does not silently return incomplete data when a page fails or is empty (0.744746ms)
+✔ bounds bulk reads and reports when the total exceeds the safety limit (0.900849ms)
+✔ playback lookup waits for timed segments and stays disabled for plain transcripts (1.536782ms)
+✔ review evidence omits invalid and absent times without rendering NaN (1.512706ms)
+✔ only accepts safe same-site paths (0.87154ms)
+✔ 身份切换推进代次并通知订阅者 (1.64205ms)
+✔ 同一会话过期通知只接纳一次 (0.338811ms)
+✔ 范围 ID 只接受正安全整数 (0.354802ms)
+✔ 迟到的写请求响应在身份变化后被屏蔽 (72.474276ms)
+✔ 登录接口的 401 保留为表单错误 (2.078241ms)
+✔ component CSS uses resolved colors in light mode (123.871385ms)
+✔ component CSS uses resolved colors in dark mode (51.734399ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 41
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3586.62813

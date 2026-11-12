@@ -1,0 +1,62 @@
+[
+  {
+    "path": "/api/v1/openapi.json",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "openapi",
+    "status_code": null
+  },
+  {
+    "path": "/docs",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "swagger_ui_html",
+    "status_code": null
+  },
+  {
+    "path": "/docs/oauth2-redirect",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "swagger_ui_redirect",
+    "status_code": null
+  },
+  {
+    "path": "/redoc",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "redoc_html",
+    "status_code": null
+  },
+  {
+    "path": "/healthz",
+    "methods": [
+      "GET"
+    ],
+    "name": "healthz",
+    "status_code": null
+  },
+  {
+    "path": "/health",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_check",
+    "status_code": null
+  },
+  {
+    "path": "/api/v1/meta",
+    "methods": [
+      "GET"
+    ],
+    "name": "meta",
+    "status_code": null
+  }
+]

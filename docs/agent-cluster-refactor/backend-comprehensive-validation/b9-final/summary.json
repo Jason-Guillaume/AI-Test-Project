@@ -1,0 +1,29 @@
+{
+  "exit_code": 0,
+  "collected": 1049,
+  "passed": 1049,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "duration_seconds": 308.214,
+  "warnings": 47,
+  "warning_categories": {
+    "DeprecationWarning": 24,
+    "InsecureKeyLengthWarning": 1,
+    "PytestCollectionWarning": 10,
+    "SAWarning": 1,
+    "UserWarning": 11
+  },
+  "source_digest": "14037fbd09623ad3b2295aeca340d92440b8fbc328a456d2a52b0ab43f19a0c7",
+  "execution_checkout": "/private/tmp/backend-comprehensive-b9-final/backend",
+  "pytest_arguments": [
+    "-q",
+    "--tb=no",
+    "-ra",
+    "-p",
+    "comprehensive_pytest_plugin"
+  ],
+  "source_changed_during_run": false,
+  "command": "env -u TEST_DATABASE_NAME TEST_POSTGRES_USER=root TEST_POSTGRES_PASSWORD=<runtime secret> TEST_POSTGRES_HOST=127.0.0.1 TEST_POSTGRES_PORT=5432 .venv/bin/python -m pytest -q --tb=no -ra -p comprehensive_pytest_plugin",
+  "database_policy": "Only testplatform_test-p<PID>, never testplatform_dev"
+}

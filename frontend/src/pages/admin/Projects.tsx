@@ -1,5 +1,6 @@
 // 项目管理（平台视角）：归属、负责人、成员、项目角色、出站目标。
 import {
+  Alert,
   App,
   Button,
   Drawer,
@@ -12,26 +13,24 @@ import {
   Tag,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import {
-  projectsApi,
-  type ProjectCreate,
-} from '@/api/projects';
-import type {
-  Paginated,
-  Project,
-  ProjectMember,
-  ProjectRole,
-} from '@/types';
-import { organizationsApi } from '@/api/organizations';
+import { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { projectsApi } from '@/features/projects/api/projects';
+import { dataLifecycleApi } from '@/features/data-lifecycle/api';
+import type { ProjectCreate, ProjectUpdate } from '@/features/projects/contracts';
+import type { Paginated } from '@/shared/api/contracts';
+import type { Project, ProjectMember, ProjectRole } from '@/features/projects/contracts';
+
+import { organizationsApi } from '@/features/organizations/api/organizations';
 import {
   ErrorState,
   LoadingState,
   PageContainer,
-} from '@/components/PageState';
-import { ProjectRoleTag } from '@/components/RoleTag';
-import { ResourceTable, type PaginationState } from '@/components/ResourceTable';
-import { getErrorMessage } from '@/api/client';
+} from '@/shared/ui/PageState';
+import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
+import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 // 项目角色下拉选项：viewer < member < editor 三级
 const PROJECT_ROLE_OPTIONS: { label: string; value: ProjectRole }[] = [
@@ -51,7 +50,8 @@ const PROJECT_ROLE_OPTIONS: { label: string; value: ProjectRole }[] = [
  * 空态：无成员时表格显示「暂无成员」。
  */
 export function AdminProjectsPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   // 分页初值：第一页，每页 10 条
   const [pagination, setPagination] = useState<PaginationState>({
@@ -64,6 +64,9 @@ export function AdminProjectsPage() {
   const [detailId, setDetailId] = useState<number | null>(null);
   // 新建项目弹窗开关
   const [creating, setCreating] = useState(false);
+  // 编辑项目弹窗目标
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
 
   // 拼装查询参数：keyword 空串归一为 undefined
   const query = useMemo(
@@ -80,7 +83,25 @@ export function AdminProjectsPage() {
     queryFn: () => projectsApi.list(query),
   });
 
-  // 表格列：memo 依赖为空数组（columns 内引用闭包外状态），仅首次构建
+  const removeMutation = useMutation({
+    mutationFn: projectsApi.remove,
+    onSuccess: () => {
+      message.success('项目已移入回收站');
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '项目删除失败')),
+  });
+  const removeProjectAsync = removeMutation.mutateAsync;
+
+  const confirmDeleteProject = useCallback((row: Project) => modal.confirm({
+    title: `将项目「${row.name}」移入回收站？`,
+    content: '项目资产及其原关联会保留；存在排队任务、运行任务或启用任务模板时，删除会被拒绝。',
+    okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: () => removeProjectAsync(row.id),
+  }), [modal, removeProjectAsync]);
+
+  // 表格列只依赖删除确认回调，状态 setter 本身保持稳定。
   const columns = useMemo(
     () => [
       { title: 'ID', dataIndex: 'id', width: 70 },
@@ -96,17 +117,19 @@ export function AdminProjectsPage() {
       {
         title: '操作',
         key: 'actions',
-        width: 160,
+        width: 270,
         render: (_: unknown, row: Project) => (
           <Space>
+            <Button size="small" onClick={() => setEditing(row)}>编辑</Button>
             <Button size="small" onClick={() => setDetailId(row.id)}>
               详情
             </Button>
+            <Button size="small" danger onClick={() => confirmDeleteProject(row)}>删除</Button>
           </Space>
         ),
       },
     ],
-    [],
+    [confirmDeleteProject],
   );
 
   const createMutation = useMutation({
@@ -118,6 +141,39 @@ export function AdminProjectsPage() {
     },
     onError: (e) => message.error(getErrorMessage(e)),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: number; body: ProjectUpdate }) => projectsApi.update(id, body),
+    onSuccess: () => {
+      message.success('项目信息已更新');
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditing(null);
+    },
+    onError: (e) => message.error(getErrorMessage(e, '项目信息更新失败')),
+  });
+
+  const deleteSelected = () => {
+    if (!selectedProjectIds.length) return;
+    modal.confirm({
+      title: `将 ${selectedProjectIds.length} 个项目移入回收站？`,
+      content: '项目数据、运行历史和原关联会保留；执行中项目会逐项拒绝，部分成功结果会逐项回执。',
+      okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const receipt = await dataLifecycleApi.deleteMany('project', null, selectedProjectIds);
+          setSelectedProjectIds([]);
+          queryClient.invalidateQueries({ queryKey: ['projects'] });
+          queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+          if (receipt.failed) {
+            modal.info({
+              title: `成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+              content: <Space direction="vertical" style={{ width: '100%' }}>{receipt.items.filter((item) => !item.succeeded).map((item) => <Alert key={item.id} type="error" showIcon message={`项目 #${item.id}`} description={item.error ?? '删除失败'} />)}</Space>,
+            });
+          } else message.success(`已将 ${receipt.succeeded} 个项目移入回收站`);
+        } catch (error) { message.error(getErrorMessage(error, '批量删除失败')); }
+      },
+    });
+  };
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
   if (listQuery.isPending) return <LoadingState />;
@@ -132,7 +188,8 @@ export function AdminProjectsPage() {
 
   return (
     <PageContainer>
-      <Space
+      <PageHeader title="项目管理" subtitle="管理全平台项目归属、负责人和成员角色" />
+      <Space wrap className="ui-list-toolbar"
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
         <Input.Search
@@ -149,12 +206,22 @@ export function AdminProjectsPage() {
         <Button type="primary" onClick={() => setCreating(true)}>
           新建项目
         </Button>
+        <Button danger disabled={!selectedProjectIds.length} onClick={deleteSelected}>批量删除（{selectedProjectIds.length}）</Button>
+        <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
       </Space>
 
       <ResourceTable<Project>
         rowKey={(r) => r.id}
         columns={columns}
         dataSource={data.items}
+        rowSelection={{
+          selectedRowKeys: selectedProjectIds,
+          preserveSelectedRowKeys: true,
+          onChange: (keys) => {
+            if (keys.length > 100) { message.warning('一次最多选择 100 个项目'); return; }
+            setSelectedProjectIds(keys.map(Number));
+          },
+        }}
         loading={listQuery.isFetching}
         total={data.total}
         pagination={pagination}
@@ -174,6 +241,13 @@ export function AdminProjectsPage() {
         onCancel={() => setCreating(false)}
         onSubmit={(body) => createMutation.mutate(body)}
       />
+      {editing && <EditProjectModal
+        key={editing.id}
+        project={editing}
+        loading={updateMutation.isPending}
+        onCancel={() => setEditing(null)}
+        onSubmit={(body) => updateMutation.mutate({ id: editing.id, body })}
+      />}
     </PageContainer>
   );
 }
@@ -232,6 +306,69 @@ function CreateProjectModal({
             options={(orgsData?.items ?? []).map((o) => ({
               value: o.id,
               label: o.name,
+            }))}
+          />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
+/** 编辑项目名称、备注和所属组织。 */
+function EditProjectModal({
+  project,
+  loading,
+  onCancel,
+  onSubmit,
+}: {
+  project: Project;
+  loading: boolean;
+  onCancel: () => void;
+  onSubmit: (body: ProjectUpdate) => void;
+}) {
+  const [form] = Form.useForm<ProjectUpdate>();
+  const { data: orgsData } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => organizationsApi.list(),
+  });
+  return (
+    <Modal
+      title={`编辑项目「${project.name}」`}
+      open
+      confirmLoading={loading}
+      onCancel={onCancel}
+      destroyOnClose
+      onOk={() => form.validateFields().then((values) => onSubmit({
+        ...values,
+        description: values.description ?? null,
+        organization_id: values.organization_id ?? null,
+      }))}
+    >
+      <Form layout="vertical" form={form} initialValues={{
+        name: project.name,
+        description: project.description ?? '',
+        organization_id: project.organization_id ?? undefined,
+      }}>
+        <Form.Item
+          name="name"
+          label="项目名称"
+          rules={[
+            { required: true, message: '请输入项目名称' },
+            { min: 2, max: 100 },
+          ]}
+        >
+          <Input />
+        </Form.Item>
+        <Form.Item name="description" label="备注">
+          <Input.TextArea rows={3} maxLength={500} />
+        </Form.Item>
+        <Form.Item name="organization_id" label="所属组织">
+          <Select
+            allowClear
+            placeholder="选择组织（可选）"
+            options={(orgsData?.items ?? []).map((organization) => ({
+              value: organization.id,
+              label: organization.name,
             }))}
           />
         </Form.Item>

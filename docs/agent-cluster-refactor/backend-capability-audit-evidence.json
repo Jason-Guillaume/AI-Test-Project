@@ -1,0 +1,1129 @@
+{
+  "description": "后端全模块能力边界静态复核，不代表行为测试通过。",
+  "date": "2026-10-29",
+  "scope": "backend/app/**/*.py",
+  "python_files_parsed": 635,
+  "source_set_sha256": "5eedd6dcfe1dbba89265c15d0b1613633aa8636a83ec9e651cf43da699d5449d",
+  "behavior_tests_run": false,
+  "limitations": [
+    "静态导入包含延迟与类型引用，不等同运行时模块环。",
+    "字符串动态导入、反射、回调与锁行为不由本扫描完整覆盖。",
+    "重点源码指纹用于标识审查时的本地文件，不代表已提交版本。"
+  ],
+  "package_inventory": {
+    "app": {
+      "files": 1,
+      "lines": 8
+    },
+    "app.agents": {
+      "files": 54,
+      "lines": 5547
+    },
+    "app.core": {
+      "files": 28,
+      "lines": 2499
+    },
+    "app.execution": {
+      "files": 8,
+      "lines": 808
+    },
+    "app.features": {
+      "files": 1,
+      "lines": 7
+    },
+    "app.features.api_catalog": {
+      "files": 48,
+      "lines": 5318
+    },
+    "app.features.business": {
+      "files": 58,
+      "lines": 5235
+    },
+    "app.features.dashboard": {
+      "files": 5,
+      "lines": 748
+    },
+    "app.features.defects": {
+      "files": 9,
+      "lines": 783
+    },
+    "app.features.mock_management": {
+      "files": 23,
+      "lines": 4191
+    },
+    "app.features.reports": {
+      "files": 9,
+      "lines": 1184
+    },
+    "app.features.security_testing": {
+      "files": 110,
+      "lines": 18356
+    },
+    "app.features.test_data": {
+      "files": 67,
+      "lines": 8957
+    },
+    "app.features.test_management": {
+      "files": 53,
+      "lines": 5138
+    },
+    "app.features.web_ui": {
+      "files": 22,
+      "lines": 2488
+    },
+    "app.llm": {
+      "files": 5,
+      "lines": 676
+    },
+    "app.main": {
+      "files": 1,
+      "lines": 241
+    },
+    "app.mcp": {
+      "files": 7,
+      "lines": 411
+    },
+    "app.orchestration": {
+      "files": 1,
+      "lines": 1
+    },
+    "app.orchestration.tasks": {
+      "files": 40,
+      "lines": 5888
+    },
+    "app.platform": {
+      "files": 1,
+      "lines": 1
+    },
+    "app.platform.agent_governance": {
+      "files": 2,
+      "lines": 192
+    },
+    "app.platform.environment_configuration": {
+      "files": 7,
+      "lines": 878
+    },
+    "app.platform.model_configuration": {
+      "files": 5,
+      "lines": 682
+    },
+    "app.platform.notifications": {
+      "files": 11,
+      "lines": 1265
+    },
+    "app.platform.organizations": {
+      "files": 5,
+      "lines": 824
+    },
+    "app.platform.projects": {
+      "files": 6,
+      "lines": 1006
+    },
+    "app.platform.users": {
+      "files": 6,
+      "lines": 1092
+    },
+    "app.skills": {
+      "files": 8,
+      "lines": 387
+    },
+    "app.tools": {
+      "files": 34,
+      "lines": 2371
+    }
+  },
+  "import_edges": [
+    {
+      "source": "app.agents",
+      "target": "app.core",
+      "count": 35
+    },
+    {
+      "source": "app.agents",
+      "target": "app.features.security_testing",
+      "count": 1
+    },
+    {
+      "source": "app.agents",
+      "target": "app.features.test_management",
+      "count": 1
+    },
+    {
+      "source": "app.agents",
+      "target": "app.features.web_ui",
+      "count": 5
+    },
+    {
+      "source": "app.agents",
+      "target": "app.llm",
+      "count": 11
+    },
+    {
+      "source": "app.agents",
+      "target": "app.mcp",
+      "count": 4
+    },
+    {
+      "source": "app.agents",
+      "target": "app.orchestration.tasks",
+      "count": 2
+    },
+    {
+      "source": "app.agents",
+      "target": "app.skills",
+      "count": 8
+    },
+    {
+      "source": "app.agents",
+      "target": "app.tools",
+      "count": 24
+    },
+    {
+      "source": "app.execution",
+      "target": "app.core",
+      "count": 4
+    },
+    {
+      "source": "app.execution",
+      "target": "app.platform.projects",
+      "count": 1
+    },
+    {
+      "source": "app.features.api_catalog",
+      "target": "app.core",
+      "count": 45
+    },
+    {
+      "source": "app.features.api_catalog",
+      "target": "app.execution",
+      "count": 3
+    },
+    {
+      "source": "app.features.api_catalog",
+      "target": "app.platform.environment_configuration",
+      "count": 1
+    },
+    {
+      "source": "app.features.business",
+      "target": "app.core",
+      "count": 82
+    },
+    {
+      "source": "app.features.business",
+      "target": "app.execution",
+      "count": 3
+    },
+    {
+      "source": "app.features.business",
+      "target": "app.features.api_catalog",
+      "count": 4
+    },
+    {
+      "source": "app.features.business",
+      "target": "app.features.test_management",
+      "count": 2
+    },
+    {
+      "source": "app.features.business",
+      "target": "app.features.web_ui",
+      "count": 4
+    },
+    {
+      "source": "app.features.business",
+      "target": "app.platform.environment_configuration",
+      "count": 1
+    },
+    {
+      "source": "app.features.dashboard",
+      "target": "app.core",
+      "count": 12
+    },
+    {
+      "source": "app.features.dashboard",
+      "target": "app.features.defects",
+      "count": 2
+    },
+    {
+      "source": "app.features.dashboard",
+      "target": "app.features.reports",
+      "count": 1
+    },
+    {
+      "source": "app.features.dashboard",
+      "target": "app.features.test_management",
+      "count": 2
+    },
+    {
+      "source": "app.features.defects",
+      "target": "app.core",
+      "count": 14
+    },
+    {
+      "source": "app.features.defects",
+      "target": "app.features.security_testing",
+      "count": 1
+    },
+    {
+      "source": "app.features.defects",
+      "target": "app.features.test_management",
+      "count": 1
+    },
+    {
+      "source": "app.features.mock_management",
+      "target": "app.core",
+      "count": 33
+    },
+    {
+      "source": "app.features.mock_management",
+      "target": "app.execution",
+      "count": 3
+    },
+    {
+      "source": "app.features.mock_management",
+      "target": "app.features.api_catalog",
+      "count": 2
+    },
+    {
+      "source": "app.features.mock_management",
+      "target": "app.features.test_management",
+      "count": 3
+    },
+    {
+      "source": "app.features.reports",
+      "target": "app.core",
+      "count": 11
+    },
+    {
+      "source": "app.features.reports",
+      "target": "app.features.mock_management",
+      "count": 1
+    },
+    {
+      "source": "app.features.reports",
+      "target": "app.features.security_testing",
+      "count": 2
+    },
+    {
+      "source": "app.features.reports",
+      "target": "app.features.test_management",
+      "count": 3
+    },
+    {
+      "source": "app.features.reports",
+      "target": "app.llm",
+      "count": 1
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.core",
+      "count": 125
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.execution",
+      "count": 3
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.features.api_catalog",
+      "count": 6
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.features.business",
+      "count": 6
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.features.test_data",
+      "count": 3
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.features.test_management",
+      "count": 17
+    },
+    {
+      "source": "app.features.security_testing",
+      "target": "app.platform.environment_configuration",
+      "count": 4
+    },
+    {
+      "source": "app.features.test_data",
+      "target": "app.core",
+      "count": 114
+    },
+    {
+      "source": "app.features.test_data",
+      "target": "app.execution",
+      "count": 13
+    },
+    {
+      "source": "app.features.test_data",
+      "target": "app.features.api_catalog",
+      "count": 1
+    },
+    {
+      "source": "app.features.test_data",
+      "target": "app.features.business",
+      "count": 7
+    },
+    {
+      "source": "app.features.test_data",
+      "target": "app.platform.environment_configuration",
+      "count": 4
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.core",
+      "count": 91
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.execution",
+      "count": 3
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.features.api_catalog",
+      "count": 1
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.features.business",
+      "count": 10
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.features.mock_management",
+      "count": 1
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.features.security_testing",
+      "count": 1
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.features.test_data",
+      "count": 6
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.features.web_ui",
+      "count": 2
+    },
+    {
+      "source": "app.features.test_management",
+      "target": "app.platform.environment_configuration",
+      "count": 2
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.core",
+      "count": 29
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.execution",
+      "count": 3
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.features.business",
+      "count": 7
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.features.reports",
+      "count": 1
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.features.test_management",
+      "count": 19
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.llm",
+      "count": 2
+    },
+    {
+      "source": "app.features.web_ui",
+      "target": "app.platform.environment_configuration",
+      "count": 3
+    },
+    {
+      "source": "app.llm",
+      "target": "app.core",
+      "count": 2
+    },
+    {
+      "source": "app.llm",
+      "target": "app.platform.model_configuration",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.agents",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.core",
+      "count": 6
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.api_catalog",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.business",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.dashboard",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.defects",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.mock_management",
+      "count": 2
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.reports",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.security_testing",
+      "count": 3
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.test_data",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.test_management",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.features.web_ui",
+      "count": 2
+    },
+    {
+      "source": "app.main",
+      "target": "app.llm",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.orchestration.tasks",
+      "count": 2
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.agent_governance",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.environment_configuration",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.model_configuration",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.notifications",
+      "count": 2
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.organizations",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.projects",
+      "count": 1
+    },
+    {
+      "source": "app.main",
+      "target": "app.platform.users",
+      "count": 2
+    },
+    {
+      "source": "app.mcp",
+      "target": "app.core",
+      "count": 4
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.agents",
+      "count": 16
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.core",
+      "count": 67
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.features.api_catalog",
+      "count": 5
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.features.reports",
+      "count": 5
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.features.security_testing",
+      "count": 14
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.features.test_management",
+      "count": 12
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.features.web_ui",
+      "count": 27
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.llm",
+      "count": 8
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.mcp",
+      "count": 2
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.platform.environment_configuration",
+      "count": 3
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.skills",
+      "count": 2
+    },
+    {
+      "source": "app.orchestration.tasks",
+      "target": "app.tools",
+      "count": 6
+    },
+    {
+      "source": "app.platform.agent_governance",
+      "target": "app.agents",
+      "count": 3
+    },
+    {
+      "source": "app.platform.agent_governance",
+      "target": "app.core",
+      "count": 4
+    },
+    {
+      "source": "app.platform.agent_governance",
+      "target": "app.mcp",
+      "count": 2
+    },
+    {
+      "source": "app.platform.agent_governance",
+      "target": "app.skills",
+      "count": 2
+    },
+    {
+      "source": "app.platform.agent_governance",
+      "target": "app.tools",
+      "count": 1
+    },
+    {
+      "source": "app.platform.environment_configuration",
+      "target": "app.core",
+      "count": 10
+    },
+    {
+      "source": "app.platform.model_configuration",
+      "target": "app.core",
+      "count": 17
+    },
+    {
+      "source": "app.platform.notifications",
+      "target": "app.core",
+      "count": 20
+    },
+    {
+      "source": "app.platform.notifications",
+      "target": "app.features.reports",
+      "count": 2
+    },
+    {
+      "source": "app.platform.notifications",
+      "target": "app.features.test_management",
+      "count": 2
+    },
+    {
+      "source": "app.platform.organizations",
+      "target": "app.core",
+      "count": 11
+    },
+    {
+      "source": "app.platform.projects",
+      "target": "app.core",
+      "count": 13
+    },
+    {
+      "source": "app.platform.projects",
+      "target": "app.platform.environment_configuration",
+      "count": 3
+    },
+    {
+      "source": "app.platform.users",
+      "target": "app.core",
+      "count": 22
+    },
+    {
+      "source": "app.platform.users",
+      "target": "app.platform.organizations",
+      "count": 3
+    },
+    {
+      "source": "app.skills",
+      "target": "app.core",
+      "count": 2
+    },
+    {
+      "source": "app.skills",
+      "target": "app.mcp",
+      "count": 1
+    },
+    {
+      "source": "app.tools",
+      "target": "app.core",
+      "count": 18
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.api_catalog",
+      "count": 5
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.business",
+      "count": 9
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.mock_management",
+      "count": 6
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.reports",
+      "count": 2
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.security_testing",
+      "count": 10
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.test_data",
+      "count": 2
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.test_management",
+      "count": 17
+    },
+    {
+      "source": "app.tools",
+      "target": "app.features.web_ui",
+      "count": 3
+    },
+    {
+      "source": "app.tools",
+      "target": "app.platform.environment_configuration",
+      "count": 1
+    },
+    {
+      "source": "app.tools",
+      "target": "app.platform.notifications",
+      "count": 2
+    }
+  ],
+  "bidirectional_package_pairs": [
+    {
+      "a": "app.agents",
+      "b": "app.orchestration.tasks",
+      "a_to_b": 2,
+      "b_to_a": 16
+    },
+    {
+      "a": "app.features.business",
+      "b": "app.features.test_management",
+      "a_to_b": 2,
+      "b_to_a": 10
+    },
+    {
+      "a": "app.features.business",
+      "b": "app.features.web_ui",
+      "a_to_b": 4,
+      "b_to_a": 7
+    },
+    {
+      "a": "app.features.mock_management",
+      "b": "app.features.test_management",
+      "a_to_b": 3,
+      "b_to_a": 1
+    },
+    {
+      "a": "app.features.security_testing",
+      "b": "app.features.test_management",
+      "a_to_b": 17,
+      "b_to_a": 1
+    },
+    {
+      "a": "app.features.test_management",
+      "b": "app.features.web_ui",
+      "a_to_b": 2,
+      "b_to_a": 19
+    }
+  ],
+  "identical_project_access_bodies": [
+    {
+      "function": "check_writable",
+      "copies": 6,
+      "locations": [
+        {
+          "path": "backend/app/features/api_catalog/services/access_service.py",
+          "line": 30,
+          "function": "check_writable"
+        },
+        {
+          "path": "backend/app/features/business/services/access_service.py",
+          "line": 40,
+          "function": "check_writable"
+        },
+        {
+          "path": "backend/app/features/mock_management/services/access_service.py",
+          "line": 47,
+          "function": "check_writable"
+        },
+        {
+          "path": "backend/app/features/security_testing/services/access_service.py",
+          "line": 49,
+          "function": "check_writable"
+        },
+        {
+          "path": "backend/app/features/test_data/services/access_service.py",
+          "line": 47,
+          "function": "check_writable"
+        },
+        {
+          "path": "backend/app/features/test_management/services/access_service.py",
+          "line": 45,
+          "function": "check_writable"
+        }
+      ]
+    },
+    {
+      "function": "get_project_or_404",
+      "copies": 7,
+      "locations": [
+        {
+          "path": "backend/app/features/api_catalog/services/access_service.py",
+          "line": 20,
+          "function": "get_project_or_404"
+        },
+        {
+          "path": "backend/app/features/business/services/access_service.py",
+          "line": 30,
+          "function": "get_project_or_404"
+        },
+        {
+          "path": "backend/app/features/mock_management/services/access_service.py",
+          "line": 37,
+          "function": "get_project_or_404"
+        },
+        {
+          "path": "backend/app/features/security_testing/services/access_service.py",
+          "line": 39,
+          "function": "get_project_or_404"
+        },
+        {
+          "path": "backend/app/features/security_testing/zap/services/_access.py",
+          "line": 42,
+          "function": "get_project_or_404"
+        },
+        {
+          "path": "backend/app/features/test_data/services/access_service.py",
+          "line": 37,
+          "function": "get_project_or_404"
+        },
+        {
+          "path": "backend/app/features/test_management/services/access_service.py",
+          "line": 35,
+          "function": "get_project_or_404"
+        }
+      ]
+    },
+    {
+      "function": "require_writable_project",
+      "copies": 2,
+      "locations": [
+        {
+          "path": "backend/app/features/business/services/access_service.py",
+          "line": 47,
+          "function": "require_writable_project"
+        },
+        {
+          "path": "backend/app/features/test_management/services/access_service.py",
+          "line": 52,
+          "function": "require_writable_project"
+        }
+      ]
+    },
+    {
+      "function": "require_writable_project",
+      "copies": 3,
+      "locations": [
+        {
+          "path": "backend/app/features/mock_management/services/access_service.py",
+          "line": 54,
+          "function": "require_writable_project"
+        },
+        {
+          "path": "backend/app/features/security_testing/services/access_service.py",
+          "line": 56,
+          "function": "require_writable_project"
+        },
+        {
+          "path": "backend/app/features/test_data/services/access_service.py",
+          "line": 54,
+          "function": "require_writable_project"
+        }
+      ]
+    }
+  ],
+  "direct_transactions_in_router_handlers": [
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "line": 158,
+      "function": "mark_read",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "line": 183,
+      "function": "mark_all_read",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "line": 203,
+      "function": "delete_notification",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 148,
+      "function": "create_organization",
+      "operation": "flush"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 158,
+      "function": "create_organization",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 193,
+      "function": "update_organization",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 325,
+      "function": "put_member",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 348,
+      "function": "delete_member",
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 396,
+      "function": "transfer_ownership",
+      "operation": "commit"
+    }
+  ],
+  "reviewed_source_fingerprints": [
+    {
+      "path": "backend/app/agents/services/reference_service.py",
+      "sha256": "dece0c0ffcbcfa3a75928a25cfec80e052b95b4849360d6cf894d0c28d6b5adf"
+    },
+    {
+      "path": "backend/app/agents/workflows/legacy/nodes/web_agent.py",
+      "sha256": "8180801aaaa32bda0092ac2956ae3d678a520763e231c1e3fda4c1a01da738cf"
+    },
+    {
+      "path": "backend/app/core/security/crypto.py",
+      "sha256": "5823a998467dd3a9dc4b8501ab0d110e4b524eb6fce2b3977e91950323ad6d63"
+    },
+    {
+      "path": "backend/app/execution/http/outbound_policy.py",
+      "sha256": "1c36b2dba97f0f12bb38db7ebd3078a5e8e74ac297e1d564a251448fca5f29df"
+    },
+    {
+      "path": "backend/app/features/business/executors/action_executor.py",
+      "sha256": "23b51a2ad54e44eb799dcd84d4cffceb60722d8d9205432ccd9c1795eece82d2"
+    },
+    {
+      "path": "backend/app/features/business/executors/masking.py",
+      "sha256": "bdd0a63781a7a845d62c57f8aca01257e1ed22bbefbbd672c856bb09677eca2c"
+    },
+    {
+      "path": "backend/app/features/business/services/binding_service.py",
+      "sha256": "422e186a5b2db2c5fa8cfa381e82e0f914cc642c4375c4c2fe3a5b01a2addacb"
+    },
+    {
+      "path": "backend/app/features/dashboard/services/dashboard_service.py",
+      "sha256": "002574de7a0d6077c96ee36c083dcb4df40e63165c425d0f79d66160086a1fde"
+    },
+    {
+      "path": "backend/app/features/mock_management/services/test_case_mock_service.py",
+      "sha256": "3a0020d80bfd49295e5e3c3a4dc995c4ff1c00b5f5dcac7700bc75722e63262b"
+    },
+    {
+      "path": "backend/app/features/test_management/executors/test_case_executor.py",
+      "sha256": "879f8946fdf55c8351b21d4aa1a08a2b8b8ebeeae9e35e9f813ecdb432813ddf"
+    },
+    {
+      "path": "backend/app/llm/providers/openai_compatible.py",
+      "sha256": "c25d2bbde6fc52b1cc2136439306157b0f6c574427bb3fee0f7722cc9869ef90"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/handlers/planning.py",
+      "sha256": "37079287bbb2503bbbd4e9b117cf3319a2a5f4162d28acf61cd848ac1259ecb9"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/handlers/reviewing.py",
+      "sha256": "a1d9948e867c19c1df9f48824237eabdeaede0526b24c04c3811def916bd3f54"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/prompts.py",
+      "sha256": "ccdc9eace15dd652bd44f82419fb19d9d8e0bb25bbaf916f59171b1c6dad0c61"
+    },
+    {
+      "path": "backend/app/platform/model_configuration/services/model_config_service.py",
+      "sha256": "7b95988f708490779d7d74c27a1247c843d9ed9107535252bbfb092481cea0ab"
+    },
+    {
+      "path": "backend/app/platform/notifications/channel_router.py",
+      "sha256": "22e66398d483405cf1e37940d3cec7500f195c9a79e338c7e077f550347aa577"
+    },
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "sha256": "4c7a0c827b214af80151f012080f8051b7dfc0da193bf9e990c9fc8f978869a2"
+    },
+    {
+      "path": "backend/app/platform/notifications/services/channel_service.py",
+      "sha256": "32dec5128006f6be4b70058b15d24614f1f891a28106aa1ca192bb24728a5d93"
+    },
+    {
+      "path": "backend/app/platform/notifications/services/feishu_service.py",
+      "sha256": "b55661303d2bf5f4d4b9ea4e62ff7c8711ca11db1a778269ab18841271e61d03"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "sha256": "3a111dfc3c8842af23ae2c8e5f3992718b2c407c7e6dcf9db1041c1c3112cf28"
+    },
+    {
+      "path": "backend/app/tools/builtin/test_management/execution_tool.py",
+      "sha256": "df7438e28b33c3207f18114ff8176483868773d219ba026ec612552ca5951214"
+    },
+    {
+      "path": "backend/app/features/mock_management/runtime_router.py",
+      "sha256": "4e99693096c4c401c623cf622498a8e405efa1d592c2dbf1d4e711264249851c"
+    }
+  ],
+  "transactions_in_router_source_files": [
+    {
+      "path": "backend/app/features/mock_management/runtime_router.py",
+      "line": 58,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "line": 158,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "line": 183,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/notifications/router.py",
+      "line": 203,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 148,
+      "operation": "flush"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 158,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 193,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 325,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 348,
+      "operation": "commit"
+    },
+    {
+      "path": "backend/app/platform/organizations/router.py",
+      "line": 396,
+      "operation": "commit"
+    }
+  ]
+}

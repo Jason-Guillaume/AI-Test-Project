@@ -1,0 +1,370 @@
+[
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 134,
+      "path": "\"/\"",
+      "element": "{<HomeRedirect />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 136,
+      "path": "\"/login\"",
+      "element": "{\n            // 仅游客可见：已登录用户访问会被重定向回各自入口。\n            <GuestOnly>\n              <LoginPage />\n            </GuestOnly>\n          }"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 145,
+      "path": "\"/register\"",
+      "element": "{\n            <GuestOnly>\n              <RegisterPage />\n            </GuestOnly>\n          }"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 154,
+      "path": "\"/admin\"",
+      "element": "{\n            // 平台管理员专属分支；非 admin 命中 403 页。\n            <RequireAdmin>\n              <AdminLayout />\n            </RequireAdmin>\n          }"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 163,
+      "index": "true",
+      "element": "{<Navigate to=\"/admin/dashboard\" replace />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 164,
+      "path": "\"dashboard\"",
+      "element": "{<AdminDashboardPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 165,
+      "path": "\"users\"",
+      "element": "{<AdminUsersPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 166,
+      "path": "\"organizations\"",
+      "element": "{<AdminOrganizationsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 167,
+      "path": "\"projects\"",
+      "element": "{<AdminProjectsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 168,
+      "path": "\"model-configs\"",
+      "element": "{<AdminModelConfigsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 169,
+      "path": "\"environments\"",
+      "element": "{<AdminEnvironmentsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 170,
+      "path": "\"agents\"",
+      "element": "{<AdminAgentGovernancePage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 171,
+      "path": "\"mcp\"",
+      "element": "{<AdminAgentGovernancePage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 172,
+      "path": "\"skills\"",
+      "element": "{<AdminAgentGovernancePage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 173,
+      "path": "\"tools\"",
+      "element": "{<AdminAgentGovernancePage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 176,
+      "path": "\"/console\"",
+      "element": "{\n            // ConsoleScopeProvider 只提供“当前组织/项目”选择态，不做鉴权。\n            <RequireAuth>\n              <ConsoleScopeProvider>\n                <ConsoleLayout />\n              </ConsoleScopeProvider>\n            </RequireAuth>\n          }"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 187,
+      "index": "true",
+      "element": "{<ConsoleWorkbenchPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 188,
+      "path": "\"projects\"",
+      "element": "{<ConsoleProjectsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 189,
+      "path": "\"projects/:id\"",
+      "element": "{<ConsoleProjectDetailPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 190,
+      "path": "\"defects\"",
+      "element": "{<ConsoleDefectsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 191,
+      "path": "\"api-catalog\"",
+      "element": "{<ConsoleApiCatalogPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 192,
+      "path": "\"business-management\"",
+      "element": "{<ConsoleBusinessManagementPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 193,
+      "path": "\"test-asset\"",
+      "element": "{<ConsoleTestAssetPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 194,
+      "path": "\"test-suites\"",
+      "element": "{<ConsoleTestSuitesPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 195,
+      "path": "\"test-plans\"",
+      "element": "{<ConsoleTestPlansPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 196,
+      "path": "\"execution-center\"",
+      "element": "{<ConsoleExecutionCenterPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 197,
+      "path": "\"execution-history\"",
+      "element": "{<ConsoleExecutionHistoryPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 198,
+      "path": "\"test-reports\"",
+      "element": "{<ConsoleReportListPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 199,
+      "path": "\"test-reports/:reportId\"",
+      "element": "{<ConsoleReportDetailPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 200,
+      "path": "\"notification-channels\"",
+      "element": "{<ConsoleNotificationChannelsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 201,
+      "path": "\"test-data\"",
+      "element": "{<ConsoleTestDataPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 202,
+      "path": "\"mock-management\"",
+      "element": "{<ConsoleMockManagementPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 203,
+      "path": "\"mock-management/services/:serviceId\"",
+      "element": "{<ConsoleMockServiceDetailPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 204,
+      "path": "\"mock-management/endpoints/:endpointId\"",
+      "element": "{<ConsoleMockEndpointPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 205,
+      "path": "\"mock-management/executions\"",
+      "element": "{<ConsoleMockExecutionListPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 206,
+      "path": "\"web-ui\"",
+      "element": "{<ConsoleWebUIPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 207,
+      "path": "\"web-ui-agent\"",
+      "element": "{<ConsoleWebUIAgentPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 208,
+      "path": "\"security-testing\"",
+      "element": "{<ConsoleSecurityTestingPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 209,
+      "path": "\"tasks\"",
+      "element": "{<ConsoleTasksPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 210,
+      "path": "\"tasks/:taskId\"",
+      "element": "{<ConsoleTaskDetailPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 211,
+      "path": "\"agent\"",
+      "element": "{<ConsoleAgentPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 212,
+      "path": "\"notifications\"",
+      "element": "{<ConsoleNotificationsPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 213,
+      "path": "\"profile\"",
+      "element": "{<ConsoleProfilePage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 216,
+      "path": "\"/403\"",
+      "element": "{<ForbiddenPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 217,
+      "path": "\"/404\"",
+      "element": "{<NotFoundPage />}"
+    }
+  },
+  {
+    "source": "frontend/src/App.tsx",
+    "route": {
+      "line": 218,
+      "path": "\"*\"",
+      "element": "{<NotFoundPage />}"
+    }
+  }
+]

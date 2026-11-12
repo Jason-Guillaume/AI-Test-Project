@@ -9,18 +9,19 @@
 feature-local 表，由迁移 0004 建立。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
-from sqlalchemy.sql import func
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessState(Base):
+class BusinessState(SoftDeleteBase):
     """业务动作对某实体的前置/后置状态定义。"""
 
     __tablename__ = "business_state"
     __table_args__ = (
-        UniqueConstraint("action_id", "entity", name="uq_business_state_action_entity"),
+        Index("uq_business_state_action_entity", "action_id", "entity", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         {"comment": "业务动作对某实体的前置/后置状态定义"},
     )
     # 唯一约束 (action_id, entity)：同一动作对同一实体只定义一组 Pre/Post 状态。

@@ -1,15 +1,8 @@
 // 业务管理页常量：下拉选项与文案标签，与后端枚举字面量严格对齐。
 // 仅放纯静态选项，不放业务逻辑。
 
-import type {
-  BusinessApiLocation,
-  BusinessDomainStatus,
-  BusinessFlowStatus,
-  BusinessPreconditionOperator,
-  BusinessPreconditionType,
-  BusinessRuleType,
-  BusinessVariableDataType,
-} from '@/types';
+import type { BusinessActionType, BusinessApiLocation, BusinessDomainStatus, BusinessFlowStatus, BusinessPreconditionOperator, BusinessPreconditionType, BusinessRuleType, BusinessVariableDataType } from '@/features/business/contracts';
+
 
 export const DOMAIN_STATUS_OPTIONS = [
   { value: 'ACTIVE' as BusinessDomainStatus, label: '启用' },
@@ -23,9 +16,7 @@ export const FLOW_STATUS_OPTIONS = [
 ];
 
 export const ACTION_TYPE_OPTIONS = [
-  { value: 'API', label: 'API 通道' },
-  { value: 'WEB', label: 'Web 通道（预留）' },
-  { value: 'MOBILE', label: '移动端通道（预留）' },
+  { value: 'NORMAL' as BusinessActionType, label: '常规动作' },
 ];
 
 export const PRECONDITION_TYPE_OPTIONS = [
@@ -40,6 +31,8 @@ export const PRECONDITION_OPERATOR_OPTIONS = [
   { value: 'NE' as BusinessPreconditionOperator, label: '不等于 (NE)' },
   { value: 'IN' as BusinessPreconditionOperator, label: '包含 (IN)' },
   { value: 'CONTAINS' as BusinessPreconditionOperator, label: '包含文本 (CONTAINS)' },
+  { value: 'EXISTS' as BusinessPreconditionOperator, label: '存在 (EXISTS)' },
+  { value: 'NOT_EXISTS' as BusinessPreconditionOperator, label: '不存在 (NOT_EXISTS)' },
 ];
 
 export const VARIABLE_DIRECTION_OPTIONS = [

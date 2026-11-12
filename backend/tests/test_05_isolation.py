@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
-from app.models.project import ProjectMember
+from app.core.models.project import ProjectMember
 
 from tests.conftest import unique
 

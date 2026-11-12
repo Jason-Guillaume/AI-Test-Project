@@ -1,0 +1,141 @@
+{
+  "description": "架构审计复核快照；仅状态、源码哈希与静态解析结果，不代表运行测试通过。工作区正在变化，逐文件读取非原子。",
+  "captured_at": "2026-11-10T17:32:13.891717+08:00",
+  "head": "aa46bf17ebb5831429ca3fd61712ce3e2b7ea841",
+  "branch": "feature/case-generation-closed-loop",
+  "git_status_short": [
+    "M .gitignore",
+    " M backend/app/agents/services/case_generation_service.py",
+    " M backend/app/core/config.py",
+    " M backend/app/features/test_management/models/case_generation.py",
+    " M backend/app/features/test_management/router/test_generation.py",
+    " M backend/app/features/test_management/schemas/generation.py",
+    " M backend/app/features/test_management/services/generation_service.py",
+    " M backend/app/llm/tracing.py",
+    " M backend/app/orchestration/tasks/runtime/completion_service.py",
+    " M backend/app/orchestration/tasks/runtime/lease_service.py",
+    " M backend/app/orchestration/tasks/runtime/worker.py",
+    " M backend/app/orchestration/tasks/services/command_service.py",
+    " M backend/app/orchestration/tasks/services/message_service.py",
+    " M backend/app/orchestration/tasks/services/serializers.py",
+    " M frontend/package-lock.json",
+    " M frontend/package.json",
+    " M frontend/src/features/tasks/contracts.ts",
+    " M frontend/src/features/test-management/api/testManagement.ts",
+    " M frontend/src/features/test-management/contracts.ts",
+    " M frontend/src/pages/console/TestManagement/GenerationWorkbench.tsx",
+    " M frontend/src/pages/console/TestManagement/generationReview.d.mts",
+    " M frontend/src/pages/console/TestManagement/generationReview.mjs",
+    " M frontend/tests/generationReview.test.mjs",
+    " M frontend/tsconfig.node.json",
+    "?? .idea/",
+    "?? backend/alembic/versions/0050_case_generation_tasks.py",
+    "?? backend/app/features/test_management/services/generation_tasks.py",
+    "?? backend/app/orchestration/tasks/runtime/handlers/case_generation.py",
+    "?? backend/scripts/llm_stub_server.py",
+    "?? backend/tests/test_50_migration_0049.py",
+    "?? backend/tests/test_51_generation_tasks.py",
+    "?? backend/tests/test_52_generation_task_migration.py",
+    "?? docs/p6/",
+    "?? frontend/e2e/",
+    "?? frontend/playwright.config.ts",
+    "?? scripts/e2e_case_generation.sh"
+  ],
+  "files": [
+    {
+      "path": "backend/app/orchestration/tasks/models/task.py",
+      "sha256": "889d758649d3f906be7b798644812cdf75f669be81d1e6dac3b30fd0b99b36f2",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/worker.py",
+      "sha256": "a32bf23d031ddefa32c7691a9c40cd026e60537ca4ea0dcc6ce01b6c8df858d1",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/lease_service.py",
+      "sha256": "55f565cae5e021a0eebdefede025aef9ef70542b546378b0281557a4a4ab528b",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/completion_service.py",
+      "sha256": "57e388328ee75c9b7e93cbcbb8369d56d5779baa5a181ea81341ba30414ad5a9",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/orchestration/tasks/runtime/handlers/case_generation.py",
+      "sha256": "355f9ecbd3aee65c05fde83773de218b45f2df27b9a0c195dc35db9295c6951d",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/features/test_management/services/generation_tasks.py",
+      "sha256": "303969c1d3179c64627bb3ee37ce72dbd7162dc215b31f3e4df1f80377d7b348",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/llm/tracing.py",
+      "sha256": "31ddfe03fd74e568aac745322529aac80e966407c0df5a6142653bed4c6d5e07",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/llm/providers/openai_compatible.py",
+      "sha256": "3a879ba86fb20d71eb223777d82193dae9f7244707af830dfc45ca3530899efb",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/agents/runtime/subagents.py",
+      "sha256": "f76b7d99e68e2337f98303aaf2b0b3f50a0def2fc2947704e5a48e8c8f9cf70c",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/knowledge/service.py",
+      "sha256": "14c509e82bea6286907df629d16bba3def622beb001efa389793285e2e6619d8",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/knowledge/models.py",
+      "sha256": "3274f8a9ae5aa223667cd11177a9744950fff44eef84d15e27fdfc7e9cc97013",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/agents/models/definition.py",
+      "sha256": "1d41afc279943d7ac45878ad775e5cc2d740140c42d71b8c348ccce22ba856cb",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/agents/models/session.py",
+      "sha256": "5b5a2e90e22b78a01f9cad3489b30189a3a3a22bd2e701ebd8231aed6d4104eb",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/skills/models/definition.py",
+      "sha256": "53d0a738cd0095bd1561d0f78d5e4812adb40cce14c97106aa107a9d3b95db78",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/app/platform/model_configuration/models.py",
+      "sha256": "21e1ac82edf859fea5d2c59f29d03a865a3b9a86d3d457b735572e0e3adc970f",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/alembic/versions/0050_case_generation_tasks.py",
+      "sha256": "0dcef818354111bf3d2efc3cdd3a6d4d253f81783b58dc4f2dc3eb39686d3555",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/tests/test_51_generation_tasks.py",
+      "sha256": "7b43f039d41bea3681513bf6634abe428b759fa5fd9660ea7dbcf07a2e82f626",
+      "python_ast": "passed"
+    },
+    {
+      "path": "backend/tests/test_52_generation_task_migration.py",
+      "sha256": "caa0c9e4dd81ac5b346c3da569fe92806f9f47fa1c73c758cd022ebe9517cb0e",
+      "python_ast": "passed"
+    }
+  ],
+  "validation": {
+    "runtime_tests": "not_run",
+    "database_migrations": "not_run",
+    "real_model_calls": "not_run"
+  }
+}

@@ -1,0 +1,142 @@
+.api-module-tree-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 2px 0 8px;
+}
+
+.api-module-tree { min-width: 0; }
+.api-module-tree-node { min-width: 0; }
+.api-module-row {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: center;
+  gap: 2px;
+  border-radius: 7px;
+  transition: background-color 120ms ease;
+}
+.api-module-row:hover,
+.api-module-row.is-selected { background: #edf3ff; }
+.api-module-trigger {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.api-module-trigger:hover { color: inherit; }
+.api-module-trigger:focus-visible,
+.api-module-api-row:focus-visible { outline: 2px solid #597ef7; outline-offset: -2px; }
+.api-module-caret { flex: 0 0 10px; color: #68758a; font-size: 10px; }
+.api-module-folder-icon { flex: 0 0 auto; color: #7586a3; }
+.api-module-name {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-module-name.is-default { font-weight: 600; }
+.api-module-count {
+  flex: 0 0 auto;
+  color: #8792a3;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.api-module-children {
+  min-width: 0;
+  margin-left: 14px;
+  padding-left: 8px;
+  border-left: 1px solid #e7ebf2;
+}
+.api-module-api-row {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.api-module-api-row:hover,
+.api-module-api-row.is-selected { background: #edf3ff; }
+.api-module-api-row .ant-tag { flex: 0 0 auto; margin: 0; }
+.api-module-api-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.api-module-actions {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0;
+  padding-right: 3px;
+}
+.api-module-row:hover .api-module-actions,
+.api-module-row.is-selected .api-module-actions { display: flex; }
+.api-module-actions .ant-btn { width: 24px; height: 24px; padding: 0; }
+
+.api-module-interfaces { min-width: 0; }
+.api-module-interfaces-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 2px 18px;
+}
+.api-module-interfaces-title { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.api-module-interfaces-title .ant-typography { margin: 0; }
+.api-module-interfaces-title .ant-typography-secondary { display: block; margin-top: 4px; font-size: 12px; }
+.api-module-interfaces-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: #edf3ff;
+  color: #4f70e7;
+  font-size: 18px;
+}
+.api-module-interfaces-count { margin: 0; padding: 4px 10px; border-radius: 20px; }
+.api-module-interfaces-hint { margin-top: 10px; font-size: 12px; }
+
+@media (max-width: 760px) {
+  .api-module-interfaces-header { align-items: flex-start; }
+  .api-module-interfaces-title .ant-typography { white-space: normal; }
+}
+
+.app-layout-dark .api-module-row:hover,
+.app-layout-dark .api-module-row.is-selected,
+.app-layout-dark .api-module-api-row:hover,
+.app-layout-dark .api-module-api-row.is-selected { background: rgb(79 112 231 / 18%); }
+.app-layout-dark .api-module-children { border-color: #343b48; }
+.app-layout-dark .api-module-interfaces-icon { background: rgb(79 112 231 / 18%); color: #91a8ff; }
+
+@media (max-width: 760px) {
+  .api-catalog-layout { flex-wrap: wrap !important; }
+  .api-catalog-sidebar, .api-catalog-detail { flex: 0 0 100% !important; max-width: 100%; }
+  .api-catalog-sidebar > div { height: 280px !important; min-height: 0 !important; margin-bottom: 16px; }
+  .api-catalog-detail > div { height: auto !important; min-height: 360px !important; }
+}

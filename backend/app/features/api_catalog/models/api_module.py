@@ -15,19 +15,19 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
 )
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class ApiModule(Base):
+class ApiModule(SoftDeleteBase):
     """接口模块（最多两级，含项目级「未分类」默认模块）。"""
 
     __tablename__ = "api_module"
     __table_args__ = (
-        UniqueConstraint("project_id", "name", name="uq_api_module_project_name"),
+        Index("uq_api_module_project_name", "project_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_api_module_project_parent", "project_id", "parent_id"),
         {"comment": "接口模块（最多两级，含项目级未分类默认模块）"},
     )

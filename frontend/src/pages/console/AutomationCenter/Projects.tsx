@@ -1,0 +1,174 @@
+// 自动化项目：绑定 Codeup 仓库和云效流水线。
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { automationApi } from '@/features/automation/api/automation';
+import type { AutomationProject } from '@/features/automation/contracts';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageContainer } from '@/shared/ui/PageState';
+import { ResourceTable } from '@/shared/ui/ResourceTable';
+import { ProjectRequired, StatusTag } from '@/pages/console/AutomationCenter/shared';
+
+interface ProjectForm {
+  integration_config_id: number;
+  name: string;
+  repository_url?: string;
+  repository_id?: string;
+  pipeline_id: string;
+  pipeline_name?: string;
+  default_branch?: string;
+  default_environment?: string;
+  pytest_args?: string;
+  test_tags?: string;
+  test_scope?: string;
+  timeout_seconds?: number;
+  notify_condition?: 'ALWAYS' | 'ONLY_FAILED' | 'NEVER';
+  notification_channel_id?: number | null;
+}
+
+/** 自动化项目列表与维护。 */
+export function ConsoleAutomationProjectsPage() {
+  const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const { currentProjectId } = useConsoleScope();
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<AutomationProject | null>(null);
+  const [form] = Form.useForm<ProjectForm>();
+  const projectId = currentProjectId;
+
+  const listQuery = useQuery({
+    queryKey: ['automation-projects', projectId],
+    queryFn: () => automationApi.listProjects(projectId!),
+    enabled: projectId != null,
+  });
+  const integrations = useQuery({
+    queryKey: ['automation-integrations', projectId],
+    queryFn: () => automationApi.listIntegrations(projectId!),
+    enabled: projectId != null && open,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (values: ProjectForm) => editing
+      ? automationApi.updateProject(editing.id, values)
+      : automationApi.createProject(projectId!, values),
+    onSuccess: () => {
+      message.success(editing ? '已更新' : '已创建');
+      setOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['automation-projects'] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '保存失败')),
+  });
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => automationApi.deleteProject(id),
+    onSuccess: () => {
+      message.success('已删除');
+      queryClient.invalidateQueries({ queryKey: ['automation-projects'] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '删除失败')),
+  });
+  const verifyMutation = useMutation({
+    mutationFn: (id: number) => automationApi.verifyProject(id),
+    onSuccess: (result) => message.success(result.message),
+    onError: (error) => message.error(getErrorMessage(error, '验证失败')),
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({ default_branch: 'master', timeout_seconds: 3600, notify_condition: 'ALWAYS' });
+    setOpen(true);
+  };
+  const openEdit = (row: AutomationProject) => {
+    setEditing(row);
+    form.setFieldsValue({
+      integration_config_id: row.integration_config_id,
+      name: row.name,
+      repository_url: row.repository_url,
+      repository_id: row.repository_id,
+      pipeline_id: row.pipeline_id,
+      pipeline_name: row.pipeline_name,
+      default_branch: row.default_branch,
+      default_environment: row.default_environment,
+      pytest_args: row.pytest_args,
+      test_tags: row.test_tags,
+      test_scope: row.test_scope,
+      timeout_seconds: row.timeout_seconds,
+      notify_condition: row.notify_condition,
+      notification_channel_id: row.notification_channel_id,
+    });
+    setOpen(true);
+  };
+
+  return (
+    <PageContainer>
+      <ProjectRequired projectId={projectId} />
+      <Space style={{ marginBottom: 16 }}>
+        <Button type="primary" disabled={projectId == null} onClick={openCreate}>新建自动化项目</Button>
+      </Space>
+      <ResourceTable
+        rowKey={(row) => row.id}
+        loading={listQuery.isFetching}
+        dataSource={listQuery.data?.items || []}
+        total={listQuery.data?.total || 0}
+        pagination={{ page: 1, page_size: 100 }}
+        onPaginationChange={() => undefined}
+        columns={[
+          { title: '名称', dataIndex: 'name' },
+          { title: '仓库', dataIndex: 'repository_url', ellipsis: true },
+          { title: '分支', dataIndex: 'default_branch' },
+          { title: '流水线', dataIndex: 'pipeline_id' },
+          { title: '环境', dataIndex: 'default_environment' },
+          { title: '最近状态', dataIndex: 'last_status', render: (status: string | null) => <StatusTag status={status} /> },
+          { title: '最近执行', dataIndex: 'last_execution_at', render: (value: string | null) => value ? new Date(value).toLocaleString() : '-' },
+          {
+            title: '操作',
+            render: (_value, row: AutomationProject) => (
+              <Space>
+                <Button size="small" onClick={() => verifyMutation.mutate(row.id)}>验证</Button>
+                <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+                <Button size="small" danger onClick={() => modal.confirm({
+                  title: '将自动化项目移入回收站？',
+                  content: '执行记录、报告文件和流水线绑定会保留。排队或运行中的执行不能删除。',
+                  onOk: () => deleteMutation.mutateAsync(row.id),
+                })}>删除</Button>
+              </Space>
+            ),
+          },
+        ]}
+      />
+      <Modal
+        title={editing ? '编辑自动化项目' : '新建自动化项目'}
+        open={open}
+        onCancel={() => setOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={saveMutation.isPending}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
+          <Form.Item name="integration_config_id" label="云效接入" rules={[{ required: true, message: '请选择接入配置' }]}>
+            <Select options={(integrations.data?.items || []).map((item) => ({ value: item.id, label: item.name }))} />
+          </Form.Item>
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请填写名称' }]}><Input /></Form.Item>
+          <Form.Item name="repository_url" label="Codeup 仓库地址"><Input placeholder="https://codeup.aliyun.com/org/demo.git" /></Form.Item>
+          <Form.Item name="repository_id" label="仓库标识"><Input /></Form.Item>
+          <Form.Item name="pipeline_id" label="云效流水线 ID" rules={[{ required: !editing, message: '请填写流水线 ID' }]}><Input /></Form.Item>
+          <Form.Item name="pipeline_name" label="流水线名称"><Input /></Form.Item>
+          <Form.Item name="default_branch" label="默认分支"><Input /></Form.Item>
+          <Form.Item name="default_environment" label="默认环境"><Input /></Form.Item>
+          <Form.Item name="pytest_args" label="pytest 参数"><Input placeholder="-q --maxfail=1" /></Form.Item>
+          <Form.Item name="test_tags" label="测试标签"><Input placeholder="smoke" /></Form.Item>
+          <Form.Item name="test_scope" label="测试范围"><Input placeholder="tests/login" /></Form.Item>
+          <Form.Item name="timeout_seconds" label="超时（秒）"><InputNumber min={60} max={86400} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="notify_condition" label="飞书通知">
+            <Select options={[
+              { value: 'ALWAYS', label: '每次完成都通知' },
+              { value: 'ONLY_FAILED', label: '仅失败或超时通知' },
+              { value: 'NEVER', label: '不通知' },
+            ]} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </PageContainer>
+  );
+}

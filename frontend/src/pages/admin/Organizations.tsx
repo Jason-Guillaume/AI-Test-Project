@@ -14,14 +14,14 @@ import {
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  organizationsApi,
-  type MemberGrant,
-} from '@/api/organizations';
-import type { Organization, OrganizationMember, OrganizationRole } from '@/types';
-import { ErrorState, LoadingState, PageContainer } from '@/components/PageState';
-import { OrgRoleTag } from '@/components/RoleTag';
-import { getErrorMessage } from '@/api/client';
+import { organizationsApi } from '@/features/organizations/api/organizations';
+import type { MemberGrant } from '@/features/organizations/contracts';
+import type { Organization, OrganizationMember, OrganizationRole } from '@/features/organizations/contracts';
+
+import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { OrgRoleTag } from '@/features/identity/components/RoleTag';
+import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 
 // 组织角色下拉选项：owner > admin > member 三级
 const ORG_ROLE_OPTIONS: { label: string; value: OrganizationRole }[] = [
@@ -140,17 +140,17 @@ export function AdminOrganizationsPage() {
 
   return (
     <PageContainer>
+      <PageHeader title="组织管理" subtitle="维护组织成员、角色与模型授权" />
       <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <span style={{ fontSize: 16, fontWeight: 500 }}>组织管理</span>
         <Button type="primary" onClick={() => setCreating(true)}>
           新建组织
         </Button>
       </Space>
 
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div className="organization-layout">
         {/* 左侧：组织列表；点击选中高亮，切换右侧详情 */}
         <List
-          style={{ width: 280 }}
+          className="organization-layout__list"
           bordered
           dataSource={orgs}
           renderItem={(org: Organization) => (
@@ -175,10 +175,10 @@ export function AdminOrganizationsPage() {
           )}
         />
 
-        <div style={{ flex: 1 }}>
+        <div style={{ minWidth: 0 }}>
           {activeOrg ? (
             <>
-              <Space
+              <Space wrap className="ui-list-toolbar"
                 style={{
                   marginBottom: 12,
                   justifyContent: 'space-between',
@@ -249,9 +249,7 @@ export function AdminOrganizationsPage() {
                         <Space size="small">
                           <OrgRoleTag role={member.role} />
                           {member.agent_enabled && <Tag color="purple">智能体开放</Tag>}
-                          {member.allowed_model_ids.length > 0 && (
-                            <Tag>授权模型 {member.allowed_model_ids.length}</Tag>
-                          )}
+
                           {member.is_org_owner && <Tag color="gold">负责人</Tag>}
                         </Space>
                       }
@@ -322,7 +320,6 @@ export function AdminOrganizationsPage() {
 function MemberDrawer({
   open,
   editing,
-  models,
   loading,
   onCancel,
   onSubmit,
@@ -417,13 +414,7 @@ function MemberDrawer({
         >
           <Switch />
         </Form.Item>
-        <Form.Item label="可分配模型" name="allowed_model_ids">
-          <Select
-            mode="multiple"
-            placeholder="选择该成员可使用的模型"
-            options={models.map((m) => ({ value: m.domain_id, label: m.label }))}
-          />
-        </Form.Item>
+
       </Form>
     </Drawer>
   );

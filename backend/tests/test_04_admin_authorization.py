@@ -183,8 +183,8 @@ def test_model_api_key_is_never_returned_in_clear(api, admin):
     assert len(body["masked_api_key"]) < len(secret)
     assert not body["masked_api_key"].endswith(secret[-8:])
 
-    listed = api.get("/model-configs", username=admin).json()
-    target = next(item for item in listed["items"] if item["domain_id"] == domain)
+    listed = api.get("/model-configs", username=admin, params={"page_size": 200}).json()
+    target = next(item for item in listed["items"] if item["id"] == body["id"])
     assert secret not in str(listed)
     assert target["has_api_key"] is True
 
@@ -229,6 +229,35 @@ def test_model_api_key_is_never_returned_in_clear(api, admin):
     assert api.delete(f"/model-configs/{body['id']}", username=admin).status_code == 204
     after = api.get("/model-configs", username=admin).json()["total"]
     assert after == before - 1
+
+
+def test_model_fallback_route_is_ordered_and_validated(api, admin):
+    """管理员可保存有序备用模型；重复、自引用和不存在的配置会被拒绝。"""
+    backup = api.post(
+        "/model-configs", username=admin,
+        json={**MODEL_CONFIG_PAYLOAD, "domain_id": unique("fallback-model"), "label": "备用模型"},
+    )
+    assert backup.status_code == 201, backup.text
+    primary = api.post(
+        "/model-configs", username=admin,
+        json={**MODEL_CONFIG_PAYLOAD, "domain_id": unique("primary-model"), "label": "主模型"},
+    )
+    assert primary.status_code == 201, primary.text
+    primary_id = primary.json()["id"]
+    backup_id = backup.json()["id"]
+
+    saved = api.patch(
+        f"/model-configs/{primary_id}", username=admin,
+        json={"fallback_model_ids": [backup_id]},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["fallback_model_ids"] == [backup_id]
+    for invalid in ([primary_id], [backup_id, backup_id], [99999999]):
+        response = api.patch(
+            f"/model-configs/{primary_id}", username=admin,
+            json={"fallback_model_ids": invalid},
+        )
+        assert response.status_code == 400, response.text
 
 
 

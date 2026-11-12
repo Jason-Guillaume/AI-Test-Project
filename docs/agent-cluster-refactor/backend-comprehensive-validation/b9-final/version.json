@@ -1,0 +1,9 @@
+{
+  "head": "e46cbc9fde7ad387a29f934dbce26f30f37d2b2c",
+  "branch": "develop",
+  "app_source_digest": "14037fbd09623ad3b2295aeca340d92440b8fbc328a456d2a52b0ab43f19a0c7",
+  "full_python_source_digest": "cb0358132062b4afb4464b8d1bf4e014b522fc996163781ff91d3bbdd4a1a276",
+  "baseline_version": "../b0/version.json",
+  "rollback": "rollback-paths.json",
+  "worktree_policy": "Inherited local changes are preserved; HEAD is not the source identity."
+}

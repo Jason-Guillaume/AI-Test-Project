@@ -3,7 +3,8 @@
 import { Button, Input, Select, Space } from 'antd';
 import { DownloadOutlined, HistoryOutlined, PlusOutlined } from '@ant-design/icons';
 import { API_STATUS_OPTIONS, METHOD_OPTIONS } from './constants';
-import type { ApiStatus } from '@/types';
+import type { ApiStatus } from '@/features/api-catalog/contracts';
+
 
 /**
  * 工具条。
@@ -38,7 +39,8 @@ export function ApiToolbar({
         allowClear
         enterButton
         style={{ maxWidth: 240 }}
-        value={keyword || undefined}
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
         onSearch={(v) => setKeyword(v)}
       />
       <Select

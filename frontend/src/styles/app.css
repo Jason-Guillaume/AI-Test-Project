@@ -1,0 +1,6 @@
+/* 全局样式按应用外壳、工作区、管理端与断点规则分组加载。 */
+@import './base.css';
+@import './workspace.css';
+@import './admin.css';
+@import './authentication.css';
+@import './responsive.css';

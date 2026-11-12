@@ -106,10 +106,10 @@ def test_module_crud_two_level_and_default(api, admin):
 
     # 8. 有子模块的一级模块不可直接删（先要求清掉子模块）。
     r = api.delete(f"/api-modules/{level1_id}", username=admin)
-    assert r.status_code == 400, r.text
+    assert r.status_code == 409, r.text
     assert "子模块" in r.json()["message"]
 
-    # 9. 删掉子模块后，建接口到一级模块，再删一级模块：接口归未分类。
+    # 9. 有接口的模块不能隐式改写接口归属；先拒删，再显式移动接口。
     r = api.delete(f"/api-modules/{level2_id}", username=admin)
     assert r.status_code == 204, r.text
 
@@ -127,9 +127,13 @@ def test_module_crud_two_level_and_default(api, admin):
     api_id = r.json()["id"]
 
     r = api.delete(f"/api-modules/{level1_id}", username=admin)
+    assert r.status_code == 409, r.text
+    r = api.patch(f"/apis/{api_id}/move", username=admin, json={"module_id": default_id})
+    assert r.status_code == 200, r.text
+    r = api.delete(f"/api-modules/{level1_id}", username=admin)
     assert r.status_code == 204, r.text
 
-    # 接口仍在，且模块归未分类。
+    # 接口仍在，且用户显式选择的归属保持不变。
     r = api.get(f"/apis/{api_id}", username=admin)
     assert r.status_code == 200
     assert r.json()["module_name"] == "未分类"
@@ -263,7 +267,7 @@ def test_curl_import_preview_masks_sensitive_values(api, admin):
     assert "secret-token-123" not in r.text
 
 
-# ---------------------------------------------------------------- OpenAPI / Swagger 批量
+# ---------------------------------------------------------------- OpenAPI 接口 文档导出 / Swagger 批量
 
 _OPENAPI_JSON = """{
   "openapi": "3.0.0",
@@ -330,6 +334,58 @@ _SWAGGER_2 = """{
   }
 }"""
 
+_POSTMAN_21 = r'''{
+  "info": {
+    "name": "用户接口",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{"key": "token", "value": "collection-secret-token", "type": "string"}]
+  },
+  "item": [{
+    "name": "用户管理",
+    "item": [{
+      "name": "获取用户",
+      "request": {
+        "method": "GET",
+        "header": [
+          {"key": "X-API-Key", "value": "header-secret-key"},
+          {"key": "Accept", "value": "application/json"}
+        ],
+        "url": {
+          "raw": "https://example.com/v1/users/:userId?limit=20&access_token=query-secret",
+          "host": ["example", "com"],
+          "path": ["v1", "users", ":userId"],
+          "query": [
+            {"key": "limit", "value": "20"},
+            {"key": "access_token", "value": "query-secret"}
+          ],
+          "variable": [{"key": "userId", "value": "123"}]
+        }
+      },
+      "response": [{
+        "name": "成功",
+        "status": "OK",
+        "code": 200,
+        "body": "{\"id\":123,\"token\":\"response-secret\"}"
+      }]
+    }, {
+      "name": "创建用户",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "url": "https://example.com/v1/users",
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\":\"Ada\",\"password\":\"body-secret\"}",
+          "options": {"raw": {"language": "json"}}
+        }
+      }
+    }]
+  }]
+}'''
+
 
 def test_openapi_json_yaml_swagger_batch_preview(api, admin):
     """OpenAPI 3.x JSON/YAML 与 Swagger 2.0 均可批量解析。"""
@@ -357,6 +413,84 @@ def test_openapi_json_yaml_swagger_batch_preview(api, admin):
     schema = r.json()["items"][0]["schema"]
     path_params = [p for p in schema["parameters"] if p["location"] == "PATH"]
     assert any(p["name"] == "id" for p in path_params)
+
+
+def test_import_detects_postman_and_honors_selected_module(api, admin):
+    project_id, _ = _create_project(api, admin)
+    url = f"/projects/{project_id}/apis/import"
+    # 即使用户保留默认的 OpenAPI 来源，仍按文档内容识别 Postman。
+    preview = api.post(
+        f"{url}/preview",
+        username=admin,
+        json={"source_type": "OPENAPI", "content": _POSTMAN_21},
+    )
+    assert preview.status_code == 200, preview.text
+    result = preview.json()
+    assert result["source_type"] == "POSTMAN"
+    assert result["total"] == 2
+    assert "collection-secret-token" not in preview.text
+    assert "header-secret-key" not in preview.text
+    assert "query-secret" not in preview.text
+    assert "response-secret" not in preview.text
+    assert "body-secret" not in preview.text
+
+    postman20 = _POSTMAN_21.replace("v2.1.0", "v2.0.0")
+    version_preview = api.post(
+        f"{url}/preview",
+        username=admin,
+        json={"source_type": "POSTMAN", "content": postman20},
+    )
+    assert version_preview.status_code == 200, version_preview.text
+    assert version_preview.json()["total"] == 2
+    assert version_preview.json()["source_type"] == "POSTMAN"
+
+    get_user = result["items"][0]["schema"]
+    assert get_user["name"] == "获取用户"
+    assert get_user["method"] == "GET"
+    assert get_user["path"] == "/v1/users/{userId}"
+    assert get_user["source_type"] == "POSTMAN"
+    assert get_user["auth_type"] == "bearer"
+    assert get_user["tags"] == ["用户管理"]
+    assert any(p["name"] == "userId" and p["location"] == "PATH" for p in get_user["parameters"])
+    assert next(p for p in get_user["parameters"] if p["name"] == "limit")["example"] == "20"
+    api_key = next(p for p in get_user["parameters"] if p["name"] == "X-API-Key")
+    assert api_key["schema_json"] == {"sensitive": True}
+    assert api_key["example"] == "${x_api_key}"
+    assert get_user["responses"][0]["status_code"] == 200
+
+    create_user = result["items"][1]["schema"]
+    assert create_user["body"]["body_type"] == "json"
+    assert "${password}" in create_user["body"]["raw_text"]
+
+    confirm = api.post(
+        f"{url}/confirm",
+        username=admin,
+        json={"source_type": "OPENAPI", "content": _POSTMAN_21},
+    )
+    assert confirm.status_code == 201, confirm.text
+    imported = api.get(f"/projects/{project_id}/api-import-records", username=admin)
+    assert imported.status_code == 200, imported.text
+    records = imported.json()["items"]
+    assert records[0]["source_type"] == "POSTMAN"
+    assert records[0]["total"] == 2
+
+    module = api.post(f"/projects/{project_id}/api-modules", username=admin,
+                      json={"name": "指定模块"})
+    assert module.status_code == 201, module.text
+    body = {"source_type": "OPENAPI", "content": _OPENAPI_JSON,
+            "user_module_id": module.json()["id"], "selected_items": [0]}
+    preview = api.post(f"{url}/preview", username=admin, json=body)
+    assert preview.status_code == 200, preview.text
+    selected = preview.json()["items"][0]["schema"]
+    confirm = api.post(f"{url}/confirm", username=admin, json=body)
+    assert confirm.status_code == 201, confirm.text
+    interfaces = api.get(f"/projects/{project_id}/apis", username=admin)
+    assert interfaces.status_code == 200, interfaces.text
+    items = interfaces.json()
+    if isinstance(items, dict):
+        items = items["items"]
+    match = next(item for item in items if item["path"] == selected["path"] and item["method"] == selected["method"])
+    assert match["module_id"] == module.json()["id"]
 
 
 # ---------------------------------------------------------------- 导入预览→确认（幂等 + 变更检测）
@@ -479,9 +613,9 @@ def test_import_update_writes_change_log(api, admin):
 
 def test_debug_outbound_whitelist_deny_and_hit(api, admin, db):
     """调试出站白名单：未配目标 403；配目标后放行（连接失败 400，证明白名单通过）。"""
-    from app.models.configuration import Environment
-    from app.models.identity import User
-    from app.models.project import ProjectOutboundTarget
+    from app.core.models.configuration import Environment
+    from app.core.models.identity import User
+    from app.core.models.project import ProjectOutboundTarget
 
     project_id, _ = _create_project(api, admin)
 
@@ -508,6 +642,10 @@ def test_debug_outbound_whitelist_deny_and_hit(api, admin, db):
         is_active=True,
     )
     db.add(env)
+    db.flush()
+    from app.platform.environment_configuration.models import ProjectEnvironment
+    db.add(ProjectEnvironment(project_id=project_id, environment_id=env.id,
+        display_name=env.display_name, base_url=env.base_url, gateway_prefix="", default_headers={}, is_active=True))
     db.commit()
 
     # 1. 未配出站目标 → 403。
@@ -606,3 +744,46 @@ def test_api_viewer_cannot_write_and_invisible_project_404(api, admin):
     # 越权访问具体接口 → 404（隐藏存在性）。
     r = api.get(f"/apis/{api_id}", username=observer_name)
     assert r.status_code == 404
+
+
+def test_structural_hash_tracks_schema_only_edits(api, admin):
+    """Schema changes under existing parameters and status codes must update the hash."""
+    project_id, _ = _create_project(api, admin)
+    created = api.post(f"/projects/{project_id}/apis", username=admin, json={
+        "name": "schema tracking", "method": "POST", "path": "/schema-tracking",
+        "parameters": [{"name": "id", "location": "QUERY", "type": "string"}],
+        "body": {"body_type": "json", "content_type": "application/json", "schema_json": {"type": "object"}},
+        "responses": [{"status_code": 200, "schema_json": {"type": "object"}}],
+    })
+    assert created.status_code == 201, created.text
+    api_id = created.json()["id"]
+    initial_hash = created.json()["source_hash"]
+    changed_request = api.put(f"/apis/{api_id}/request", username=admin, json={
+        "parameters": [{"name": "id", "location": "HEADER", "type": "string"}],
+        "body": {"body_type": "json", "content_type": "application/json", "schema_json": {"type": "array"}},
+    })
+    assert changed_request.status_code == 200, changed_request.text
+    request_hash = api.get(f"/apis/{api_id}", username=admin).json()["source_hash"]
+    assert request_hash != initial_hash
+    changed_response = api.put(f"/apis/{api_id}/responses", username=admin, json={
+        "responses": [{"status_code": 200, "schema_json": {"type": "array"}}],
+    })
+    assert changed_response.status_code == 200, changed_response.text
+    response_hash = api.get(f"/apis/{api_id}", username=admin).json()["source_hash"]
+    assert response_hash != request_hash
+
+
+def test_import_preview_uses_current_structure_when_stored_hash_is_stale(api, admin, db):
+    from app.features.api_catalog.models.api_request_body import ApiRequestBody
+
+    project_id, _ = _create_project(api, admin)
+    body = {"source_type": "CURL", "content": CURL_SIMPLE}
+    created = api.post(f"/projects/{project_id}/apis/import/confirm", username=admin, json=body)
+    assert created.status_code == 201, created.text
+    iface = _find_api(api, admin, project_id, "POST", "/v1/tasks")
+    request_body = db.query(ApiRequestBody).filter_by(interface_id=iface["id"]).one()
+    request_body.raw_text = '{"changed":true}'
+    db.commit()
+    preview = api.post(f"/projects/{project_id}/apis/import/preview", username=admin, json=body)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["changed_count"] == 1

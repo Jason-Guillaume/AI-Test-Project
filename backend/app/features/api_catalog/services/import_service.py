@@ -8,22 +8,17 @@
   写 api_import_record 聚合计数。单事务提交（service owns commit）。
 
 去重键：project_id + method + path（DB 唯一约束兜底）。
-source_hash：compute_source_hash（结构字段 sha256），UNCHANGED 跳过。
-"""
+source_hash：compute_source_hash（结构字段 sha256），UNCHANGED 跳过。"""
 
 from __future__ import annotations
 
 import hashlib
-
 from sqlalchemy.orm import Session
-
 from app.features.api_catalog.models.api_change_log import ApiChangeLog
 from app.features.api_catalog.models.api_import_record import ApiImportRecord
 from app.features.api_catalog.models.api_interface import ApiInterface
-from app.features.api_catalog.models.api_parameter import ApiParameter
-from app.features.api_catalog.models.api_request_body import ApiRequestBody
-from app.features.api_catalog.models.api_response import ApiResponse
-from app.features.api_catalog.parsers import parse_curl, parse_openapi
+from app.features.api_catalog.parsers import parse_curl
+from app.features.api_catalog.parsers.document_parser import parse_api_document
 from app.features.api_catalog.schemas import (
     ImportConfirmRequest,
     ImportConfirmResponse,
@@ -31,36 +26,35 @@ from app.features.api_catalog.schemas import (
     ImportPreviewRequest,
     ImportPreviewResponse,
     InternalApiSchema,
-    InternalBody,
-    InternalParameter,
-    InternalResponse,
     ApiBodyIn,
     ApiParameterIn,
     ApiResponseIn,
 )
-from app.features.api_catalog.services.api_service import (
-    _load_body,
-    _load_params,
-    _load_responses,
-    _replace_body,
-    _replace_params,
-    _replace_responses,
-    interface_to_internal_schema,
+from app.features.api_catalog.services.request_store import load_responses
+from app.features.api_catalog.services.request_store import replace_body
+from app.features.api_catalog.services.request_store import replace_params
+from app.features.api_catalog.services.request_store import replace_responses
+from app.features.api_catalog.services.response_mapper import interface_to_internal_schema
+from app.features.api_catalog.services.request_service import (
+    load_interface_request_body,
+    load_interface_request_params,
 )
 from app.features.api_catalog.services.hash import compute_source_hash
-from app.features.api_catalog.services.module_resolver import (
-    DEFAULT_MODULE_NAME,
-    ModuleResolver,
-)
-from app.models.identity import User
-from app.shared.errors import bad_request, forbidden
-from app.shared.roles import (
-    PROJECT_ROLE_MEMBER,
-    has_project_role,
-    project_role_for,
-)
+from app.features.api_catalog.services.module_resolver import ModuleResolver
+from app.core.models.identity import User
+from app.core.http.errors import bad_request, forbidden
+from app.core.security.roles import PROJECT_ROLE_MEMBER, has_project_role, project_role_for
+
 
 _resolver = ModuleResolver()
+
+
+def _current_structure_hash(db: Session, iface: ApiInterface) -> str:
+    """Compare against stored structure, including rows with a stale historical hash."""
+    return compute_source_hash(interface_to_internal_schema(
+        iface, load_interface_request_params(db, iface.id),
+        load_interface_request_body(db, iface.id), load_responses(db, iface.id),
+    ))
 
 
 class ImportService:
@@ -71,6 +65,7 @@ class ImportService:
     def preview(
         self, db: Session, project_id: int, body: ImportPreviewRequest, *, actor: User
     ) -> ImportPreviewResponse:
+        """预览对应数据。"""
         self._assert_writable(db, project_id, actor)
         schemas = _parse(body.source_type, body.content)
         items: list[ImportPreviewItem] = []
@@ -82,7 +77,7 @@ class ImportService:
                 classification = "NEW"
                 existing_id = None
                 diff = None
-            elif existing.source_hash == schema.source_hash:
+            elif _current_structure_hash(db, existing) == schema.source_hash:
                 classification = "UNCHANGED"
                 existing_id = existing.id
                 diff = None
@@ -106,11 +101,11 @@ class ImportService:
             ))
         return ImportPreviewResponse(
             project_id=project_id,
-            source_type=body.source_type,
+            source_type=_parsed_source_type(schemas, body.source_type),
             source_hash=None,
             total=len(schemas),
             new_count=counts["NEW"],
-            existing_count=0,
+            existing_count=counts["CHANGED"] + counts["UNCHANGED"],
             changed_count=counts["CHANGED"],
             unchanged_count=counts["UNCHANGED"],
             items=items,
@@ -121,6 +116,7 @@ class ImportService:
     def confirm(
         self, db: Session, project_id: int, body: ImportConfirmRequest, *, actor: User
     ) -> ImportConfirmResponse:
+        """确认对应数据。"""
         self._assert_writable(db, project_id, actor)
         schemas = _parse(body.source_type, body.content)
         # 重新解析后按与预览相同的键去重；不信任预览缓存（幂等）。
@@ -134,9 +130,9 @@ class ImportService:
                 continue
             existing = _find_existing(db, project_id, schema.method, schema.path)
             if existing is None:
-                self._create_from_schema(db, project_id, schema, actor)
+                self._create_from_schema(db, project_id, schema, actor, body.user_module_id, body.tag_to_module_map)
                 created += 1
-            elif existing.source_hash == schema.source_hash:
+            elif _current_structure_hash(db, existing) == schema.source_hash:
                 skipped += 1
             else:
                 if not body.overwrite_changed:
@@ -147,7 +143,7 @@ class ImportService:
         batch_hash = _batch_hash(per_schema_hashes)
         record = ApiImportRecord(
             project_id=project_id,
-            source_type=body.source_type,
+            source_type=_parsed_source_type(schemas, body.source_type),
             file_name=body.file_name,
             source_hash=batch_hash,
             total=len(schemas),
@@ -172,7 +168,8 @@ class ImportService:
     # ---------------------------------------------------------------- 内部
 
     def _assert_writable(self, db: Session, project_id: int, actor: User) -> None:
-        from app.models.project import Project
+        """断言可写。"""
+        from app.core.models.project import Project
 
         project = db.get(Project, project_id)
         if project is None:
@@ -181,10 +178,12 @@ class ImportService:
             raise forbidden("需要项目成员权限")
 
     def _create_from_schema(
-        self, db: Session, project_id: int, schema: InternalApiSchema, actor: User
+        self, db: Session, project_id: int, schema: InternalApiSchema, actor: User,
+        user_module_id: int | None, tag_to_module_map: dict[str, int] | None,
     ) -> ApiInterface:
+        """创建从结构定义。"""
         module_id = _resolver.resolve(
-            db, project_id, schema, user_module_id=None, tag_to_module_map=None
+            db, project_id, schema, user_module_id=user_module_id, tag_to_module_map=tag_to_module_map
         )
         iface = ApiInterface(
             project_id=project_id,
@@ -217,6 +216,7 @@ class ImportService:
     def _update_from_schema(
         self, db: Session, iface: ApiInterface, schema: InternalApiSchema, actor: User
     ) -> None:
+        """更新从结构定义。"""
         diff = _compute_import_diff(db, iface, schema)
         # 字段更新（保留 module_id 除非 resolver 重新解析到不同模块；这里不移动模块，避免误改用户归类）。
         iface.name = schema.name[:200]
@@ -243,20 +243,29 @@ class ImportService:
         db.flush()
 
 
-# ----------------------------------------------------------------------------- 解析入口
-
-
 def _parse(source_type: str, content: str) -> list[InternalApiSchema]:
-    """按 source_type 选 parser；CURL 单条，OPENAPI/SWAGGER 批量。"""
+    """自动识别常见接口文档；cURL 保持单条解析。"""
     st = (source_type or "").upper()
-    if st == "CURL":
-        return [parse_curl(content)]
-    if st in {"OPENAPI", "SWAGGER"}:
-        return parse_openapi(content)
+    try:
+        if st == "CURL":
+            detected = parse_api_document(content, required=False)
+            if detected is not None:
+                return detected
+            return [parse_curl(content)]
+        if st in {"OPENAPI", "SWAGGER", "POSTMAN", "APIFOX"}:
+            return parse_api_document(content) or []
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
     raise bad_request(f"暂不支持的导入来源：{source_type}")
 
 
+def _parsed_source_type(schemas: list[InternalApiSchema], fallback: str) -> str:
+    """用解析结果标记实际格式，避免用户选错来源时导入记录留下错误类型。"""
+    return schemas[0].source_type if schemas else fallback
+
+
 def _find_existing(db: Session, project_id: int, method: str, path: str) -> ApiInterface | None:
+    """查找`existing`。"""
     return (
         db.query(ApiInterface)
         .filter(
@@ -273,18 +282,18 @@ def _apply_schema_children(db: Session, interface_id: int, schema: InternalApiSc
     params = [ApiParameterIn(**p.model_dump()) for p in schema.parameters]
     body = ApiBodyIn(**schema.body.model_dump())
     responses = [ApiResponseIn(**r.model_dump()) for r in schema.responses]
-    _replace_params(db, interface_id, params)
-    _replace_body(db, interface_id, body)
-    _replace_responses(db, interface_id, responses)
+    replace_params(db, interface_id, params)
+    replace_body(db, interface_id, body)
+    replace_responses(db, interface_id, responses)
 
 
 def _compute_import_diff(
     db: Session, iface: ApiInterface, schema: InternalApiSchema
 ) -> dict:
     """计算已有接口与导入 schema 的结构 diff（参数/响应/关键字段）。"""
-    old_params = _load_params(db, iface.id)
-    old_body = _load_body(db, iface.id)
-    old_responses = _load_responses(db, iface.id)
+    old_params = load_interface_request_params(db, iface.id)
+    old_body = load_interface_request_body(db, iface.id)
+    old_responses = load_responses(db, iface.id)
 
     old_param_map = {p.name: (p.type, bool(p.required)) for p in old_params}
     new_param_map = {p.name: (p.type or "string", bool(p.required)) for p in schema.parameters}
@@ -343,4 +352,6 @@ def _batch_hash(per_schema_hashes: list[str]) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
-__all__ = ["ImportService"]
+__all__ = [
+    'ImportService',
+]

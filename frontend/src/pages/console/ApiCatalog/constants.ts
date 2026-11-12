@@ -1,13 +1,7 @@
 // 接口管理页共享常量：方法/状态/分类的颜色与下拉选项。
 // 后端取值集合为准，这里只做展示映射，不自行扩值。
-import type {
-  ApiSourceType,
-  ApiStatus,
-  BodyType,
-  ImportClassification,
-  ParamLocation,
-  RelationType,
-} from '@/types';
+import type { ApiSourceType, ApiStatus, BodyType, ImportClassification, ParamLocation, RelationType } from '@/features/api-catalog/contracts';
+
 
 // HTTP 方法色板：在模块树、列表、调试结果里给方法打 Tag。
 export const METHOD_COLOR: Record<string, string> = {
@@ -78,9 +72,9 @@ export const RELATION_TYPE_OPTIONS: { label: string; value: RelationType }[] = [
   { label: '后续步骤', value: 'FOLLOW_UP' },
 ];
 
-// 导入来源选项（CURL 单条，OPENAPI/SWAGGER 批量）。
+// 导入来源选项；文档类格式由后端自动识别，避免文件类型选错导致无法导入。
 export const IMPORT_SOURCE_OPTIONS: { label: string; value: ApiSourceType }[] = [
   { label: 'Curl', value: 'CURL' },
-  { label: 'OpenAPI 3.x', value: 'OPENAPI' },
-  { label: 'Swagger 2.0', value: 'SWAGGER' },
+  { label: 'OpenAPI / Swagger', value: 'OPENAPI' },
+  { label: 'Postman Collection', value: 'POSTMAN' },
 ];

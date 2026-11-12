@@ -1,0 +1,66 @@
+/* 聊天工作区由外壳分配剩余高度，避免重复扣减固定的顶栏高度。 */
+.app-layout--workspace { height: 100dvh; min-height: 0; }
+.app-layout--workspace > .ant-layout { height: 100%; min-height: 0; }
+.app-layout--workspace .app-sidebar { height: 100dvh; }
+.app-layout--workspace .app-topbar, .app-layout--workspace .app-breadcrumb-wrap { flex-shrink: 0; }
+.app-layout--workspace .app-content { display: flex; flex-direction: column; min-height: 0; }
+.agent-workspace-shell { container: agent / inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; gap: 12px; }
+.agent-workspace { display: grid; flex: 1; min-width: 0; min-height: 0; grid-template-columns: 220px minmax(0, 1fr) 320px; gap: 12px; }
+.agent-workspace-toolbar { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.agent-workspace[data-sessions-collapsed="true"] { grid-template-columns: minmax(0, 1fr) 320px; }
+.agent-workspace[data-sessions-collapsed="true"] .agent-workspace-sessions { display: none; }
+.agent-workspace[data-workspace-collapsed="true"] { grid-template-columns: 220px minmax(0, 1fr); }
+.agent-workspace[data-workspace-collapsed="true"] .agent-workspace-details { display: none; }
+.agent-workspace[data-sessions-collapsed="true"][data-workspace-collapsed="true"] { grid-template-columns: minmax(0, 1fr); }
+.agent-workspace-tabs { display: none; flex-shrink: 0; gap: 8px; flex-wrap: wrap; }
+.agent-workspace-panel { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: #fff; border-radius: 8px; padding: 12px; overflow: hidden; overflow-wrap: anywhere; }
+.agent-workspace-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.agent-workspace-actions { flex: 0 0 auto; padding-top: 10px; border-top: 1px solid #f0f0f0; background: #fff; }
+.agent-chat-scroll { position: relative; overscroll-behavior: contain; }
+.agent-new-messages { position: sticky; bottom: 8px; display: block; margin: 8px auto 0; box-shadow: 0 2px 8px rgb(0 0 0 / 12%); }
+.agent-message-input { flex-shrink: 0; }
+.agent-message-input > .ant-input-textarea, .agent-message-input > textarea { min-width: 0; }
+.agent-workspace .ant-alert-description, .agent-workspace .ant-typography { overflow-wrap: anywhere; }
+.agent-workspace .ant-list-item, .agent-workspace .ant-card-body { min-width: 0; }
+.agent-structured-summary { display: grid; min-width: 0; gap: 8px; overflow-wrap: anywhere; }
+.agent-structured-summary ul { padding-inline-start: 20px; margin: 4px 0; }
+.agent-raw-details { min-width: 0; margin-top: 8px; }
+.agent-raw-details summary { cursor: pointer; color: #1677ff; }
+.agent-raw-details pre { max-width: 100%; max-height: 320px; margin: 6px 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #fafafa; padding: 8px; border-radius: 4px; font-size: 12px; }
+.web-step-card .ant-card-head-wrapper { flex-wrap: wrap; gap: 8px; }
+.web-step-card .ant-card-extra { margin-inline-start: auto; }
+
+@container agent (max-width: 1100px) {
+  .agent-workspace { grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr); }
+  .agent-workspace[data-sessions-collapsed="true"] .agent-workspace-sessions { display: none; }
+  .agent-workspace[data-sessions-collapsed="false"] { grid-template-columns: minmax(170px, .7fr) minmax(0, 1.4fr) minmax(250px, 1fr); }
+  .agent-workspace[data-sessions-collapsed="false"] .agent-workspace-sessions { display: flex; }
+  .agent-workspace[data-workspace-collapsed="true"] { grid-template-columns: minmax(0, 1fr); }
+  .agent-workspace[data-workspace-collapsed="true"] .agent-workspace-details { display: none; }
+  .agent-workspace[data-sessions-collapsed="false"][data-workspace-collapsed="true"] { grid-template-columns: minmax(170px, 260px) minmax(0, 1fr); }
+}
+
+@container agent (max-width: 700px) {
+  .agent-workspace-tabs { display: flex; }
+  .agent-workspace-toolbar { display: none; }
+  .agent-workspace { grid-template-columns: minmax(0, 1fr); }
+  .agent-workspace[data-sessions-collapsed][data-workspace-collapsed] { grid-template-columns: minmax(0, 1fr); }
+  .agent-workspace-panel { display: none; }
+  .agent-workspace[data-panel="sessions"] .agent-workspace-sessions,
+  .agent-workspace[data-panel="chat"] .agent-workspace-chat,
+  .agent-workspace[data-panel="workspace"] .agent-workspace-details { display: flex; }
+}
+
+@container page (max-width: 800px) {
+  .task-workspace, .organization-layout { grid-template-columns: minmax(0, 1fr); }
+  .resource-split { row-gap: 16px; }
+  .resource-split__sidebar.ant-col, .resource-split__detail.ant-col { flex: 0 0 100%; max-width: 100%; }
+  .resource-split__sidebar .resource-split__panel { height: 240px; min-height: 0; }
+  .resource-split__detail .resource-split__panel { height: auto; min-height: 320px; }
+}
+
+@container api-debug (max-width: 520px) {
+  .api-debug-kv-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .api-debug-kv-row > .ant-input { grid-column: 1; }
+  .api-debug-kv-row > .ant-btn { grid-column: 2; grid-row: 1 / span 2; }
+}

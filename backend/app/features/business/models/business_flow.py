@@ -7,18 +7,19 @@ status ∈ {DRAFT, ACTIVE, DEPRECATED}，由服务层校验。version 为流程�
 等操作可递增。feature-local 表，由迁移 0004 显式建立。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class BusinessFlow(Base):
+class BusinessFlow(SoftDeleteBase):
     """业务流程：一组有序业务动作的完整业务过程。"""
 
     __tablename__ = "business_flow"
     __table_args__ = (
-        UniqueConstraint("domain_id", "name", name="uq_business_flow_domain_name"),
+        Index("uq_business_flow_domain_name", "domain_id", "name", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_business_flow_project_status", "project_id", "status"),
         {"comment": "业务流程：一组有序业务动作的完整业务过程"},
     )
@@ -52,6 +53,7 @@ class BusinessFlow(Base):
     version = Column(
         Integer, nullable=False, default=1, server_default=text("1"), comment="流程版本号",
     )
+    revision = Column(Integer, nullable=False, server_default=text("1"), comment="乐观锁版本号")
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
     updated_at = Column(
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now(), comment="更新时间",

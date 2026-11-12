@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-30",
+  "workspaceRoot": "/Users/a1/Desktop/ai-test-project",
+  "gitHead": "e46cbc9fde7ad387a29f934dbce26f30f37d2b2c",
+  "workingTree": "大量既有未提交修改；HEAD 不能单独代表本次受审源码，逐文件指纹见静态证据",
+  "currentTurnChecks": [
+    {
+      "cwd": "frontend",
+      "command": "npm test",
+      "exitCode": 0,
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run lint",
+      "exitCode": 0
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run build",
+      "exitCode": 0,
+      "viteBuildSeconds": 5.91,
+      "transformedModules": 3297,
+      "largestJsKB": 335.55,
+      "largestJsGzipKB": 110.3
+    }
+  ],
+  "historicalBackendReference": {
+    "source": "docs/agent-cluster-refactor/backend-capability-refactor-delivery.md",
+    "passed": 1062,
+    "warnings": 47,
+    "durationSeconds": 352.95,
+    "testPostgresPort": 55439,
+    "rerunInThisTurn": false
+  },
+  "notExecutedInThisTurn": [
+    "全部页面浏览器交互及视觉验收",
+    "后端全量 pytest",
+    "真实外部模型、ZAP 和通知投递"
+  ],
+  "sourceFingerprintsStillMatch": true
+}

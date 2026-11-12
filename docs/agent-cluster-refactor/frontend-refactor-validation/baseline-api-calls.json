@@ -1,0 +1,4398 @@
+[
+  {
+    "source": "frontend/src/api/agent.ts",
+    "call": {
+      "line": 23,
+      "method": "POST",
+      "path": "`/projects/${projectId}/agent/sessions`",
+      "typeArguments": [
+        "AgentSession"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agent.ts",
+    "call": {
+      "line": 26,
+      "method": "GET",
+      "path": "`/projects/${projectId}/agent/sessions`",
+      "typeArguments": [
+        "AgentSession[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agent.ts",
+    "call": {
+      "line": 29,
+      "method": "GET",
+      "path": "`/agent/sessions/${sessionId}`",
+      "typeArguments": [
+        "AgentSessionDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agent.ts",
+    "call": {
+      "line": 32,
+      "method": "DELETE",
+      "path": "`/agent/sessions/${sessionId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agent.ts",
+    "call": {
+      "line": 36,
+      "method": "POST",
+      "path": "`/agent/sessions/${sessionId}/messages`",
+      "typeArguments": [
+        "AgentTurnResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agent.ts",
+    "call": {
+      "line": 40,
+      "method": "GET",
+      "path": "`/agent/sessions/${sessionId}/workspace`",
+      "typeArguments": [
+        "AgentWorkspace"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 164,
+      "method": "GET",
+      "path": "'/agent-governance/workflows'",
+      "typeArguments": [
+        "WorkflowTemplate[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 165,
+      "method": "GET",
+      "path": "'/agent-governance/tools'",
+      "typeArguments": [
+        "GovernanceTool[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 166,
+      "method": "PUT",
+      "path": "`/agent-governance/tools/${encodeURIComponent(key)}`",
+      "typeArguments": [
+        "GovernanceTool"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 167,
+      "method": "POST",
+      "path": "`/agent-governance/tools/${encodeURIComponent(key)}/restore-defaults`",
+      "typeArguments": [
+        "GovernanceTool"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 168,
+      "method": "GET",
+      "path": "'/agent-governance/agents'",
+      "typeArguments": [
+        "AgentDefinition[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 169,
+      "method": "POST",
+      "path": "'/agent-governance/agents'",
+      "typeArguments": [
+        "AgentDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 170,
+      "method": "PATCH",
+      "path": "`/agent-governance/agents/${id}`",
+      "typeArguments": [
+        "AgentDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 171,
+      "method": "DELETE",
+      "path": "`/agent-governance/agents/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 172,
+      "method": "GET",
+      "path": "`/agent-governance/agents/${id}/versions`",
+      "typeArguments": [
+        "DefinitionVersion[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 173,
+      "method": "POST",
+      "path": "`/agent-governance/agents/${id}/versions/${version}/restore`",
+      "typeArguments": [
+        "AgentDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 174,
+      "method": "GET",
+      "path": "'/agent-governance/skills'",
+      "typeArguments": [
+        "SkillDefinition[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 175,
+      "method": "POST",
+      "path": "'/agent-governance/skills'",
+      "typeArguments": [
+        "SkillDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 180,
+      "method": "POST",
+      "path": "'/agent-governance/skills/import-zip'",
+      "typeArguments": [
+        "SkillDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 182,
+      "method": "PATCH",
+      "path": "`/agent-governance/skills/${id}`",
+      "typeArguments": [
+        "SkillDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 183,
+      "method": "POST",
+      "path": "`/agent-governance/skills/${id}/versions/${version}/restore`",
+      "typeArguments": [
+        "SkillDefinition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 184,
+      "method": "GET",
+      "path": "`/agent-governance/skills/${id}/usage`",
+      "typeArguments": [
+        "SkillUsage"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 185,
+      "method": "DELETE",
+      "path": "`/agent-governance/skills/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 186,
+      "method": "GET",
+      "path": "`/agent-governance/skills/${id}/versions`",
+      "typeArguments": [
+        "DefinitionVersion[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 187,
+      "method": "GET",
+      "path": "'/agent-governance/mcp-servers'",
+      "typeArguments": [
+        "MCPServer[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 188,
+      "method": "POST",
+      "path": "'/agent-governance/mcp-servers'",
+      "typeArguments": [
+        "MCPServer"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 189,
+      "method": "PATCH",
+      "path": "`/agent-governance/mcp-servers/${id}`",
+      "typeArguments": [
+        "MCPServer"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 190,
+      "method": "DELETE",
+      "path": "`/agent-governance/mcp-servers/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 191,
+      "method": "POST",
+      "path": "`/agent-governance/mcp-servers/${id}/discover`",
+      "typeArguments": [
+        "MCPServer"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/agentGovernance.ts",
+    "call": {
+      "line": 192,
+      "method": "PUT",
+      "path": "`/agent-governance/mcp-servers/${id}/approved-tools`",
+      "typeArguments": [
+        "MCPServer"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 51,
+      "method": "GET",
+      "path": "`/projects/${projectId}/api-modules`",
+      "typeArguments": [
+        "ApiModule[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 54,
+      "method": "POST",
+      "path": "`/projects/${projectId}/api-modules`",
+      "typeArguments": [
+        "ApiModule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 57,
+      "method": "PATCH",
+      "path": "`/api-modules/${moduleId}`",
+      "typeArguments": [
+        "ApiModule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 60,
+      "method": "PATCH",
+      "path": "`/api-modules/${moduleId}/move`",
+      "typeArguments": [
+        "ApiModule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 63,
+      "method": "DELETE",
+      "path": "`/api-modules/${moduleId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 68,
+      "method": "GET",
+      "path": "`/projects/${projectId}/apis`",
+      "typeArguments": [
+        "Paginated<ApiInterface>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 71,
+      "method": "POST",
+      "path": "`/projects/${projectId}/apis`",
+      "typeArguments": [
+        "ApiInterfaceDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 73,
+      "method": "GET",
+      "path": "`/apis/${apiId}`",
+      "typeArguments": [
+        "ApiInterfaceDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 76,
+      "method": "PATCH",
+      "path": "`/apis/${apiId}`",
+      "typeArguments": [
+        "ApiInterfaceDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 78,
+      "method": "DELETE",
+      "path": "`/apis/${apiId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 81,
+      "method": "PATCH",
+      "path": "`/apis/${apiId}/move`",
+      "typeArguments": [
+        "ApiInterfaceDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 86,
+      "method": "GET",
+      "path": "`/apis/${apiId}/request`",
+      "typeArguments": [
+        "ApiRequestBundleResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 89,
+      "method": "PUT",
+      "path": "`/apis/${apiId}/request`",
+      "typeArguments": [
+        "ApiRequestBundleResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 94,
+      "method": "GET",
+      "path": "`/apis/${apiId}/responses`",
+      "typeArguments": [
+        "ApiResponsesBundleResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 97,
+      "method": "PUT",
+      "path": "`/apis/${apiId}/responses`",
+      "typeArguments": [
+        "ApiResponsesBundleResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 102,
+      "method": "GET",
+      "path": "`/apis/${apiId}/relations`",
+      "typeArguments": [
+        "ApiItemListResponse<ApiRelation>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 105,
+      "method": "POST",
+      "path": "`/apis/${apiId}/relations`",
+      "typeArguments": [
+        "ApiRelation"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 108,
+      "method": "DELETE",
+      "path": "`/api-relations/${relationId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 113,
+      "method": "GET",
+      "path": "`/apis/${apiId}/history`",
+      "typeArguments": [
+        "ApiItemListResponse<ApiChangeLog>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 120,
+      "method": "POST",
+      "path": "`/projects/${projectId}/apis/import/preview`",
+      "typeArguments": [
+        "ApiImportPreviewResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 126,
+      "method": "POST",
+      "path": "`/projects/${projectId}/apis/import/confirm`",
+      "typeArguments": [
+        "ApiImportConfirmResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 135,
+      "method": "GET",
+      "path": "`/projects/${projectId}/api-import-records`",
+      "typeArguments": [
+        "ApiItemListResponse<ApiImportRecord>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/apiCatalog.ts",
+    "call": {
+      "line": 143,
+      "method": "POST",
+      "path": "`/apis/${apiId}/debug`",
+      "typeArguments": [
+        "ApiDebugResult"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/auth.ts",
+    "call": {
+      "line": 29,
+      "method": "POST",
+      "path": "'/session/login'",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/auth.ts",
+    "call": {
+      "line": 32,
+      "method": "POST",
+      "path": "'/session/register'",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/auth.ts",
+    "call": {
+      "line": 34,
+      "method": "GET",
+      "path": "'/me'",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/auth.ts",
+    "call": {
+      "line": 36,
+      "method": "PATCH",
+      "path": "'/me'",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/auth.ts",
+    "call": {
+      "line": 39,
+      "method": "GET",
+      "path": "'/me/organizations'",
+      "typeArguments": [
+        "{ items: unknown[]; total: number; page: number; page_size: number }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/auth.ts",
+    "call": {
+      "line": 43,
+      "method": "POST",
+      "path": "'/session/logout'",
+      "typeArguments": []
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 60,
+      "method": "GET",
+      "path": "`/projects/${projectId}/business-domains`",
+      "typeArguments": [
+        "Paginated<BusinessDomain>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 62,
+      "method": "POST",
+      "path": "`/projects/${projectId}/business-domains`",
+      "typeArguments": [
+        "BusinessDomain"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 63,
+      "method": "GET",
+      "path": "`/business-domains/${domainId}`",
+      "typeArguments": [
+        "BusinessDomain"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 65,
+      "method": "PATCH",
+      "path": "`/business-domains/${domainId}`",
+      "typeArguments": [
+        "BusinessDomain"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 66,
+      "method": "DELETE",
+      "path": "`/business-domains/${domainId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 70,
+      "method": "GET",
+      "path": "`/projects/${projectId}/business-flows`",
+      "typeArguments": [
+        "Paginated<BusinessFlow>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 72,
+      "method": "POST",
+      "path": "`/projects/${projectId}/business-flows`",
+      "typeArguments": [
+        "BusinessFlow"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 73,
+      "method": "GET",
+      "path": "`/business-flows/${flowId}`",
+      "typeArguments": [
+        "BusinessFlow"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 74,
+      "method": "GET",
+      "path": "`/business-flows/${flowId}/detail`",
+      "typeArguments": [
+        "BusinessFlowDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 76,
+      "method": "PATCH",
+      "path": "`/business-flows/${flowId}`",
+      "typeArguments": [
+        "BusinessFlow"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 77,
+      "method": "DELETE",
+      "path": "`/business-flows/${flowId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 80,
+      "method": "GET",
+      "path": "`/business-flows/${flowId}/actions`",
+      "typeArguments": [
+        "BusinessAction[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 82,
+      "method": "POST",
+      "path": "`/business-flows/${flowId}/actions`",
+      "typeArguments": [
+        "BusinessAction"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 84,
+      "method": "PATCH",
+      "path": "`/business-actions/${actionId}`",
+      "typeArguments": [
+        "BusinessAction"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 85,
+      "method": "DELETE",
+      "path": "`/business-actions/${actionId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 87,
+      "method": "PATCH",
+      "path": "`/business-flows/${flowId}/actions/reorder`",
+      "typeArguments": [
+        "BusinessAction[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 91,
+      "method": "GET",
+      "path": "`/business-actions/${actionId}/preconditions`",
+      "typeArguments": [
+        "BusinessPrecondition[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 93,
+      "method": "POST",
+      "path": "`/business-actions/${actionId}/preconditions`",
+      "typeArguments": [
+        "BusinessPrecondition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 95,
+      "method": "PATCH",
+      "path": "`/business-preconditions/${preconditionId}`",
+      "typeArguments": [
+        "BusinessPrecondition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 97,
+      "method": "DELETE",
+      "path": "`/business-preconditions/${preconditionId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 101,
+      "method": "GET",
+      "path": "`/business-actions/${actionId}/variables`",
+      "typeArguments": [
+        "BusinessVariable[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 103,
+      "method": "POST",
+      "path": "`/business-actions/${actionId}/variables`",
+      "typeArguments": [
+        "BusinessVariable"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 105,
+      "method": "PATCH",
+      "path": "`/business-variables/${variableId}`",
+      "typeArguments": [
+        "BusinessVariable"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 106,
+      "method": "DELETE",
+      "path": "`/business-variables/${variableId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 109,
+      "method": "GET",
+      "path": "`/business-actions/${actionId}/states`",
+      "typeArguments": [
+        "BusinessState[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 111,
+      "method": "POST",
+      "path": "`/business-actions/${actionId}/states`",
+      "typeArguments": [
+        "BusinessState"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 113,
+      "method": "PATCH",
+      "path": "`/business-states/${stateId}`",
+      "typeArguments": [
+        "BusinessState"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 114,
+      "method": "DELETE",
+      "path": "`/business-states/${stateId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 118,
+      "method": "GET",
+      "path": "`/business-actions/${actionId}/bindings`",
+      "typeArguments": [
+        "BusinessBindingDetail[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 120,
+      "method": "POST",
+      "path": "`/business-actions/${actionId}/bindings`",
+      "typeArguments": [
+        "BusinessBindingDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 121,
+      "method": "GET",
+      "path": "`/business-bindings/${bindingId}`",
+      "typeArguments": [
+        "BusinessBindingDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 123,
+      "method": "PATCH",
+      "path": "`/business-bindings/${bindingId}`",
+      "typeArguments": [
+        "BusinessBindingDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 124,
+      "method": "DELETE",
+      "path": "`/business-bindings/${bindingId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 128,
+      "method": "GET",
+      "path": "`/business-bindings/${bindingId}/mappings`",
+      "typeArguments": [
+        "BusinessApiMapping[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 130,
+      "method": "POST",
+      "path": "`/business-bindings/${bindingId}/mappings`",
+      "typeArguments": [
+        "BusinessApiMapping"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 132,
+      "method": "PATCH",
+      "path": "`/business-api-mappings/${mappingId}`",
+      "typeArguments": [
+        "BusinessApiMapping"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 133,
+      "method": "DELETE",
+      "path": "`/business-api-mappings/${mappingId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 137,
+      "method": "GET",
+      "path": "`/business-flows/${flowId}/variable-refs`",
+      "typeArguments": [
+        "BusinessVariableRef[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 139,
+      "method": "POST",
+      "path": "`/business-flows/${flowId}/variable-refs`",
+      "typeArguments": [
+        "BusinessVariableRef"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 140,
+      "method": "DELETE",
+      "path": "`/business-variable-refs/${refId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 144,
+      "method": "GET",
+      "path": "`/projects/${projectId}/business-rules`",
+      "typeArguments": [
+        "Paginated<BusinessRule>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 146,
+      "method": "POST",
+      "path": "`/projects/${projectId}/business-rules`",
+      "typeArguments": [
+        "BusinessRule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 148,
+      "method": "PATCH",
+      "path": "`/business-rules/${ruleId}`",
+      "typeArguments": [
+        "BusinessRule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 149,
+      "method": "DELETE",
+      "path": "`/business-rules/${ruleId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 153,
+      "method": "POST",
+      "path": "`/business-flows/${flowId}/execute`",
+      "typeArguments": [
+        "FlowExecution"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 154,
+      "method": "GET",
+      "path": "`/business-executions/${executionId}`",
+      "typeArguments": [
+        "FlowExecution"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/business.ts",
+    "call": {
+      "line": 156,
+      "method": "GET",
+      "path": "`/business-executions/${executionId}/actions`",
+      "typeArguments": [
+        "Paginated<ActionExecution>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/dashboard.ts",
+    "call": {
+      "line": 15,
+      "method": "GET",
+      "path": "'/dashboard/overview'",
+      "typeArguments": [
+        "DashboardOverview"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/dashboard.ts",
+    "call": {
+      "line": 18,
+      "method": "GET",
+      "path": "'/dashboard/charts'",
+      "typeArguments": [
+        "DashboardCharts"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/dashboard.ts",
+    "call": {
+      "line": 23,
+      "method": "GET",
+      "path": "'/dashboard/projects'",
+      "typeArguments": [
+        "ProjectSummaryResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/dashboard.ts",
+    "call": {
+      "line": 25,
+      "method": "GET",
+      "path": "'/dashboard/ready'",
+      "typeArguments": [
+        "ReadyResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/dashboard.ts",
+    "call": {
+      "line": 27,
+      "method": "GET",
+      "path": "'/dashboard/platform'",
+      "typeArguments": [
+        "DashboardOverview"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 51,
+      "method": "GET",
+      "path": "'/bugs/sources/context'",
+      "typeArguments": [
+        "DefectSourceContext"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 52,
+      "method": "GET",
+      "path": "'/bugs/sources'",
+      "typeArguments": [
+        "DefectSourceLink[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 53,
+      "method": "GET",
+      "path": "`/bugs/${id}/sources`",
+      "typeArguments": [
+        "DefectSourceLink[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 54,
+      "method": "POST",
+      "path": "'/bugs/sources'",
+      "typeArguments": [
+        "DefectSourceLink"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 57,
+      "method": "GET",
+      "path": "'/bugs'",
+      "typeArguments": [
+        "Paginated<Bug>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 59,
+      "method": "POST",
+      "path": "'/bugs'",
+      "typeArguments": [
+        "Bug"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 61,
+      "method": "GET",
+      "path": "`/bugs/${id}`",
+      "typeArguments": [
+        "Bug"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 63,
+      "method": "PUT",
+      "path": "`/bugs/${id}`",
+      "typeArguments": [
+        "Bug"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/defects.ts",
+    "call": {
+      "line": 65,
+      "method": "DELETE",
+      "path": "`/bugs/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/environments.ts",
+    "call": {
+      "line": 49,
+      "method": "GET",
+      "path": "'/environments'",
+      "typeArguments": [
+        "Paginated<Environment>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/environments.ts",
+    "call": {
+      "line": 52,
+      "method": "POST",
+      "path": "'/environments'",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/environments.ts",
+    "call": {
+      "line": 54,
+      "method": "GET",
+      "path": "`/environments/${name}`",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/environments.ts",
+    "call": {
+      "line": 57,
+      "method": "PATCH",
+      "path": "`/environments/${name}`",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/environments.ts",
+    "call": {
+      "line": 60,
+      "method": "POST",
+      "path": "`/environments/${name}/set-default`",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/environments.ts",
+    "call": {
+      "line": 62,
+      "method": "DELETE",
+      "path": "`/environments/${name}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 58,
+      "method": "GET",
+      "path": "`/projects/${projectId}/mock-services`",
+      "typeArguments": [
+        "MockServiceListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 63,
+      "method": "POST",
+      "path": "`/projects/${projectId}/mock-services`",
+      "typeArguments": [
+        "MockServiceCreateResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 66,
+      "method": "GET",
+      "path": "`/mock-services/${id}`",
+      "typeArguments": [
+        "MockService"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 69,
+      "method": "PATCH",
+      "path": "`/mock-services/${id}`",
+      "typeArguments": [
+        "MockService"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 72,
+      "method": "DELETE",
+      "path": "`/mock-services/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 76,
+      "method": "POST",
+      "path": "`/mock-services/${id}/reset-token`",
+      "typeArguments": [
+        "MockServiceCreateResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 84,
+      "method": "GET",
+      "path": "`/mock-services/${serviceId}/endpoints`",
+      "typeArguments": [
+        "MockEndpointListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 89,
+      "method": "POST",
+      "path": "`/mock-services/${serviceId}/endpoints`",
+      "typeArguments": [
+        "MockEndpoint"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 92,
+      "method": "GET",
+      "path": "`/mock-endpoints/${id}`",
+      "typeArguments": [
+        "MockEndpoint"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 95,
+      "method": "PATCH",
+      "path": "`/mock-endpoints/${id}`",
+      "typeArguments": [
+        "MockEndpoint"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 98,
+      "method": "DELETE",
+      "path": "`/mock-endpoints/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 106,
+      "method": "GET",
+      "path": "`/mock-endpoints/${endpointId}/scenarios`",
+      "typeArguments": [
+        "MockScenarioListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 111,
+      "method": "POST",
+      "path": "`/mock-endpoints/${endpointId}/scenarios`",
+      "typeArguments": [
+        "MockScenario"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 114,
+      "method": "GET",
+      "path": "`/mock-scenarios/${id}`",
+      "typeArguments": [
+        "MockScenario"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 117,
+      "method": "PATCH",
+      "path": "`/mock-scenarios/${id}`",
+      "typeArguments": [
+        "MockScenario"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 120,
+      "method": "DELETE",
+      "path": "`/mock-scenarios/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 124,
+      "method": "PUT",
+      "path": "`/mock-scenarios/${id}/matchers`",
+      "typeArguments": [
+        "MockScenario"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 127,
+      "method": "POST",
+      "path": "`/mock-scenarios/${id}/set-default`",
+      "typeArguments": [
+        "MockScenario"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 131,
+      "method": "POST",
+      "path": "`/mock-scenarios/${id}/duplicate`",
+      "typeArguments": [
+        "MockScenario"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 137,
+      "method": "POST",
+      "path": "`/mock-scenarios/${id}/test`",
+      "typeArguments": [
+        "ScenarioTestResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 142,
+      "method": "GET",
+      "path": "`/projects/${projectId}/mock-executions`",
+      "typeArguments": [
+        "MockExecutionListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 147,
+      "method": "GET",
+      "path": "`/mock-executions/${id}`",
+      "typeArguments": [
+        "MockExecution"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 153,
+      "method": "GET",
+      "path": "`/projects/${projectId}/mock-contexts`",
+      "typeArguments": [
+        "MockContext[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 156,
+      "method": "GET",
+      "path": "`/mock-contexts/${contextId}`",
+      "typeArguments": [
+        "MockContext"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 159,
+      "method": "POST",
+      "path": "`/mock-contexts/${contextId}/close`",
+      "typeArguments": [
+        "MockContext"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 164,
+      "method": "POST",
+      "path": "`/projects/${projectId}/mock-from-api/${apiId}`",
+      "typeArguments": [
+        "CreateMockFromApiResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 167,
+      "method": "GET",
+      "path": "`/test-cases/${testCaseId}/mocks`",
+      "typeArguments": [
+        "TestCaseMock[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/mockManagement.ts",
+    "call": {
+      "line": 170,
+      "method": "PUT",
+      "path": "`/test-cases/${testCaseId}/mocks`",
+      "typeArguments": [
+        "TestCaseMock[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/modelConfigs.ts",
+    "call": {
+      "line": 48,
+      "method": "GET",
+      "path": "'/model-configs'",
+      "typeArguments": [
+        "Paginated<ModelConfiguration>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/modelConfigs.ts",
+    "call": {
+      "line": 51,
+      "method": "GET",
+      "path": "'/model-configs/providers'",
+      "typeArguments": [
+        "ProviderCatalogItem[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/modelConfigs.ts",
+    "call": {
+      "line": 54,
+      "method": "POST",
+      "path": "'/model-configs'",
+      "typeArguments": [
+        "ModelConfiguration"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/modelConfigs.ts",
+    "call": {
+      "line": 57,
+      "method": "PATCH",
+      "path": "`/model-configs/${id}`",
+      "typeArguments": [
+        "ModelConfiguration"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/modelConfigs.ts",
+    "call": {
+      "line": 60,
+      "method": "POST",
+      "path": "`/model-configs/${id}/set-default`",
+      "typeArguments": [
+        "ModelConfiguration"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/modelConfigs.ts",
+    "call": {
+      "line": 62,
+      "method": "DELETE",
+      "path": "`/model-configs/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 30,
+      "method": "POST",
+      "path": "`/projects/${projectId}/notification-channels`",
+      "typeArguments": [
+        "NotificationChannel"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 34,
+      "method": "GET",
+      "path": "`/projects/${projectId}/notification-channels`",
+      "typeArguments": [
+        "ChannelListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 39,
+      "method": "GET",
+      "path": "`/notification-channels/${channelId}`",
+      "typeArguments": [
+        "NotificationChannel"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 43,
+      "method": "PATCH",
+      "path": "`/notification-channels/${channelId}`",
+      "typeArguments": [
+        "NotificationChannel"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 46,
+      "method": "DELETE",
+      "path": "`/notification-channels/${channelId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 49,
+      "method": "POST",
+      "path": "`/notification-channels/${channelId}/test`",
+      "typeArguments": [
+        "SendResult"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 53,
+      "method": "GET",
+      "path": "`/notification-channels/${channelId}/records`",
+      "typeArguments": [
+        "NotificationRecordListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 59,
+      "method": "POST",
+      "path": "`/reports/${reportId}/notify`",
+      "typeArguments": [
+        "SendResult"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notificationChannels.ts",
+    "call": {
+      "line": 63,
+      "method": "GET",
+      "path": "`/reports/${reportId}/notifications`",
+      "typeArguments": [
+        "NotificationRecordListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notifications.ts",
+    "call": {
+      "line": 22,
+      "method": "GET",
+      "path": "'/notifications'",
+      "typeArguments": [
+        "NotificationList"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notifications.ts",
+    "call": {
+      "line": 24,
+      "method": "GET",
+      "path": "'/notifications/summary'",
+      "typeArguments": [
+        "NotificationSummary"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notifications.ts",
+    "call": {
+      "line": 26,
+      "method": "GET",
+      "path": "'/notifications/events'",
+      "typeArguments": [
+        "{ value: string; label: string }[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notifications.ts",
+    "call": {
+      "line": 29,
+      "method": "POST",
+      "path": "`/notifications/${id}/read`",
+      "typeArguments": [
+        "unknown"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notifications.ts",
+    "call": {
+      "line": 32,
+      "method": "POST",
+      "path": "'/notifications/read-all'",
+      "typeArguments": [
+        "NotificationList"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/notifications.ts",
+    "call": {
+      "line": 34,
+      "method": "DELETE",
+      "path": "`/notifications/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 44,
+      "method": "GET",
+      "path": "'/organizations'",
+      "typeArguments": [
+        "Paginated<Organization>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 47,
+      "method": "POST",
+      "path": "'/organizations'",
+      "typeArguments": [
+        "Organization"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 50,
+      "method": "PATCH",
+      "path": "`/organizations/${id}`",
+      "typeArguments": [
+        "Organization"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 53,
+      "method": "GET",
+      "path": "`/organizations/${id}/members`",
+      "typeArguments": [
+        "{ items: OrganizationMember[]; total: number }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 58,
+      "method": "GET",
+      "path": "`/organizations/${id}/candidates`",
+      "typeArguments": [
+        "{ item: UserCandidate | null }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 64,
+      "method": "GET",
+      "path": "`/organizations/${id}/models`",
+      "typeArguments": [
+        "{ items: ModelOption[]; total: number }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 69,
+      "method": "PUT",
+      "path": "`/organizations/${orgId}/members/${memberId}`",
+      "typeArguments": [
+        "OrganizationMember"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 75,
+      "method": "DELETE",
+      "path": "`/organizations/${orgId}/members/${memberId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/organizations.ts",
+    "call": {
+      "line": 78,
+      "method": "POST",
+      "path": "`/organizations/${orgId}/members/${memberId}/upgrade`",
+      "typeArguments": [
+        "Organization"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 65,
+      "method": "GET",
+      "path": "'/projects'",
+      "typeArguments": [
+        "Paginated<Project>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 67,
+      "method": "POST",
+      "path": "'/projects'",
+      "typeArguments": [
+        "Project"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 69,
+      "method": "GET",
+      "path": "`/projects/${id}`",
+      "typeArguments": [
+        "ProjectDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 72,
+      "method": "PATCH",
+      "path": "`/projects/${id}`",
+      "typeArguments": [
+        "Project"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 74,
+      "method": "DELETE",
+      "path": "`/projects/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 77,
+      "method": "POST",
+      "path": "`/projects/${id}/owner`",
+      "typeArguments": [
+        "Project"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 80,
+      "method": "GET",
+      "path": "`/projects/${id}/members`",
+      "typeArguments": [
+        "Paginated<ProjectMember>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 83,
+      "method": "PUT",
+      "path": "`/projects/${id}/members/${memberId}`",
+      "typeArguments": [
+        "ProjectMember"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 86,
+      "method": "PATCH",
+      "path": "`/projects/${id}/members/${memberId}`",
+      "typeArguments": [
+        "ProjectMember"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 89,
+      "method": "DELETE",
+      "path": "`/projects/${id}/members/${memberId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 92,
+      "method": "GET",
+      "path": "`/projects/${id}/targets`",
+      "typeArguments": [
+        "OutboundTarget[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 95,
+      "method": "POST",
+      "path": "`/projects/${id}/targets`",
+      "typeArguments": [
+        "OutboundTarget"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 98,
+      "method": "PATCH",
+      "path": "`/projects/${id}/targets/${targetId}`",
+      "typeArguments": [
+        "OutboundTarget"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 101,
+      "method": "DELETE",
+      "path": "`/projects/${id}/targets/${targetId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 104,
+      "method": "GET",
+      "path": "`/projects/${id}/environments`",
+      "typeArguments": [
+        "Paginated<Environment>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 107,
+      "method": "POST",
+      "path": "`/projects/${id}/environments`",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 110,
+      "method": "PATCH",
+      "path": "`/projects/${id}/environments/${environmentId}`",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 113,
+      "method": "POST",
+      "path": "`/projects/${id}/environments/${environmentId}/set-default`",
+      "typeArguments": [
+        "Environment"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/projects.ts",
+    "call": {
+      "line": 116,
+      "method": "DELETE",
+      "path": "`/projects/${id}/environments/${environmentId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/reports.ts",
+    "call": {
+      "line": 25,
+      "method": "POST",
+      "path": "`/test-runs/${runId}/report`",
+      "typeArguments": [
+        "ReportGenerateResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/reports.ts",
+    "call": {
+      "line": 29,
+      "method": "GET",
+      "path": "`/projects/${projectId}/reports`",
+      "typeArguments": [
+        "TestReportListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/reports.ts",
+    "call": {
+      "line": 34,
+      "method": "GET",
+      "path": "`/reports/${reportId}`",
+      "typeArguments": [
+        "TestReportDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/reports.ts",
+    "call": {
+      "line": 37,
+      "method": "DELETE",
+      "path": "`/reports/${reportId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/reports.ts",
+    "call": {
+      "line": 41,
+      "method": "POST",
+      "path": "`/reports/${reportId}/regenerate-ai-summary`",
+      "typeArguments": [
+        "TestReport"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 59,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security-setting`",
+      "typeArguments": [
+        "SecuritySetting"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 61,
+      "method": "PUT",
+      "path": "`/projects/${projectId}/security-setting`",
+      "typeArguments": [
+        "SecuritySetting"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 68,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security-strategies`",
+      "typeArguments": [
+        "SecurityStrategyListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 73,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security-strategies`",
+      "typeArguments": [
+        "SecurityStrategy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 75,
+      "method": "GET",
+      "path": "`/security-strategies/${strategyId}`",
+      "typeArguments": [
+        "SecurityStrategy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 77,
+      "method": "PATCH",
+      "path": "`/security-strategies/${strategyId}`",
+      "typeArguments": [
+        "SecurityStrategy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 79,
+      "method": "DELETE",
+      "path": "`/security-strategies/${strategyId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 83,
+      "method": "POST",
+      "path": "`/security-strategies/${strategyId}/rules`",
+      "typeArguments": [
+        "MutationRule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 85,
+      "method": "PATCH",
+      "path": "`/security-rules/${ruleId}`",
+      "typeArguments": [
+        "MutationRule"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 86,
+      "method": "DELETE",
+      "path": "`/security-rules/${ruleId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 91,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security-plans/preview`",
+      "typeArguments": [
+        "PlanPreviewResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 94,
+      "method": "POST",
+      "path": "`/security-plans/${planId}/confirm`",
+      "typeArguments": [
+        "PlanConfirmResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 96,
+      "method": "POST",
+      "path": "`/security-plans/${planId}/discard`",
+      "typeArguments": [
+        "SecurityPlan"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 110,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security-cases`",
+      "typeArguments": [
+        "SecurityCaseListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 115,
+      "method": "GET",
+      "path": "`/security-cases/${securityCaseId}`",
+      "typeArguments": [
+        "SecurityCaseDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 117,
+      "method": "PATCH",
+      "path": "`/security-cases/${securityCaseId}`",
+      "typeArguments": [
+        "SecurityCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 120,
+      "method": "POST",
+      "path": "`/security-cases/${securityCaseId}/confirm-risk`",
+      "typeArguments": [
+        "SecurityCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 123,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security-runs`",
+      "typeArguments": [
+        "TestRun"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 127,
+      "method": "GET",
+      "path": "`/security-executions/${securityExecutionId}`",
+      "typeArguments": [
+        "SecurityExecution"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 140,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security-findings`",
+      "typeArguments": [
+        "SecurityFindingListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 145,
+      "method": "GET",
+      "path": "`/security-findings/${findingId}`",
+      "typeArguments": [
+        "SecurityFinding"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 148,
+      "method": "PATCH",
+      "path": "`/security-findings/${findingId}`",
+      "typeArguments": [
+        "SecurityFinding"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 163,
+      "method": "GET",
+      "path": "'/security/zap/health'",
+      "typeArguments": [
+        "ZapHealth"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 164,
+      "method": "GET",
+      "path": "'/security/zap/capabilities'",
+      "typeArguments": [
+        "ZapCapabilities"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 171,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-targets`",
+      "typeArguments": [
+        "ScanTargetListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 176,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security/scan-targets`",
+      "typeArguments": [
+        "ScanTarget"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 178,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-targets/${scanTargetId}`",
+      "typeArguments": [
+        "ScanTarget"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 180,
+      "method": "PATCH",
+      "path": "`/projects/${projectId}/security/scan-targets/${scanTargetId}`",
+      "typeArguments": [
+        "ScanTarget"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 185,
+      "method": "DELETE",
+      "path": "`/projects/${projectId}/security/scan-targets/${scanTargetId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 197,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-profiles`",
+      "typeArguments": [
+        "ScanProfileListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 203,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security/scan-profiles`",
+      "typeArguments": [
+        "ScanProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 205,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-profiles/${scanProfileId}`",
+      "typeArguments": [
+        "ScanProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 207,
+      "method": "PATCH",
+      "path": "`/projects/${projectId}/security/scan-profiles/${scanProfileId}`",
+      "typeArguments": [
+        "ScanProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 212,
+      "method": "DELETE",
+      "path": "`/projects/${projectId}/security/scan-profiles/${scanProfileId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 219,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-auth-profiles`",
+      "typeArguments": [
+        "ScanAuthProfileListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 225,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security/scan-auth-profiles`",
+      "typeArguments": [
+        "ScanAuthProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 227,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-auth-profiles/${authProfileId}`",
+      "typeArguments": [
+        "ScanAuthProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 231,
+      "method": "PATCH",
+      "path": "`/projects/${projectId}/security/scan-auth-profiles/${authProfileId}`",
+      "typeArguments": [
+        "ScanAuthProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 236,
+      "method": "DELETE",
+      "path": "`/projects/${projectId}/security/scan-auth-profiles/${authProfileId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 241,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security/scan-jobs/plan`",
+      "typeArguments": [
+        "ScanPlan"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 244,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security/scan-jobs`",
+      "typeArguments": [
+        "ScanJob"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 254,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs`",
+      "typeArguments": [
+        "ScanJobListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 259,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}`",
+      "typeArguments": [
+        "ScanJob"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 262,
+      "method": "POST",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/cancel`",
+      "typeArguments": [
+        "ScanJob"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 264,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/progress`",
+      "typeArguments": [
+        "ScanJobProgress"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 270,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/events`",
+      "typeArguments": [
+        "ScanEventListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 280,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/alerts`",
+      "typeArguments": [
+        "ScanAlertListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 290,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/findings`",
+      "typeArguments": [
+        "ScanFindingListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 296,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/coverage`",
+      "typeArguments": [
+        "ScanCoverage"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/securityTesting.ts",
+    "call": {
+      "line": 300,
+      "method": "GET",
+      "path": "`/projects/${projectId}/security/scan-jobs/${scanJobId}/report`",
+      "typeArguments": [
+        "ScanReport"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 189,
+      "method": "GET",
+      "path": "'/tasks'",
+      "typeArguments": [
+        "{ items: Task[]; total: number; page: number; page_size: number }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 191,
+      "method": "POST",
+      "path": "`/projects/${projectId}/tasks`",
+      "typeArguments": [
+        "Task"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 193,
+      "method": "GET",
+      "path": "`/projects/${projectId}/available-agents`",
+      "typeArguments": [
+        "AvailableTaskAgent[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 194,
+      "method": "GET",
+      "path": "`/tasks/${taskId}`",
+      "typeArguments": [
+        "Task"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 195,
+      "method": "GET",
+      "path": "`/task-runs/${runId}`",
+      "typeArguments": [
+        "TaskRunDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 196,
+      "method": "GET",
+      "path": "`/task-runs/${runId}/messages`",
+      "typeArguments": [
+        "TaskMessage[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 198,
+      "method": "POST",
+      "path": "`/task-runs/${runId}/messages`",
+      "typeArguments": [
+        "{ message: TaskMessage; created_run_id: number | null }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 200,
+      "method": "POST",
+      "path": "`/task-runs/${runId}/commands`",
+      "typeArguments": [
+        "{ id: number; status: string; response_json: Record<string, unknown> }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 202,
+      "method": "GET",
+      "path": "`/task-runs/${runId}/events`",
+      "typeArguments": [
+        "TaskEvent[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 203,
+      "method": "GET",
+      "path": "`/task-runs/${runId}/resources`",
+      "typeArguments": [
+        "TaskResourceRef[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 204,
+      "method": "GET",
+      "path": "`/task-runs/${runId}/web-authoring`",
+      "typeArguments": [
+        "TaskWebAuthoringWorkspace"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 205,
+      "method": "POST",
+      "path": "`/task-runs/${runId}/web-authoring/restart`",
+      "typeArguments": [
+        "TaskWebAuthoringWorkspace"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 206,
+      "method": "POST",
+      "path": "`/task-runs/${runId}/web-authoring/close`",
+      "typeArguments": [
+        "TaskWebAuthoringWorkspace"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 208,
+      "method": "POST",
+      "path": "`/task-runs/${runId}/web-authoring/messages`",
+      "typeArguments": [
+        "AgentTurnResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 210,
+      "method": "POST",
+      "path": "`/task-runs/${runId}/web-authoring/draft`",
+      "typeArguments": [
+        "{ id: number; name: string; project_id: number; confirmed: boolean }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/tasks.ts",
+    "call": {
+      "line": 212,
+      "method": "GET",
+      "path": "'/task-resources'",
+      "typeArguments": [
+        "TaskResourceRef[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 104,
+      "method": "GET",
+      "path": "`/projects/${projectId}/fixtures`",
+      "typeArguments": [
+        "FixtureListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 109,
+      "method": "POST",
+      "path": "`/projects/${projectId}/fixtures`",
+      "typeArguments": [
+        "FixtureDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 111,
+      "method": "GET",
+      "path": "`/fixtures/${fixtureId}`",
+      "typeArguments": [
+        "FixtureDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 114,
+      "method": "PATCH",
+      "path": "`/fixtures/${fixtureId}`",
+      "typeArguments": [
+        "FixtureDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 116,
+      "method": "DELETE",
+      "path": "`/fixtures/${fixtureId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 119,
+      "method": "PUT",
+      "path": "`/fixtures/${fixtureId}/steps`",
+      "typeArguments": [
+        "FixtureDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 122,
+      "method": "PUT",
+      "path": "`/fixtures/${fixtureId}/outputs`",
+      "typeArguments": [
+        "FixtureDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 125,
+      "method": "GET",
+      "path": "`/fixtures/${fixtureId}/dependencies`",
+      "typeArguments": [
+        "FixtureTreeNode[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 132,
+      "method": "POST",
+      "path": "`/fixtures/${fixtureId}/generate`",
+      "typeArguments": [
+        "DataExecutionDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 138,
+      "method": "POST",
+      "path": "`/fixtures/${fixtureId}/cleanup`",
+      "typeArguments": [
+        "DataExecutionDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 142,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-data-assets`",
+      "typeArguments": [
+        "TestDataAssetListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 146,
+      "method": "POST",
+      "path": "`/projects/${projectId}/test-data-assets`",
+      "typeArguments": [
+        "TestDataAsset"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 147,
+      "method": "GET",
+      "path": "`/test-data-assets/${assetId}`",
+      "typeArguments": [
+        "TestDataAsset"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 149,
+      "method": "PATCH",
+      "path": "`/test-data-assets/${assetId}`",
+      "typeArguments": [
+        "TestDataAsset"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 150,
+      "method": "DELETE",
+      "path": "`/test-data-assets/${assetId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 154,
+      "method": "GET",
+      "path": "`/projects/${projectId}/data-providers`",
+      "typeArguments": [
+        "DataProviderListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 158,
+      "method": "POST",
+      "path": "`/projects/${projectId}/data-providers`",
+      "typeArguments": [
+        "DataProvider"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 159,
+      "method": "GET",
+      "path": "`/data-providers/${providerId}`",
+      "typeArguments": [
+        "DataProvider"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 161,
+      "method": "PATCH",
+      "path": "`/data-providers/${providerId}`",
+      "typeArguments": [
+        "DataProvider"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 163,
+      "method": "POST",
+      "path": "`/data-providers/${providerId}/enable`",
+      "typeArguments": [
+        "DataProvider"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 165,
+      "method": "POST",
+      "path": "`/data-providers/${providerId}/disable`",
+      "typeArguments": [
+        "DataProvider"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 166,
+      "method": "DELETE",
+      "path": "`/data-providers/${providerId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 172,
+      "method": "POST",
+      "path": "`/data-providers/${providerId}/test`",
+      "typeArguments": [
+        "DataExecutionDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 176,
+      "method": "GET",
+      "path": "`/projects/${projectId}/data-pools`",
+      "typeArguments": [
+        "DataPoolListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 180,
+      "method": "POST",
+      "path": "`/projects/${projectId}/data-pools`",
+      "typeArguments": [
+        "DataPool"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 181,
+      "method": "GET",
+      "path": "`/data-pools/${poolId}`",
+      "typeArguments": [
+        "DataPool"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 182,
+      "method": "DELETE",
+      "path": "`/data-pools/${poolId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 184,
+      "method": "GET",
+      "path": "`/data-pools/${poolId}/items`",
+      "typeArguments": [
+        "DataPoolItemListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 188,
+      "method": "POST",
+      "path": "`/data-pools/${poolId}/items`",
+      "typeArguments": [
+        "DataPoolItem"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 189,
+      "method": "DELETE",
+      "path": "`/data-pool-items/${itemId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 193,
+      "method": "GET",
+      "path": "`/projects/${projectId}/target-databases`",
+      "typeArguments": [
+        "TargetDbConnectionListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 197,
+      "method": "POST",
+      "path": "`/projects/${projectId}/target-databases`",
+      "typeArguments": [
+        "TargetDbConnection"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 199,
+      "method": "GET",
+      "path": "`/target-databases/${connectionId}`",
+      "typeArguments": [
+        "TargetDbConnection"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 201,
+      "method": "PATCH",
+      "path": "`/target-databases/${connectionId}`",
+      "typeArguments": [
+        "TargetDbConnection"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 203,
+      "method": "DELETE",
+      "path": "`/target-databases/${connectionId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 206,
+      "method": "POST",
+      "path": "`/target-databases/${connectionId}/ping`",
+      "typeArguments": [
+        "{ connection_id: number; ok: boolean; latency_ms: number; error: string | null }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 210,
+      "method": "GET",
+      "path": "`/projects/${projectId}/database-policies`",
+      "typeArguments": [
+        "DatabasePolicyListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 214,
+      "method": "PUT",
+      "path": "`/projects/${projectId}/database-policies/${environmentId}`",
+      "typeArguments": [
+        "DatabasePolicy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 221,
+      "method": "GET",
+      "path": "`/projects/${projectId}/data-executions`",
+      "typeArguments": [
+        "DataExecutionListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testData.ts",
+    "call": {
+      "line": 225,
+      "method": "GET",
+      "path": "`/data-executions/${executionId}`",
+      "typeArguments": [
+        "DataExecutionDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 69,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-strategies`",
+      "typeArguments": [
+        "TestStrategy[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 73,
+      "method": "POST",
+      "path": "`/projects/${projectId}/test-strategies`",
+      "typeArguments": [
+        "TestStrategy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 74,
+      "method": "GET",
+      "path": "`/test-strategies/${strategyId}`",
+      "typeArguments": [
+        "TestStrategy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 76,
+      "method": "PATCH",
+      "path": "`/test-strategies/${strategyId}`",
+      "typeArguments": [
+        "TestStrategy"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 77,
+      "method": "DELETE",
+      "path": "`/test-strategies/${strategyId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 91,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-points`",
+      "typeArguments": [
+        "TestPoint[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 95,
+      "method": "POST",
+      "path": "`/projects/${projectId}/test-points`",
+      "typeArguments": [
+        "TestPoint"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 96,
+      "method": "GET",
+      "path": "`/test-points/${pointId}`",
+      "typeArguments": [
+        "TestPoint"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 98,
+      "method": "PATCH",
+      "path": "`/test-points/${pointId}`",
+      "typeArguments": [
+        "TestPoint"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 99,
+      "method": "DELETE",
+      "path": "`/test-points/${pointId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 113,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-cases`",
+      "typeArguments": [
+        "TestCase[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 117,
+      "method": "POST",
+      "path": "`/projects/${projectId}/test-cases`",
+      "typeArguments": [
+        "TestCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 118,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}`",
+      "typeArguments": [
+        "TestCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 119,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}/detail`",
+      "typeArguments": [
+        "TestCaseDetail"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 121,
+      "method": "PATCH",
+      "path": "`/test-cases/${caseId}`",
+      "typeArguments": [
+        "TestCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 122,
+      "method": "DELETE",
+      "path": "`/test-cases/${caseId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 126,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}/preconditions`",
+      "typeArguments": [
+        "TestCasePrecondition[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 128,
+      "method": "POST",
+      "path": "`/test-cases/${caseId}/preconditions`",
+      "typeArguments": [
+        "TestCasePrecondition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 130,
+      "method": "PATCH",
+      "path": "`/test-case-preconditions/${preconditionId}`",
+      "typeArguments": [
+        "TestCasePrecondition"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 132,
+      "method": "DELETE",
+      "path": "`/test-case-preconditions/${preconditionId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 135,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}/data`",
+      "typeArguments": [
+        "TestCaseData[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 137,
+      "method": "POST",
+      "path": "`/test-cases/${caseId}/data`",
+      "typeArguments": [
+        "TestCaseData"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 139,
+      "method": "PATCH",
+      "path": "`/test-case-data/${dataId}`",
+      "typeArguments": [
+        "TestCaseData"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 140,
+      "method": "DELETE",
+      "path": "`/test-case-data/${dataId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 144,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}/fixtures`",
+      "typeArguments": [
+        "TestCaseFixture[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 147,
+      "method": "PUT",
+      "path": "`/test-cases/${caseId}/fixtures`",
+      "typeArguments": [
+        "TestCaseFixture[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 150,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}/steps`",
+      "typeArguments": [
+        "TestStep[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 152,
+      "method": "POST",
+      "path": "`/test-cases/${caseId}/steps`",
+      "typeArguments": [
+        "TestStep"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 154,
+      "method": "PATCH",
+      "path": "`/test-steps/${stepId}`",
+      "typeArguments": [
+        "TestStep"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 155,
+      "method": "DELETE",
+      "path": "`/test-steps/${stepId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 159,
+      "method": "GET",
+      "path": "`/test-cases/${caseId}/assertions`",
+      "typeArguments": [
+        "TestAssertion[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 161,
+      "method": "POST",
+      "path": "`/test-cases/${caseId}/assertions`",
+      "typeArguments": [
+        "TestAssertion"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 163,
+      "method": "PATCH",
+      "path": "`/test-assertions/${assertionId}`",
+      "typeArguments": [
+        "TestAssertion"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 165,
+      "method": "DELETE",
+      "path": "`/test-assertions/${assertionId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 172,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-suites`",
+      "typeArguments": [
+        "TestSuite[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 176,
+      "method": "POST",
+      "path": "`/projects/${projectId}/test-suites`",
+      "typeArguments": [
+        "TestSuite"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 177,
+      "method": "GET",
+      "path": "`/test-suites/${suiteId}`",
+      "typeArguments": [
+        "TestSuite"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 179,
+      "method": "PATCH",
+      "path": "`/test-suites/${suiteId}`",
+      "typeArguments": [
+        "TestSuite"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 180,
+      "method": "DELETE",
+      "path": "`/test-suites/${suiteId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 184,
+      "method": "GET",
+      "path": "`/test-suites/${suiteId}/cases`",
+      "typeArguments": [
+        "TestSuiteCaseResponse[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 186,
+      "method": "POST",
+      "path": "`/test-suites/${suiteId}/cases`",
+      "typeArguments": [
+        "TestSuiteCaseResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 188,
+      "method": "DELETE",
+      "path": "`/test-suite-cases/${suiteCaseId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 195,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-plans`",
+      "typeArguments": [
+        "TestPlan[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 199,
+      "method": "POST",
+      "path": "`/projects/${projectId}/test-plans`",
+      "typeArguments": [
+        "TestPlan"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 200,
+      "method": "GET",
+      "path": "`/test-plans/${planId}`",
+      "typeArguments": [
+        "TestPlan"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 202,
+      "method": "PATCH",
+      "path": "`/test-plans/${planId}`",
+      "typeArguments": [
+        "TestPlan"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 203,
+      "method": "DELETE",
+      "path": "`/test-plans/${planId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 207,
+      "method": "GET",
+      "path": "`/test-plans/${planId}/suites`",
+      "typeArguments": [
+        "TestPlanSuiteResponse[]"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 209,
+      "method": "POST",
+      "path": "`/test-plans/${planId}/suites`",
+      "typeArguments": [
+        "TestPlanSuiteResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 211,
+      "method": "DELETE",
+      "path": "`/test-plan-suites/${planSuiteId}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 215,
+      "method": "POST",
+      "path": "`/test-plans/${planId}/runs`",
+      "typeArguments": [
+        "TestRun"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 216,
+      "method": "GET",
+      "path": "`/test-runs/${runId}`",
+      "typeArguments": [
+        "TestRun"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 219,
+      "method": "GET",
+      "path": "`/test-runs/${runId}/cases`",
+      "typeArguments": [
+        "CaseExecutionListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/testManagement.ts",
+    "call": {
+      "line": 225,
+      "method": "GET",
+      "path": "`/projects/${projectId}/test-runs`",
+      "typeArguments": [
+        "TestRunListResponse"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/users.ts",
+    "call": {
+      "line": 34,
+      "method": "GET",
+      "path": "'/users'",
+      "typeArguments": [
+        "Paginated<User>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/users.ts",
+    "call": {
+      "line": 36,
+      "method": "GET",
+      "path": "`/users/${id}`",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/users.ts",
+    "call": {
+      "line": 38,
+      "method": "POST",
+      "path": "'/users'",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/users.ts",
+    "call": {
+      "line": 40,
+      "method": "PATCH",
+      "path": "`/users/${id}`",
+      "typeArguments": [
+        "User"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/users.ts",
+    "call": {
+      "line": 42,
+      "method": "DELETE",
+      "path": "`/users/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 28,
+      "method": "GET",
+      "path": "`/projects/${id}/web-environments`",
+      "typeArguments": [
+        "Paginated<WebEnvironment>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 30,
+      "method": "GET",
+      "path": "`/projects/${id}/web-pages`",
+      "typeArguments": [
+        "Paginated<WebPage>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 33,
+      "method": "PUT",
+      "path": "`/projects/${id}/web-pages/${pageId}`",
+      "typeArguments": [
+        "WebPage"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 34,
+      "method": "POST",
+      "path": "`/projects/${id}/web-pages`",
+      "typeArguments": [
+        "WebPage"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 36,
+      "method": "DELETE",
+      "path": "`/web-pages/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 38,
+      "method": "GET",
+      "path": "`/projects/${id}/web-cases`",
+      "typeArguments": [
+        "Paginated<WebCase>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 40,
+      "method": "GET",
+      "path": "`/web-cases/${id}`",
+      "typeArguments": [
+        "WebCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 43,
+      "method": "PUT",
+      "path": "`/projects/${id}/web-cases/${caseId}`",
+      "typeArguments": [
+        "WebCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 44,
+      "method": "POST",
+      "path": "`/projects/${id}/web-cases`",
+      "typeArguments": [
+        "WebCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 46,
+      "method": "DELETE",
+      "path": "`/web-cases/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 48,
+      "method": "POST",
+      "path": "`/web-cases/${id}/confirm`",
+      "typeArguments": [
+        "WebCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 50,
+      "method": "POST",
+      "path": "`/web-cases/${id}/debug`",
+      "typeArguments": [
+        "TestRun"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 52,
+      "method": "GET",
+      "path": "`/projects/${id}/web-auth-profiles`",
+      "typeArguments": [
+        "Paginated<WebAuthProfile>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 55,
+      "method": "PUT",
+      "path": "`/projects/${id}/web-auth-profiles/${authId}`",
+      "typeArguments": [
+        "WebAuthProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 56,
+      "method": "POST",
+      "path": "`/projects/${id}/web-auth-profiles`",
+      "typeArguments": [
+        "WebAuthProfile"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 58,
+      "method": "DELETE",
+      "path": "`/web-auth-profiles/${id}`",
+      "typeArguments": [
+        "void"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 60,
+      "method": "GET",
+      "path": "`/projects/${id}/web-executions`",
+      "typeArguments": [
+        "Paginated<WebExecution>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 62,
+      "method": "GET",
+      "path": "`/web-artifacts/${id}`",
+      "typeArguments": [
+        "Blob"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 64,
+      "method": "GET",
+      "path": "`/web-artifacts/${id}/events`",
+      "typeArguments": [
+        "{ events: Record<string, unknown>[] }"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 66,
+      "method": "POST",
+      "path": "`/projects/${id}/web-agent/draft`",
+      "typeArguments": [
+        "WebCase"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 68,
+      "method": "POST",
+      "path": "`/business-actions/${actionId}/web-binding`",
+      "typeArguments": []
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 76,
+      "method": "GET",
+      "path": "`/projects/${id}/web-agent/sessions`",
+      "typeArguments": [
+        "Paginated<WebAgentSession>"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 78,
+      "method": "POST",
+      "path": "`/projects/${id}/web-agent/sessions`",
+      "typeArguments": [
+        "WebAgentSession"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 80,
+      "method": "GET",
+      "path": "`/web-agent/sessions/${id}`",
+      "typeArguments": [
+        "WebAgentSession"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 82,
+      "method": "POST",
+      "path": "`/web-agent/sessions/${id}/observe`",
+      "typeArguments": [
+        "WebAgentObservation"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 84,
+      "method": "POST",
+      "path": "`/web-agent/sessions/${id}/close`",
+      "typeArguments": [
+        "WebAgentSession"
+      ]
+    }
+  },
+  {
+    "source": "frontend/src/api/webUI.ts",
+    "call": {
+      "line": 86,
+      "method": "POST",
+      "path": "`/web-agent/sessions/${id}/promote`",
+      "typeArguments": [
+        "WebCase"
+      ]
+    }
+  }
+]

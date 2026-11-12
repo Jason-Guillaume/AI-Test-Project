@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { App, Button, Descriptions, Drawer, Form, Input, Select, Space, Tag, Typography } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/api/apiCatalog';
-import { getErrorMessage } from '@/api/client';
+import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { getErrorMessage } from '@/shared/api/client';
 import { API_STATUS_COLOR, API_STATUS_OPTIONS, METHOD_COLOR, METHOD_OPTIONS } from '../constants';
-import type { ApiInterfaceDetail, ApiInterfaceUpdate, ApiModule, ApiStatus } from '@/types';
+import type { ApiInterfaceDetail, ApiInterfaceUpdate, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
+
 
 interface FormValues {
   name: string;
@@ -95,15 +96,6 @@ export function OverviewTab({
         <Descriptions.Item label="鉴权类型">{api.auth_type}</Descriptions.Item>
         <Descriptions.Item label="Content-Type">{api.content_type}</Descriptions.Item>
         <Descriptions.Item label="描述">{api.description ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="结构指纹">
-          {api.source_hash ? (
-            <Typography.Text code copyable>
-              {api.source_hash.slice(0, 16)}
-            </Typography.Text>
-          ) : (
-            '-'
-          )}
-        </Descriptions.Item>
         <Descriptions.Item label="参数 / 响应">
           {api.parameters.length} 个参数 · {api.responses.length} 个响应
         </Descriptions.Item>
@@ -126,7 +118,12 @@ export function OverviewTab({
               loading={updateMutation.isPending}
               onClick={async () => {
                 const values = await form.validateFields();
-                await updateMutation.mutateAsync(values);
+                await updateMutation.mutateAsync({
+                  ...values,
+                  // 清空「所属模块」时 validateFields 返回 undefined，JSON 序列化会丢弃该键，
+                  // 后端 exclude_unset 看不到字段就跳过 -> 接口永远回不了「未分类」。兜底成显式 null。
+                  module_id: values.module_id ?? null,
+                });
               }}
             >
               保存
@@ -151,7 +148,7 @@ export function OverviewTab({
               optionFilterProp="label"
             />
           </Form.Item>
-          <Space size="middle" style={{ display: 'flex', gap: 12 }}>
+          <div className="form-field-row">
             <Form.Item
               name="method"
               label="方法"
@@ -167,7 +164,7 @@ export function OverviewTab({
             >
               <Select options={API_STATUS_OPTIONS} style={{ width: '100%' }} />
             </Form.Item>
-          </Space>
+          </div>
           <Form.Item
             name="path"
             label="路径"

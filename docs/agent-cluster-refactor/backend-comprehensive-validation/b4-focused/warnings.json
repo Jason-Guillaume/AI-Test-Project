@@ -1,0 +1,68 @@
+[
+  {
+    "category": "DeprecationWarning",
+    "message": "The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.",
+    "nodeid": "",
+    "when": "config"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalParameter\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalBody\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"InternalResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiParameterIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiBodyIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiResponseIn\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiParameterResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiRequestBodyResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema_json\" in \"ApiResponseResponse\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  },
+  {
+    "category": "UserWarning",
+    "message": "Field name \"schema\" in \"ImportPreviewItem\" shadows an attribute in parent \"BaseModel\"",
+    "nodeid": "",
+    "when": "collect"
+  }
+]

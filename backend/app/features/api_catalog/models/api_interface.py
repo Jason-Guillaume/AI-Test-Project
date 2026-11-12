@@ -19,19 +19,19 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
 )
 from sqlalchemy.sql import func, text
 
-from app.shared.database import Base
+from app.core.database.soft_delete import SoftDeleteBase
 
 
-class ApiInterface(Base):
+class ApiInterface(SoftDeleteBase):
     """接口定义（去重键：project_id + method + path）。"""
 
     __tablename__ = "api_interface"
     __table_args__ = (
-        UniqueConstraint("project_id", "method", "path", name="uq_api_interface_project_method_path"),
+        Index("uq_api_interface_project_method_path", "project_id", "method", "path", unique=True,
+              postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_api_interface_project_module", "project_id", "module_id"),
         Index("ix_api_interface_source_hash", "source_hash"),
         {"comment": "接口定义（去重键：project_id + method + path）"},

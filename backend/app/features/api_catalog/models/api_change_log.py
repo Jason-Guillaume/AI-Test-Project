@@ -8,7 +8,7 @@ REQUIRED_CHANGED, RESPONSE_CHANGED, MODULE_CHANGED}。feature-local 表，由迁
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.sql import func
 
-from app.shared.database import Base
+from app.core.database.base import Base
 
 
 class ApiChangeLog(Base):
