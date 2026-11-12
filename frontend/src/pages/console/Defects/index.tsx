@@ -257,7 +257,7 @@ export function ConsoleDefectsPage() {
 
   return (
     <PageContainer>
-      <Space wrap style={{ marginBottom: 16 }} align="center">
+      <div className="console-toolbar">
         <Input.Search
           placeholder="按标题或描述搜索"
           allowClear
@@ -307,9 +307,9 @@ export function ConsoleDefectsPage() {
         <Button type="primary" onClick={openCreate} loading={createMutation.isPending}>
           新建缺陷
         </Button>
-      </Space>
+      </div>
 
-      <Space style={{ marginBottom: 12 }} wrap>
+      <div className="console-toolbar">
         <Checkbox
           checked={data.items.length > 0 && data.items.every((bug) => selectedBugIds.includes(bug.id))}
           indeterminate={data.items.some((bug) => selectedBugIds.includes(bug.id)) && !data.items.every((bug) => selectedBugIds.includes(bug.id))}
@@ -329,10 +329,11 @@ export function ConsoleDefectsPage() {
           批量删除（{selectedBugIds.length}）
         </Button>
         {projectId == null && <Typography.Text type="secondary">请先选择项目，再批量删除缺陷。</Typography.Text>}
-      </Space>
+      </div>
 
       <ResourceTable
         rowKey={(r) => r.id}
+        scroll={{ x: 1280 }}
         columns={[
           { title: 'ID', dataIndex: 'id', width: 70 },
           {
@@ -379,9 +380,9 @@ export function ConsoleDefectsPage() {
           {
             title: '操作',
             key: 'actions',
-            width: 140,
+            width: 210,
             render: (_: unknown, row: Bug) => (
-              <Space>
+              <Space size={4} wrap={false}>
                 <Button size="small" onClick={() => setSearchParams({ bugId: String(row.id) })}>详情</Button>
                 <Button size="small" onClick={() => openEdit(row)}>
                   编辑
