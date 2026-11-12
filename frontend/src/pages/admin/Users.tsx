@@ -29,17 +29,16 @@ import type { Paginated } from '@/shared/api/contracts';
 import type { PlatformRole, User } from '@/features/identity/contracts';
 
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
-import { PlatformRoleTag } from '@/features/identity/components/RoleTag';
+import { PlatformRoleTag, PLATFORM_ROLE_LABELS } from '@/features/identity/components/RoleTag';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageHeader } from '@/shared/ui/PageHeader';
 
 // 平台角色下拉选项：admin > test > dev 三级
-const ROLE_OPTIONS: { label: string; value: PlatformRole }[] = [
-  { label: '平台管理员', value: 'admin' },
-  { label: '测试工程师', value: 'test' },
-  { label: '开发工程师', value: 'dev' },
-];
+const ROLE_OPTIONS: { label: string; value: PlatformRole }[] =
+  (Object.keys(PLATFORM_ROLE_LABELS) as PlatformRole[]).map((value) => ({
+    label: PLATFORM_ROLE_LABELS[value], value,
+  }));
 type UserStatusFilter = 'all' | 'active' | 'inactive';
 
 /**

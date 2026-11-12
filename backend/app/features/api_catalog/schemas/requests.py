@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from typing import Any
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.features.api_catalog.schemas.common import BodyType
 from app.features.api_catalog.schemas.common import ParamLocation
+from app.features.api_catalog.schemas.response_keys import normalize_response_key
 
 
 class ApiParameterIn(BaseModel):
@@ -34,11 +35,31 @@ class ApiBodyIn(BaseModel):
 class ApiResponseIn(BaseModel):
     """响应写入字段。"""
 
-    status_code: int = Field(..., ge=100, le=599)
+    status_code: int | None = Field(default=None, ge=100, le=599)
+    response_key: str
     description: str | None = None
     schema_json: dict[str, Any] | None = None
     example_json: str | None = None
     sort: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_key(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        key = data.get("response_key")
+        code = data.get("status_code")
+        if key is None and code is not None:
+            key = str(code)
+        if key is None:
+            raise ValueError("响应定义必须包含 response_key 或 status_code")
+        normalized, parsed_code = normalize_response_key(key)
+        if code is not None and parsed_code != int(code):
+            raise ValueError("response_key 与 status_code 不一致")
+        data["response_key"] = normalized
+        data["status_code"] = parsed_code
+        return data
 
 
 class ApiParameterResponse(BaseModel):
@@ -77,7 +98,8 @@ class ApiResponseResponse(BaseModel):
 
     id: int
     interface_id: int
-    status_code: int
+    status_code: int | None = None
+    response_key: str
     description: str | None = None
     schema_json: dict[str, Any] | None = None
     example_json: str | None = None

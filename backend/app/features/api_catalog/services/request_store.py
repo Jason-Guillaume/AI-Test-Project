@@ -77,6 +77,7 @@ def replace_responses(db: Session, interface_id: int, responses: list[ApiRespons
         db.add(ApiResponse(
             interface_id=interface_id,
             status_code=r.status_code,
+            response_key=r.response_key,
             description=r.description,
             schema_json=r.schema_json,
             example_json=r.example_json,

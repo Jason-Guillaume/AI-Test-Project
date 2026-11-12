@@ -14,7 +14,7 @@
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
-import type { BatchReviewResponse, CaseExecutionListResponse, GenerationAgentOption, GenerationAudit, GenerationBatch, GenerationTaskStatus, GenerationBatchListResponse, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
+import type { BatchReviewResponse, CaseExecutionListResponse, GenerationAgentOption, GenerationAudit, GenerationBatch, GenerationTaskStatus, GenerationBatchListResponse, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCaseExcelImportPreview, TestCaseExcelImportResult, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
 
@@ -89,6 +89,24 @@ export const testManagementApi = {
     api.get<TestCaseCoverage>(`/projects/${projectId}/test-cases/coverage`, { params }),
   createCase: (projectId: number, body: TestCaseCreate) =>
     api.post<TestCase>(`/projects/${projectId}/test-cases`, body),
+  downloadCaseImportTemplate: (projectId: number) =>
+    api.get<Blob>(`/projects/${projectId}/test-cases/import-template`, { responseType: 'blob' }),
+  previewCaseImport: (projectId: number, file: File, direction: string, scopeNodeId: number | null) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('direction', direction);
+    if (scopeNodeId != null) form.append('scope_node_id', String(scopeNodeId));
+    return api.post<TestCaseExcelImportPreview>(`/projects/${projectId}/test-cases/import-preview`, form);
+  },
+  confirmCaseImport: (projectId: number, file: File, direction: string, scopeNodeId: number | null, requestKey: string, sourceHash: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('direction', direction);
+    form.append('request_key', requestKey);
+    form.append('source_hash', sourceHash);
+    if (scopeNodeId != null) form.append('scope_node_id', String(scopeNodeId));
+    return api.post<TestCaseExcelImportResult>(`/projects/${projectId}/test-cases/import-confirm`, form);
+  },
   getCase: (caseId: number) => api.get<TestCase>(`/test-cases/${caseId}`),
   getCaseDetail: (caseId: number) => api.get<TestCaseDetail>(`/test-cases/${caseId}/detail`),
   updateCase: (caseId: number, body: TestCaseUpdate) =>
