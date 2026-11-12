@@ -1,7 +1,7 @@
-// 响应结构 Tab：按 status_code 维护响应列表，整体替换保存（PUT /apis/{id}/responses）。
+// 响应结构 Tab：完整保留 OpenAPI response key，整体替换保存。
 // 每条响应：status_code / description / schema_json（JSON 文本编辑）/ example_json。
 import { useEffect, useState } from 'react';
-import { App, Button, Card, Empty, Input, InputNumber, Space, Typography } from 'antd';
+import { App, Button, Card, Empty, Input, Space, Typography } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
@@ -13,20 +13,21 @@ import type { ApiInterfaceDetail, ApiResponseIn } from '@/features/api-catalog/c
 
 // 一条响应的本地编辑态：schema/example 用文本编辑，保存时解析。
 interface ResponseRow {
-  status_code: number;
+  response_key: string;
   description: string;
   schema_text: string;
   example_text: string;
 }
 
 function rowFrom(p: {
-  status_code: number;
+  status_code: number | null;
+  response_key: string;
   description?: string | null;
   schema_json?: Record<string, unknown> | null;
   example_json?: string | null;
 }): ResponseRow {
   return {
-    status_code: p.status_code,
+    response_key: p.response_key ?? String(p.status_code ?? ''),
     description: p.description ?? '',
     schema_text: p.schema_json ? JSON.stringify(p.schema_json, null, 2) : '',
     example_text: p.example_json ?? '',
@@ -44,7 +45,7 @@ function rowToIn(row: ResponseRow): ApiResponseIn {
     }
   }
   return {
-    status_code: row.status_code,
+    response_key: row.response_key.trim(),
     description: row.description || null,
     schema_json,
     example_json: row.example_text || null,
@@ -93,7 +94,7 @@ export function ResponseTab({ api }: { api: ApiInterfaceDetail }) {
   const addRow = () =>
     setRows((rs) => [
       ...rs,
-      { status_code: 200, description: '', schema_text: '', example_text: '' },
+      { response_key: '200', description: '', schema_text: '', example_text: '' },
     ]);
   const removeRow = (idx: number) =>
     setRows((rs) => rs.filter((_, i) => i !== idx));
@@ -141,14 +142,12 @@ export function ResponseTab({ api }: { api: ApiInterfaceDetail }) {
             size="small"
             title={
               <Space>
-                <InputNumber
-                  min={100}
-                  max={599}
-                  value={row.status_code}
-                  onChange={(v) =>
-                    updateRow(idx, { status_code: v ?? 200 })
-                  }
-                  style={{ width: 90 }}
+                <Input
+                  aria-label="响应键"
+                  value={row.response_key}
+                  onChange={(e) => updateRow(idx, { response_key: e.target.value })}
+                  placeholder="200、2XX 或 default"
+                  style={{ width: 150 }}
                 />
                 <Input
                   placeholder="响应说明"

@@ -53,7 +53,8 @@ export interface InternalBody {
 }
 
 export interface InternalResponse {
-  status_code: number; // HTTP 状态码
+  status_code: number | null; // 具体 HTTP 状态码；范围码和 default 为空
+  response_key: string; // OpenAPI 原始响应键：具体码、2XX 或 default
   description: string | null; // 说明
   schema_json: Record<string, unknown> | null; // 响应结构
   example_json: string | null; // 示例响应体
@@ -115,7 +116,8 @@ export interface ApiRequestBody {
 export interface ApiResponseDef {
   id: number; // 响应主键
   interface_id: number; // 所属接口 ID
-  status_code: number; // HTTP 状态码
+  status_code: number | null; // 具体 HTTP 状态码；范围码和 default 为空
+  response_key: string; // OpenAPI 原始响应键
   description: string | null; // 说明
   schema_json: Record<string, unknown> | null; // 响应结构
   example_json: string | null; // 示例响应体
@@ -224,7 +226,8 @@ export interface ApiBodyIn {
 }
 
 export interface ApiResponseIn {
-  status_code: number; // 状态码（100-599）
+  status_code?: number | null; // 具体状态码（100-599）
+  response_key?: string; // 原始响应键：具体码、1XX-5XX 或 default
   description?: string | null; // 说明
   schema_json?: Record<string, unknown> | null; // 响应结构
   example_json?: string | null; // 示例

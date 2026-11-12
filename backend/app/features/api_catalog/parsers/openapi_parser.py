@@ -96,7 +96,9 @@ def _build_operation(
     parameters = _build_parameters(spec, raw_params, path)
 
     body = _build_body(spec, operation, swagger2=swagger2)
-    responses = _build_responses(spec, operation.get("responses") or {}, swagger2=swagger2)
+    responses = _build_responses(
+        spec, operation.get("responses") or {}, swagger2=swagger2, method=method, path=path,
+    )
 
     content_type = _infer_content_type(operation, body, swagger2=swagger2)
 
@@ -265,15 +267,20 @@ def _build_body_swagger2(spec: dict, operation: dict) -> InternalBody:
     return InternalBody(body_type="none")
 
 
-def _build_responses(spec: dict, responses: dict, *, swagger2: bool) -> list[InternalResponse]:
-    """组装响应列表（按 status_code）。"""
+def _build_responses(spec: dict, responses: dict, *, swagger2: bool, method: str, path: str) -> list[InternalResponse]:
+    """组装响应列表，保留 OpenAPI 原始 response key。"""
     out: list[InternalResponse] = []
     sort = 0
     for code, resp in responses.items():
+        try:
+            response_key, status_code = _parse_response_key(code)
+        except ValueError as exc:
+            from app.features.api_catalog.schemas.response_keys import InvalidResponseKey
+
+            raise InvalidResponseKey(f"{method.upper()} {path} responses[{code!r}]: {exc}") from exc
         if not isinstance(resp, dict):
             continue
         resp = _inline(spec, resp, _visited())
-        status_code = _parse_status_code(code)
         description = resp.get("description")
         schema_json = None
         example_json = None
@@ -312,6 +319,7 @@ def _build_responses(spec: dict, responses: dict, *, swagger2: bool) -> list[Int
                         example_json = None
         out.append(InternalResponse(
             status_code=status_code,
+            response_key=response_key,
             description=str(description) if description else None,
             schema_json=schema_json,
             example_json=example_json,
@@ -461,17 +469,11 @@ def _infer_auth_type(spec: dict, operation: dict, *, swagger2: bool) -> str:
     return "custom"
 
 
-def _parse_status_code(code: Any) -> int:
-    """状态码：数字直接取；'default'→0；'2XX'→ 取首位补齐为具体码无法，落 0。"""
-    if isinstance(code, int):
-        return code
-    s = str(code).strip()
-    if s.isdigit():
-        return int(s)
-    if s.lower() == "default":
-        return 0
-    # 形如 "2XX"：无法确定具体码，用 0 占位。
-    return 0
+def _parse_response_key(code: Any) -> tuple[str, int | None]:
+    """验证并保留精确码、范围码或 default。"""
+    from app.features.api_catalog.schemas.response_keys import normalize_response_key
+
+    return normalize_response_key(code)
 
 
 __all__ = ["parse_openapi"]

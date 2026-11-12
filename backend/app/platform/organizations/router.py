@@ -5,11 +5,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.platform.organizations.schemas import (
-    CandidateResponse, MemberGrant, MemberListResponse, ModelOptionsResponse, OrganizationCreate,
+    CandidateListResponse, CandidateResponse, MemberGrant, MemberListResponse, ModelOptionsResponse, OrganizationCreate,
     OrganizationMemberResponse, OrganizationResponse, OrganizationUpdate,
     PaginatedOrganizationResponse,
 )
@@ -69,6 +69,22 @@ def find_candidate(
 ):
     '按用户名搜索可加入组织的启用用户。\n\n    负责人身份变更 / 新成员加入都会用到这个候选接口；只查启用账号，\n    停用用户不会作为候选返回，避免出现「加入了但被禁用」的尴尬状态。\n\n    Args:\n        organization_id: 目标组织 ID，仅用于权限校验。\n        username: 待搜索的用户名（精确匹配）。\n        db: 数据库会话。\n        user: 当前登录用户，必须是组织管理员。\n    Returns:\n        CandidateResponse；找不到匹配时 item 为 None。\n    '
     return _management.find_candidate(organization_id=organization_id, username=username, db=db, user=user)
+
+
+@router.get("/{organization_id}/candidate-users", response_model=CandidateListResponse)
+def list_candidate_users(
+    organization_id: int,
+    keyword: str = Query(default="", max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """可搜索、分页地列出启用账号，并标记其是否已在组织内。"""
+    return _management.list_candidates(
+        organization_id=organization_id, db=db, user=user,
+        keyword=keyword, page=page, page_size=page_size,
+    )
 
 
 @router.get("/{organization_id}/models", response_model=ModelOptionsResponse)

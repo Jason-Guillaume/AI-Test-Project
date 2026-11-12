@@ -13,6 +13,7 @@ source_hash：compute_source_hash（结构字段 sha256），UNCHANGED 跳过。
 from __future__ import annotations
 
 import hashlib
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.features.api_catalog.models.api_change_log import ApiChangeLog
 from app.features.api_catalog.models.api_import_record import ApiImportRecord
@@ -41,6 +42,7 @@ from app.features.api_catalog.services.request_service import (
 )
 from app.features.api_catalog.services.hash import compute_source_hash
 from app.features.api_catalog.services.module_resolver import ModuleResolver
+from app.features.api_catalog.schemas.response_keys import InvalidResponseKey
 from app.core.models.identity import User
 from app.core.http.errors import bad_request, forbidden
 from app.core.security.roles import PROJECT_ROLE_MEMBER, has_project_role, project_role_for
@@ -119,51 +121,55 @@ class ImportService:
         """确认对应数据。"""
         self._assert_writable(db, project_id, actor)
         schemas = _parse(body.source_type, body.content)
-        # 重新解析后按与预览相同的键去重；不信任预览缓存（幂等）。
+        # 所有写入、子表替换和导入记录共用一个事务；异常时显式回滚。
         created = updated = skipped = 0
         per_schema_hashes: list[str] = []
-        for idx, schema in enumerate(schemas):
-            schema.source_hash = compute_source_hash(schema)
-            per_schema_hashes.append(schema.source_hash)
-            if body.selected_items is not None and idx not in body.selected_items:
-                skipped += 1
-                continue
-            existing = _find_existing(db, project_id, schema.method, schema.path)
-            if existing is None:
-                self._create_from_schema(db, project_id, schema, actor, body.user_module_id, body.tag_to_module_map)
-                created += 1
-            elif _current_structure_hash(db, existing) == schema.source_hash:
-                skipped += 1
-            else:
-                if not body.overwrite_changed:
+        try:
+            for idx, schema in enumerate(schemas):
+                schema.source_hash = compute_source_hash(schema)
+                per_schema_hashes.append(schema.source_hash)
+                if body.selected_items is not None and idx not in body.selected_items:
                     skipped += 1
                     continue
-                self._update_from_schema(db, existing, schema, actor)
-                updated += 1
-        batch_hash = _batch_hash(per_schema_hashes)
-        record = ApiImportRecord(
-            project_id=project_id,
-            source_type=_parsed_source_type(schemas, body.source_type),
-            file_name=body.file_name,
-            source_hash=batch_hash,
-            total=len(schemas),
-            created_count=created,
-            updated_count=updated,
-            skipped_count=skipped,
-            created_by=actor.id,
-        )
-        db.add(record)
-        db.flush()
-        db.commit()
-        db.refresh(record)
-        return ImportConfirmResponse(
-            record_id=record.id,
-            total=len(schemas),
-            created_count=created,
-            updated_count=updated,
-            skipped_count=skipped,
-            source_hash=batch_hash,
-        )
+                existing = _find_existing(db, project_id, schema.method, schema.path)
+                if existing is None:
+                    self._create_from_schema(db, project_id, schema, actor, body.user_module_id, body.tag_to_module_map)
+                    created += 1
+                elif _current_structure_hash(db, existing) == schema.source_hash:
+                    skipped += 1
+                else:
+                    if not body.overwrite_changed:
+                        skipped += 1
+                        continue
+                    self._update_from_schema(db, existing, schema, actor)
+                    updated += 1
+            batch_hash = _batch_hash(per_schema_hashes)
+            record = ApiImportRecord(
+                project_id=project_id,
+                source_type=_parsed_source_type(schemas, body.source_type),
+                file_name=body.file_name,
+                source_hash=batch_hash,
+                total=len(schemas),
+                created_count=created,
+                updated_count=updated,
+                skipped_count=skipped,
+                created_by=actor.id,
+            )
+            db.add(record)
+            db.flush()
+            db.commit()
+            db.refresh(record)
+            return ImportConfirmResponse(
+                record_id=record.id,
+                total=len(schemas),
+                created_count=created,
+                updated_count=updated,
+                skipped_count=skipped,
+                source_hash=batch_hash,
+            )
+        except Exception:
+            db.rollback()
+            raise
 
     # ---------------------------------------------------------------- 内部
 
@@ -254,6 +260,8 @@ def _parse(source_type: str, content: str) -> list[InternalApiSchema]:
             return [parse_curl(content)]
         if st in {"OPENAPI", "SWAGGER", "POSTMAN", "APIFOX"}:
             return parse_api_document(content) or []
+    except InvalidResponseKey as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValueError as exc:
         raise bad_request(str(exc)) from exc
     raise bad_request(f"暂不支持的导入来源：{source_type}")
@@ -308,8 +316,8 @@ def _compute_import_diff(
             if old_param_map[n][1] != new_param_map[n][1]:
                 required_changed.append(n)
 
-    old_codes = {r.status_code for r in old_responses}
-    new_codes = {r.status_code for r in schema.responses}
+    old_codes = {r.response_key for r in old_responses}
+    new_codes = {r.response_key for r in schema.responses}
     resp_added = sorted(c for c in new_codes if c not in old_codes)
     resp_removed = sorted(c for c in old_codes if c not in new_codes)
 

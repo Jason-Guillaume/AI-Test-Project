@@ -189,26 +189,24 @@ export function AdminProjectsPage() {
   return (
     <PageContainer>
       <PageHeader title="项目管理" subtitle="管理全平台项目归属、负责人和成员角色" />
-      <Space wrap className="ui-list-toolbar"
-        style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
-      >
+      <div className="project-list-toolbar">
         <Input.Search
           placeholder="按项目名搜索"
           allowClear
           enterButton
-          style={{ width: 320 }}
+          className="project-list-toolbar__search"
           // 搜索触发：更新关键词并把页码重置回第一页
           onSearch={(v) => {
             setKeyword(v);
             setPagination((p) => ({ ...p, page: 1 }));
           }}
         />
-        <Button type="primary" onClick={() => setCreating(true)}>
-          新建项目
-        </Button>
-        <Button danger disabled={!selectedProjectIds.length} onClick={deleteSelected}>批量删除（{selectedProjectIds.length}）</Button>
-        <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
-      </Space>
+        <Space wrap className="project-list-toolbar__actions" size={8}>
+          <Button type="primary" onClick={() => setCreating(true)}>新建项目</Button>
+          <Button danger disabled={!selectedProjectIds.length} onClick={deleteSelected}>批量删除（{selectedProjectIds.length}）</Button>
+          <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
+        </Space>
+      </div>
 
       <ResourceTable<Project>
         rowKey={(r) => r.id}
@@ -235,12 +233,12 @@ export function AdminProjectsPage() {
         />
       )}
 
-      <CreateProjectModal
+      {creating && <CreateProjectModal
         open={creating}
         loading={createMutation.isPending}
         onCancel={() => setCreating(false)}
         onSubmit={(body) => createMutation.mutate(body)}
-      />
+      />}
       {editing && <EditProjectModal
         key={editing.id}
         project={editing}
@@ -283,6 +281,11 @@ function CreateProjectModal({
       confirmLoading={loading}
       onCancel={onCancel}
       destroyOnClose
+      maskClosable={false}
+      keyboard={false}
+      closable={false}
+      cancelText="取消"
+      okText="创建"
       onOk={() => form.validateFields().then((v) => onSubmit(v))}
     >
       <Form layout="vertical" form={form} initialValues={{ name: '' }}>

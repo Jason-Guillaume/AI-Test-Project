@@ -152,6 +152,7 @@ def seed_admin(dsn_url: str) -> str | None:
         admin = User(username=username, hashed_password=hash_password(password), role="admin")
         session.add(admin)
         session.flush()
+        # 仅初始化脚本为首个管理员显式建立初始组织；日常注册/后台建号不会创建组织。
         ensure_personal_organization(session, admin)
         session.commit()
         session.refresh(admin)

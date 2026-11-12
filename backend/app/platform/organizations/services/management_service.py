@@ -5,7 +5,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.platform.organizations.schemas import (
-    CandidateResponse, MemberGrant, MemberListResponse, ModelOption, ModelOptionsResponse,
+    CandidateListResponse, CandidateResponse, MemberGrant, MemberListResponse, ModelOption, ModelOptionsResponse,
     OrganizationCreate, OrganizationMemberResponse, OrganizationResponse, OrganizationUpdate,
     PaginatedOrganizationResponse, UserCandidate,
 )
@@ -15,8 +15,14 @@ from app.platform.organizations.services.organization_service import (
 )
 from app.core.models.configuration import ModelConfiguration
 from app.core.models.identity import Organization, OrganizationMember, User
-from app.core.http.errors import bad_request, not_found
+from app.core.http.errors import bad_request, forbidden, not_found
 from app.core.security.roles import ORG_ROLE_OWNER, is_platform_admin, organization_role
+
+
+def _require_platform_admin(user: User) -> None:
+    """组织由平台管理员集中创建并分配，组织角色不授予平台管理能力。"""
+    if not is_platform_admin(user):
+        raise forbidden("需要平台管理员权限")
 
 
 def _response(db: Session, organization: Organization, user: User) -> OrganizationResponse:
@@ -106,6 +112,7 @@ def create_organization(
     Returns:
         新建组织的响应体。
     """
+    _require_platform_admin(user)
     name = body.name.strip()  # 去除首尾空白，避免「 测试组织  」与「测试组织」重复
     if len(name) < 2:
         raise bad_request("组织名称至少 2 个字符")  # 错误信封：名称过短
@@ -146,7 +153,7 @@ def update_organization(
     Returns:
         更新后的组织响应体。
     """
-    require_organization_admin(db, organization_id, user)  # 权限判定：仅组织管理员/平台管理员
+    _require_platform_admin(user)
     organization = get_organization_or_404(db, organization_id)  # 不存在时抛 404
     name = (body.name or "").strip()  # 允许空字符串，但要统一 strip 后再判空
     if not name:
@@ -216,16 +223,44 @@ def find_candidate(
     Returns:
         CandidateResponse；找不到匹配时 item 为 None。
     """
-    require_organization_admin(db, organization_id, user)  # 权限判定：只有组织管理员可以拉取候选
+    _require_platform_admin(user)
+    get_organization_or_404(db, organization_id)
     target = (
         db.query(User)
         .filter(User.username == username.strip(), User.is_active.is_(True))  # 只返回启用账号
         .first()
     )
     return CandidateResponse(
-        item=UserCandidate(id=target.id, username=target.username, role=target.role, is_active=True)
+        item=UserCandidate(id=target.id, username=target.username, role=target.role, is_active=True,
+                           is_member=_is_organization_member(db, organization_id, target.id))
         if target else None  # 未匹配到候选时 item 为 None，前端据此提示「未找到用户」
     )
+
+
+def list_candidates(
+    organization_id: int, db: Session, user: User, *, keyword: str = "", page: int = 1, page_size: int = 50,
+) -> CandidateListResponse:
+    """按用户名模糊搜索启用账号，并标记其是否已加入目标组织。"""
+    _require_platform_admin(user)
+    get_organization_or_404(db, organization_id)
+    query = db.query(User).filter(User.is_active.is_(True))
+    if keyword.strip():
+        query = query.filter(User.username.ilike(f"%{keyword.strip()}%"))
+    total = int(query.count())
+    users = query.order_by(User.username, User.id).offset((page - 1) * page_size).limit(page_size).all()
+    return CandidateListResponse(
+        items=[UserCandidate(id=item.id, username=item.username, role=item.role, is_active=True,
+                             is_member=_is_organization_member(db, organization_id, item.id)) for item in users],
+        total=total, page=page, page_size=page_size,
+    )
+
+
+def _is_organization_member(db: Session, organization_id: int, user_id: int) -> bool:
+    return db.query(OrganizationMember.id).filter(
+        OrganizationMember.organization_id == organization_id,
+        OrganizationMember.user_id == user_id,
+        OrganizationMember.deleted_at.is_(None),
+    ).first() is not None
 
 
 def available_models(
@@ -242,7 +277,8 @@ def available_models(
     Returns:
         可分配模型选项列表。
     """
-    require_organization_admin(db, organization_id, user)  # 权限判定：只有组织管理员可以查看/分配模型
+    _require_platform_admin(user)
+    get_organization_or_404(db, organization_id)
     rows = (
         db.query(ModelConfiguration)
         .filter(ModelConfiguration.is_enabled.is_(True))  # 只返回平台启用的模型
@@ -274,7 +310,7 @@ def put_member(
     Returns:
         更新后的成员响应体。
     """
-    require_organization_admin(db, organization_id, user)  # 权限判定：只有组织管理员可以新增/调整成员
+    _require_platform_admin(user)
     if member_id != body.user_id:
         raise bad_request("路径成员 ID 与请求体不一致")  # 幂等保护：防止前端拼错参数导致误改他人
 
@@ -306,7 +342,7 @@ def delete_member(
         db: 数据库会话。
         user: 当前登录用户，必须是组织管理员。
     """
-    require_organization_admin(db, organization_id, user)  # 权限判定：只有组织管理员可以移除成员
+    _require_platform_admin(user)
     organization = get_organization_or_404(db, organization_id)
     remove_member(db, organization=organization, member_user_id=member_id, actor=user)
     return None
@@ -331,7 +367,7 @@ def transfer_ownership(
     Returns:
         更新后的组织响应体。
     """
-    require_organization_admin(db, organization_id, user)  # 权限判定：只有组织管理员可以转移负责人
+    _require_platform_admin(user)
     organization = get_organization_or_404(db, organization_id)
     if organization.owner_id == member_id:
         # 幂等保护：目标已经是负责人时直接返回，不做任何变更

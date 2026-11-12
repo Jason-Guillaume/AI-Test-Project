@@ -35,6 +35,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { GenerationWorkbench } from '@/pages/console/TestManagement/GenerationWorkbench';
+import { CaseExcelImportModal } from '@/pages/console/TestManagement/CaseExcelImportModal';
 import type { GenerationBatch, ScopeNode, TestCaseDetail } from '@/features/test-management/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
@@ -136,6 +137,7 @@ export function ConsoleTestCasesPage() {
   const [nodeModal, setNodeModal] = useState<{ mode: 'create' | 'edit'; parentId?: number | null; node?: ScopeNode } | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importExcelOpen, setImportExcelOpen] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [batch, setBatch] = useState<GenerationBatch | null>(null);
 
@@ -376,6 +378,7 @@ export function ConsoleTestCasesPage() {
                     onOk: () => testManagementApi.removeScope(selected.id).then(() => { message.success('已删除'); setSelectedNodeId(undefined); refresh(); }).catch((error) => message.error(getErrorMessage(error, '删除失败'))),
                   })}>删除</Button>
                   <Button size="small" onClick={() => setCreateOpen(true)}>手工用例</Button>
+                  <Button size="small" onClick={() => setImportExcelOpen(true)}>导入 Excel</Button>
                   <Button size="small" type="primary" onClick={() => setGenerateOpen(true)}>生成草稿</Button>
                   </Space>
                 </div>
@@ -442,6 +445,15 @@ export function ConsoleTestCasesPage() {
         />
       </Modal>
       <CreateCaseModal open={createOpen} onCancel={() => setCreateOpen(false)} onSubmit={(values) => createCase.mutate(values)} />
+      <CaseExcelImportModal
+        open={importExcelOpen}
+        projectId={currentProjectId}
+        direction={direction}
+        scopeNodeId={selectedNodeId ?? null}
+        scopeNode={selected ?? null}
+        onCancel={() => setImportExcelOpen(false)}
+        onSuccess={() => { setImportExcelOpen(false); setSelectedCaseIds([]); refresh(); }}
+      />
       <GenerationDrawer
         open={generateOpen}
         projectId={currentProjectId}

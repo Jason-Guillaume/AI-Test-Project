@@ -73,12 +73,22 @@ class UserCandidate(BaseModel):
     username: str  # 用户名
     role: str  # 平台角色（admin/test/dev）
     is_active: bool = True  # 账号启用状态，候选接口固定返回 True
+    is_member: bool = False  # 是否已在当前组织中
 
 
 class CandidateResponse(BaseModel):
     """成员搜索候选。item 为 None 表示未找到匹配用户。"""
 
     item: UserCandidate | None = None  # 命中的候选；未命中为 None
+
+
+class CandidateListResponse(BaseModel):
+    """可搜索、分页的启用账号候选列表。"""
+
+    items: list[UserCandidate]
+    total: int
+    page: int
+    page_size: int
 
 
 class ModelOption(BaseModel):
@@ -114,6 +124,7 @@ class ModelOptionsResponse(BaseModel):
 
 
 __all__ = [
+    "CandidateListResponse",
     "CandidateResponse",
     "MemberGrant",
     "MemberListResponse",

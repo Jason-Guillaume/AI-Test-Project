@@ -42,9 +42,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/app/providers/AuthProvider';
+import { platformRoleLabel } from '@/features/identity/components/RoleTag';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
 import { projectsApi } from '@/features/projects/api/projects';
+import { organizationsApi } from '@/features/organizations/api/organizations';
 import { collectPages } from '@/shared/api/pagination';
 import { TaskSchedulerDrawer } from '@/widgets/task-assistant/TaskSchedulerDrawer';
 
@@ -212,7 +214,7 @@ function matchRouteTitle(pathname: string): string | undefined {
 export function ConsoleLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth(); // 当前用户与登出操作
+  const { user, ready, logout } = useAuth(); // 当前用户与登出操作
   const { currentOrgId, setOrgId, currentProjectId, setProjectId } =
     useConsoleScope(); // 当前项目与其组织作用域
   const menuItems = useMemo(
@@ -236,6 +238,13 @@ export function ConsoleLayout() {
     ),
   });
   const projectsData = projectsQuery.data;
+  const organizationsQuery = useQuery({
+    queryKey: ['organizations', 'console-assignment-check', user?.id],
+    enabled: ready && Boolean(user?.id),
+    queryFn: () => organizationsApi.list(),
+  });
+  const waitingForOrganization = ready && user?.role !== 'admin' &&
+    organizationsQuery.isSuccess && organizationsQuery.data.items.length === 0;
 
   const selectedMenuKey = useMemo(() => {
     if (location.pathname === '/console/web-ui-agent') return '/console/web-ui';
@@ -382,7 +391,7 @@ export function ConsoleLayout() {
           <Avatar size={34} icon={<UserOutlined />} />
           <span className="app-sidebar-profile-copy">
             <span>{user?.username ?? '用户'}</span>
-            <small>{user?.role === 'admin' ? '平台管理员' : '测试工程师'}</small>
+            <small>{ready ? platformRoleLabel(user?.role) : '加载中…'}</small>
           </span>
         </div>
       </Sider>
@@ -444,6 +453,15 @@ export function ConsoleLayout() {
           <div className="app-breadcrumb-wrap">
             <Breadcrumb className="app-breadcrumb" items={breadcrumbItems} />
           </div>
+          {waitingForOrganization && (
+            <Alert
+              style={{ marginBottom: 16 }}
+              type="info"
+              showIcon
+              message="等待平台管理员分配组织"
+              description="账号已创建。组织及项目权限由平台管理员分配，分配完成后刷新即可继续工作。"
+            />
+          )}
           <RouteErrorBoundary><Outlet /></RouteErrorBoundary>
         </Content>
       </Layout>
