@@ -1,6 +1,6 @@
 // Agent 配置列表、版本化编辑与受控工作流表单。
 import { collectPages } from '@/shared/api/pagination';
-import { App, Alert, Button, Card, Col, Drawer, Form, Input, Row, Select, Space, Switch, Table, Tabs, Tag, Tree, Typography } from 'antd';
+import { App, Alert, Button, Card, Col, Form, Input, Pagination, Row, Select, Space, Switch, Table, Tabs, Tag, Tree, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -11,6 +11,7 @@ import type { AgentDefinition, AgentDefinitionInput, AgentTrigger } from '@/feat
 import { modelConfigsApi } from '@/features/model-configuration/api/modelConfigs';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 import { DefinitionHistoryModal } from './SkillPane';
 
 import { CaseGenerationModal } from './CaseGenerationModal';
@@ -31,7 +32,9 @@ const WORKFLOW_LABELS: Record<string, string> = {
 export function AgentPane() {
   const [moduleFilter, setModuleFilter] = useState<string>();
   const [modelFilter, setModelFilter] = useState<string>();
-  const [view, setView] = useState('tree');
+  const [agentSearch, setAgentSearch] = useState('');
+  const [agentPage, setAgentPage] = useState(1);
+  const [view, setView] = useState('cards');
   const [generating, setGenerating] = useState<AgentDefinition | null>(null);
   const [evaluating, setEvaluating] = useState<AgentDefinition | null>(null);
   const [editing, setEditing] = useState<AgentDefinition | null>(null);
@@ -67,8 +70,12 @@ export function AgentPane() {
   const failed = [agents, workflows, skills, tools, models, mcpServers].find((query) => query.isError);
   if (failed) return <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
   const allAgents = agents.data ?? [];
-  const groups = filterAgentHierarchy(allAgents, moduleFilter, modelFilter);
-  const agentRows = allAgents.filter((agent) => matchesAgent(agent, moduleFilter, modelFilter));
+  const normalizedSearch = agentSearch.trim().toLocaleLowerCase();
+  const searchedAgents = allAgents.filter((agent) => `${agent.name} ${agent.key} ${agent.description} ${agent.workflow_template} ${agent.purpose}`.toLocaleLowerCase().includes(normalizedSearch));
+  const groups = filterAgentHierarchy(searchedAgents, moduleFilter, modelFilter);
+  const agentRows = searchedAgents.filter((agent) => matchesAgent(agent, moduleFilter, modelFilter));
+  const agentPageSize = 12;
+  const cardRows = agentRows.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
   const modelLabel = (agent: AgentDefinition, child = false) => {
     const id = fixedModel(agent);
     return id == null ? (child ? '模型：继承主 Agent' : '模型：本次选择 / 全局默认') : `模型：${models.data?.items.find((item) => item.id === id)?.label ?? `#${id}`}`;
@@ -124,9 +131,10 @@ export function AgentPane() {
 
   return (
     <>
-      <Space wrap style={{ marginBottom: 12 }}>
-        <Select allowClear placeholder="测试类型" aria-label="测试类型" value={moduleFilter} onChange={setModuleFilter} style={{ width: 180 }} options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
-        <Select allowClear showSearch optionFilterProp="label" placeholder="按绑定模型筛选" aria-label="按绑定模型筛选" value={modelFilter} onChange={setModelFilter} style={{ width: 260 }} options={[{ value: 'inherit', label: '继承 / 本次选择 / 全局默认' }, ...(models.data?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.label} (${item.model_name})` }))]} />
+      <Space wrap className="resource-list-toolbar">
+        <Input.Search allowClear value={agentSearch} onChange={(event) => { setAgentSearch(event.target.value); setAgentPage(1); }} placeholder="搜索 Agent 名称、说明或工作流" aria-label="搜索 Agent" />
+        <Select allowClear placeholder="测试类型" aria-label="测试类型" value={moduleFilter} onChange={(value) => { setModuleFilter(value); setAgentPage(1); }} style={{ width: 180 }} options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
+        <Select allowClear showSearch optionFilterProp="label" placeholder="按绑定模型筛选" aria-label="按绑定模型筛选" value={modelFilter} onChange={(value) => { setModelFilter(value); setAgentPage(1); }} style={{ width: 260 }} options={[{ value: 'inherit', label: '继承 / 本次选择 / 全局默认' }, ...(models.data?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.label} (${item.model_name})` }))]} />
         <Select value={view} onChange={setView} options={[{ value: 'tree', label: '主子关系' }, { value: 'cards', label: '全部卡片' }, { value: 'table', label: '表格与批量删除' }]} />
         <Button danger disabled={!selectedAgentIds.length} onClick={deleteSelected}>批量删除（{selectedAgentIds.length}）</Button>
         <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
@@ -139,14 +147,21 @@ export function AgentPane() {
         rowSelection={{ selectedRowKeys: selectedAgentIds, onChange: (keys) => setSelectedAgentIds(keys.map(Number)) }}
         locale={{ emptyText: '没有匹配的 Agent' }}
       />}
-      {view === 'cards' && (agentRows.length ? <Row gutter={[12, 12]}>
-        {agentRows.map((agent) => <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
+      {view === 'cards' && (agentRows.length ? <>
+        <Row gutter={[12, 12]}>
+        {cardRows.map((agent) => <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
           <Card
             size="small"
             hoverable
+            role="button"
+            tabIndex={0}
+            aria-label={`查看 Agent ${agent.name}`}
             onClick={(event) => {
               if ((event.target as HTMLElement).closest('button')) return;
               setEditing(agent);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setEditing(agent); }
             }}
             style={{ height: '100%' }}
             styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', padding: 12 } }}
@@ -171,7 +186,8 @@ export function AgentPane() {
             <Space wrap size={[4, 4]} style={{ marginTop: 'auto', marginBottom: 8 }}>
               <Tag>子 Agent {agent.child_agent_ids.length}</Tag>
               <Tag>Skill {agent.skill_keys.length}</Tag>
-              <Tag>工具 {agent.tool_keys.length}</Tag>
+              <Tag>系统工具 {agent.tool_keys.filter((key) => !key.startsWith('mcp:')).length}</Tag>
+              <Tag>MCP 工具 {agent.tool_keys.filter((key) => key.startsWith('mcp:')).length}</Tag>
             </Space>
             <div className="agent-card-actions">
               <Button size="small" style={{ flex: 1 }} onClick={() => setEditing(agent)}>查看详情 / 编辑配置</Button>
@@ -180,7 +196,9 @@ export function AgentPane() {
             </div>
           </Card>
         </Col>)}
-      </Row> : <EmptyState description="没有匹配的 Agent" />)}
+        </Row>
+        {agentRows.length > agentPageSize && <Pagination current={agentPage} pageSize={agentPageSize} total={agentRows.length} showSizeChanger={false} onChange={setAgentPage} style={{ marginTop: 16, textAlign: 'right' }} />}
+      </> : <EmptyState description="没有匹配的 Agent" />)}
       <CaseGenerationModal key={generating?.id ?? 'closed'} agent={generating} agents={allAgents} models={(models.data?.items ?? []).map((item) => ({ value: item.id, label: `${item.label} (${item.model_name})` }))} onClose={() => setGenerating(null)} />
       <EvaluationToolModal agent={evaluating} onClose={() => setEvaluating(null)} />
       <AgentFormModal
@@ -240,6 +258,8 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
 }) {
   type AgentFormState = AgentDefinitionInput & { mcp_tool_keys: string[] };
   const [form] = Form.useForm<AgentFormState>();
+  const [dirty, setDirty] = useState(false);
+  const { modal } = App.useApp();
   const selectedWorkflow = Form.useWatch('workflow_template', form);
   const instruction = Form.useWatch('instruction', form) ?? '';
   const runtimeVariables = Form.useWatch(['settings_json', 'runtime_variables'], form) ?? [];
@@ -267,7 +287,17 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
     if (!open) return;
     form.resetFields();
     form.setFieldsValue(initialValues);
+    setDirty(false);
   }, [form, initialValues, open]);
+  const requestClose = () => {
+    if (!dirty) { onCancel(); return; }
+    modal.confirm({
+      title: '放弃未保存修改？',
+      content: '关闭会丢弃当前 Agent 表单中的修改。',
+      okText: '放弃修改', cancelText: '继续编辑', okButtonProps: { danger: true },
+      onOk: onCancel,
+    });
+  };
   const submit = (values: AgentFormState) => {
     const { mcp_tool_keys, ...body } = values;
     onSubmit({
@@ -277,22 +307,22 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
     });
   };
   return (
-    <Drawer
+    <DetailDrawer
       title={initial ? `Agent 详情与配置：${initial.name}` : '新增 Agent'}
       open={open}
-      onClose={onCancel}
+      onClose={requestClose}
       width={720}
       destroyOnClose
-      extra={null}
+      dirty={false}
       footer={<div className="editor-drawer-footer">
         <Space wrap>
-          {initial && <Button onClick={() => form.setFieldsValue({ instruction: '', settings_json: defaultAgentSettings(), triggers_json: [] })}>恢复默认</Button>}
-          {initial && <Button onClick={() => form.setFieldsValue(initialValues)}>放弃未保存修改</Button>}
+          {initial && <Button onClick={() => { form.setFieldsValue({ instruction: '', settings_json: defaultAgentSettings(), triggers_json: [] }); setDirty(true); }}>恢复默认</Button>}
+          {initial && <Button onClick={() => { form.setFieldsValue(initialValues); setDirty(false); }}>放弃未保存修改</Button>}
         </Space>
-        <Space wrap><Button onClick={onCancel}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>{initial ? '保存为新版本' : '创建 Agent'}</Button></Space>
+        <Space wrap><Button onClick={requestClose}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>{initial ? '保存为新版本' : '创建 Agent'}</Button></Space>
       </div>}
     >
-      <Form form={form} layout="vertical" initialValues={initialValues} onFinish={submit}>
+      <Form form={form} layout="vertical" initialValues={initialValues} onFinish={submit} onValuesChange={() => setDirty(true)}>
         <Tabs items={[
           { key: 'config', label: '配置与提示词', children: <>
             <Row gutter={16}>
@@ -305,7 +335,8 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
               <Col span={12}><Form.Item name={['settings_json', 'max_loop_count']} label="最大循环次数（0 = 不限）"><Input type="number" min={0} max={1000} /></Form.Item></Col>
               <Col span={12}><Form.Item name={['settings_json', 'timeout_seconds']} label="运行时长（秒，0 = 不限）"><Input type="number" min={0} max={86400} /></Form.Item></Col>
             </Row>
-            <Form.Item name={['settings_json', 'model_binding']} label="默认模型绑定策略"><Select options={[{ value: 'task_or_global', label: '跟随任务 / 全局激活配置' }, { value: 'agent', label: '固定绑定 Agent 模型' }]} /></Form.Item>
+            <Form.Item name={['settings_json', 'model_binding']} label="默认模型绑定策略"><Select options={[{ value: 'task_or_global', label: '跟随任务选择 / 全局默认' }, { value: 'agent', label: '固定绑定 Agent 模型' }]} /></Form.Item>
+            <Alert type="info" showIcon style={{ marginBottom: 16 }} message="模型选择优先级" description="固定绑定到本 Agent 的模型优先；未固定时使用任务会话选定模型，再回退到平台全局默认。执行记录会保留实际使用的模型快照。" />
             <Form.Item noStyle shouldUpdate={(previous, current) => previous.settings_json?.model_binding !== current.settings_json?.model_binding}>
               {({ getFieldValue }) => getFieldValue(['settings_json', 'model_binding']) === 'agent'
                 ? <Form.Item name="model_config_id" label="绑定模型配置" rules={[{ required: true, message: '固定绑定时必须选择模型配置' }]}><Select options={modelOptions} placeholder="选择已启用并获授权的模型" /></Form.Item>
@@ -385,7 +416,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
           </Form.List> },
         ]} />
       </Form>
-    </Drawer>
+    </DetailDrawer>
   );
 }
 

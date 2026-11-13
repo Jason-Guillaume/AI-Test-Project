@@ -19,6 +19,15 @@
   .dashboard-section-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
   .page-container .ant-table-wrapper { padding-inline: 8px; }
   .skill-file-editor { grid-template-columns: minmax(0, 1fr); }
+  .skill-workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .skill-workspace__sidebar { min-height: 250px; max-height: min(390px, 48dvh); }
+  .skill-workspace__tree-wrap { min-height: 100px; }
+  .skill-workspace__resource-header { flex-direction: column; }
+  .skill-workspace__resource-header > .ant-space { width: 100%; }
+  .skill-workspace__resource-header .ant-space-item { max-width: 100%; }
+  .skill-workspace__path { max-width: 62vw; }
+  .skill-workspace__editor.ant-input { min-height: 42dvh; }
+  .skill-workspace__preview { max-height: 56dvh; padding: 12px; }
   .mock-matcher-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mock-matcher-row > .ant-btn { justify-self: end; grid-column: 2; }
   .web-step-card .ant-card-head { padding-block: 8px; }

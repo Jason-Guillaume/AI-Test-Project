@@ -46,6 +46,9 @@ body {
   background: #262b33;
   border-right: 1px solid #353b45;
 }
+.app-sidebar--mobile-open.ant-layout-sider { position: fixed; z-index: 21; top: 0; bottom: 0; left: 0; height: 100dvh; box-shadow: 8px 0 32px rgb(16 24 40 / 18%); }
+.app-nav-scrim { position: fixed; z-index: 20; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: rgb(19 28 43 / 38%); }
+.app-sidebar-toggle.ant-btn { flex: none; }
 
 .app-sidebar .ant-layout-sider-children { display: flex; min-height: 100%; flex-direction: column; }
 
@@ -171,6 +174,18 @@ body {
 .editor-drawer-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 .editor-drawer-footer > .ant-space { min-width: 0; max-width: 100%; }
 .editor-drawer-footer > .ant-space:last-child { margin-left: auto; }
+.resource-detail-drawer { max-width: 100vw; }
+.resource-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
+.resource-list-toolbar .ant-input-search { width: min(360px, 100%); }
+.resource-list-toolbar > .ant-typography { flex: 1 1 240px; }
+.resource-list-toolbar > .ant-space { margin-inline-start: auto; }
+.resource-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.mcp-schema-preview { max-height: 260px; overflow: auto; margin: 8px 0 0; padding: 10px; border-radius: 6px; background: #f5f7fa; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.app-layout-dark .mcp-schema-preview { background: #15191f; }
+.knowledge-search-controls { display: flex; width: 100%; min-width: 0; }
+.knowledge-search-controls > .ant-space-item { max-width: 100%; }
+.knowledge-search-controls > .ant-space-item:first-child { flex: 1 1 240px; min-width: min(100%, 180px); }
+.knowledge-search-controls .ant-input-number { width: 150px; max-width: 100%; }
 .form-field-row { display: flex; width: 100%; align-items: flex-start; gap: 12px; }
 .form-field-row > .ant-form-item { min-width: 0; }
 .agent-card-actions { display: flex; width: 100%; gap: 8px; }
@@ -183,6 +198,12 @@ body {
 .project-list-toolbar__actions { flex-wrap: wrap; margin-inline-start: auto; }
 @media (max-width: 640px) {
   .project-list-toolbar__actions { margin-inline-start: 0; width: 100%; }
+  .resource-list-toolbar > .ant-space { margin-inline-start: 0; width: 100%; }
+  .resource-list-toolbar .ant-input-search { width: 100%; }
+  .resource-detail-drawer { width: 100vw !important; }
+  .editor-drawer-footer { align-items: stretch; }
+  .editor-drawer-footer > .ant-space:last-child { margin-left: 0; }
+  .editor-drawer-footer .ant-btn { max-width: 100%; }
 }
 .member-add-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px auto; align-items: center; gap: 12px; margin-bottom: 12px; }
 .member-add-row__select { min-width: 0; width: 100%; }
@@ -199,3 +220,61 @@ body {
 .resource-split__sidebar.ant-col { flex: 0 0 300px; max-width: 300px; min-width: 0; }
 .resource-split__detail.ant-col { flex: 1 1 0; min-width: 0; }
 .resource-split__panel { height: max(400px, calc(100dvh - 240px)); min-width: 0; }
+
+.skill-workspace {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(250px, 280px) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.skill-workspace__sidebar {
+  display: flex;
+  min-width: 0;
+  min-height: min(560px, calc(100dvh - 228px));
+  max-height: calc(100dvh - 228px);
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid #e6eaf0;
+  border-radius: 12px;
+  background: #fff;
+}
+.app-layout-dark .skill-workspace__sidebar { border-color: #343a44; background: #1f242c; }
+.skill-workspace__sidebar-actions { display: grid; gap: 8px; }
+.skill-workspace__bulk-actions { display: flex; min-width: 0; align-items: center; gap: 2px; padding-block: 2px; border-bottom: 1px solid #edf0f4; }
+.skill-workspace__bulk-actions .ant-checkbox-wrapper { min-width: 0; margin-inline-end: auto; font-size: 12px; }
+.skill-workspace__tree-wrap { min-height: 220px; flex: 1; overflow: auto; }
+.skill-workspace__tree-wrap .ant-tree { min-width: 0; }
+.skill-workspace__tree-wrap .ant-tree-treenode { width: 100%; }
+.skill-workspace__tree-wrap .ant-tree-node-content-wrapper { min-width: 0; flex: 1; }
+.skill-workspace__tree-wrap .ant-tree-title { min-width: 0; }
+.skill-workspace__tree-skill { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.skill-workspace__tree-skill .ant-checkbox-wrapper { flex: none; }
+.skill-workspace__tree-skill .ant-tag { flex: none; margin-inline-end: 0; font-size: 10px; }
+.skill-workspace__tree-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-workspace__tree-file { display: inline-flex; min-width: 0; align-items: center; gap: 6px; }
+.skill-workspace__tree-file > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-workspace__file-add { display: grid; gap: 6px; padding-bottom: 4px; }
+.skill-workspace__sidebar-hint { font-size: 11px; }
+.skill-workspace__main { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
+.skill-workspace__welcome { min-height: 260px; display: flex; flex-direction: column; justify-content: center; }
+.skill-workspace__resource-header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 4px 0 12px; border-bottom: 1px solid #e6eaf0; }
+.skill-workspace__resource-title { min-width: 0; flex: 1; }
+.skill-workspace__resource-title .ant-typography-paragraph { margin: 6px 0 0; overflow-wrap: anywhere; }
+.skill-workspace__stats .ant-card-body { min-width: 0; overflow: hidden; }
+.skill-workspace__stats .ant-typography-paragraph { margin-bottom: 0; overflow-wrap: anywhere; }
+.skill-workspace__agent-list { display: flex; min-height: 32px; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 16px; }
+.skill-workspace__path { max-width: min(52vw, 520px); overflow-wrap: anywhere; }
+.skill-workspace__file-card { min-width: 0; }
+.skill-workspace__editor-wrap { display: block; width: 100%; }
+.skill-workspace__editor.ant-input { display: block; width: 100%; min-height: clamp(300px, 58dvh, 700px); resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.65; }
+.skill-workspace__preview { min-height: 260px; max-height: 66dvh; overflow: auto; padding: 18px; border: 1px solid #edf0f4; border-radius: 8px; background: #fff; }
+.skill-workspace__markdown-preview .ant-typography { overflow-wrap: anywhere; }
+.skill-workspace__markdown-preview .ant-typography-title { margin-top: 16px; }
+.skill-workspace__markdown-list { margin-bottom: 6px; padding-left: 16px; }
+.skill-workspace__markdown-quote { margin: 8px 0 12px; padding: 8px 12px; border-left: 3px solid #9ab2f4; color: #536176; background: #f6f8fc; }
+.skill-workspace__markdown-code { overflow: auto; padding: 12px; border-radius: 8px; color: #dce7fa; background: #1f2938; white-space: pre; }
+.app-layout-dark .skill-workspace__resource-header { border-bottom-color: #343a44; }
+.app-layout-dark .skill-workspace__preview { border-color: #343a44; background: #1f242c; }

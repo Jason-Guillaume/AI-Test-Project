@@ -1,14 +1,18 @@
 // 平台工具白名单、风险信息与授权编辑。
-import { App, Alert, Button, Card, Checkbox, Col, Drawer, Form, Input, Row, Space, Switch, Tabs, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Checkbox, Col, Form, Input, Row, Select, Space, Switch, Tabs, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
 import type { AgentDefinition, GovernanceTool, GovernanceToolUpdate } from '@/features/agent-governance/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 
 export function ToolsPane() {
   const [searchText, setSearchText] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>();
+  const [riskFilter, setRiskFilter] = useState<string>();
+  const [statusFilter, setStatusFilter] = useState<'enabled' | 'disabled' | 'registered' | 'unregistered'>();
   const [detail, setDetail] = useState<GovernanceTool | null>(null);
   const { message } = App.useApp();
   const queryClient = useQueryClient();
@@ -40,15 +44,22 @@ export function ToolsPane() {
   const normalizedSearch = searchText.trim().toLocaleLowerCase();
   const visibleTools = toolRows.filter((tool) => {
     const linkedAgentNames = agentRows.filter((agent) => agent.tool_keys.includes(tool.key)).map((agent) => agent.name).join(' ');
+    if (categoryFilter && tool.category !== categoryFilter) return false;
+    if (riskFilter && tool.risk !== riskFilter) return false;
+    if (statusFilter === 'enabled' && !tool.is_enabled) return false;
+    if (statusFilter === 'disabled' && tool.is_enabled) return false;
+    if (statusFilter === 'registered' && tool.runtime_details.executor_registered !== true) return false;
+    if (statusFilter === 'unregistered' && tool.runtime_details.executor_registered === true) return false;
     return `${tool.name} ${tool.description} ${tool.key} ${tool.category} ${tool.risk} ${linkedAgentNames}`.toLocaleLowerCase().includes(normalizedSearch);
   });
   const riskColor = (risk: string) => risk === '高风险' ? 'red' : risk === '执行' ? 'orange' : risk === '写入' ? 'blue' : 'default';
   return <>
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <Input.Search allowClear value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索工具名、描述、Agent..." style={{ maxWidth: 420 }} />
-        <Typography.Text type="secondary">共 {visibleTools.length} 个工具 · 点击卡片查看详情</Typography.Text>
-      </div>
+    <div className="resource-list-toolbar">
+      <Input.Search allowClear value={searchText} onChange={(event) => setSearchText(event.target.value)} placeholder="搜索工具名、描述、Agent..." aria-label="搜索工具" />
+      <Select allowClear value={categoryFilter} onChange={setCategoryFilter} placeholder="全部分类" aria-label="工具分类筛选" options={[...new Set(toolRows.map((tool) => tool.category))].map((value) => ({ value, label: value }))} />
+      <Select allowClear value={riskFilter} onChange={setRiskFilter} placeholder="全部风险" aria-label="工具风险筛选" options={[...new Set(toolRows.map((tool) => tool.risk))].map((value) => ({ value, label: value }))} />
+      <Select allowClear value={statusFilter} onChange={setStatusFilter} placeholder="全部状态" aria-label="工具状态筛选" options={[{ value: 'enabled', label: '已启用' }, { value: 'disabled', label: '已停用' }, { value: 'registered', label: '执行器已接入' }, { value: 'unregistered', label: '执行器未接入' }]} />
+      <Typography.Text type="secondary">显示 {visibleTools.length} / {toolRows.length} 个工具 · 点击卡片查看详情</Typography.Text>
     </div>
     {visibleTools.length ? <Row gutter={[12, 12]}>
       {visibleTools.map((tool) => {
@@ -69,7 +80,7 @@ export function ToolsPane() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ minWidth: 0 }}>
                 <Typography.Text strong ellipsis={{ tooltip: tool.name }} style={{ display: 'block' }}>{tool.name}</Typography.Text>
-                <Space size={4} style={{ marginTop: 4 }}>
+                <Space wrap size={[4, 4]} style={{ marginTop: 4, maxWidth: '100%' }}>
                   <Tag>{tool.category}</Tag>
                   <Tag color={riskColor(tool.risk)}>{tool.risk}</Tag>
                   <Tag color={tool.runtime_details.status === 'active' && tool.runtime_details.executor_registered !== false ? 'green' : 'orange'}>{tool.runtime_details.status_label}</Tag>
@@ -114,6 +125,8 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
   onSubmit: (body: GovernanceToolUpdate) => void;
 }) {
   const [form] = Form.useForm<GovernanceToolUpdate>();
+  const [dirty, setDirty] = useState(false);
+  const { modal } = App.useApp();
   const runtime = tool?.runtime_details;
   useEffect(() => {
     if (!tool) return;
@@ -123,15 +136,26 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
       parameter_overrides_json: tool.parameter_overrides_json ?? {},
       is_enabled: tool.is_enabled ?? true,
     });
+    setDirty(false);
   }, [agents, form, tool]);
-  return <Drawer
+  const requestClose = () => {
+    if (!dirty) { onClose(); return; }
+    modal.confirm({
+      title: '放弃未保存修改？',
+      content: '关闭会丢弃当前工具说明、参数管理说明和 Agent 授权修改。',
+      okText: '放弃修改', cancelText: '继续编辑', okButtonProps: { danger: true },
+      onOk: onClose,
+    });
+  };
+  return <DetailDrawer
     title={tool ? `工具详情与配置：${tool.name}` : '工具详情与配置'}
     open={Boolean(tool)}
-    onClose={onClose}
-    width={720}
+    onClose={requestClose}
+    width={800}
     destroyOnClose
+    dirty={false}
     extra={tool ? <Space><Tag color={tool.risk === '高风险' ? 'red' : tool.risk === '执行' ? 'orange' : tool.risk === '写入' ? 'blue' : 'default'}>{tool.risk}</Tag><Tag color={runtime?.status === 'active' ? 'green' : 'orange'}>{runtime?.status_label}</Tag></Space> : null}
-    footer={<div className="editor-drawer-footer"><Button onClick={onRestore} loading={restoring}>恢复默认</Button><Space wrap><Button onClick={onClose}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>保存配置</Button></Space></div>}
+    footer={<div className="editor-drawer-footer"><Button onClick={onRestore} loading={restoring}>恢复默认</Button><Space wrap><Button onClick={requestClose}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>保存配置</Button></Space></div>}
   >
     {tool && <>
       <Alert type={runtime?.status === 'active' ? 'info' : 'warning'} showIcon message={runtime?.status === 'active' ? '平台内置工具' : '工具尚未接入任务执行器'} description={runtime?.status === 'active' ? '可编辑工具说明、运行字段说明和 Agent 授权。字段来源、结构和执行实现由服务端维护；说明覆写只影响治理目录，不会创建新的执行器。保存授权后，相关 Agent 会生成新版本。' : '此项目前仅登记在治理目录，当前任务执行器没有对应调用实现。可以维护目录说明，但绑定 Agent 不会触发工具运行。'} style={{ marginBottom: 16 }} />
@@ -150,6 +174,7 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
         is_enabled: tool.is_enabled ?? true,
         }}
         onFinish={onSubmit}
+        onValuesChange={() => setDirty(true)}
       >
         <Tabs items={[
           { key: 'details', label: '配置与说明', children: <>
@@ -207,5 +232,5 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
         ]} />
       </Form>
     </>}
-  </Drawer>;
+  </DetailDrawer>;
 }

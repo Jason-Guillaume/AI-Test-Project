@@ -73,9 +73,9 @@ def upgrade() -> None:
     op.drop_constraint("fk_soft_delete_deleted_by_user", "environment", type_="foreignkey")
     for column in ("deletion_batch_id", "deletion_reason", "deleted_by", "deleted_at"):
         op.drop_column("environment", column)
-    # Project and user lifecycle fields were introduced by later migrations; keep this
-    # baseline historical even though current metadata creates the latest columns.
-    for table in ("project", "user"):
+    # Organization, project and user lifecycle fields were introduced by later migrations;
+    # keep this baseline historical even though current metadata creates the latest columns.
+    for table in ("organization", "project", "user"):
         op.drop_constraint("fk_soft_delete_deleted_by_user", table, type_="foreignkey")
         for column in ("deletion_batch_id", "deletion_reason", "deleted_by", "deleted_at"):
             op.drop_column(table, column)

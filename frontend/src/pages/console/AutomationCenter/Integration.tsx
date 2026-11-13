@@ -36,7 +36,8 @@ export function ConsoleAutomationIntegrationPage() {
   });
   const save = useMutation({
     mutationFn: (values: IntegrationForm) => {
-      const { pipeline_id: _pipeline, ...body } = values;
+      const body = { ...values };
+      delete body.pipeline_id;
       if (editing) {
         const payload = { ...body };
         if (!payload.access_token) delete payload.access_token;

@@ -19,7 +19,7 @@ import {
 import { PlusOutlined, ReloadOutlined, TeamOutlined, UserSwitchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { usersApi } from '@/features/users/api/users';
@@ -110,7 +110,7 @@ export function AdminUsersPage() {
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
   });
 
-  const deleteUser = (row: User) => modal.confirm({
+  const deleteUser = useCallback((row: User) => modal.confirm({
     title: `将用户「${row.username}」移入回收站？`,
     content: '账号会立即失效；个人组织、项目归属、成员关系和历史记录保留，可在回收站恢复。',
     okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true },
@@ -122,7 +122,7 @@ export function AdminUsersPage() {
         queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
       } catch (error) { message.error(getErrorMessage(error, '删除失败')); }
     },
-  });
+  }), [message, modal, queryClient]);
 
   const deleteSelectedUsers = () => modal.confirm({
     title: `将选中的 ${selectedUserIds.length} 个用户账号移入回收站？`,
@@ -204,7 +204,7 @@ export function AdminUsersPage() {
         ),
       },
     ],
-    [currentUser?.id],
+    [currentUser?.id, deleteUser],
   );
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试

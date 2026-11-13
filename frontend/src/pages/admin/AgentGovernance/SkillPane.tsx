@@ -1,10 +1,12 @@
 // Skill 列表、文件编辑、版本历史与恢复。
-import { App, Alert, Button, Card, Checkbox, Col, Drawer, Form, Input, List, Modal, Row, Pagination, Select, Space, Switch, Table, Tabs, Tag, Typography, Upload } from 'antd';
-import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
+import { App, Alert, Button, Card, Checkbox, Col, Drawer, Form, Input, List, Modal, Row, Pagination, Select, Space, Switch, Table, Tabs, Tag, Tree, Typography, Upload } from 'antd';
+import { FileOutlined, FolderOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type Key, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { DataNode } from 'antd/es/tree';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
+import { useDraftNavigationGuard } from '@/features/asr-evaluation/useDraftNavigationGuard';
 import type { AgentDefinition, DefinitionVersion, SkillDefinition, SkillInput } from '@/features/agent-governance/contracts';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
@@ -14,14 +16,124 @@ function skillCategory(name: string) {
   return name.includes(' · ') ? name.split(' · ')[0] : '通用';
 }
 
+function toSkillInput(skill: SkillDefinition): SkillInput {
+  const files = skill.files_json?.['SKILL.md'] === undefined
+    ? { ...(skill.files_json ?? {}), 'SKILL.md': skill.content ?? '' }
+    : skill.files_json;
+  return {
+    name: skill.name,
+    description: skill.description,
+    content: files['SKILL.md'],
+    files_json: files,
+    mcp_tool_keys_json: skill.mcp_tool_keys_json ?? [],
+    is_enabled: skill.is_enabled,
+  };
+}
+
+function buildSkillTreeNode(
+  skill: SkillDefinition,
+  selectedSkillIds: number[],
+  onToggle: (id: number, checked: boolean) => void,
+): DataNode {
+  const root: DataNode = {
+    key: `skill:${skill.id}`,
+    title: (
+      <div className="skill-workspace__tree-skill" title={skill.name}>
+        <Checkbox
+          checked={selectedSkillIds.includes(skill.id)}
+          disabled={!selectedSkillIds.includes(skill.id) && selectedSkillIds.length >= 100}
+          aria-label={`选择 Skill ${skill.name}`}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onToggle(skill.id, event.target.checked)}
+        />
+        <span className="skill-workspace__tree-name">{skill.name}</span>
+        <Tag color={skill.is_enabled ? 'green' : 'default'}>{skill.is_enabled ? '启用' : '停用'}</Tag>
+      </div>
+    ),
+    children: [],
+  };
+  const fileNodes = new Map<string, DataNode>();
+  const files = skill.files_json?.['SKILL.md'] === undefined
+    ? { ...(skill.files_json ?? {}), 'SKILL.md': skill.content ?? '' }
+    : skill.files_json;
+  for (const path of Object.keys(files).sort()) {
+    const parts = path.split('/').filter(Boolean);
+    let parent = root;
+    const segments: string[] = [];
+    parts.forEach((part, index) => {
+      segments.push(part);
+      const relativePath = segments.join('/');
+      let node = fileNodes.get(relativePath);
+      if (!node) {
+        const isFile = index === parts.length - 1;
+        node = {
+          key: `${isFile ? 'file' : 'dir'}:${skill.id}:${relativePath}`,
+          title: <span className="skill-workspace__tree-file">{isFile ? <FileOutlined /> : <FolderOutlined />}<span>{part}</span></span>,
+          isLeaf: isFile,
+          ...(isFile ? {} : { children: [] }),
+        };
+        fileNodes.set(relativePath, node);
+        parent.children = parent.children ?? [];
+        parent.children.push(node);
+      }
+      parent = node;
+    });
+  }
+  return root;
+}
+
+function MarkdownPreview({ content }: { content: string }) {
+  const blocks: ReactNode[] = [];
+  const lines = content.split('\n');
+  let code: string[] = [];
+  let inCode = false;
+  lines.forEach((line, index) => {
+    if (line.trim().startsWith('```')) {
+      if (inCode) {
+        blocks.push(<pre className="skill-workspace__markdown-code" key={`code-${index}`}>{code.join('\n')}</pre>);
+        code = [];
+      }
+      inCode = !inCode;
+      return;
+    }
+    if (inCode) { code.push(line); return; }
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    const listItem = /^\s*[-*+]\s+(.+)$/.exec(line);
+    const orderedItem = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+    const quote = /^>\s?(.*)$/.exec(line);
+    if (heading) {
+      const level = Math.min(5, heading[1].length + 1) as 2 | 3 | 4 | 5;
+      blocks.push(<Typography.Title level={level} key={`heading-${index}`}>{heading[2]}</Typography.Title>);
+    } else if (listItem || orderedItem) {
+      blocks.push(<Typography.Paragraph className="skill-workspace__markdown-list" key={`list-${index}`}>{listItem ? '• ' : `${index + 1}. `}{listItem?.[1] ?? orderedItem?.[1]}</Typography.Paragraph>);
+    } else if (quote) {
+      blocks.push(<blockquote className="skill-workspace__markdown-quote" key={`quote-${index}`}>{quote[1]}</blockquote>);
+    } else if (line.trim()) {
+      blocks.push(<Typography.Paragraph key={`paragraph-${index}`}>{line}</Typography.Paragraph>);
+    }
+  });
+  if (code.length) blocks.push(<pre className="skill-workspace__markdown-code" key="code-last">{code.join('\n')}</pre>);
+  return <div className="skill-workspace__markdown-preview">{blocks.length ? blocks : <Typography.Text type="secondary">没有可预览的内容。</Typography.Text>}</div>;
+}
+
+function isEditableTextFile(path: string) {
+  return /\.(md|markdown|txt|rst|json|ya?ml|toml|py|sh|bash|js|jsx|ts|tsx|sql|csv|xml|html|css|go|rs|java|properties|env)$/i.test(path);
+}
+
 export function SkillPane() {
-  const [editing, setEditing] = useState<SkillDefinition | null>(null);
   const [creating, setCreating] = useState(false);
+  const [creatingDirty, setCreatingDirty] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [categoryFilter, setCategoryFilter] = useState('全部');
   const [selectedSkillIds, setSelectedSkillIds] = useState<number[]>([]);
+  const [activeSkillId, setActiveSkillId] = useState<number | null>(null);
+  const [draft, setDraft] = useState<SkillInput | null>(null);
+  const [selectedNode, setSelectedNode] = useState<{ kind: 'file' | 'folder'; path: string } | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<Key[]>([]);
+  const [newFilePath, setNewFilePath] = useState('');
+  const [previewMarkdown, setPreviewMarkdown] = useState(false);
   const [history, setHistory] = useState<{ kind: 'agent' | 'skill'; id: number; name: string } | null>(null);
   const { message, modal } = App.useApp();
   const navigate = useNavigate();
@@ -29,11 +141,20 @@ export function SkillPane() {
   const skills = useQuery({ queryKey: ['agent-governance', 'skills'], queryFn: agentGovernanceApi.skills });
   const agents = useQuery({ queryKey: ['agent-governance', 'agents'], queryFn: agentGovernanceApi.agents });
   const mcpServers = useQuery({ queryKey: ['agent-governance', 'mcp-servers'], queryFn: agentGovernanceApi.mcpServers });
+  const activeSkill = skills.data?.find((skill) => skill.id === activeSkillId) ?? null;
+  const activeDirty = Boolean(activeSkill && draft && JSON.stringify(draft) !== JSON.stringify(toSkillInput(activeSkill)));
+  useDraftNavigationGuard(activeDirty || creatingDirty);
+  const usage = useQuery({
+    queryKey: ['agent-governance', 'skill-usage', activeSkillId],
+    queryFn: () => agentGovernanceApi.skillUsage(activeSkillId!),
+    enabled: activeSkillId !== null,
+  });
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['agent-governance'] });
-  const createMutation = useMutation({ mutationFn: agentGovernanceApi.createSkill, onSuccess: () => { message.success('Skill 已创建'); setCreating(false); setCurrentPage(1); setCategoryFilter('全部'); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
-  const updateMutation = useMutation({ mutationFn: ({ id, body }: { id: number; body: Partial<SkillDefinition> }) => agentGovernanceApi.updateSkill(id, body), onSuccess: () => { message.success('Skill 已更新，版本已递增'); setEditing(null); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
-  const deleteMutation = useMutation({ mutationFn: agentGovernanceApi.deleteSkill, onSuccess: () => { message.success('Skill 已移入回收站'); setCurrentPage(1); invalidate(); queryClient.invalidateQueries({ queryKey: ['recycle-bin'] }); }, onError: (e) => message.error(getErrorMessage(e)) });
-  const importMutation = useMutation({ mutationFn: (file: File) => agentGovernanceApi.importSkillZip(file), onSuccess: (skill) => { message.success(`已导入 Skill「${skill.name}」`); setEditing(skill); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const setSkillCache = (skill: SkillDefinition) => queryClient.setQueryData<SkillDefinition[]>(['agent-governance', 'skills'], (items) => [...(items ?? []).filter((item) => item.id !== skill.id), skill]);
+  const createMutation = useMutation({ mutationFn: agentGovernanceApi.createSkill, onSuccess: (skill) => { message.success('Skill 已创建'); setCreating(false); setSkillCache(skill); setCurrentPage(1); setCategoryFilter('全部'); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const updateMutation = useMutation({ mutationFn: ({ id, body }: { id: number; body: SkillInput }) => agentGovernanceApi.updateSkill(id, body), onSuccess: (skill) => { message.success('Skill 已保存为新版本'); setSkillCache(skill); setDraft(toSkillInput(skill)); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const deleteMutation = useMutation({ mutationFn: agentGovernanceApi.deleteSkill, onSuccess: (_, id) => { message.success('Skill 已移入回收站'); if (id === activeSkillId) { setActiveSkillId(null); setDraft(null); setSelectedNode(null); } setCurrentPage(1); invalidate(); queryClient.invalidateQueries({ queryKey: ['recycle-bin'] }); }, onError: (e) => message.error(getErrorMessage(e)) });
+  const importMutation = useMutation({ mutationFn: (file: File) => agentGovernanceApi.importSkillZip(file), onSuccess: (skill) => { message.success(`已导入 Skill「${skill.name}」`); setSkillCache(skill); setCurrentPage(1); setCategoryFilter('全部'); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
   if (skills.isPending || agents.isPending || mcpServers.isPending) return <LoadingState />;
   const failed = [skills, agents, mcpServers].find((query) => query.isError);
   if (failed) return <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
@@ -79,6 +200,73 @@ export function SkillPane() {
       return next;
     });
   };
+  const displayedActiveSkill = activeSkill && draft ? { ...activeSkill, ...draft } : activeSkill;
+  const treeSkills = displayedActiveSkill
+    ? pageSkills.some((skill) => skill.id === displayedActiveSkill.id)
+      ? pageSkills.map((skill) => skill.id === displayedActiveSkill.id ? displayedActiveSkill : skill)
+      : [...pageSkills, displayedActiveSkill]
+    : pageSkills;
+  const treeData = treeSkills.map((skill) => buildSkillTreeNode(skill, selectedSkillIds, toggleSkillSelection));
+  const openSkill = (skillId: number, node: { kind: 'file' | 'folder'; path: string } | null = null) => {
+    if (skillId === activeSkillId) { setSelectedNode(node); return; }
+    const next = allSkills.find((skill) => skill.id === skillId);
+    if (!next) return;
+    const open = () => {
+      setActiveSkillId(skillId);
+      setDraft(toSkillInput(next));
+      setSelectedNode(node);
+      const parts = node?.path.split('/') ?? [];
+      const parentFolders = node?.kind === 'file' ? parts.slice(0, -1) : parts;
+      setExpandedKeys([`skill:${skillId}`, ...parentFolders.map((_, index) => `dir:${skillId}:${parts.slice(0, index + 1).join('/')}`)]);
+      setPreviewMarkdown(false);
+    };
+    if (!activeDirty) { open(); return; }
+    modal.confirm({ title: '放弃未保存修改？', content: '切换到其他 Skill 会丢弃当前暂存内容。', okText: '放弃并切换', cancelText: '继续编辑', okButtonProps: { danger: true }, onOk: open });
+  };
+  const onTreeSelect = (keys: Key[]) => {
+    const key = String(keys[0] ?? '');
+    if (key.startsWith('skill:')) { openSkill(Number(key.slice('skill:'.length))); return; }
+    const match = /^(file|dir):(\d+):(.+)$/.exec(key);
+    if (match) openSkill(Number(match[2]), { kind: match[1] === 'file' ? 'file' : 'folder', path: match[3] });
+  };
+  const updateDraft = (patch: Partial<SkillInput>) => setDraft((current) => current ? { ...current, ...patch } : current);
+  const updateFile = (path: string, content: string) => setDraft((current) => {
+    if (!current) return current;
+    const files = { ...current.files_json, [path]: content };
+    return { ...current, files_json: files, ...(path === 'SKILL.md' ? { content } : {}) };
+  });
+  const addFile = () => {
+    const path = newFilePath.trim().replace(/\\/g, '/');
+    if (!path || path.startsWith('/') || path.split('/').some((part) => !part || part === '.' || part === '..')) { message.error('请输入安全的相对文件路径'); return; }
+    if (!draft || draft.files_json[path] !== undefined) { message.error('该文件已存在'); return; }
+    updateFile(path, '');
+    setSelectedNode({ kind: 'file', path });
+    const folders = path.split('/').slice(0, -1);
+    setExpandedKeys((current) => [...new Set([...current, `skill:${activeSkillId}`, ...folders.map((_, index) => `dir:${activeSkillId}:${folders.slice(0, index + 1).join('/')}`)])]);
+    setNewFilePath('');
+  };
+  const removeFile = (path: string) => modal.confirm({
+    title: `从暂存版本中删除「${path}」？`,
+    content: '删除仅影响当前暂存内容，保存后才会创建新版本。SKILL.md 入口文件不能删除。',
+    okText: '删除文件', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: () => {
+      setDraft((current) => current ? { ...current, files_json: Object.fromEntries(Object.entries(current.files_json).filter(([name]) => name !== path)) } : current);
+      setSelectedNode(null);
+    },
+  });
+  const discardChanges = () => {
+    if (!activeSkill) return;
+    setDraft(toSkillInput(activeSkill));
+    setSelectedNode(null);
+    setPreviewMarkdown(false);
+  };
+  const saveSkill = () => {
+    if (!activeSkill || !draft) return;
+    if (!draft.name.trim()) { message.error('请输入 Skill 名称'); return; }
+    if (!draft.files_json['SKILL.md']?.trim()) { message.error('必须保留非空的 SKILL.md 入口文件'); return; }
+    if (Object.keys(draft.files_json).length > 200) { message.error('单个 Skill 最多包含 200 个文件'); return; }
+    updateMutation.mutate({ id: activeSkill.id, body: { ...draft, content: draft.files_json['SKILL.md'] } });
+  };
   const deleteSelectedSkills = () => {
     if (!selectedSkillIds.length) return;
     modal.confirm({
@@ -89,6 +277,8 @@ export function SkillPane() {
         try {
           const receipt = await dataLifecycleApi.deleteMany('skill_definition', null, selectedSkillIds);
           setSelectedSkillIds([]);
+          const deletedActiveSkill = receipt.items.some((item) => item.id === activeSkillId && item.succeeded);
+          if (deletedActiveSkill) { setActiveSkillId(null); setDraft(null); setSelectedNode(null); }
           invalidate();
           queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
           if (receipt.failed) {
@@ -101,88 +291,146 @@ export function SkillPane() {
       },
     });
   };
-  const onSubmit = (body: SkillInput) => editing ? updateMutation.mutate({ id: editing.id, body }) : createMutation.mutate(body);
+  const linkedAgents = activeSkill ? agentRows.filter((agent) => agent.skill_keys.includes(activeSkill.key)) : [];
+  const fileContents = draft?.files_json ?? {};
+  const selectedFile = selectedNode?.kind === 'file' ? selectedNode.path : null;
+  const markdownFile = Boolean(selectedFile && /\.(md|markdown)$/i.test(selectedFile));
+  const visibleTreeData = treeData;
+  const setTreeSelection = (keys: Key[]) => onTreeSelect(keys);
   return <>
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-      <Space wrap size={8}>
-        <Input.Search allowClear value={searchText} onChange={(event) => { setSearchText(event.target.value); setCurrentPage(1); }} placeholder="按 Skill 名称或说明搜索" style={{ width: 320, maxWidth: '100%' }} />
-        <Select value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={categoryOptions} style={{ width: 180 }} />
-      </Space>
-      <Space>
-        <Button danger disabled={!selectedSkillIds.length} onClick={deleteSelectedSkills}>批量删除（{selectedSkillIds.length}）</Button>
-        <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
-        <Upload accept=".zip,application/zip" showUploadList={false} beforeUpload={(file) => { importMutation.mutate(file); return false; }}>
-          <Button icon={<UploadOutlined />} loading={importMutation.isPending}>导入 Skill ZIP</Button>
-        </Upload>
-        <Button type="primary" onClick={() => setCreating(true)}>新增 Skill</Button>
-      </Space>
-    </div>
-    <Space style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-      <Typography.Text type="secondary">共 {visibleSkills.length} 个 Skill；跨页选择已保留，最多 100 个</Typography.Text>
-      <Space size={8}>
-        <Checkbox checked={pageSkills.length > 0 && selectedOnPage === pageSkills.length} indeterminate={selectedOnPage > 0 && selectedOnPage < pageSkills.length} onChange={(event) => toggleCurrentPage(event.target.checked)}>全选当前页</Checkbox>
-        <Button type="link" size="small" disabled={!selectedSkillIds.length} onClick={() => setSelectedSkillIds([])}>清空选择</Button>
-      </Space>
-    </Space>
-    {visibleSkills.length ? <>
-      <List
-        size="small"
-        bordered
-        dataSource={pageSkills}
-        renderItem={(skill) => {
-          const category = skillCategory(skill.name);
-          return <List.Item
-            actions={[
-              <Checkbox key="select" checked={selectedSkillIds.includes(skill.id)} disabled={!selectedSkillIds.includes(skill.id) && selectedSkillIds.length >= 100} onChange={(event) => toggleSkillSelection(skill.id, event.target.checked)} aria-label={`选择 Skill ${skill.name}`} />,
-              <Button key="detail" type="link" size="small" onClick={() => setEditing(skill)}>详情 / 编辑</Button>,
-              <Button key="version" type="link" size="small" onClick={() => setHistory({ kind: 'skill', id: skill.id, name: skill.name })}>v{skill.version}</Button>,
-              <Tag key="status" color={skill.is_enabled ? 'green' : 'default'}>{skill.is_enabled ? '启用' : '停用'}</Tag>,
-              <Switch
-                key="enabled"
-                size="small"
-                checked={skill.is_enabled}
-                loading={updateMutation.isPending && updateMutation.variables?.id === skill.id}
-                onChange={(checked) => updateMutation.mutate({ id: skill.id, body: { is_enabled: checked } })}
-                aria-label={`${skill.is_enabled ? '停用' : '启用'} ${skill.name}`}
-              />,
-              <Button key="delete" type="link" size="small" danger onClick={() => modal.confirm({ title: `将 Skill「${skill.name}」移入回收站？`, okText: '移入回收站', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(skill.id) })}>删除</Button>,
-            ]}
-          >
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label={`编辑 Skill ${skill.name}`}
-              onClick={() => setEditing(skill)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setEditing(skill); }
-              }}
-              style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-            >
-              <List.Item.Meta
-                title={<Space wrap size={6}><Typography.Text strong>{skill.name}</Typography.Text><Tag color={category === '安全' ? 'red' : category === '平台' ? 'blue' : 'default'}>{category}</Tag><Typography.Text type="secondary" style={{ fontSize: 12 }}>点击查看并编辑内容</Typography.Text></Space>}
-                description={skill.description || '暂无说明'}
-              />
+    <div className="skill-workspace">
+      <aside className="skill-workspace__sidebar">
+        <div className="skill-workspace__sidebar-actions">
+          <Button type="primary" block icon={<PlusOutlined />} onClick={() => setCreating(true)}>新建 Skill</Button>
+          <Upload accept=".zip,application/zip" showUploadList={false} beforeUpload={(file) => { importMutation.mutate(file); return false; }}>
+            <Button block icon={<UploadOutlined />} loading={importMutation.isPending}>上传 ZIP 包</Button>
+          </Upload>
+          <Button block onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
+        </div>
+        <Input.Search allowClear value={searchText} onChange={(event) => { setSearchText(event.target.value); setCurrentPage(1); }} placeholder="搜索 Skill" />
+        <Select value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setCurrentPage(1); }} options={categoryOptions} style={{ width: '100%', marginTop: 8 }} />
+        <div className="skill-workspace__bulk-actions">
+          <Checkbox checked={pageSkills.length > 0 && selectedOnPage === pageSkills.length} indeterminate={selectedOnPage > 0 && selectedOnPage < pageSkills.length} onChange={(event) => toggleCurrentPage(event.target.checked)}>全选当前页</Checkbox>
+          <Button type="link" size="small" disabled={!selectedSkillIds.length} onClick={() => setSelectedSkillIds([])}>清空</Button>
+          <Button danger type="link" size="small" disabled={!selectedSkillIds.length} onClick={deleteSelectedSkills}>删除 {selectedSkillIds.length || ''}</Button>
+        </div>
+        {activeSkill && <div className="skill-workspace__file-add">
+          <Typography.Text type="secondary">在 {activeSkill.name} 中新建文件</Typography.Text>
+          <Space.Compact block>
+            <Input value={newFilePath} onChange={(event) => setNewFilePath(event.target.value)} placeholder="references/guide.md" onPressEnter={addFile} />
+            <Button icon={<PlusOutlined />} aria-label="新建 Skill 文件" onClick={addFile} />
+          </Space.Compact>
+        </div>}
+        <div className="skill-workspace__tree-wrap">
+          {treeSkills.length ? <Tree
+            blockNode
+            showIcon={false}
+            treeData={visibleTreeData}
+            selectedKeys={activeSkillId === null ? [] : [selectedNode ? `${selectedNode.kind === 'file' ? 'file' : 'dir'}:${activeSkillId}:${selectedNode.path}` : `skill:${activeSkillId}`]}
+            expandedKeys={expandedKeys}
+            onExpand={setExpandedKeys}
+            onSelect={setTreeSelection}
+          /> : <EmptyState description={normalizedSearch ? '没有匹配的 Skill' : '还没有 Skill'} />}
+        </div>
+        {visibleSkills.length > pageSize && <Pagination
+          size="small" current={currentPage} pageSize={pageSize} total={visibleSkills.length}
+          showSizeChanger pageSizeOptions={[20, 40, 80]} showTotal={(total) => `共 ${total} 个`}
+          onChange={(page, nextPageSize) => { setCurrentPage(page); setPageSize(nextPageSize); }}
+          style={{ marginTop: 12, textAlign: 'center' }}
+        />}
+        <Typography.Text className="skill-workspace__sidebar-hint" type="secondary">跨页选择最多 100 个 Skill</Typography.Text>
+      </aside>
+      <main className="skill-workspace__main">
+        {!activeSkill || !draft ? <Card className="skill-workspace__welcome">
+          <Typography.Title level={4}>Skill 文件工作区</Typography.Title>
+          <Typography.Paragraph type="secondary">从左侧选择一个 Skill，查看概览、编辑入口文件和引用资料。所有修改会先暂存，保存后创建新版本。</Typography.Paragraph>
+          <Typography.Text type="secondary">共 {allSkills.length} 个 Skill · 已启用 {allSkills.filter((skill) => skill.is_enabled).length} 个</Typography.Text>
+        </Card> : <>
+          <div className="skill-workspace__resource-header">
+            <div className="skill-workspace__resource-title">
+              <Space wrap>
+                <Typography.Title level={4} style={{ margin: 0 }}>{draft.name || activeSkill.name}</Typography.Title>
+                <Tag color={draft.is_enabled ? 'green' : 'default'}>{draft.is_enabled ? '启用' : '停用'}</Tag>
+                <Tag>v{activeSkill.version}</Tag>
+                {activeDirty && <Tag color="orange">未保存</Tag>}
+              </Space>
+              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }}>{draft.description || '暂无描述'}</Typography.Paragraph>
             </div>
-          </List.Item>;
-        }}
-      />
-      {visibleSkills.length > pageSize && <Pagination
-        current={currentPage}
-        pageSize={pageSize}
-        total={visibleSkills.length}
-        showSizeChanger
-        pageSizeOptions={[20, 40, 80]}
-        showTotal={(total, range) => `${range[0]}-${range[1]} / 共 ${total} 个`}
-        onChange={(page, nextPageSize) => { setCurrentPage(page); setPageSize(nextPageSize); }}
-        style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}
-      />}
-    </> : <EmptyState description={normalizedSearch ? '没有匹配的 Skill' : '还没有 Skill'} />}
-    <SkillFormModal key={editing ? `${editing.id}-${editing.version}` : (creating ? 'new' : 'closed')} open={creating || Boolean(editing)} initial={editing ?? undefined} loading={createMutation.isPending || updateMutation.isPending} agents={agentRows} mcpOptions={mcpOptions} onOpenHistory={() => editing && setHistory({ kind: 'skill', id: editing.id, name: editing.name })} onCancel={() => { setCreating(false); setEditing(null); }} onSubmit={onSubmit} />
+            <Space wrap>
+              <Button onClick={() => setHistory({ kind: 'skill', id: activeSkill.id, name: activeSkill.name })}>版本历史</Button>
+              <Button onClick={discardChanges} disabled={!activeDirty}>放弃修改</Button>
+              <Button danger onClick={() => modal.confirm({ title: `将 Skill「${activeSkill.name}」移入回收站？`, content: '仍被引用或处于运行任务中的资源会由服务端拒绝删除。', okText: '移入回收站', cancelText: '取消', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(activeSkill.id) })} loading={deleteMutation.isPending}>删除</Button>
+              <Button type="primary" onClick={saveSkill} disabled={!activeDirty} loading={updateMutation.isPending}>保存新版本</Button>
+            </Space>
+          </div>
+          {!selectedNode ? <>
+            <Row gutter={[12, 12]} className="skill-workspace__stats">
+              <Col xs={12} md={6}><Card size="small"><Typography.Text type="secondary">文件数量</Typography.Text><Typography.Title level={4}>{Object.keys(draft.files_json).length}</Typography.Title></Card></Col>
+              <Col xs={12} md={6}><Card size="small"><Typography.Text type="secondary">版本</Typography.Text><Typography.Title level={4}>v{activeSkill.version}</Typography.Title></Card></Col>
+              <Col xs={12} md={6}><Card size="small"><Typography.Text type="secondary">调用次数</Typography.Text><Typography.Title level={4}>{usage.data?.total_loads ?? (usage.isPending ? '…' : usage.isError ? '—' : '0')}</Typography.Title></Card></Col>
+              <Col xs={12} md={6}><Card size="small"><Typography.Text type="secondary">最近使用</Typography.Text><Typography.Paragraph>{usage.data?.last_used_at ? new Date(usage.data.last_used_at).toLocaleString('zh-CN') : usage.isPending ? '加载中' : usage.isError ? '加载失败' : '从未使用'}</Typography.Paragraph></Card></Col>
+            </Row>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} xl={14}>
+                <Card title="Skill 概览" extra={<Switch checked={draft.is_enabled} checkedChildren="启用" unCheckedChildren="停用" onChange={(checked) => updateDraft({ is_enabled: checked })} />}>
+                  <Form layout="vertical">
+                    <Form.Item label="Skill 名称" required><Input value={draft.name} maxLength={120} onChange={(event) => updateDraft({ name: event.target.value })} /></Form.Item>
+                    <Form.Item label="用途说明"><Input.TextArea value={draft.description} rows={4} maxLength={2000} showCount onChange={(event) => updateDraft({ description: event.target.value })} /></Form.Item>
+                    <Form.Item label="关联的 MCP 工具">
+                      <Select mode="multiple" value={draft.mcp_tool_keys_json} options={mcpOptions} placeholder="选择已审批、只读且已连接的 MCP 工具" onChange={(value) => updateDraft({ mcp_tool_keys_json: value })} />
+                    </Form.Item>
+                  </Form>
+                  <Alert type="info" showIcon message="SKILL.md 是执行入口" description="关联工具只会进入已绑定该 Skill 的 Agent 任务快照；修改并保存后，已有任务快照不会改变。" />
+                </Card>
+              </Col>
+              <Col xs={24} xl={10}>
+                <Card title="关联 Agent 与使用记录">
+                  <Typography.Text type="secondary">可见 Agent</Typography.Text>
+                  <div className="skill-workspace__agent-list">{linkedAgents.length ? linkedAgents.map((agent) => <Tag key={agent.id}>{agent.name} · v{agent.version}</Tag>) : <Typography.Text type="secondary">尚未绑定 Agent。请在 Agent 配置中添加此 Skill。</Typography.Text>}</div>
+                  {usage.isError ? <ErrorState error={usage.error} onRetry={usage.refetch} /> : <>
+                    <Typography.Text type="secondary">加载此 Skill 的 Agent</Typography.Text>
+                    <div className="skill-workspace__agent-list">{usage.data?.agents.length ? usage.data.agents.map((agent) => <Tag key={agent.id}>{agent.name} · {agent.loads} 次</Tag>) : <Typography.Text type="secondary">暂无加载记录</Typography.Text>}</div>
+                    <Typography.Text type="secondary">最近加载任务</Typography.Text>
+                    {usage.data?.recent_tasks.length ? <List size="small" dataSource={usage.data.recent_tasks.slice(0, 5)} renderItem={(task) => <List.Item>{task.title} · 第 {task.run_number} 次 · {new Date(task.used_at).toLocaleString('zh-CN')}</List.Item>} /> : <Typography.Paragraph type="secondary">暂无关联任务</Typography.Paragraph>}
+                  </>}
+                </Card>
+              </Col>
+            </Row>
+          </> : selectedNode.kind === 'folder' ? <Card>
+            <Typography.Title level={5}><FolderOutlined /> {selectedNode.path}</Typography.Title>
+            <Typography.Text type="secondary">此目录由下方文件路径组成。选择具体文件以查看或编辑内容。</Typography.Text>
+            <List size="small" dataSource={Object.keys(fileContents).filter((path) => path.startsWith(`${selectedNode.path}/`)).sort()} renderItem={(path) => <List.Item><Button type="link" onClick={() => setSelectedNode({ kind: 'file', path })}>{path.slice(selectedNode.path.length + 1)}</Button></List.Item>} />
+          </Card> : selectedFile && <Card
+            className="skill-workspace__file-card"
+            title={<Space wrap><FileOutlined /><Typography.Text className="skill-workspace__path">{selectedFile}</Typography.Text><Tag>{selectedFile.split('.').pop()?.toUpperCase() ?? 'TEXT'}</Tag></Space>}
+            extra={selectedFile !== 'SKILL.md' && <Button danger type="link" onClick={() => removeFile(selectedFile)}>删除文件</Button>}
+          >
+            {!isEditableTextFile(selectedFile) ? <Alert type="warning" showIcon message="暂不支持在线预览此文件类型" description="该文件会保留在 Skill 版本中。为避免把二进制内容当作文本破坏，不提供文本编辑。" /> : markdownFile ? <Tabs activeKey={previewMarkdown ? 'preview' : 'edit'} onChange={(key) => setPreviewMarkdown(key === 'preview')} items={[
+              { key: 'edit', label: '编辑', children: <Input.TextArea className="skill-workspace__editor-wrap" classNames={{ textarea: 'skill-workspace__editor' }} value={fileContents[selectedFile] ?? ''} onChange={(event) => updateFile(selectedFile, event.target.value)} spellCheck={false} maxLength={100000} showCount /> },
+              { key: 'preview', label: '预览', children: <div className="skill-workspace__preview"><MarkdownPreview content={fileContents[selectedFile] ?? ''} /></div> },
+            ]} /> : <>
+              <Typography.Paragraph type="secondary">纯文本编辑 · {isEditableTextFile(selectedFile) ? 'UTF-8' : '未知格式'}</Typography.Paragraph>
+              <Input.TextArea className="skill-workspace__editor-wrap" classNames={{ textarea: 'skill-workspace__editor' }} value={fileContents[selectedFile] ?? ''} onChange={(event) => updateFile(selectedFile, event.target.value)} spellCheck={false} maxLength={100000} showCount />
+            </>}
+          </Card>}
+        </>}
+      </main>
+    </div>
+    <SkillFormModal key={creating ? 'new' : 'closed'} open={creating} loading={createMutation.isPending} agents={agentRows} mcpOptions={mcpOptions} onOpenHistory={() => {}} onDirtyChange={setCreatingDirty} onCancel={() => { setCreating(false); setCreatingDirty(false); }} onSubmit={(body) => createMutation.mutate(body)} />
     <DefinitionHistoryModal
       key={history ? `${history.kind}-${history.id}` : 'closed'}
       target={history}
       onClose={() => setHistory(null)}
-      onRestored={(definition) => { if ('files_json' in definition) setEditing(definition); }}
+      onRestored={(definition) => {
+        if ('files_json' in definition) {
+          const skill = definition as SkillDefinition;
+          setSkillCache(skill);
+          setActiveSkillId(skill.id);
+          setDraft(toSkillInput(skill));
+          setSelectedNode(null);
+          invalidate();
+        }
+      }}
     />
   </>;
 }
@@ -193,7 +441,7 @@ export function DefinitionHistoryModal({ target, onClose, onRestored }: {
   onRestored: (definition: AgentDefinition | SkillDefinition) => void;
 }) {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const versions = useQuery({
     queryKey: ['agent-governance', 'versions', target?.kind, target?.id],
@@ -219,7 +467,7 @@ export function DefinitionHistoryModal({ target, onClose, onRestored }: {
   const changedFields = selected && latest
     ? [...new Set([...Object.keys(selected.snapshot_json), ...Object.keys(latest.snapshot_json)])].filter((key) => JSON.stringify(selected.snapshot_json[key]) !== JSON.stringify(latest.snapshot_json[key]))
     : [];
-  return <Modal title={target ? `${target.name} · 版本历史` : '版本历史'} open={Boolean(target)} onCancel={onClose} footer={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" disabled={!selected || selected.version === latest?.version} loading={restoreMutation.isPending} onClick={() => restoreMutation.mutate()}>恢复为新版本</Button></Space>} width={760}>
+  return <Modal title={target ? `${target.name} · 版本历史` : '版本历史'} open={Boolean(target)} onCancel={onClose} footer={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" disabled={!selected || selected.version === latest?.version} loading={restoreMutation.isPending} onClick={() => modal.confirm({ title: `恢复为 v${selected?.version} 配置？`, content: `历史快照会替换当前${target?.kind === 'skill' ? 'Skill' : 'Agent'}暂存内容，并另存为新的版本号。`, okText: '恢复为新版本', cancelText: '取消', onOk: () => restoreMutation.mutate() })}>恢复为新版本</Button></Space>} width={760}>
     {versions.isPending ? <LoadingState /> : versions.isError ? <ErrorState error={versions.error} onRetry={versions.refetch} /> : versions.data?.length ? <>
       <Table<DefinitionVersion>
         size="small"
@@ -238,19 +486,22 @@ export function DefinitionHistoryModal({ target, onClose, onRestored }: {
   </Modal>;
 }
 
-function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHistory, onCancel, onSubmit }: {
+function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHistory, onDirtyChange, onCancel, onSubmit }: {
   open: boolean;
   initial?: SkillDefinition;
   loading: boolean;
   agents: AgentDefinition[];
   mcpOptions: { label: string; value: string; disabled?: boolean }[];
   onOpenHistory: () => void;
+  onDirtyChange: (dirty: boolean) => void;
   onCancel: () => void;
   onSubmit: (body: SkillInput) => void;
 }) {
   const [form] = Form.useForm();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [files, setFiles] = useState<Record<string, string>>(initial?.files_json ?? { 'SKILL.md': initial?.content ?? '' });
+  const [formChanged, setFormChanged] = useState(false);
+  const [filesChanged, setFilesChanged] = useState(false);
   const [selectedPath, setSelectedPath] = useState('SKILL.md');
   const [newPath, setNewPath] = useState('');
   const defaultFiles = useMemo(() => initial?.files_json ?? { 'SKILL.md': initial?.content ?? '' }, [initial]);
@@ -258,9 +509,13 @@ function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHist
     () => initial ? { ...initial, mcp_tool_keys_json: initial.mcp_tool_keys_json ?? [] } : { is_enabled: false, mcp_tool_keys_json: [] },
     [initial],
   );
+  const hasUnsavedChanges = formChanged || filesChanged;
+  useEffect(() => { onDirtyChange(hasUnsavedChanges); }, [hasUnsavedChanges, onDirtyChange]);
   useEffect(() => {
     if (!open) return;
     setFiles(defaultFiles);
+    setFormChanged(false);
+    setFilesChanged(false);
     setSelectedPath('SKILL.md');
     setNewPath('');
     form.resetFields();
@@ -290,22 +545,27 @@ function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHist
       return;
     }
     setFiles((current) => ({ ...current, [path]: '' }));
+    setFilesChanged(true);
     setSelectedPath(path);
     setNewPath('');
+  };
+  const requestClose = () => {
+    if (!hasUnsavedChanges) { onCancel(); return; }
+    modal.confirm({ title: '放弃未保存的 Skill？', content: '关闭后，新建表单和文件改动会被丢弃。', okText: '放弃修改', cancelText: '继续编辑', okButtonProps: { danger: true }, onOk: onCancel });
   };
   return <Drawer
     title={initial ? `Skill 详情与编辑：${initial.name}` : '新增 Skill'}
     open={open}
-    onClose={onCancel}
+    onClose={requestClose}
     width={760}
     destroyOnClose
     extra={initial ? <Space><Tag color={initial.is_enabled ? 'green' : 'default'}>{initial.is_enabled ? '启用' : '停用'}</Tag><Tag>v{initial.version}</Tag></Space> : null}
     footer={<div className="editor-drawer-footer">
       <Space wrap>{initial && <Button onClick={onOpenHistory}>版本历史</Button>}{initial && <Button onClick={() => { setFiles(defaultFiles); form.setFieldsValue({ name: initial.name, description: initial.description, is_enabled: initial.is_enabled, mcp_tool_keys_json: initial.mcp_tool_keys_json }); }}>放弃未保存修改</Button>}</Space>
-      <Space wrap><Button onClick={onCancel}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>{initial ? '保存为新版本' : '创建 Skill'}</Button></Space>
+      <Space wrap><Button onClick={requestClose}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>{initial ? '保存为新版本' : '创建 Skill'}</Button></Space>
     </div>}
   >
-    <Form form={form} layout="vertical" initialValues={formInitialValues} onFinish={submit}>
+    <Form form={form} layout="vertical" initialValues={formInitialValues} onValuesChange={() => setFormChanged(true)} onFinish={submit}>
       <Tabs items={[
         { key: 'overview', label: '概览与内容', children: <>
           <Row gutter={16}>
@@ -322,14 +582,14 @@ function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHist
               </Space.Compact>
               <List className="skill-file-editor__files" size="small" bordered dataSource={Object.keys(files).sort()} renderItem={(path) => <List.Item style={{ cursor: 'pointer', background: path === selectedPath ? 'rgba(82,112,255,.08)' : undefined }} onClick={() => setSelectedPath(path)}>
                 <Typography.Text ellipsis={{ tooltip: path }} style={{ minWidth: 0, flex: 1 }}>{path}</Typography.Text>
-                {path !== 'SKILL.md' && <Button size="small" type="link" danger onClick={(event) => { event.stopPropagation(); setFiles((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== path))); if (selectedPath === path) setSelectedPath('SKILL.md'); }}>删除</Button>}
+                {path !== 'SKILL.md' && <Button size="small" type="link" danger onClick={(event) => { event.stopPropagation(); setFiles((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== path))); setFilesChanged(true); if (selectedPath === path) setSelectedPath('SKILL.md'); }}>删除</Button>}
               </List.Item>} />
             </div>
             <div className="skill-file-editor__content">
               <Typography.Text className="skill-file-editor__path" strong>{selectedPath}</Typography.Text>
               <Input.TextArea
                 value={files[selectedPath] ?? ''}
-                onChange={(event) => setFiles((current) => ({ ...current, [selectedPath]: event.target.value }))}
+                onChange={(event) => { setFiles((current) => ({ ...current, [selectedPath]: event.target.value })); setFilesChanged(true); }}
                 rows={12}
                 classNames={{ textarea: 'skill-file-editor__textarea' }}
                 maxLength={100000}

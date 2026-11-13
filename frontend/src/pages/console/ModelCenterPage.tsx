@@ -1,7 +1,7 @@
 // 统一维护文本推理、ASR 与说话人模型的连接修订和独立参数方案。
 import {
-  Alert, App, Button, Card, Checkbox, Form, Input, InputNumber, Modal, Select, Space,
-  Switch, Table, Tag, Tabs, Typography,
+  Alert, App, Button, Card, Checkbox, Col, Descriptions, Form, Input, InputNumber, Modal, Row, Select, Space,
+  Statistic, Switch, Table, Tag, Tabs, Typography,
 } from 'antd';
 import { ExperimentOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import { modelCenterApi, modelCenterQueryKeys, type ModelCategory, type ModelCon
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 import { collectPages } from '@/shared/api/pagination';
 
 interface ResourceFormValues {
@@ -189,6 +190,9 @@ export function ModelCenterPage() {
     return requested === 'ASR' || requested === 'DIARIZATION' ? requested : 'TEXT_GENERATION';
   });
   const [resourceOpen, setResourceOpen] = useState(false);
+  const [selectedResource, setSelectedResource] = useState<ModelResource | null>(null);
+  const [resourceSearch, setResourceSearch] = useState('');
+  const [resourceView, setResourceView] = useState<'cards' | 'table'>('cards');
   const [connectionTestResult, setConnectionTestResult] = useState<ModelConnectionTestResult | null>(null);
   const [revisionTarget, setRevisionTarget] = useState<ModelResource | null>(null);
   const [profileTarget, setProfileTarget] = useState<ModelResource | null>(null);
@@ -232,6 +236,9 @@ export function ModelCenterPage() {
   });
   const adapters = useMemo(() => (catalogQuery.data?.adapters || []).filter((item) => item.category === category), [catalogQuery.data, category]);
   const rows = resourcesQuery.data?.items || [];
+  const visibleRows = rows.filter((resource) => `${resource.display_name} ${resource.current_revision?.provider ?? ''} ${resource.current_revision?.model_name ?? ''} ${resource.current_revision?.adapter_key ?? ''}`.toLocaleLowerCase().includes(resourceSearch.trim().toLocaleLowerCase()));
+  const activeRows = rows.filter((resource) => resource.status === 'ACTIVE');
+  const diagnosticFailures = rows.filter((resource) => resource.diagnostic?.status === 'FAILED' || resource.status === 'ERROR');
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['model-center'] });
   const createMutation = useMutation({
@@ -459,7 +466,15 @@ export function ModelCenterPage() {
       <Tabs activeKey={category} onChange={(key) => setCategory(key as ModelCategory)} items={[
         { key: 'TEXT_GENERATION', label: '文本推理' }, { key: 'ASR', label: 'ASR 转写' }, { key: 'DIARIZATION', label: '说话人分段' },
       ]} />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+      <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={`${CATEGORY_LABELS[category]}资源`} value={rows.length} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="已启用" value={activeRows.length} valueStyle={{ color: '#389e0d' }} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="诊断异常" value={diagnosticFailures.length} valueStyle={{ color: diagnosticFailures.length ? '#cf1322' : undefined }} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title="已停用" value={rows.length - activeRows.length} /></Card></Col>
+      </Row>
+      <div className="resource-list-toolbar">
+        <Input.Search allowClear value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)} placeholder="搜索名称、供应商、模型标识或适配器" aria-label="搜索模型资源" />
+        <Select value={resourceView} onChange={setResourceView} options={[{ value: 'cards', label: '卡片视图' }, { value: 'table', label: '表格视图' }]} aria-label="模型资源视图" />
         <Typography.Text type="secondary">类别、供应商、适配器、能力和任务用途分别记录。仅展示已注册适配器。</Typography.Text>
         <Space>
           {isPlatformAdmin && <Button onClick={() => { setImportPreview(null); setImportOpen(true); }}>批量导入预检</Button>}
@@ -468,8 +483,80 @@ export function ModelCenterPage() {
       </div>
       {category !== 'TEXT_GENERATION' && <Alert style={{ marginBottom: 16 }} type="info" showIcon
         message="参数控件按连接声明生成。ASR 新配置会提供语言、热词、VAD、标点和时间戳示例；仅保留当前供应商协议确认支持的字段。通用适配器按模板透传，不代表厂商真实联调已验证。无鉴权服务仍需通过项目出站授权。" />}
-      <Table<ModelResource> rowKey="id" dataSource={rows} columns={columns} pagination={{ pageSize: 10, showSizeChanger: true }} locale={{ emptyText: `${CATEGORY_LABELS[category]}暂无资源` }} />
+      {resourceView === 'table' ? <Table<ModelResource> rowKey="id" dataSource={visibleRows} columns={columns} pagination={{ pageSize: 10, showSizeChanger: true }} locale={{ emptyText: resourceSearch ? '没有匹配的模型资源' : `${CATEGORY_LABELS[category]}暂无资源` }} scroll={{ x: 'max-content' }} />
+        : visibleRows.length ? <Row gutter={[12, 12]}>
+          {visibleRows.map((resource) => {
+            const revision = resource.current_revision;
+            return <Col xs={24} md={12} xl={8} xxl={6} key={resource.id}>
+              <Card size="small" hoverable role="button" tabIndex={0} aria-label={`查看模型 ${resource.display_name}`}
+                onClick={(event) => { if (!(event.target as HTMLElement).closest('button, input, .ant-select')) setSelectedResource(resource); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedResource(resource); } }}
+                style={{ height: '100%' }} styles={{ body: { display: 'flex', height: '100%', minHeight: 220, flexDirection: 'column', padding: 14 } }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                  <div style={{ minWidth: 0 }}><Typography.Text strong ellipsis={{ tooltip: resource.display_name }} style={{ display: 'block' }}>{resource.display_name}</Typography.Text><Typography.Text type="secondary">{revision?.provider ?? '未配置供应商'} · {revision?.model_name ?? '无当前修订'}</Typography.Text></div>
+                  <Tag color={resource.status === 'ACTIVE' ? 'green' : resource.status === 'ERROR' ? 'red' : 'default'}>{resource.status === 'ACTIVE' ? '启用' : resource.status === 'ERROR' ? '异常' : '停用'}</Tag>
+                </div>
+                <Space wrap size={[4, 4]} style={{ marginTop: 10 }}>
+                  <Tag>{revision?.adapter_key ?? '未配置适配器'}</Tag>
+                  <Tag>{revision?.has_credential ? '凭据已配置' : '无凭据'}</Tag>
+                  {resource.diagnostic && <Tag color={resource.diagnostic.status === 'SUCCEEDED' ? 'green' : resource.diagnostic.status === 'FAILED' ? 'red' : 'blue'}>诊断 {resource.diagnostic.status}</Tag>}
+                </Space>
+                <Typography.Paragraph type="secondary" ellipsis={{ rows: 2, tooltip: revision?.capabilities.join('、') || '未声明能力' }} style={{ marginTop: 8, marginBottom: 8 }}>{revision?.capabilities.map((capability) => CAPABILITY_LABELS[capability] ?? capability).join('、') || '未声明能力'}</Typography.Paragraph>
+                <Space wrap size={[4, 4]}>{resource.defaults.map((item) => <Tag key={`${item.purpose}:${item.project_id || 0}`} color="blue">默认 · {item.purpose}</Tag>)}</Space>
+                <div style={{ marginTop: 'auto', paddingTop: 12 }} className="resource-card-actions">
+                  <Button size="small" onClick={() => { setSelectedResource(resource); }}>详情</Button>
+                  <Button size="small" icon={<ExperimentOutlined />} onClick={() => { setSelectedResource(resource); setDiagnosticRunId(null); setDiagnosticTarget(resource); diagnosticForm.setFieldsValue({ profile_id: revision?.profiles[0]?.id, confirm_model_call: false }); }}>诊断</Button>
+                  <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(resource)}>用途默认</Button>
+                  {isPlatformAdmin && <Button size="small" onClick={() => openRevision(resource)}>新连接修订</Button>}
+                </div>
+              </Card>
+            </Col>;
+          })}
+        </Row> : <Typography.Text type="secondary">{resourceSearch ? '没有匹配的模型资源' : `${CATEGORY_LABELS[category]}暂无资源`}</Typography.Text>}
     </Card>
+
+    <DetailDrawer
+      open={Boolean(selectedResource)}
+      onClose={() => setSelectedResource(null)}
+      title={selectedResource ? `模型详情：${selectedResource.display_name}` : '模型详情'}
+      width={800}
+      extra={selectedResource && <Tag color={selectedResource.status === 'ACTIVE' ? 'green' : selectedResource.status === 'ERROR' ? 'red' : 'default'}>{selectedResource.status === 'ACTIVE' ? '启用' : selectedResource.status === 'ERROR' ? '异常' : '停用'}</Tag>}
+      footer={selectedResource && <div className="editor-drawer-footer"><Typography.Text type="secondary">凭据仅显示是否已配置；明文不会从服务端回读。</Typography.Text><Space wrap>
+        <Button onClick={() => { setDiagnosticTarget(selectedResource); setDiagnosticRunId(null); diagnosticForm.setFieldsValue({ profile_id: selectedResource.current_revision?.profiles[0]?.id, confirm_model_call: false }); }}>连接诊断</Button>
+        <Button onClick={() => openDefault(selectedResource)}>默认策略</Button>
+        <Button onClick={() => { setProfileTarget(selectedResource); profileForm.setFieldsValue({ revision_id: selectedResource.current_revision?.id, name: '调优参数', values_json: PROFILE_EXAMPLES[selectedResource.category], definitions_json: JSON.stringify(selectedResource.current_revision?.parameter_schema || [], null, 2) }); }}>参数方案</Button>
+        {isPlatformAdmin && <Button type="primary" onClick={() => openRevision(selectedResource)}>新增连接修订</Button>}
+      </Space></div>}
+    >
+      {selectedResource && <Tabs items={[
+        { key: 'basic', label: '基本信息', children: <Descriptions bordered size="small" column={1}>
+          <Descriptions.Item label="名称">{selectedResource.display_name}</Descriptions.Item>
+          <Descriptions.Item label="类别">{CATEGORY_LABELS[selectedResource.category]}</Descriptions.Item>
+          <Descriptions.Item label="供应商">{selectedResource.current_revision?.provider ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="Model ID">{selectedResource.current_revision?.model_name ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="协议 / 适配器">{selectedResource.current_revision?.adapter_key ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="可见范围">{selectedResource.visibility === 'PLATFORM' ? '平台共享' : `项目私有 · #${selectedResource.project_id}`}</Descriptions.Item>
+          <Descriptions.Item label="当前修订">{selectedResource.current_revision ? `v${selectedResource.current_revision.version}` : '—'}</Descriptions.Item>
+          <Descriptions.Item label="能力">{selectedResource.current_revision?.capabilities.map((item) => CAPABILITY_LABELS[item] ?? item).join('、') || '未声明'}</Descriptions.Item>
+        </Descriptions> },
+        { key: 'connection', label: '连接配置', children: <>
+          <Alert type="info" showIcon style={{ marginBottom: 12 }} message="安全摘要" description="连接修订会创建新的不可变版本；连接详情只展示脱敏后的地址与凭据状态，不显示存储配置或 API Key。" />
+          <Descriptions bordered size="small" column={1}>
+            <Descriptions.Item label="Base URL">{selectedResource.current_revision?.endpoint_display || '—'}</Descriptions.Item>
+            <Descriptions.Item label="凭据">{selectedResource.current_revision?.has_credential ? '已配置（仅写入）' : '未配置'}</Descriptions.Item>
+            <Descriptions.Item label="当前配置版本">{selectedResource.current_revision ? `修订 v${selectedResource.current_revision.version}` : '—'}</Descriptions.Item>
+            <Descriptions.Item label="参数定义">{selectedResource.current_revision?.parameter_schema.length ?? 0} 项</Descriptions.Item>
+          </Descriptions>
+        </> },
+        { key: 'profiles', label: '参数方案', children: selectedResource.current_revision?.profiles.length ? <Space direction="vertical" style={{ width: '100%' }}>{selectedResource.current_revision.profiles.map((profile) => <Card size="small" key={profile.id} title={`${profile.name} · v${profile.version}`} extra={<Tag>修订 #{profile.revision_id}</Tag>}><Typography.Text type="secondary">{Object.keys(profile.values).length} 个参数；详情不会展示连接凭据。</Typography.Text></Card>)}</Space> : <Typography.Text type="secondary">当前修订没有参数方案。</Typography.Text> },
+        { key: 'defaults', label: '默认策略', children: selectedResource.defaults.length ? <Space direction="vertical" style={{ width: '100%' }}>{selectedResource.defaults.map((item) => <Card size="small" key={`${item.purpose}:${item.project_id || 0}`} title={item.purpose}><Space wrap><Tag>{item.project_id ? `项目 #${item.project_id}` : '全局'}</Tag><Tag>{item.automatic_fallback ? '自动备用' : '不自动切换'}</Tag><Tag>{item.fallback_resource_ids.length} 个备用模型</Tag></Space></Card>)}</Space> : <Typography.Text type="secondary">尚未设置默认用途策略。</Typography.Text> },
+        { key: 'diagnostics', label: '诊断与版本', children: <>
+          <Card size="small" title="最近诊断" style={{ marginBottom: 12 }}>{selectedResource.diagnostic ? <Space direction="vertical"><Tag color={selectedResource.diagnostic.status === 'SUCCEEDED' ? 'green' : selectedResource.diagnostic.status === 'FAILED' ? 'red' : 'blue'}>{selectedResource.diagnostic.status}</Tag><Typography.Text>{selectedResource.diagnostic.message || '无返回说明'}</Typography.Text><Typography.Text type="secondary">{new Date(selectedResource.diagnostic.checked_at).toLocaleString()}</Typography.Text></Space> : <Typography.Text type="secondary">尚未执行诊断。诊断会真实调用模型并可能产生费用。</Typography.Text>}</Card>
+          <Typography.Title level={5}>连接修订历史</Typography.Title>
+          {selectedResource.revisions.length ? selectedResource.revisions.map((revision) => <Card size="small" key={revision.id} title={`v${revision.version} · ${revision.provider} / ${revision.model_name}`} style={{ marginBottom: 8 }}><Space wrap><Tag>{revision.adapter_key}</Tag><Tag>{revision.enabled ? '启用' : '停用'}</Tag><Tag>{revision.has_credential ? '凭据已配置' : '无凭据'}</Tag><Typography.Text type="secondary">{new Date(revision.created_at).toLocaleString()}</Typography.Text></Space></Card>) : <Typography.Text type="secondary">无历史修订。</Typography.Text>}
+        </> },
+      ]} />}
+    </DetailDrawer>
 
     <Modal title={revisionTarget ? `为「${revisionTarget.display_name}」新增连接修订` : `新增${CATEGORY_LABELS[category]}资源`}
       open={resourceOpen || Boolean(revisionTarget)} onCancel={() => { setResourceOpen(false); setRevisionTarget(null); resourceForm.resetFields(); }}

@@ -188,7 +188,7 @@ export function AdminKnowledgePage() {
           }}
         />
         <Card title="资料">
-          <Space wrap>
+          <Space wrap style={{ display: 'flex', width: '100%', minWidth: 0 }}>
             <Select
               placeholder="选择知识库"
               style={{ width: 220 }}
@@ -254,6 +254,7 @@ export function AdminKnowledgePage() {
           </Space>
           <Table<Base>
             rowKey="id"
+            scroll={{ x: 'max-content' }}
             dataSource={bases.data?.items || []}
             rowSelection={{
               selectedRowKeys: selectedBaseIds,
@@ -279,6 +280,7 @@ export function AdminKnowledgePage() {
           />
           {base != null && <Table<Doc>
             rowKey="id"
+            scroll={{ x: 'max-content' }}
             dataSource={docs.data?.items || []}
             rowSelection={{
               selectedRowKeys: selectedDocumentIds,
@@ -298,6 +300,7 @@ export function AdminKnowledgePage() {
           {document && (
             <Table<Version>
               rowKey="id"
+              scroll={{ x: 'max-content' }}
               dataSource={versions.data?.items || []}
               columns={[
                 { title: '版本', dataIndex: 'version' },
@@ -329,7 +332,7 @@ export function AdminKnowledgePage() {
         </Card>
         <Card title="Agent 知识范围">
           <Space direction="vertical" style={{ width: '100%' }}>
-            <Space wrap>
+            <Space wrap style={{ display: 'flex', width: '100%', minWidth: 0 }}>
               <Select
                 placeholder="选择 Agent"
                 style={{ width: 280 }}
@@ -425,7 +428,7 @@ export function AdminKnowledgePage() {
         <Card title="Agent 长期记忆">
           <Space direction="vertical" style={{ width: '100%' }}>
             <Alert type="info" showIcon message="记忆按项目和 Agent 隔离。保存会创建新版本；没有会话来源的内容会标记为人工录入。" />
-            <Space wrap>
+            <Space wrap style={{ display: 'flex', width: '100%', minWidth: 0 }}>
               <Input placeholder="记忆键，如 refund-policy" value={memoryKey} onChange={(event) => setMemoryKey(event.target.value)} maxLength={160} style={{ width: 240 }} />
               <DatePicker showTime placeholder="可选到期时间" value={memoryExpiresAt} onChange={setMemoryExpiresAt} />
               {memoryVersion > 0 && <Typography.Text type="secondary">更新版本 v{memoryVersion}</Typography.Text>}
@@ -476,7 +479,7 @@ export function AdminKnowledgePage() {
           </Space>
         </Card>
         <Card title="当前项目检索">
-          <Space>
+          <Space wrap className="knowledge-search-controls">
             <Input placeholder="试查项目资料" value={query} onChange={(event) => setQuery(event.target.value)} />
             <InputNumber min={1} max={50} value={topK} onChange={(value) => setTopK(value ?? 8)} addonBefore="Top‑K" />
             <InputNumber min={0} max={100} step={0.1} value={minimumScore} onChange={(value) => setMinimumScore(value ?? 0)} addonBefore="最低分" />
