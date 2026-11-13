@@ -1,9 +1,16 @@
 // 云效自动化测试中心的接口契约。凭证只在创建和更新请求里出现。
+export type AutomationProviderType = 'YUNXIAO' | 'JENKINS';
 
 export interface AutomationIntegration {
   id: number;
   project_id: number;
   name: string;
+  provider_type: AutomationProviderType;
+  enabled: boolean;
+  allow_private_network: boolean;
+  jenkins_base_url: string | null;
+  jenkins_username: string | null;
+  api_token_configured: boolean;
   api_base_url: string;
   organization_id: string;
   deployment: 'central' | 'region';
@@ -19,6 +26,7 @@ export interface AutomationProject {
   id: number;
   project_id: number;
   integration_config_id: number;
+  provider_type: AutomationProviderType;
   name: string;
   description: string;
   repository_url: string;
@@ -47,6 +55,10 @@ export interface AutomationExecution {
   automation_project_name: string;
   pipeline_id: string;
   pipeline_run_id: string | null;
+  provider_type: AutomationProviderType;
+  queue_id: string | null;
+  build_number: number | null;
+  external_run_url: string;
   trigger_source: string;
   status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'TIMEOUT';
   branch: string;
@@ -86,6 +98,9 @@ export interface AutomationReport {
   branch: string;
   environment_name: string;
   git_commit: string;
+  provider_type: AutomationProviderType;
+  build_number: number | null;
+  external_run_url: string;
   generated_at: string | null;
   created_at: string;
 }
@@ -101,4 +116,35 @@ export interface Paginated<T> {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface JenkinsJobItem {
+  name: string;
+  job_path: string;
+  url: string;
+  is_folder: boolean;
+  buildable: boolean;
+  color: string;
+}
+
+export interface JenkinsJobParameter {
+  name: string;
+  type: string;
+  default_value: string;
+}
+
+export interface JenkinsJobInspect {
+  name: string;
+  job_path: string;
+  url: string;
+  is_folder: boolean;
+  buildable: boolean;
+  concurrent_build: boolean;
+  parameters: JenkinsJobParameter[];
+}
+
+export interface ConsoleLog {
+  execution_id: number;
+  content: string;
+  truncated: boolean;
 }

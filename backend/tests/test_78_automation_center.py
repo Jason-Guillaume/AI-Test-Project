@@ -19,7 +19,7 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.features.automation_center.models.entities import AutomationExecution, AutomationReport
-from app.features.automation_center.services.center_service import sign_callback
+from app.features.automation_center.services.center_service import AutomationCenterService, sign_callback
 from app.features.automation_center.services.stats import pass_rate
 from app.features.automation_center.services.storage import safe_extract
 from tests.conftest import unique
@@ -72,8 +72,9 @@ def _install_yunxiao(monkeypatch):
         if request.method == "PUT":
             return httpx.Response(200, json=True)
         if request.url.path.endswith("/runs"):
+            run_id = "1" if request.url.params.get("perPage") == "1" else "3"
             return httpx.Response(200, json=[{
-                "pipelineRunId": 1, "status": "RUNNING", "triggerMode": 3,
+                "pipelineRunId": run_id, "status": "RUNNING", "triggerMode": 3,
                 "startTime": int(time.time() * 1000),
             }])
         return httpx.Response(200, json={"status": "SUCCESS", "pipelineRunId": 1})
@@ -204,6 +205,9 @@ def test_yunxiao_trigger_report_permission_and_idempotency(api, db, monkeypatch,
     assert _SECRET not in body["params"]
     assert calls[-1].headers["x-yunxiao-token"] == _TOKEN
     execution_id = first.json()["id"]
+    synced = api.post(f"/automation-executions/{execution_id}/sync", username=owner)
+    assert synced.status_code == 200, synced.text
+    assert synced.json()["status"] == "SUCCESS"
     stored = db.get(AutomationExecution, execution_id)
     assert stored.pipeline_run_id == "1"
     report_bytes = _allure_zip(passed=1, failed=1, skipped=2, history=True)
@@ -255,6 +259,16 @@ def test_yunxiao_trigger_report_permission_and_idempotency(api, db, monkeypatch,
     assert second.status_code == 201, second.text
     assert second.json()["id"] != execution_id
     assert db.get(AutomationExecution, execution_id) is not None
+    cancelled = api.post(
+        f"/automation-executions/{second.json()['id']}/cancel", username=owner,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "CANCELLED"
+    AutomationCenterService().poll(db)
+    discovered = db.query(AutomationExecution).filter_by(
+        automation_project_id=automation_id, pipeline_run_id="3",
+    ).one()
+    assert discovered.trigger_source == "CODE_PUSH"
     outsider_execution = api.get(f"/automation-executions/{execution_id}", username=outsider)
     assert outsider_execution.status_code == 404
     assert outsider_id

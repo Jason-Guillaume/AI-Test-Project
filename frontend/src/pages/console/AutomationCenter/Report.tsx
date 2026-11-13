@@ -50,6 +50,8 @@ export function ConsoleAutomationReportPage() {
       </Row>
       <Descriptions style={{ marginTop: 16 }} column={3}>
         <Descriptions.Item label="项目">{report.automation_project_name}</Descriptions.Item>
+        <Descriptions.Item label="CI 平台">{report.provider_type === 'JENKINS' ? 'Jenkins' : '云效 Flow'}</Descriptions.Item>
+        <Descriptions.Item label="Build">{report.build_number && report.external_run_url ? <a href={report.external_run_url} target="_blank" rel="noreferrer">#{report.build_number}</a> : report.build_number ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="分支">{report.branch || '-'}</Descriptions.Item>
         <Descriptions.Item label="环境">{report.environment_name || '-'}</Descriptions.Item>
         <Descriptions.Item label="提交">{report.git_commit || '-'}</Descriptions.Item>

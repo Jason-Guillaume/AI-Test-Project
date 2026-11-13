@@ -1,7 +1,7 @@
 // 自动化项目：绑定 Codeup 仓库和云效流水线。
-import { App, Button, Form, Input, InputNumber, Modal, Select, Space } from 'antd';
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { automationApi } from '@/features/automation/api/automation';
 import type { AutomationProject } from '@/features/automation/contracts';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
@@ -34,6 +34,7 @@ export function ConsoleAutomationProjectsPage() {
   const { currentProjectId } = useConsoleScope();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationProject | null>(null);
+  const [folderPath, setFolderPath] = useState('');
   const [form] = Form.useForm<ProjectForm>();
   const projectId = currentProjectId;
 
@@ -47,6 +48,16 @@ export function ConsoleAutomationProjectsPage() {
     queryFn: () => automationApi.listIntegrations(projectId!),
     enabled: projectId != null && open,
   });
+  const selectedConfigId = Form.useWatch('integration_config_id', form);
+  const selectedPipelineId = Form.useWatch('pipeline_id', form);
+  const selectedIntegration = integrations.data?.items.find((item) => item.id === selectedConfigId);
+  const isJenkins = selectedIntegration?.provider_type === 'JENKINS';
+  const jobs = useQuery({
+    queryKey: ['jenkins-jobs', selectedConfigId, folderPath],
+    queryFn: () => automationApi.listJenkinsJobs(selectedConfigId!, folderPath),
+    enabled: open && selectedConfigId != null && isJenkins,
+  });
+  useEffect(() => setFolderPath(''), [selectedConfigId]);
 
   const saveMutation = useMutation({
     mutationFn: (values: ProjectForm) => editing
@@ -72,15 +83,28 @@ export function ConsoleAutomationProjectsPage() {
     onSuccess: (result) => message.success(result.message),
     onError: (error) => message.error(getErrorMessage(error, '验证失败')),
   });
+  const inspectJob = useMutation({
+    mutationFn: () => automationApi.inspectJenkinsJob(selectedConfigId!, form.getFieldValue('pipeline_id')),
+    onSuccess: (job) => modal.info({
+      title: `Jenkins Job：${job.job_path}`,
+      content: <div>
+        <p>可执行：{job.buildable ? '是' : '否'}；允许并发：{job.concurrent_build ? '是' : '否'}</p>
+        <p>参数：{job.parameters.length ? job.parameters.map((item) => item.name).join('、') : '无'}</p>
+      </div>,
+    }),
+    onError: (error) => message.error(getErrorMessage(error, 'Job 检查失败')),
+  });
 
   const openCreate = () => {
     setEditing(null);
+    setFolderPath('');
     form.resetFields();
     form.setFieldsValue({ default_branch: 'master', timeout_seconds: 3600, notify_condition: 'ALWAYS' });
     setOpen(true);
   };
   const openEdit = (row: AutomationProject) => {
     setEditing(row);
+    setFolderPath('');
     form.setFieldsValue({
       integration_config_id: row.integration_config_id,
       name: row.name,
@@ -115,9 +139,10 @@ export function ConsoleAutomationProjectsPage() {
         onPaginationChange={() => undefined}
         columns={[
           { title: '名称', dataIndex: 'name' },
+          { title: 'CI 平台', dataIndex: 'provider_type', render: (value: string) => value === 'JENKINS' ? <Tag color="blue">Jenkins</Tag> : <Tag>云效 Flow</Tag> },
           { title: '仓库', dataIndex: 'repository_url', ellipsis: true },
           { title: '分支', dataIndex: 'default_branch' },
-          { title: '流水线', dataIndex: 'pipeline_id' },
+          { title: '流水线 / Job', dataIndex: 'pipeline_id' },
           { title: '环境', dataIndex: 'default_environment' },
           { title: '最近状态', dataIndex: 'last_status', render: (status: string | null) => <StatusTag status={status} /> },
           { title: '最近执行', dataIndex: 'last_execution_at', render: (value: string | null) => value ? new Date(value).toLocaleString() : '-' },
@@ -146,14 +171,37 @@ export function ConsoleAutomationProjectsPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
-          <Form.Item name="integration_config_id" label="云效接入" rules={[{ required: true, message: '请选择接入配置' }]}>
-            <Select options={(integrations.data?.items || []).map((item) => ({ value: item.id, label: item.name }))} />
+          <Form.Item name="integration_config_id" label="CI 接入" rules={[{ required: true, message: '请选择接入配置' }]}>
+            <Select options={(integrations.data?.items || []).filter((item) => item.enabled).map((item) => ({ value: item.id, label: `${item.name} · ${item.provider_type === 'JENKINS' ? 'Jenkins' : '云效 Flow'}` }))} />
           </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请填写名称' }]}><Input /></Form.Item>
           <Form.Item name="repository_url" label="Codeup 仓库地址"><Input placeholder="https://codeup.aliyun.com/org/demo.git" /></Form.Item>
           <Form.Item name="repository_id" label="仓库标识"><Input /></Form.Item>
-          <Form.Item name="pipeline_id" label="云效流水线 ID" rules={[{ required: !editing, message: '请填写流水线 ID' }]}><Input /></Form.Item>
-          <Form.Item name="pipeline_name" label="流水线名称"><Input /></Form.Item>
+          <Form.Item name="pipeline_id" label={isJenkins ? 'Jenkins Job 路径' : '云效流水线 ID'} rules={[{ required: true, message: isJenkins ? '请选择或填写 Job 路径' : '请填写流水线 ID' }]}>
+            <Input placeholder={isJenkins ? 'folder/sub-folder/automation-test' : '流水线 ID'} />
+          </Form.Item>
+          {isJenkins && <>
+            <Typography.Text type="secondary">当前 Folder：{folderPath || '根目录'}</Typography.Text>
+            <Space wrap style={{ display: 'flex', margin: '8px 0' }}>
+              {folderPath && <Button size="small" onClick={() => setFolderPath(folderPath.split('/').slice(0, -1).join('/'))}>返回上级</Button>}
+              {(jobs.data?.items || []).filter((item) => item.is_folder).map((item) => (
+                <Button key={item.job_path} size="small" onClick={() => setFolderPath(item.job_path)}>📁 {item.name}</Button>
+              ))}
+            </Space>
+            <Form.Item label="当前 Folder 中的 Job">
+              <Select
+                allowClear
+                loading={jobs.isFetching}
+                placeholder="选择一个 Job 路径"
+                options={(jobs.data?.items || []).filter((item) => !item.is_folder && item.buildable).map((item) => ({ value: item.job_path, label: item.name }))}
+                onChange={(value: string | undefined) => value && form.setFieldValue('pipeline_id', value)}
+              />
+            </Form.Item>
+            <Button size="small" loading={inspectJob.isPending} disabled={!selectedConfigId || !selectedPipelineId} onClick={() => inspectJob.mutate()}>
+              查询 Job 参数与执行能力
+            </Button>
+          </>}
+          <Form.Item name="pipeline_name" label={isJenkins ? 'Job 显示名称' : '流水线名称'}><Input /></Form.Item>
           <Form.Item name="default_branch" label="默认分支"><Input /></Form.Item>
           <Form.Item name="default_environment" label="默认环境"><Input /></Form.Item>
           <Form.Item name="pytest_args" label="pytest 参数"><Input placeholder="-q --maxfail=1" /></Form.Item>

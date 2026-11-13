@@ -1,6 +1,6 @@
 """自动化测试中心业务服务。
 
-负责云效配置、触发、状态同步、报告接收和飞书通知。
+负责接入配置、执行编排、报告接收和飞书通知；外部 CI 调用委托给 Provider。
 事务在本服务提交，路由层不写库。
 """
 
@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.http.errors import bad_request, conflict, not_found
+from app.core.http.errors import bad_request, conflict, forbidden, not_found
 from app.core.http.pagination import paginate
 from app.core.models.identity import User
 from app.core.security.crypto import decrypt_secret, encrypt_secret
@@ -30,12 +30,15 @@ from app.features.automation_center.models.entities import (
     AutomationCallbackReceipt,
     AutomationExecution,
     AutomationIntegrationConfig,
+    AutomationJenkinsCredential,
     AutomationPipeline,
     AutomationProject,
     AutomationReport,
     AutomationReportGrant,
 )
-from app.features.automation_center.providers.yunxiao_client import YunxiaoClient, YunxiaoError
+from app.features.automation_center.providers.base import AutomationProvider, ProviderError, ProviderExecution
+from app.features.automation_center.providers.factory import provider_factory
+from app.features.automation_center.providers.jenkins_client import JenkinsClient
 from app.features.automation_center.schemas import (
     AutomationProjectCreate,
     AutomationProjectListResponse,
@@ -43,6 +46,7 @@ from app.features.automation_center.schemas import (
     AutomationProjectUpdate,
     CallbackResponse,
     ConnectionTestResponse,
+    ConsoleLogResponse,
     ExecutionListResponse,
     ExecutionResponse,
     ExecutionTrigger,
@@ -50,6 +54,8 @@ from app.features.automation_center.schemas import (
     IntegrationListResponse,
     IntegrationResponse,
     IntegrationUpdate,
+    JenkinsJobInspectResponse,
+    JenkinsJobListResponse,
     ReportCompareResponse,
     ReportGrantResponse,
     ReportListResponse,
@@ -66,9 +72,9 @@ from app.features.automation_center.services.stats import (
 from app.platform.notifications.models.channel import NotificationChannel
 from app.platform.notifications.services.feishu_service import FeishuNotificationService
 from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.core.security.roles import PROJECT_ROLE_EDITOR, has_project_role, project_role_for
 
 logger = logging.getLogger(__name__)
-_TRIGGER = {"1": "EXTERNAL", "2": "SCHEDULE", "3": "CODE_PUSH", "5": "EXTERNAL", "6": "WEBHOOK"}
 _ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _SECRET_KEY = re.compile(r"(?i)secret|token|password|webhook")
 _SECRET_VALUE = re.compile(r"(?i)(secret|token|password|webhook_url)\s*[:=]\s*\S+")
@@ -107,7 +113,7 @@ class AutomationCenterService:
     def list_integrations(
         self, db: Session, project_id: int, actor: User, *, page: int, page_size: int,
     ) -> IntegrationListResponse:
-        """列出当前业务项目的云效接入配置。"""
+        """列出当前业务项目的 CI 接入配置。"""
         get_project_or_404(db, project_id, actor)
         query = db.query(AutomationIntegrationConfig).filter_by(project_id=project_id).order_by(
             AutomationIntegrationConfig.id.desc(),
@@ -123,11 +129,23 @@ class AutomationCenterService:
     ) -> IntegrationResponse:
         """保存接入配置。明文凭证在入库前加密。"""
         require_writable_project(db, project_id, actor)
+        jenkins_url = None
+        if body.provider_type == "JENKINS":
+            self._require_ci_admin(db, project_id, actor)
+            try:
+                jenkins_url = JenkinsClient.validate_base_url(
+                    body.jenkins_base_url or "", allow_private_network=body.allow_private_network,
+                )
+            except ProviderError as exc:
+                raise bad_request(str(exc)) from exc
         row = AutomationIntegrationConfig(
             project_id=project_id,
             name=body.name.strip(),
-            api_base_url=body.api_base_url,
-            organization_id=body.organization_id,
+            provider_type=body.provider_type,
+            enabled=body.enabled,
+            allow_private_network=body.allow_private_network,
+            api_base_url=body.api_base_url or "",
+            organization_id=body.organization_id or "",
             deployment=body.deployment,
             access_token_encrypted=encrypt_secret(body.access_token),
             callback_key=secrets.token_urlsafe(18),
@@ -136,6 +154,14 @@ class AutomationCenterService:
             created_by=actor.id,
         )
         db.add(row)
+        db.flush()
+        if body.provider_type == "JENKINS":
+            db.add(AutomationJenkinsCredential(
+                integration_config_id=row.id,
+                base_url=jenkins_url,
+                username=(body.jenkins_username or "").strip(),
+                api_token_encrypted=encrypt_secret(body.jenkins_api_token),
+            ))
         self._commit_unique(db, "同名接入配置已存在")
         db.refresh(row)
         return self._integration_response(row)
@@ -145,17 +171,57 @@ class AutomationCenterService:
     ) -> IntegrationResponse:
         """更新接入配置。空令牌表示不替换原密文。"""
         row = self._config_for_write(db, config_id, actor)
+        if body.provider_type is not None and body.provider_type != row.provider_type:
+            raise bad_request("已有接入配置不能切换执行平台，请新建对应类型的配置")
+        if row.provider_type == "JENKINS":
+            self._require_ci_admin(db, row.project_id, actor)
         if body.name is not None:
             row.name = body.name.strip()
-        if body.api_base_url is not None:
+        if row.provider_type == "YUNXIAO" and body.api_base_url is not None:
             row.api_base_url = body.api_base_url
-        if body.organization_id is not None:
+        if row.provider_type == "YUNXIAO" and body.organization_id is not None:
             row.organization_id = body.organization_id
-        if body.deployment is not None:
+        if row.provider_type == "YUNXIAO" and body.deployment is not None:
             row.deployment = body.deployment
+        if body.enabled is not None:
+            row.enabled = body.enabled
+        if body.allow_private_network is not None:
+            self._require_ci_admin(db, row.project_id, actor)
+            row.allow_private_network = body.allow_private_network
+        if row.provider_type == "JENKINS":
+            credential = row.jenkins_credential
+            if credential is None:
+                if not (body.jenkins_base_url and body.jenkins_username and body.jenkins_api_token):
+                    raise bad_request("Jenkins 凭据缺失，请同时填写 Base URL、Username 和 API Token")
+                try:
+                    base_url = JenkinsClient.validate_base_url(
+                        body.jenkins_base_url, allow_private_network=row.allow_private_network,
+                    )
+                except ProviderError as exc:
+                    raise bad_request(str(exc)) from exc
+                credential = AutomationJenkinsCredential(
+                    integration_config_id=row.id,
+                    base_url=base_url,
+                    username=body.jenkins_username.strip(),
+                    api_token_encrypted=encrypt_secret(body.jenkins_api_token),
+                )
+                db.add(credential)
+            elif body.jenkins_base_url is not None:
+                try:
+                    credential.base_url = JenkinsClient.validate_base_url(
+                        body.jenkins_base_url, allow_private_network=row.allow_private_network,
+                    )
+                except ProviderError as exc:
+                    raise bad_request(str(exc)) from exc
+            if body.jenkins_username is not None:
+                credential.username = body.jenkins_username.strip()
+            if body.jenkins_api_token:
+                if len(body.jenkins_api_token) < 8:
+                    raise bad_request("Jenkins API Token 过短")
+                credential.api_token_encrypted = encrypt_secret(body.jenkins_api_token)
         if body.default_timeout_seconds is not None:
             row.default_timeout_seconds = body.default_timeout_seconds
-        if body.access_token:
+        if row.provider_type == "YUNXIAO" and body.access_token:
             if len(body.access_token) < 8:
                 raise bad_request("云效访问令牌过短")
             row.access_token_encrypted = encrypt_secret(body.access_token)
@@ -163,7 +229,8 @@ class AutomationCenterService:
             if len(body.callback_secret) < 8:
                 raise bad_request("回调密钥过短")
             row.callback_secret_encrypted = encrypt_secret(body.callback_secret)
-        self._require_organization(row)
+        if row.provider_type == "YUNXIAO":
+            self._require_organization(row)
         self._commit_unique(db, "同名接入配置已存在")
         db.refresh(row)
         return self._integration_response(row)
@@ -179,11 +246,15 @@ class AutomationCenterService:
         if row is None:
             raise not_found("接入配置不存在")
         require_writable_project(db, row.project_id, actor)
+        if row.provider_type == "JENKINS":
+            self._require_ci_admin(db, row.project_id, actor)
         delete_resource(db, "automation_integration", config_id, actor=actor, project_id=row.project_id)
 
     def rotate_callback_key(self, db: Session, config_id: int, actor: User) -> IntegrationResponse:
         """更换回调标识。旧流水线在更新地址前不能再回传。"""
         row = self._config_for_write(db, config_id, actor)
+        if row.provider_type == "JENKINS":
+            self._require_ci_admin(db, row.project_id, actor)
         row.callback_key = secrets.token_urlsafe(18)
         db.commit()
         db.refresh(row)
@@ -192,13 +263,41 @@ class AutomationCenterService:
     def test_connection(
         self, db: Session, config_id: int, actor: User, pipeline_id: str,
     ) -> ConnectionTestResponse:
-        """用官方运行列表接口验证令牌、企业和流水线标识。"""
+        """通过绑定的 Provider 验证凭据和流水线标识。"""
         row = self._config_for_write(db, config_id, actor)
         try:
-            runs = self._client(row).list_runs(pipeline_id, per_page=1)
-        except YunxiaoError as exc:
+            result = self._provider(row).test_connection(pipeline_id)
+        except ProviderError as exc:
             raise bad_request(str(exc)) from exc
-        return ConnectionTestResponse(ok=True, message="已连接云效流水线", sample_run_count=len(runs))
+        return ConnectionTestResponse(
+            ok=result.ok, message=result.message, sample_run_count=result.sample_run_count,
+        )
+
+    def list_jenkins_jobs(
+        self, db: Session, config_id: int, actor: User, folder_path: str = "",
+    ) -> JenkinsJobListResponse:
+        """List one Jenkins folder level for the project job picker."""
+        config = self._config_for_read(db, config_id, actor)
+        if config.provider_type != "JENKINS":
+            raise bad_request("此接入配置不是 Jenkins")
+        try:
+            items = self._provider(config).list_items(folder_path)
+        except ProviderError as exc:
+            raise bad_request(str(exc)) from exc
+        return JenkinsJobListResponse(folder_path=folder_path.strip("/"), items=items)
+
+    def inspect_jenkins_job(
+        self, db: Session, config_id: int, actor: User, job_path: str,
+    ) -> JenkinsJobInspectResponse:
+        """Verify that a selected Job is buildable and disclose only public metadata."""
+        config = self._config_for_read(db, config_id, actor)
+        if config.provider_type != "JENKINS":
+            raise bad_request("此接入配置不是 Jenkins")
+        try:
+            result = self._provider(config).inspect_job(job_path)
+        except ProviderError as exc:
+            raise bad_request(str(exc)) from exc
+        return JenkinsJobInspectResponse(**result)
 
     # ---------------------------------------------------------------- 自动化项目
 
@@ -223,6 +322,7 @@ class AutomationCenterService:
         """创建自动化项目并绑定默认流水线。"""
         require_writable_project(db, project_id, actor)
         config = self._owned_config(db, project_id, body.integration_config_id)
+        self._validate_resource_id(config.provider_type, body.pipeline_id)
         self._ensure_channel(db, project_id, body.notification_channel_id)
         row = AutomationProject(
             project_id=project_id,
@@ -266,6 +366,14 @@ class AutomationCenterService:
         if body.integration_config_id is not None:
             self._owned_config(db, row.project_id, body.integration_config_id)
             row.integration_config_id = body.integration_config_id
+        bound_config = db.get(AutomationIntegrationConfig, row.integration_config_id)
+        if bound_config is None:
+            raise not_found("接入配置不存在")
+        bound_pipeline = self._default_pipeline(db, row)
+        self._validate_resource_id(
+            bound_config.provider_type,
+            body.pipeline_id if body.pipeline_id is not None else bound_pipeline.pipeline_id,
+        )
         for field in (
             "name", "description", "repository_url", "repository_id", "default_branch",
             "default_environment", "pytest_args", "test_tags", "test_scope",
@@ -287,8 +395,10 @@ class AutomationCenterService:
             self._ensure_channel(db, row.project_id, body.notification_channel_id)
             row.notification_channel_id = body.notification_channel_id
         if body.pipeline_id is not None:
-            if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", body.pipeline_id):
-                raise bad_request("流水线 ID 不合法")
+            config = db.get(AutomationIntegrationConfig, row.integration_config_id)
+            if config is None:
+                raise not_found("接入配置不存在")
+            self._validate_resource_id(config.provider_type, body.pipeline_id)
             pipeline = self._default_pipeline(db, row)
             pipeline.pipeline_id = body.pipeline_id
             if body.pipeline_name is not None:
@@ -326,18 +436,23 @@ class AutomationCenterService:
     def trigger(
         self, db: Session, automation_project_id: int, body: ExecutionTrigger, actor: User,
     ) -> ExecutionResponse:
-        """创建独立执行记录并调用云效运行接口。"""
+        """创建独立执行记录并调用绑定的 CI Provider。"""
         project = self._automation_for(db, automation_project_id, actor, write=True)
         if not project.enabled:
             raise bad_request("自动化项目已停用")
         config = db.get(AutomationIntegrationConfig, project.integration_config_id)
         if config is None:
             raise not_found("接入配置不存在")
+        if not config.enabled:
+            raise bad_request("CI 接入配置已停用")
         pipeline = self._pipeline_for_trigger(db, project, body.pipeline_id)
+        self._validate_resource_id(config.provider_type, pipeline.pipeline_id)
         execution = AutomationExecution(
             project_id=project.project_id,
             automation_project_id=project.id,
             pipeline_binding_id=pipeline.id,
+            integration_config_id=config.id,
+            provider_type=config.provider_type,
             external_pipeline_id=pipeline.pipeline_id,
             trigger_source="MANUAL",
             status="PENDING",
@@ -351,21 +466,30 @@ class AutomationCenterService:
         )
         db.add(execution)
         db.flush()
-        params = self._pipeline_params(config, project, pipeline, execution)
+        params = self._execution_params(config, project, pipeline, execution)
         execution.run_params = params
         try:
-            run_id = self._client(config).create_run(pipeline.pipeline_id, params)
-        except YunxiaoError as exc:
+            result = self._provider(config).trigger_build(pipeline.pipeline_id, params)
+            if not result.external_run_id and not result.queue_id:
+                raise ProviderError("CI 平台未返回运行实例 ID")
+        except ProviderError as exc:
             execution.status = "FAILED"
             execution.error_message = str(exc)[:500]
             execution.finished_at = datetime.now()
             execution.notify_status = "SKIPPED"
             db.commit()
             raise bad_request(str(exc)) from exc
-        execution.pipeline_run_id = run_id
-        execution.status = "RUNNING"
-        execution.external_status = "RUNNING"
-        execution.started_at = datetime.now()
+        execution.pipeline_run_id = result.external_run_id if config.provider_type == "YUNXIAO" else None
+        execution.external_queue_id = result.queue_id
+        execution.external_build_number = result.build_number
+        execution.external_run_url = result.build_url or ""
+        execution.status = result.status
+        execution.external_status = result.external_status or result.status
+        execution.started_at = result.started_at or (
+            datetime.now() if config.provider_type == "YUNXIAO" and result.status == "RUNNING" else None
+        )
+        execution.finished_at = result.finished_at
+        execution.duration_ms = result.duration_ms
         execution.timeout_at = datetime.now() + timedelta(seconds=project.timeout_seconds)
         db.commit()
         db.refresh(execution)
@@ -375,6 +499,8 @@ class AutomationCenterService:
         self, db: Session, project_id: int, actor: User, *, page: int, page_size: int,
         automation_project_id: int | None, status: str | None, branch: str | None,
         environment_name: str | None, started_from: datetime | None, started_to: datetime | None,
+        provider_type: str | None = None, pipeline_id: str | None = None,
+        build_number: int | None = None,
     ) -> ExecutionListResponse:
         """按项目、状态、分支、环境和时间筛选执行历史。"""
         get_project_or_404(db, project_id, actor)
@@ -387,6 +513,12 @@ class AutomationCenterService:
             query = query.filter(AutomationExecution.branch == branch)
         if environment_name:
             query = query.filter(AutomationExecution.environment_name == environment_name)
+        if provider_type:
+            query = query.filter(AutomationExecution.provider_type == provider_type.upper())
+        if pipeline_id:
+            query = query.filter(AutomationExecution.external_pipeline_id == pipeline_id)
+        if build_number is not None:
+            query = query.filter(AutomationExecution.external_build_number == build_number)
         if started_from is not None:
             query = query.filter(AutomationExecution.created_at >= started_from)
         if started_to is not None:
@@ -403,19 +535,46 @@ class AutomationCenterService:
         row = self._execution_for(db, execution_id, actor, write=False)
         return self._execution_response(db, row)
 
+    def get_console_log(self, db: Session, execution_id: int, actor: User) -> ConsoleLogResponse:
+        """Fetch a bounded Jenkins console excerpt through the server-side Provider."""
+        row = self._execution_for(db, execution_id, actor, write=False)
+        content = row.log_excerpt or ""
+        if row.provider_type == "JENKINS" and row.external_build_number is not None:
+            try:
+                config, resource_id = self._execution_provider_args(db, row)
+                content = self._provider(config).get_console_log(
+                    resource_id, row.pipeline_run_id, row.external_build_number, max_bytes=200_000,
+                ) or content
+                callback_secret = decrypt_secret(config.callback_secret_encrypted)
+                if callback_secret:
+                    content = content.replace(callback_secret, "***")
+            except ProviderError as exc:
+                raise bad_request(str(exc)) from exc
+        safe = _redact(content)
+        return ConsoleLogResponse(
+            execution_id=row.id,
+            content=safe,
+            truncated=len(content.encode("utf-8", errors="replace")) >= 200_000,
+        )
+
     def cancel(self, db: Session, execution_id: int, actor: User) -> ExecutionResponse:
-        """请求云效终止运行。云效未确认时不在本地伪装成已取消。"""
+        """请求 Provider 终止运行；未确认时不在本地伪装成已取消。"""
         row = self._execution_for(db, execution_id, actor, write=True)
         if row.status not in {"PENDING", "RUNNING"}:
             raise bad_request("当前状态不能取消")
-        if row.pipeline_run_id:
-            config, pipeline_id = self._execution_client_args(db, row)
+        if row.pipeline_run_id or row.external_queue_id or row.external_build_number:
+            config, resource_id = self._execution_provider_args(db, row)
             try:
-                stopped = self._client(config).stop_run(pipeline_id, row.pipeline_run_id)
-            except YunxiaoError as exc:
+                stopped = self._provider(config).stop_build(
+                    resource_id,
+                    row.pipeline_run_id,
+                    queue_id=row.external_queue_id,
+                    build_number=row.external_build_number,
+                )
+            except ProviderError as exc:
                 raise bad_request(str(exc)) from exc
             if not stopped:
-                raise bad_request("云效未确认终止运行")
+                raise bad_request("CI 平台未确认终止运行")
         self._transition(row, "CANCELLED")
         row.external_status = "CANCELLED"
         db.commit()
@@ -424,9 +583,9 @@ class AutomationCenterService:
         return self._execution_response(db, row)
 
     def sync_execution(self, db: Session, execution_id: int, actor: User) -> ExecutionResponse:
-        """立即向云效查询一次运行状态。"""
+        """立即向 Provider 查询一次运行状态。"""
         row = self._execution_for(db, execution_id, actor, write=True)
-        self._sync_one(db, row.id)
+        self._sync_one(db, row.id, force=True)
         db.refresh(row)
         return self._execution_response(db, row)
 
@@ -566,6 +725,10 @@ class AutomationCenterService:
             raise bad_request("回调元数据不是 JSON") from exc
         if not isinstance(metadata, dict):
             raise bad_request("回调元数据不是 JSON 对象")
+        if secret:
+            if isinstance(metadata.get("log_excerpt"), str):
+                metadata["log_excerpt"] = metadata["log_excerpt"].replace(secret, "***")
+            log_bytes = log_bytes.replace(secret.encode("utf-8"), b"***")
         created_dir: str | None = None
         try:
             execution = self._resolve_callback_execution(db, config, metadata)
@@ -577,7 +740,7 @@ class AutomationCenterService:
                 created_dir = str(html_dir)
                 storage.safe_extract(report_bytes, html_dir)
                 report = self._store_report(db, execution, html_dir, report_bytes, metadata)
-            self._apply_callback_metadata(execution, metadata, report)
+            self._apply_callback_metadata(execution, metadata, report, config=config)
             self._store_optional_files(db, execution, report, results_bytes, log_bytes)
             db.add(AutomationCallbackReceipt(
                 integration_config_id=config.id,
@@ -642,11 +805,15 @@ class AutomationCenterService:
     # ---------------------------------------------------------------- 轮询
 
     def poll(self, db: Session) -> None:
-        """轮询运行中的实例，并发现平台外触发的新运行。"""
+        """轮询运行中的实例，并通过支持发现的 Provider 导入外部运行。"""
         active = (
             db.query(AutomationExecution.id)
             .filter(AutomationExecution.status.in_(["PENDING", "RUNNING"]))
-            .filter(AutomationExecution.pipeline_run_id.isnot(None))
+            .filter(or_(
+                AutomationExecution.pipeline_run_id.isnot(None),
+                AutomationExecution.external_queue_id.isnot(None),
+                AutomationExecution.external_build_number.isnot(None),
+            ))
             .filter(or_(
                 AutomationExecution.last_sync_at.is_(None),
                 AutomationExecution.last_sync_at <= datetime.now() - timedelta(seconds=15),
@@ -672,20 +839,64 @@ class AutomationCenterService:
         for (execution_id,) in waiting:
             self._notify(db, execution_id)
 
-    def _sync_one(self, db: Session, execution_id: int) -> None:
-        """查询云效并更新一条执行。网络调用放在行锁释放之后。"""
-        execution = db.get(AutomationExecution, execution_id)
-        if execution is None or execution.status in TERMINAL_STATUSES or not execution.pipeline_run_id:
+    def _sync_one(self, db: Session, execution_id: int, *, force: bool = False) -> None:
+        """查询 Provider 并更新一条执行。网络调用放在数据库提交之后。"""
+        execution = (
+            db.query(AutomationExecution).filter_by(id=execution_id)
+            .with_for_update(skip_locked=True).one_or_none()
+        )
+        if execution is None or execution.status in TERMINAL_STATUSES:
+            return
+        if (
+            not force and execution.last_sync_at is not None
+            and execution.last_sync_at > datetime.now() - timedelta(seconds=15)
+        ):
+            db.rollback()
+            return
+        if not (execution.pipeline_run_id or execution.external_queue_id or execution.external_build_number):
             return
         if execution.timeout_at and execution.timeout_at <= datetime.now():
             self._mark_timeout(db, execution)
             return
-        config, pipeline_id = self._execution_client_args(db, execution)
-        run_id = execution.pipeline_run_id
+        config, resource_id = self._execution_provider_args(db, execution)
+        execution.last_sync_at = datetime.now()
         db.commit()
         try:
-            payload = self._client(config).get_run(pipeline_id, run_id)
-        except YunxiaoError as exc:
+            provider = self._provider(config)
+            if execution.provider_type == "JENKINS":
+                if execution.external_build_number is None:
+                    queued = provider.get_queue_item(execution.external_queue_id)
+                    if queued is None:
+                        db.commit()
+                        return
+                    execution = db.get(AutomationExecution, execution_id)
+                    if execution is None:
+                        return
+                    execution.last_sync_at = datetime.now()
+                    execution.external_status = queued.external_status[:40]
+                    if queued.error_message:
+                        execution.error_message = queued.error_message[:500]
+                    if queued.status == "CANCELLED":
+                        self._transition(execution, "CANCELLED")
+                        execution.finished_at = execution.finished_at or datetime.now()
+                        db.commit()
+                        self._notify(db, execution.id)
+                        return
+                    if queued.build_number is None:
+                        db.commit()
+                        return
+                    execution.external_build_number = queued.build_number
+                    execution.external_run_url = queued.build_url or ""
+                    execution.started_at = queued.started_at or datetime.now()
+                    execution.status = "RUNNING"
+                    execution.external_status = "BUILDING"
+                    db.commit()
+                result = provider.get_build(
+                    resource_id, build_number=execution.external_build_number,
+                )
+            else:
+                result = provider.get_build(resource_id, external_run_id=execution.pipeline_run_id)
+        except ProviderError as exc:
             execution = db.get(AutomationExecution, execution_id)
             if execution is not None:
                 execution.error_message = str(exc)[:500]
@@ -695,8 +906,31 @@ class AutomationCenterService:
         execution = db.get(AutomationExecution, execution_id)
         if execution is None:
             return
-        mapped = map_pipeline_status(payload)
-        execution.external_status = str(payload.get("status") or mapped)[:40]
+        mapped = result.status
+        execution.external_status = (result.external_status or mapped)[:40]
+        if execution.started_at is None and result.started_at is not None:
+            execution.started_at = result.started_at
+        if result.duration_ms is not None:
+            execution.duration_ms = result.duration_ms
+        if result.error_message:
+            execution.error_message = result.error_message[:500]
+        if result.build_number is not None:
+            execution.external_build_number = result.build_number
+        if result.build_url:
+            execution.external_run_url = result.build_url[:1000]
+        if result.finished_at is not None:
+            execution.finished_at = result.finished_at
+        if isinstance(result.raw.get("git_commit"), str) and result.raw["git_commit"]:
+            execution.git_commit = result.raw["git_commit"][:64]
+        raw_params = result.raw.get("actions", [])
+        for action in raw_params if isinstance(raw_params, list) else []:
+            for item in action.get("parameters", []) if isinstance(action, dict) else []:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("name") == "BRANCH_NAME" and item.get("value"):
+                    execution.branch = str(item["value"])[:200]
+                if item.get("name") in {"TEST_ENV", "ENVIRONMENT"} and item.get("value"):
+                    execution.environment_name = str(item["value"])[:100]
         execution.last_sync_at = datetime.now()
         if execution.status != "FAILED" or mapped != "SUCCESS":
             self._transition(execution, mapped)
@@ -705,32 +939,36 @@ class AutomationCenterService:
             self._notify(db, execution.id)
 
     def _mark_timeout(self, db: Session, execution: AutomationExecution) -> None:
-        """本地超时后尝试终止云效运行，并把执行记为超时。"""
-        if execution.pipeline_run_id:
+        """本地超时后尝试终止外部运行，并把执行记为超时。"""
+        if execution.pipeline_run_id or execution.external_queue_id or execution.external_build_number:
             try:
-                config, pipeline_id = self._execution_client_args(db, execution)
-                self._client(config).stop_run(pipeline_id, execution.pipeline_run_id)
-            except YunxiaoError:
-                logger.warning("超时后终止云效运行失败 execution=%s", execution.id)
+                config, resource_id = self._execution_provider_args(db, execution)
+                self._provider(config).stop_build(
+                    resource_id, execution.pipeline_run_id,
+                    queue_id=execution.external_queue_id,
+                    build_number=execution.external_build_number,
+                )
+            except ProviderError:
+                logger.warning("超时后终止外部执行失败 execution=%s", execution.id)
         self._transition(execution, "TIMEOUT")
         execution.last_sync_at = datetime.now()
         db.commit()
         self._notify(db, execution.id)
 
     def _discover(self, db: Session) -> None:
-        """把云效上新出现、且不是本平台触发的运行登记为执行记录。"""
+        """把 Provider 上新出现、且不是本平台触发的运行登记为执行记录。"""
         projects = (
             db.query(AutomationProject).filter_by(enabled=True).order_by(AutomationProject.id.asc()).limit(10).all()
         )
         for project in projects:
             config = db.get(AutomationIntegrationConfig, project.integration_config_id)
             pipeline = db.query(AutomationPipeline).filter_by(automation_project_id=project.id, is_default=True).first()
-            if config is None or pipeline is None:
+            if config is None or pipeline is None or not config.enabled:
                 continue
             try:
-                runs = self._client(config).list_runs(pipeline.pipeline_id, per_page=10)
-            except YunxiaoError as exc:
-                logger.warning("读取云效运行列表失败 project=%s: %s", project.id, exc)
+                runs = self._provider(config).list_runs(pipeline.pipeline_id, per_page=10)
+            except ProviderError as exc:
+                logger.warning("读取外部运行列表失败 project=%s: %s", project.id, exc)
                 continue
             for item in runs:
                 self._import_remote_run(db, project, pipeline, item)
@@ -739,36 +977,44 @@ class AutomationCenterService:
         except IntegrityError:
             db.rollback()
 
-    def _import_remote_run(self, db: Session, project: AutomationProject, pipeline: AutomationPipeline, item: dict) -> None:
-        """登记一条平台外的运行。没有开始时间的记录不导入，避免把旧历史全部拉进来。"""
-        run_id = item.get("pipelineRunId")
-        start = item.get("startTime")
-        if run_id is None or not isinstance(start, int):
+    def _import_remote_run(
+        self, db: Session, project: AutomationProject, pipeline: AutomationPipeline, item: ProviderExecution,
+    ) -> None:
+        """登记 Provider 返回的外部运行。只导入最近 24 小时的记录。"""
+        run_id = item.external_run_id
+        start = item.started_at
+        if run_id is None or start is None:
             return
-        if start < int(project.created_at.timestamp() * 1000) or start < int((datetime.now() - timedelta(hours=24)).timestamp() * 1000):
+        if start < project.created_at or start < datetime.now() - timedelta(hours=24):
             return
         exists = db.query(AutomationExecution.id).filter_by(
             automation_project_id=project.id, pipeline_run_id=str(run_id),
         ).first()
         if exists:
             return
-        status = map_pipeline_status(str(item.get("status") or "RUNNING"))
+        status = item.status
         execution = AutomationExecution(
             project_id=project.project_id,
             automation_project_id=project.id,
             pipeline_binding_id=pipeline.id,
+            integration_config_id=project.integration_config_id,
+            provider_type=item.provider_type,
             external_pipeline_id=pipeline.pipeline_id,
             pipeline_run_id=str(run_id),
-            trigger_source=_TRIGGER.get(str(item.get("triggerMode")), "EXTERNAL"),
+            external_build_number=item.build_number,
+            external_run_url=item.build_url or "",
+            git_commit=str(item.raw.get("git_commit") or "")[:64],
+            trigger_source=item.trigger_source,
             status=status,
             branch=project.default_branch,
             environment_name=project.default_environment,
             pytest_args=project.pytest_args,
             test_tags=project.test_tags,
             test_scope=project.test_scope,
-            external_status=str(item.get("status") or status)[:40],
-            started_at=datetime.fromtimestamp(start / 1000),
-            finished_at=datetime.now() if status in TERMINAL_STATUSES else None,
+            external_status=(item.external_status or status)[:40],
+            started_at=start,
+            finished_at=item.finished_at or (datetime.now() if status in TERMINAL_STATUSES else None),
+            duration_ms=item.duration_ms,
             notify_status="WAITING",
         )
         db.add(execution)
@@ -880,7 +1126,10 @@ class AutomationCenterService:
         ))
         return report
 
-    def _apply_callback_metadata(self, execution, metadata: dict, report: AutomationReport | None) -> None:
+    def _apply_callback_metadata(
+        self, execution, metadata: dict, report: AutomationReport | None,
+        *, config: AutomationIntegrationConfig | None = None,
+    ) -> None:
         """用回传元数据补充执行信息，并把用例失败反映到执行状态。"""
         for field, key in (
             ("branch", "branch"), ("environment_name", "environment"), ("git_commit", "git_commit"),
@@ -893,6 +1142,19 @@ class AutomationCenterService:
         duration = metadata.get("duration_ms")
         if isinstance(duration, int):
             execution.duration_ms = duration
+        started_ms = metadata.get("started_at_ms")
+        if isinstance(started_ms, int) and started_ms > 0:
+            execution.started_at = datetime.fromtimestamp(started_ms / 1000)
+        if execution.provider_type == "JENKINS":
+            build_number = metadata.get("build_number")
+            if isinstance(build_number, int) and build_number > 0:
+                execution.external_build_number = build_number
+            build_url = metadata.get("build_url")
+            credential = config.jenkins_credential if config is not None else None
+            if isinstance(build_url, str) and credential is not None and self._trusted_jenkins_build_url(
+                credential.base_url, build_url,
+            ):
+                execution.external_run_url = build_url[:1000]
         incoming = map_pipeline_status(str(metadata.get("status") or execution.external_status or "SUCCESS"))
         failed = report.failed_cases if report else int((metadata.get("stats") or {}).get("failed") or 0)
         broken = report.broken_cases if report else int((metadata.get("stats") or {}).get("broken") or 0)
@@ -900,6 +1162,19 @@ class AutomationCenterService:
         execution.external_status = str(metadata.get("status") or incoming)[:40]
         if execution.started_at is None:
             execution.started_at = datetime.now()
+
+    @staticmethod
+    def _trusted_jenkins_build_url(base_url: str, candidate: str) -> bool:
+        """Only expose Jenkins build links on the configured HTTPS origin and path."""
+        from urllib.parse import urlsplit
+
+        base = urlsplit(base_url)
+        target = urlsplit(candidate)
+        return (
+            target.scheme == "https" and target.netloc == base.netloc
+            and target.path.startswith(base.path.rstrip("/") + "/")
+            and not target.username and not target.password and not target.fragment
+        )
 
     def _store_optional_files(self, db, execution, report, results_bytes: bytes, log_bytes: bytes) -> None:
         """保存原始结果和日志文件，原始结果不自动解压。"""
@@ -945,6 +1220,8 @@ class AutomationCenterService:
                 project_id=project.project_id,
                 automation_project_id=project.id,
                 pipeline_binding_id=pipeline.id,
+                integration_config_id=config.id,
+                provider_type=config.provider_type,
                 external_pipeline_id=str(metadata.get("pipeline_id") or pipeline.pipeline_id),
                 pipeline_run_id=str(run_id) if run_id is not None else None,
                 trigger_source=str(metadata.get("trigger_source") or "CODE_PUSH")[:20],
@@ -994,49 +1271,117 @@ class AutomationCenterService:
         if not hmac.compare_digest(expected, signature):
             raise bad_request("回调签名无效")
 
-    def _pipeline_params(self, config, project, pipeline, execution) -> dict[str, Any]:
-        """组装云效运行参数。只放非敏感变量，回调密钥由流水线变量组单独保存。"""
-        envs = {
-            "TEST_ENV": execution.environment_name,
-            "PYTEST_ARGS": execution.pytest_args,
-            "TEST_TAGS": execution.test_tags,
-            "TEST_SCOPE": execution.test_scope,
-            "AUTOMATION_EXECUTION_ID": str(execution.id),
-            "AUTOMATION_PROJECT_ID": str(project.id),
-            "AUTOMATION_CALLBACK_KEY": config.callback_key,
-        }
+    def _execution_params(self, config, project, pipeline, execution) -> dict[str, Any]:
+        """组装平台通用执行参数；各 Provider 负责转换成外部 API 格式。"""
         base = settings.PUBLIC_APP_BASE_URL.strip().rstrip("/")
+        callback_url = ""
+        history_url = ""
         if base.startswith("http://") or base.startswith("https://"):
-            envs["AUTOMATION_CALLBACK_URL"] = f"{base}/api/v1/automation-callbacks/{config.callback_key}"
-            envs["AUTOMATION_HISTORY_URL"] = (
+            callback_url = f"{base}/api/v1/automation-callbacks/{config.callback_key}"
+            history_url = (
                 f"{base}/api/v1/automation-callbacks/{config.callback_key}/history"
                 f"?automation_project_id={project.id}"
             )
-        envs.update(self._public_params(project.pipeline_params))
-        envs.update(self._public_params(pipeline.extra_params))
-        envs = {key: value for key, value in envs.items() if value}
-        params: dict[str, Any] = {"envs": envs, "comment": f"测试平台执行 {execution.id}"}
-        if execution.branch:
-            params["branchModeBranchs"] = [execution.branch]
-            if project.repository_url:
-                params["runningBranchs"] = {project.repository_url: execution.branch}
-        return params
+        variables = self._public_params(project.pipeline_params)
+        variables.update(self._public_params(pipeline.extra_params))
+        if config.provider_type == "JENKINS":
+            if not callback_url.startswith("https://"):
+                raise bad_request("Jenkins 回调要求 PUBLIC_APP_BASE_URL 配置为 HTTPS")
+            self._validate_jenkins_run_options(execution)
+            self._validate_repository_url(project.repository_url)
+        return {
+            "branch": execution.branch,
+            "environment_name": execution.environment_name,
+            "pytest_args": execution.pytest_args,
+            "test_tags": execution.test_tags,
+            "test_scope": execution.test_scope,
+            "execution_id": str(execution.id),
+            "automation_project_id": str(project.id),
+            "callback_key": config.callback_key,
+            "callback_url": callback_url,
+            "history_url": history_url,
+            "repository_url": project.repository_url,
+            "repository_id": project.repository_id,
+            "timeout_seconds": project.timeout_seconds,
+            "variables": variables,
+        }
 
-    def _client(self, config: AutomationIntegrationConfig) -> YunxiaoClient:
-        """用解密后的令牌创建客户端。令牌不进入日志。"""
-        return YunxiaoClient(
-            base_url=config.api_base_url,
-            token=decrypt_secret(config.access_token_encrypted),
-            organization_id=config.organization_id,
-            deployment=config.deployment,
+    @staticmethod
+    def _validate_jenkins_run_options(execution: AutomationExecution) -> None:
+        """Reject command-like values before they become Jenkins parameters."""
+        branch = execution.branch
+        if branch and (
+            not re.fullmatch(r"[A-Za-z0-9._/-]{1,200}", branch)
+            or branch.startswith("-") or ".." in branch or "//" in branch or "@{" in branch
+        ):
+            raise bad_request("Git 分支名不合法")
+        if execution.environment_name and not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", execution.environment_name):
+            raise bad_request("测试环境名只允许字母、数字、点、下划线和连字符")
+        if any(char in execution.pytest_args for char in "\r\n\x00"):
+            raise bad_request("pytest 参数不能包含换行或控制字符")
+        if execution.test_tags and not re.fullmatch(r"[A-Za-z0-9_ .()!&|]{1,200}", execution.test_tags):
+            raise bad_request("测试标签只允许 pytest marker 表达式字符")
+        for raw_path in filter(None, (part.strip() for part in execution.test_scope.split(","))):
+            path = raw_path.split("::", 1)[0]
+            if path.startswith(("/", "-")) or ".." in path.split("/") or "\\" in path or any(ord(c) < 32 for c in path):
+                raise bad_request("测试范围必须是仓库内的相对路径")
+        allowed = {"-q", "-v", "-x", "--disable-warnings", "--capture=no", "--tb=short", "--strict-markers"}
+        try:
+            import shlex
+
+            tokens = shlex.split(execution.pytest_args)
+        except ValueError as exc:
+            raise bad_request("pytest 参数格式不合法") from exc
+        index = 0
+        while index < len(tokens):
+            token = tokens[index]
+            if token in allowed:
+                index += 1
+                continue
+            if token.startswith("--maxfail=") and re.fullmatch(r"--maxfail=[1-9][0-9]?", token):
+                index += 1
+                continue
+            if token == "--maxfail" and index + 1 < len(tokens) and re.fullmatch(r"[1-9][0-9]?", tokens[index + 1]):
+                index += 2
+                continue
+            if token == "-k" and index + 1 < len(tokens) and re.fullmatch(r"[A-Za-z0-9_ .:'\"()!&|=-]{1,200}", tokens[index + 1]):
+                index += 2
+                continue
+            raise bad_request(f"pytest 参数不在安全允许列表中：{token[:80]}")
+
+    @staticmethod
+    def _validate_repository_url(value: str) -> None:
+        """Repository URL must not embed a username/password or use cleartext HTTP."""
+        if not value:
+            raise bad_request("Jenkins 自动化项目必须配置仓库地址")
+        if any(char in value for char in "\r\n\x00"):
+            raise bad_request("仓库地址不能包含换行或控制字符")
+        from urllib.parse import urlsplit
+
+        if value.startswith("git@"):
+            if any(char in value for char in "\r\n\x00"):
+                raise bad_request("仓库地址不合法")
+            return
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"https", "ssh"} or not parsed.hostname or parsed.username or parsed.password:
+            raise bad_request("仓库地址必须使用 HTTPS/SSH，且不能内嵌账号或密码")
+
+    def _provider(self, config: AutomationIntegrationConfig) -> AutomationProvider:
+        """按配置选择 Provider；阶段 1 的既有记录默认走云效适配器。"""
+        return provider_factory.get(getattr(config, "provider_type", "YUNXIAO"), config)
+
+    def _execution_provider_args(self, db, execution: AutomationExecution):
+        """取出调用 Provider 所需的接入配置和外部 Job/流水线标识。"""
+        config_id = execution.integration_config_id
+        if config_id is None:
+            project = db.get(AutomationProject, execution.automation_project_id)
+            if project is None:
+                raise not_found("自动化项目不存在")
+            config_id = project.integration_config_id
+        config = (
+            db.query(AutomationIntegrationConfig).execution_options(include_deleted=True)
+            .filter(AutomationIntegrationConfig.id == config_id).first()
         )
-
-    def _execution_client_args(self, db, execution: AutomationExecution):
-        """取出调用云效所需的配置和流水线 ID。"""
-        project = db.get(AutomationProject, execution.automation_project_id)
-        if project is None:
-            raise not_found("自动化项目不存在")
-        config = db.get(AutomationIntegrationConfig, project.integration_config_id)
         if config is None:
             raise not_found("接入配置不存在")
         return config, execution.external_pipeline_id
@@ -1058,6 +1403,31 @@ class AutomationCenterService:
             raise not_found("接入配置不存在")
         require_writable_project(db, row.project_id, actor)
         return row
+
+    def _config_for_read(self, db, config_id: int, actor: User) -> AutomationIntegrationConfig:
+        row = db.get(AutomationIntegrationConfig, config_id)
+        if row is None:
+            raise not_found("接入配置不存在")
+        get_project_or_404(db, row.project_id, actor)
+        return row
+
+    @staticmethod
+    def _require_ci_admin(db, project_id: int, actor: User) -> None:
+        """Jenkins credentials and trusted destinations require project-admin access."""
+        project = get_project_or_404(db, project_id, actor)
+        role = project_role_for(db, project, actor)
+        if not has_project_role(role, PROJECT_ROLE_EDITOR):
+            raise forbidden("Jenkins 接入配置需要项目管理员权限")
+
+    @staticmethod
+    def _validate_resource_id(provider_type: str, resource_id: str) -> None:
+        if provider_type == "JENKINS":
+            try:
+                JenkinsClient.validate_job_path(resource_id)
+            except ProviderError as exc:
+                raise bad_request(str(exc)) from exc
+        elif not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", resource_id):
+            raise bad_request("云效流水线 ID 不合法")
 
     def _owned_config(self, db, project_id: int, config_id: int) -> AutomationIntegrationConfig:
         """接入配置必须属于同一个业务项目。"""
@@ -1142,10 +1512,21 @@ class AutomationCenterService:
 
     def _integration_response(self, row: AutomationIntegrationConfig) -> IntegrationResponse:
         """组装不含密文的配置响应。"""
+        credential = row.jenkins_credential if row.provider_type == "JENKINS" else None
+        configured = (
+            bool(credential and credential.api_token_encrypted)
+            if row.provider_type == "JENKINS" else bool(row.access_token_encrypted)
+        )
         return IntegrationResponse(
-            id=row.id, project_id=row.project_id, name=row.name, api_base_url=row.api_base_url,
+            id=row.id, project_id=row.project_id, name=row.name,
+            provider_type=row.provider_type, enabled=row.enabled,
+            allow_private_network=row.allow_private_network,
+            jenkins_base_url=credential.base_url if credential else None,
+            jenkins_username=credential.username if credential else None,
+            api_token_configured=bool(credential and credential.api_token_encrypted),
+            api_base_url=row.api_base_url,
             organization_id=row.organization_id, deployment=row.deployment,
-            token_configured=bool(row.access_token_encrypted), callback_key=row.callback_key,
+            token_configured=configured, callback_key=row.callback_key,
             callback_secret_configured=bool(row.callback_secret_encrypted),
             callback_path=f"/api/v1/automation-callbacks/{row.callback_key}",
             default_timeout_seconds=row.default_timeout_seconds, created_at=row.created_at,
@@ -1158,8 +1539,10 @@ class AutomationCenterService:
             db.query(AutomationExecution).filter_by(automation_project_id=row.id)
             .order_by(AutomationExecution.id.desc()).first()
         )
+        config = db.get(AutomationIntegrationConfig, row.integration_config_id)
         return AutomationProjectResponse(
             id=row.id, project_id=row.project_id, integration_config_id=row.integration_config_id,
+            provider_type=config.provider_type if config else "YUNXIAO",
             name=row.name, description=row.description, repository_url=row.repository_url,
             repository_id=row.repository_id, pipeline_id=pipeline.pipeline_id if pipeline else "",
             pipeline_name=pipeline.name if pipeline else "", default_branch=row.default_branch,
@@ -1178,7 +1561,9 @@ class AutomationCenterService:
         return ExecutionResponse(
             id=row.id, project_id=row.project_id, automation_project_id=row.automation_project_id,
             automation_project_name=project.name if project else "", pipeline_id=row.external_pipeline_id,
-            pipeline_run_id=row.pipeline_run_id, trigger_source=row.trigger_source, status=row.status,
+            pipeline_run_id=row.pipeline_run_id, provider_type=row.provider_type,
+            queue_id=row.external_queue_id, build_number=row.external_build_number,
+            external_run_url=row.external_run_url, trigger_source=row.trigger_source, status=row.status,
             branch=row.branch, environment_name=row.environment_name, pytest_args=row.pytest_args,
             test_tags=row.test_tags, test_scope=row.test_scope, git_commit=row.git_commit,
             external_status=row.external_status, log_excerpt=row.log_excerpt, error_message=row.error_message,
@@ -1199,7 +1584,11 @@ class AutomationCenterService:
             pass_rate=float(row.pass_rate), duration_ms=row.duration_ms,
             suite_summary=row.suite_summary or [], history_included=row.history_included,
             branch=execution.branch if execution else "", environment_name=execution.environment_name if execution else "",
-            git_commit=execution.git_commit if execution else "", generated_at=row.generated_at, created_at=row.created_at,
+            git_commit=execution.git_commit if execution else "",
+            provider_type=execution.provider_type if execution else "YUNXIAO",
+            build_number=execution.external_build_number if execution else None,
+            external_run_url=execution.external_run_url if execution else "",
+            generated_at=row.generated_at, created_at=row.created_at,
         )
 
     @staticmethod

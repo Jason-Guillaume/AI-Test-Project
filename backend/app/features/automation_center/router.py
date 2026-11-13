@@ -22,6 +22,7 @@ from app.features.automation_center.schemas import (
     AutomationProjectUpdate,
     CallbackResponse,
     ConnectionTestResponse,
+    ConsoleLogResponse,
     ExecutionListResponse,
     ExecutionResponse,
     ExecutionTrigger,
@@ -29,6 +30,8 @@ from app.features.automation_center.schemas import (
     IntegrationListResponse,
     IntegrationResponse,
     IntegrationUpdate,
+    JenkinsJobInspectResponse,
+    JenkinsJobListResponse,
     ReportCompareResponse,
     ReportGrantResponse,
     ReportListResponse,
@@ -62,31 +65,31 @@ def _headers(request: Request) -> dict[str, str]:
     return {key.lower(): value for key, value in request.headers.items()}
 
 
-@router.get("/projects/{project_id}/automation-integrations", response_model=IntegrationListResponse, summary="云效接入配置列表")
+@router.get("/projects/{project_id}/automation-integrations", response_model=IntegrationListResponse, summary="CI 接入配置列表")
 def list_integrations(
     project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
     page: int = Query(1, ge=1), page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    """列出云效接入配置。"""
+    """列出 CI 接入配置。"""
     return _SERVICE.list_integrations(db, project_id, user, page=page, page_size=page_size)
 
 
 @router.post(
     "/projects/{project_id}/automation-integrations", response_model=IntegrationResponse,
-    status_code=201, summary="创建云效接入配置",
+    status_code=201, summary="创建 CI 接入配置",
 )
 def create_integration(
     project_id: int, body: IntegrationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """创建云效接入配置。"""
+    """创建 CI 接入配置。"""
     return _SERVICE.create_integration(db, project_id, body, user)
 
 
-@router.patch("/automation-integrations/{config_id}", response_model=IntegrationResponse, summary="更新云效接入配置")
+@router.patch("/automation-integrations/{config_id}", response_model=IntegrationResponse, summary="更新 CI 接入配置")
 def update_integration(
     config_id: int, body: IntegrationUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """更新云效接入配置。"""
+    """更新 CI 接入配置。"""
     return _SERVICE.update_integration(db, config_id, body, user)
 
 
@@ -102,13 +105,31 @@ def rotate_callback_key(config_id: int, db: Session = Depends(get_db), user: Use
     return _SERVICE.rotate_callback_key(db, config_id, user)
 
 
-@router.post("/automation-integrations/{config_id}/test-connection", response_model=ConnectionTestResponse, summary="测试云效连接")
+@router.post("/automation-integrations/{config_id}/test-connection", response_model=ConnectionTestResponse, summary="测试 CI 连接")
 def test_connection(
-    config_id: int, pipeline_id: str = Query(min_length=1, max_length=64),
+    config_id: int, pipeline_id: str = Query(min_length=1, max_length=255),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """测试云效连接。"""
+    """测试 CI 凭据和流水线或 Job。"""
     return _SERVICE.test_connection(db, config_id, user, pipeline_id)
+
+
+@router.get("/automation-integrations/{config_id}/jenkins-jobs", response_model=JenkinsJobListResponse, summary="查询 Jenkins Job 和 Folder")
+def list_jenkins_jobs(
+    config_id: int, folder_path: str = Query("", max_length=255),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """查询 Jenkins 根目录或指定 Folder 的下一层。"""
+    return _SERVICE.list_jenkins_jobs(db, config_id, user, folder_path)
+
+
+@router.get("/automation-integrations/{config_id}/jenkins-jobs/inspect", response_model=JenkinsJobInspectResponse, summary="检查 Jenkins Job 参数")
+def inspect_jenkins_job(
+    config_id: int, job_path: str = Query(min_length=1, max_length=255),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """查询 Job 可执行性、并发能力和参数定义。"""
+    return _SERVICE.inspect_jenkins_job(db, config_id, user, job_path)
 
 
 @router.get("/projects/{project_id}/automation-projects", response_model=AutomationProjectListResponse, summary="自动化项目列表")
@@ -177,12 +198,15 @@ def list_executions(
     page: int = Query(1, ge=1), page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     automation_project_id: int | None = None, status: str | None = None, branch: str | None = None,
     environment_name: str | None = None, started_from: datetime | None = None, started_to: datetime | None = None,
+    provider_type: str | None = None, pipeline_id: str | None = Query(None, max_length=255),
+    build_number: int | None = Query(None, ge=1),
 ):
     """列出自动化执行。"""
     return _SERVICE.list_executions(
         db, project_id, user, page=page, page_size=page_size, automation_project_id=automation_project_id,
         status=status, branch=branch, environment_name=environment_name,
         started_from=started_from, started_to=started_to,
+        provider_type=provider_type, pipeline_id=pipeline_id, build_number=build_number,
     )
 
 
@@ -192,15 +216,23 @@ def get_execution(execution_id: int, db: Session = Depends(get_db), user: User =
     return _SERVICE.get_execution(db, execution_id, user)
 
 
+@router.get("/automation-executions/{execution_id}/console-log", response_model=ConsoleLogResponse, summary="获取执行 Console 日志")
+def get_execution_console_log(
+    execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """读取平台保存的日志或服务端获取的 Jenkins Console Output。"""
+    return _SERVICE.get_console_log(db, execution_id, user)
+
+
 @router.post("/automation-executions/{execution_id}/cancel", response_model=ExecutionResponse, summary="取消自动化执行")
 def cancel_execution(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """取消云效运行。"""
+    """请求 Provider 取消执行，并要求外部平台确认。"""
     return _SERVICE.cancel(db, execution_id, user)
 
 
-@router.post("/automation-executions/{execution_id}/sync", response_model=ExecutionResponse, summary="同步云效执行状态")
+@router.post("/automation-executions/{execution_id}/sync", response_model=ExecutionResponse, summary="同步 CI 执行状态")
 def sync_execution(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """立即同步云效状态。"""
+    """立即同步 CI 状态。"""
     return _SERVICE.sync_execution(db, execution_id, user)
 
 

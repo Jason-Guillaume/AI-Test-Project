@@ -39,6 +39,7 @@ from app.features.test_data import models as test_data_models  # noqa: F401
 from app.features.test_management import models as test_management_models  # noqa: F401
 from app.features.web_testing import models as web_ui_models  # noqa: F401
 from app.features.asr_evaluation import models as asr_evaluation_models  # noqa: F401
+from app.features.automation_center import models as automation_center_models  # noqa: F401
 
 # Alembic 传入的运行时配置对象，后面会覆盖其中的数据库 URL。
 config = context.config
