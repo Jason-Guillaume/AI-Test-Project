@@ -1,11 +1,12 @@
 import { mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, request, test, type Page } from '@playwright/test';
 
 const API = process.env.E2E_API_URL ?? 'http://127.0.0.1:8101/api/v1';
 const ADMIN = process.env.E2E_ADMIN_USERNAME ?? 'e2e-admin';
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? '';
 const RUN_ID = Date.now();
-const SCREENSHOTS = `/tmp/ai-test-project-ux-${RUN_ID}`;
+const SCREENSHOTS = resolve(process.cwd(), '../docs/second-round-quality-fix/screenshots', `skill-${RUN_ID}`);
 
 async function loginThroughUi(page: Page) {
   await page.goto('/login');
@@ -135,7 +136,7 @@ test('五类 Agent 生态资源页在四种视口下无横向溢出并留存验�
     { path: '/admin/skills', title: 'Skill 管理', file: 'skill' },
     { path: '/admin/tools', title: '工具管理', file: 'tool' },
   ];
-  const screenshotDirectory = `/tmp/ai-test-project-ux-resources-${Date.now()}`;
+  const screenshotDirectory = resolve(process.cwd(), '../docs/second-round-quality-fix/screenshots', `agent-resources-${Date.now()}`);
   mkdirSync(screenshotDirectory, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginThroughUi(page);
@@ -145,7 +146,6 @@ test('五类 Agent 生态资源页在四种视口下无横向溢出并留存验�
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(resource.path);
       await expect(page.getByRole('heading', { name: resource.title, exact: true })).toBeVisible();
-      await page.waitForTimeout(150);
       const dimensions = await page.evaluate('({ documentWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth })') as { documentWidth: number; viewportWidth: number };
       expect(dimensions.documentWidth, `${resource.path} 在 ${viewport.name} 出现横向溢出`).toBeLessThanOrEqual(dimensions.viewportWidth + 1);
       await page.screenshot({ path: `${screenshotDirectory}/${resource.file}-${viewport.name}.png`, fullPage: true });

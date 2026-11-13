@@ -6,20 +6,23 @@ import uuid
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 import app.core.models
+import app.features.api_catalog.models
 from app.core.database.base import Base
 from app.core.models.identity import User
 from app.core.models.project import Project
 from app.features.asr_evaluation.models import AsrConnection
-from app.features.asr_evaluation.schemas import ModelTaskSlotInput
-from app.platform.model_configuration.center_schemas import ModelProfileCreate, ModelResourceCreate
-from app.platform.model_configuration.models import ModelCredential, ModelResource
+from app.features.asr_evaluation.schemas import AudioItemInput, ModelTaskSlotInput
+from app.features.asr_evaluation.services.assets_service import create_audio
+from app.platform.model_configuration.center_schemas import ModelDiagnosticInput, ModelProfileCreate, ModelResourceCreate
+from app.platform.model_configuration.models import ModelCredential, ModelResource, ModelValidationRun
 from app.platform.model_configuration.services.model_center_service import (
-    create_profile, create_resource, list_available_models, preview_import, resolve_task_slots,
+    create_diagnostic, create_profile, create_resource, list_available_models, preview_import, resolve_task_slots,
 )
 
 
@@ -31,6 +34,7 @@ def center_sandbox():
     table_names = {
         "user", "organization", "organization_member", "project", "project_member",
         "project_outbound_target", "model_configuration", "environment", "notification",
+        "api_module", "api_interface",
     }
     tables = [table for name, table in Base.metadata.tables.items()
               if name in table_names or name.startswith(table_prefixes)]
@@ -70,6 +74,77 @@ def _asr_resource(project_ids: list[int]) -> ModelResourceCreate:
                          "definitions": [{"path": "/language", "display_name": "识别语言", "value_type": "string"}]},
         grant_project_ids=project_ids,
     )
+
+
+def _text_resource() -> ModelResourceCreate:
+    return ModelResourceCreate(
+        category="TEXT_GENERATION", visibility="PLATFORM", display_name="合成文本模型",
+        provider="synthetic-vendor", adapter_key="openai-compatible-chat", model_name="synthetic-text-v1",
+        endpoint="https://models.example.invalid/v1/chat/completions", config={"timeout": 3},
+        capabilities=["text_generation"],
+        initial_profile={"name": "文本基线", "values": {"temperature": 0}, "definitions": []},
+    )
+
+
+def _diarization_resource() -> ModelResourceCreate:
+    return ModelResourceCreate(
+        category="DIARIZATION", visibility="PLATFORM", display_name="合成说话人模型",
+        provider="synthetic-vendor", adapter_key="generic-json-http", model_name="synthetic-diarization-v1",
+        endpoint="https://models.example.invalid/v1/diarize", config={
+            "method": "POST", "headers": {}, "request_template": {
+                "audio_url": "{{audio.url}}", "options": "{{experiment.parameters}}",
+            },
+            "response_mapping": {"segments_pointer": "/segments", "start_pointer": "/segments/0/start",
+                                  "end_pointer": "/segments/0/end", "speaker_pointer": "/segments/0/speaker",
+                                  "time_unit": "seconds"},
+            "timeout_seconds": 3, "max_response_bytes": 2048,
+        },
+        capabilities=["speaker_intervals"],
+        initial_profile={"name": "说话人基线", "values": {"language": "zh"}, "definitions": []},
+    )
+
+
+def test_diagnostic_schema_requires_project_and_explicit_paid_call_confirmation():
+    with pytest.raises(ValidationError):
+        ModelDiagnosticInput(project_id=0, confirm_model_call=True)
+    with pytest.raises(ValidationError):
+        ModelDiagnosticInput(project_id=1, confirm_model_call=False)
+
+
+def test_text_diagnostic_queues_for_selected_editor_project_without_calling_provider(center_sandbox):
+    db, admin, owner_a, _, project_a, _ = center_sandbox
+    resource = create_resource(db, _text_resource(), admin)
+    run = create_diagnostic(db, resource["id"], ModelDiagnosticInput(
+        project_id=project_a.id, confirm_model_call=True,
+    ), owner_a)
+    stored = db.query(ModelValidationRun).filter_by(id=run["id"]).one()
+    assert run["status"] == "QUEUED"
+    assert stored.project_id == project_a.id and stored.audio_id is None
+
+
+@pytest.mark.parametrize("category", ["ASR", "DIARIZATION"])
+def test_audio_diagnostic_enforces_project_audio_ownership_and_editor_access(center_sandbox, category):
+    db, admin, owner_a, owner_b, project_a, project_b = center_sandbox
+    body = _asr_resource([]) if category == "ASR" else _diarization_resource()
+    resource = create_resource(db, body, admin)
+    audio_a = create_audio(db, project_a.id, AudioItemInput(name="项目 A 音频", url="https://audio.example.test/a.wav"), owner_a)
+    audio_b = create_audio(db, project_b.id, AudioItemInput(name="项目 B 音频", url="https://audio.example.test/b.wav"), owner_b)
+    profile_id = resource["current_revision"]["profiles"][0]["id"]
+
+    run = create_diagnostic(db, resource["id"], ModelDiagnosticInput(
+        project_id=project_a.id, audio_id=audio_a["id"], profile_id=profile_id, confirm_model_call=True,
+    ), owner_a)
+    assert run["status"] == "QUEUED"
+    with pytest.raises(HTTPException) as wrong_audio:
+        create_diagnostic(db, resource["id"], ModelDiagnosticInput(
+            project_id=project_a.id, audio_id=audio_b["id"], profile_id=profile_id, confirm_model_call=True,
+        ), owner_a)
+    assert wrong_audio.value.status_code == 404
+    with pytest.raises(HTTPException) as wrong_project:
+        create_diagnostic(db, resource["id"], ModelDiagnosticInput(
+            project_id=project_a.id, audio_id=audio_a["id"], profile_id=profile_id, confirm_model_call=True,
+        ), owner_b)
+    assert wrong_project.value.status_code == 404
 
 
 def test_platform_models_need_no_grant_and_role_is_a_task_slot(center_sandbox):

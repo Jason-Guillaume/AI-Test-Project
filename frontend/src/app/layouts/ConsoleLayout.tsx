@@ -166,13 +166,16 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/web-ui': 'Web UI 工作区',
   '/console/web-ui-agent': '浏览器智能编写',
   '/console/security-testing': '安全测试工作区',
-  '/console/asr/audio': '音频列表',
+  '/console/asr/audio': '音频资产',
   '/console/asr/connections': '接口配置',
   '/console/asr/jobs': '评测任务',
-  '/console/asr/jobs/:jobId': '评测任务详情',
+  '/console/asr/jobs/:jobId': '任务详情',
+  '/console/asr/runs/:runId': '单模型音频工作台',
+  '/console/asr/runs/:runId/listen': '单模型音频工作台',
   '/console/asr/comparisons': '识别结果对比',
   '/console/asr/comparisons/:comparisonId': '识别结果对比',
   '/console/asr/experiments': '参数对比',
+  '/console/asr/funasr': 'AI 分析与调优',
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI 助手',
   '/console/tasks': '统一任务', // 全局任务列表

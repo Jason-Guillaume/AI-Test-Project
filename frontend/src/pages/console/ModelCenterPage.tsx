@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import { ExperimentOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { useSearchParams } from 'react-router-dom';
@@ -15,6 +15,7 @@ import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 import { collectPages } from '@/shared/api/pagination';
+import { projectsApi } from '@/features/projects/api/projects';
 
 interface ResourceFormValues {
   visibility?: 'PLATFORM' | 'PROJECT'; project_id?: number; display_name: string; provider: string;
@@ -28,7 +29,7 @@ interface ProfileFormValues {
 }
 
 interface DiagnosticFormValues {
-  profile_id?: number; audio_id?: number; confirm_model_call: boolean;
+  project_id: number; profile_id?: number; audio_id?: number; confirm_model_call: boolean;
 }
 
 const CATEGORY_LABELS: Record<ModelCategory, string> = {
@@ -181,7 +182,7 @@ function containsSensitiveImportField(value: unknown): boolean {
 /** 统一模型中心页面。 */
 export function ModelCenterPage() {
   const { message } = App.useApp();
-  const { isPlatformAdmin } = useAuth();
+  const { user, isPlatformAdmin } = useAuth();
   const { currentProjectId } = useConsoleScope();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
@@ -190,7 +191,7 @@ export function ModelCenterPage() {
     return requested === 'ASR' || requested === 'DIARIZATION' ? requested : 'TEXT_GENERATION';
   });
   const [resourceOpen, setResourceOpen] = useState(false);
-  const [selectedResource, setSelectedResource] = useState<ModelResource | null>(null);
+  const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
   const [resourceSearch, setResourceSearch] = useState('');
   const [resourceView, setResourceView] = useState<'cards' | 'table'>('cards');
   const [connectionTestResult, setConnectionTestResult] = useState<ModelConnectionTestResult | null>(null);
@@ -198,6 +199,8 @@ export function ModelCenterPage() {
   const [profileTarget, setProfileTarget] = useState<ModelResource | null>(null);
   const [diagnosticTarget, setDiagnosticTarget] = useState<ModelResource | null>(null);
   const [diagnosticRunId, setDiagnosticRunId] = useState<number | null>(null);
+  const diagnosticSubmissionRef = useRef(false);
+  const lastDiagnosticProjectIdRef = useRef<number | undefined>();
 
   const [defaultTarget, setDefaultTarget] = useState<ModelResource | null>(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -219,14 +222,24 @@ export function ModelCenterPage() {
     enabled: true,
     queryFn: ({ signal }) => modelCenterApi.list(resourceProjectId, category, signal),
   });
+  const diagnosticProjectId = Form.useWatch('project_id', diagnosticForm);
+  const diagnosticProjectsQuery = useQuery({
+    queryKey: ['model-center', 'diagnostic-projects', user?.id],
+    enabled: Boolean(diagnosticTarget),
+    queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 100 })),
+  });
+  const audioProjectId = Number.isInteger(diagnosticProjectId) && diagnosticProjectId > 0 ? diagnosticProjectId : null;
   const audioQuery = useQuery({
-    queryKey: currentProjectId ? ['project', currentProjectId, 'asr', 'audio', 1, 100] : ['asr', 'audio', null],
-    enabled: Boolean(currentProjectId && diagnosticTarget && diagnosticTarget.category !== 'TEXT_GENERATION'),
-    queryFn: async ({ signal }) => (await import('@/features/asr-evaluation/api/asrEvaluation')).asrEvaluationApi
-      .listAudios(currentProjectId!, 1, 200, signal).then((first) => first.total <= first.items.length
+    queryKey: ['project', audioProjectId, 'asr', 'audio', 1, 200],
+    enabled: Boolean(audioProjectId && diagnosticTarget && diagnosticTarget.category !== 'TEXT_GENERATION'),
+    queryFn: async ({ signal }) => {
+      if (!audioProjectId) throw new Error('请选择诊断项目');
+      return (await import('@/features/asr-evaluation/api/asrEvaluation')).asrEvaluationApi
+      .listAudios(audioProjectId, 1, 200, signal).then((first) => first.total <= first.items.length
         ? first
         : collectPages((page) => (page === 1 ? Promise.resolve(first) : import('@/features/asr-evaluation/api/asrEvaluation')
-          .then((module) => module.asrEvaluationApi.listAudios(currentProjectId!, page, 200, signal))))),
+          .then((module) => module.asrEvaluationApi.listAudios(audioProjectId, page, 200, signal)))));
+    },
   });
   const diagnosticQuery = useQuery<ModelDiagnosticRun>({
     queryKey: diagnosticRunId ? modelCenterQueryKeys.diagnostic(diagnosticRunId) : ['model-center', 'diagnostic', null],
@@ -235,10 +248,33 @@ export function ModelCenterPage() {
     queryFn: ({ signal }) => modelCenterApi.getDiagnostic(diagnosticRunId!, signal),
   });
   const adapters = useMemo(() => (catalogQuery.data?.adapters || []).filter((item) => item.category === category), [catalogQuery.data, category]);
-  const rows = resourcesQuery.data?.items || [];
+  const rows = useMemo(() => resourcesQuery.data?.items || [], [resourcesQuery.data?.items]);
+  const selectedResource = rows.find((resource) => resource.id === selectedResourceId) ?? null;
   const visibleRows = rows.filter((resource) => `${resource.display_name} ${resource.current_revision?.provider ?? ''} ${resource.current_revision?.model_name ?? ''} ${resource.current_revision?.adapter_key ?? ''}`.toLocaleLowerCase().includes(resourceSearch.trim().toLocaleLowerCase()));
   const activeRows = rows.filter((resource) => resource.status === 'ACTIVE');
   const diagnosticFailures = rows.filter((resource) => resource.diagnostic?.status === 'FAILED' || resource.status === 'ERROR');
+
+  useEffect(() => {
+    setSelectedResourceId(null);
+  }, [currentProjectId, category]);
+
+  useEffect(() => {
+    if (!diagnosticTarget || !diagnosticProjectsQuery.isSuccess || !diagnosticProjectId) return;
+    const canEditProject = diagnosticProjectsQuery.data.items.some((project) => project.id === diagnosticProjectId
+      && ['owner', 'editor'].includes((project.my_role || '').toLocaleLowerCase()));
+    if (!canEditProject) {
+      diagnosticForm.setFieldValue('project_id', undefined);
+      diagnosticForm.setFieldValue('audio_id', undefined);
+      lastDiagnosticProjectIdRef.current = undefined;
+    }
+  }, [diagnosticForm, diagnosticProjectId, diagnosticProjectsQuery.data, diagnosticProjectsQuery.isSuccess, diagnosticTarget]);
+
+  useEffect(() => {
+    if (selectedResourceId !== null && resourcesQuery.isSuccess && !resourcesQuery.isFetching
+      && !rows.some((resource) => resource.id === selectedResourceId)) {
+      setSelectedResourceId(null);
+    }
+  }, [rows, resourcesQuery.isFetching, resourcesQuery.isSuccess, selectedResourceId]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['model-center'] });
   const createMutation = useMutation({
@@ -268,10 +304,11 @@ export function ModelCenterPage() {
   });
   const diagnosticMutation = useMutation({
     mutationFn: ({ resource, values }: { resource: ModelResource; values: DiagnosticFormValues }) => modelCenterApi.createDiagnostic(resource.id, {
-      project_id: currentProjectId!, profile_id: values.profile_id, audio_id: values.audio_id, confirm_model_call: true,
+      project_id: values.project_id, profile_id: values.profile_id, audio_id: values.audio_id, confirm_model_call: true,
     }),
     onSuccess: (run) => { setDiagnosticRunId(run.id); message.info('诊断已排队；正在查询后台结果'); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '模型诊断创建失败')),
+    onSettled: () => { diagnosticSubmissionRef.current = false; },
   });
   const importPreviewMutation = useMutation({
     mutationFn: (items: Array<Record<string, unknown>>) => modelCenterApi.previewImport(items),
@@ -326,6 +363,20 @@ export function ModelCenterPage() {
       profile_definitions_json: JSON.stringify(profile?.definitions || [], null, 2),
     });
     setRevisionTarget(resource);
+  };
+
+  const openDiagnostic = (resource: ModelResource) => {
+    diagnosticSubmissionRef.current = false;
+    lastDiagnosticProjectIdRef.current = currentProjectId ?? undefined;
+    setDiagnosticRunId(null);
+    setDiagnosticTarget(resource);
+    diagnosticForm.resetFields();
+    diagnosticForm.setFieldsValue({
+      project_id: currentProjectId ?? undefined,
+      profile_id: resource.current_revision?.profiles[0]?.id,
+      audio_id: undefined,
+      confirm_model_call: false,
+    });
   };
 
   /** 保存连接修订或新资源；协议配置和参数值必须是明确的 JSON 对象。 */
@@ -438,11 +489,7 @@ export function ModelCenterPage() {
       <Typography.Text type="secondary">{row.diagnostic ? `${row.diagnostic.status} · ${row.diagnostic.message || '—'}` : '尚未诊断'}</Typography.Text>
     </Space> },
     { title: '操作', key: 'actions', render: (_: unknown, row: ModelResource) => <Space wrap size={[4, 4]}>
-      <Button size="small" icon={<ExperimentOutlined />} onClick={() => {
-        setDiagnosticRunId(null);
-        setDiagnosticTarget(row);
-        diagnosticForm.setFieldsValue({ profile_id: row.current_revision?.profiles[0]?.id, confirm_model_call: false });
-      }}>诊断</Button>
+      <Button size="small" icon={<ExperimentOutlined />} onClick={() => openDiagnostic(row)}>诊断</Button>
       <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(row)}>用途默认</Button>
       <Button size="small" onClick={() => { setProfileTarget(row); profileForm.setFieldsValue({
         revision_id: row.current_revision?.id, name: '调优参数', values_json: PROFILE_EXAMPLES[row.category], definitions_json: JSON.stringify(row.current_revision?.parameter_schema || [], null, 2),
@@ -488,9 +535,7 @@ export function ModelCenterPage() {
           {visibleRows.map((resource) => {
             const revision = resource.current_revision;
             return <Col xs={24} md={12} xl={8} xxl={6} key={resource.id}>
-              <Card size="small" hoverable role="button" tabIndex={0} aria-label={`查看模型 ${resource.display_name}`}
-                onClick={(event) => { if (!(event.target as HTMLElement).closest('button, input, .ant-select')) setSelectedResource(resource); }}
-                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedResource(resource); } }}
+              <Card size="small" hoverable
                 style={{ height: '100%' }} styles={{ body: { display: 'flex', height: '100%', minHeight: 220, flexDirection: 'column', padding: 14 } }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div style={{ minWidth: 0 }}><Typography.Text strong ellipsis={{ tooltip: resource.display_name }} style={{ display: 'block' }}>{resource.display_name}</Typography.Text><Typography.Text type="secondary">{revision?.provider ?? '未配置供应商'} · {revision?.model_name ?? '无当前修订'}</Typography.Text></div>
@@ -504,8 +549,8 @@ export function ModelCenterPage() {
                 <Typography.Paragraph type="secondary" ellipsis={{ rows: 2, tooltip: revision?.capabilities.join('、') || '未声明能力' }} style={{ marginTop: 8, marginBottom: 8 }}>{revision?.capabilities.map((capability) => CAPABILITY_LABELS[capability] ?? capability).join('、') || '未声明能力'}</Typography.Paragraph>
                 <Space wrap size={[4, 4]}>{resource.defaults.map((item) => <Tag key={`${item.purpose}:${item.project_id || 0}`} color="blue">默认 · {item.purpose}</Tag>)}</Space>
                 <div style={{ marginTop: 'auto', paddingTop: 12 }} className="resource-card-actions">
-                  <Button size="small" onClick={() => { setSelectedResource(resource); }}>详情</Button>
-                  <Button size="small" icon={<ExperimentOutlined />} onClick={() => { setSelectedResource(resource); setDiagnosticRunId(null); setDiagnosticTarget(resource); diagnosticForm.setFieldsValue({ profile_id: revision?.profiles[0]?.id, confirm_model_call: false }); }}>诊断</Button>
+                  <Button size="small" onClick={() => setSelectedResourceId(resource.id)}>详情</Button>
+                  <Button size="small" icon={<ExperimentOutlined />} onClick={() => openDiagnostic(resource)}>诊断</Button>
                   <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(resource)}>用途默认</Button>
                   {isPlatformAdmin && <Button size="small" onClick={() => openRevision(resource)}>新连接修订</Button>}
                 </div>
@@ -516,19 +561,19 @@ export function ModelCenterPage() {
     </Card>
 
     <DetailDrawer
-      open={Boolean(selectedResource)}
-      onClose={() => setSelectedResource(null)}
+      open={selectedResourceId !== null}
+      onClose={() => setSelectedResourceId(null)}
       title={selectedResource ? `模型详情：${selectedResource.display_name}` : '模型详情'}
       width={800}
       extra={selectedResource && <Tag color={selectedResource.status === 'ACTIVE' ? 'green' : selectedResource.status === 'ERROR' ? 'red' : 'default'}>{selectedResource.status === 'ACTIVE' ? '启用' : selectedResource.status === 'ERROR' ? '异常' : '停用'}</Tag>}
       footer={selectedResource && <div className="editor-drawer-footer"><Typography.Text type="secondary">凭据仅显示是否已配置；明文不会从服务端回读。</Typography.Text><Space wrap>
-        <Button onClick={() => { setDiagnosticTarget(selectedResource); setDiagnosticRunId(null); diagnosticForm.setFieldsValue({ profile_id: selectedResource.current_revision?.profiles[0]?.id, confirm_model_call: false }); }}>连接诊断</Button>
+        <Button onClick={() => openDiagnostic(selectedResource)}>连接诊断</Button>
         <Button onClick={() => openDefault(selectedResource)}>默认策略</Button>
         <Button onClick={() => { setProfileTarget(selectedResource); profileForm.setFieldsValue({ revision_id: selectedResource.current_revision?.id, name: '调优参数', values_json: PROFILE_EXAMPLES[selectedResource.category], definitions_json: JSON.stringify(selectedResource.current_revision?.parameter_schema || [], null, 2) }); }}>参数方案</Button>
         {isPlatformAdmin && <Button type="primary" onClick={() => openRevision(selectedResource)}>新增连接修订</Button>}
       </Space></div>}
     >
-      {selectedResource && <Tabs items={[
+      {selectedResourceId !== null && (resourcesQuery.isFetching ? <LoadingState /> : selectedResource ? <Tabs items={[
         { key: 'basic', label: '基本信息', children: <Descriptions bordered size="small" column={1}>
           <Descriptions.Item label="名称">{selectedResource.display_name}</Descriptions.Item>
           <Descriptions.Item label="类别">{CATEGORY_LABELS[selectedResource.category]}</Descriptions.Item>
@@ -555,7 +600,7 @@ export function ModelCenterPage() {
           <Typography.Title level={5}>连接修订历史</Typography.Title>
           {selectedResource.revisions.length ? selectedResource.revisions.map((revision) => <Card size="small" key={revision.id} title={`v${revision.version} · ${revision.provider} / ${revision.model_name}`} style={{ marginBottom: 8 }}><Space wrap><Tag>{revision.adapter_key}</Tag><Tag>{revision.enabled ? '启用' : '停用'}</Tag><Tag>{revision.has_credential ? '凭据已配置' : '无凭据'}</Tag><Typography.Text type="secondary">{new Date(revision.created_at).toLocaleString()}</Typography.Text></Space></Card>) : <Typography.Text type="secondary">无历史修订。</Typography.Text>}
         </> },
-      ]} />}
+      ]} /> : <Typography.Text type="secondary">当前模型详情已不可用，请关闭后重新选择。</Typography.Text>)}
     </DetailDrawer>
 
     <Modal title={revisionTarget ? `为「${revisionTarget.display_name}」新增连接修订` : `新增${CATEGORY_LABELS[category]}资源`}
@@ -698,22 +743,55 @@ export function ModelCenterPage() {
       </Form>
     </Modal>
 
-    <Modal title={`诊断「${diagnosticTarget?.display_name || ''}」`} open={Boolean(diagnosticTarget)} onCancel={() => setDiagnosticTarget(null)} footer={null} destroyOnHidden>
+    <Modal title={`诊断「${diagnosticTarget?.display_name || ''}」`} open={Boolean(diagnosticTarget)} onCancel={() => {
+      if (!diagnosticMutation.isPending) setDiagnosticTarget(null);
+    }} footer={null} destroyOnHidden>
       <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="诊断会真实调用所选模型，可能产生费用。页面打开和保存配置不会调用模型。" />
-      <Form form={diagnosticForm} layout="vertical" onFinish={(values) => {
+      <Form form={diagnosticForm} layout="vertical" onValuesChange={(changedValues) => {
+        if (!Object.prototype.hasOwnProperty.call(changedValues, 'project_id')) return;
+        const nextProjectId = changedValues.project_id as number | undefined;
+        const previousProjectId = lastDiagnosticProjectIdRef.current;
+        if (previousProjectId && previousProjectId !== nextProjectId) {
+          queryClient.removeQueries({ queryKey: ['project', previousProjectId, 'asr', 'audio'] });
+        }
+        lastDiagnosticProjectIdRef.current = nextProjectId;
+        diagnosticForm.setFieldValue('audio_id', undefined);
+      }} onFinish={(values) => {
         if (!values.confirm_model_call) { message.warning('请先确认模型调用'); return; }
+        const projectId = Number(values.project_id);
+        const editorProject = diagnosticProjectsQuery.data?.items.some((project) => project.id === projectId
+          && ['owner', 'editor'].includes((project.my_role || '').toLocaleLowerCase()));
+        if (!Number.isInteger(projectId) || projectId <= 0 || !editorProject) {
+          message.warning('请选择一个你有编辑权限的项目');
+          return;
+        }
+        if (diagnosticSubmissionRef.current || diagnosticMutation.isPending) return;
+        diagnosticSubmissionRef.current = true;
         if (diagnosticTarget) diagnosticMutation.mutate({ resource: diagnosticTarget, values });
       }}>
+        <Form.Item name="project_id" label="诊断项目" rules={[{ required: true, message: '请选择诊断项目' }]}>
+          <Select showSearch optionFilterProp="label" loading={diagnosticProjectsQuery.isPending}
+            disabled={diagnosticProjectsQuery.isPending || diagnosticProjectsQuery.isError}
+            options={(diagnosticProjectsQuery.data?.items || [])
+              .filter((project) => ['owner', 'editor'].includes((project.my_role || '').toLocaleLowerCase()))
+              .map((project) => ({ value: project.id, label: `${project.name} · ${project.my_role}` }))}
+            placeholder="选择你有编辑权限的项目" />
+        </Form.Item>
+        {diagnosticProjectsQuery.isError && <Alert type="error" showIcon message={getErrorMessage(diagnosticProjectsQuery.error, '项目列表加载失败')} />}
         <Form.Item name="profile_id" label="参数方案版本">
           <Select allowClear options={(diagnosticTarget?.current_revision?.profiles || []).map((item) => ({ value: item.id, label: `${item.name} v${item.version}` }))} />
         </Form.Item>
         {diagnosticTarget && diagnosticTarget.category !== 'TEXT_GENERATION' && <Form.Item name="audio_id" label="诊断音频" rules={[{ required: true }]}>
-          <Select loading={audioQuery.isPending} options={(audioQuery.data?.items || []).map((item: { id: number; name: string }) => ({ value: item.id, label: item.name }))} />
+          <Select allowClear loading={audioQuery.isPending} disabled={!audioProjectId || audioQuery.isError}
+            options={(audioQuery.data?.items || []).map((item: { id: number; name: string }) => ({ value: item.id, label: item.name }))}
+            placeholder={audioProjectId ? '选择该项目下的音频' : '请先选择项目'} />
         </Form.Item>}
+        {audioQuery.isError && diagnosticTarget?.category !== 'TEXT_GENERATION' && <Alert type="error" showIcon message={getErrorMessage(audioQuery.error, '项目音频加载失败')} />}
         <Form.Item name="confirm_model_call" valuePropName="checked" rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error('需要明确确认')) }]}>
           <Checkbox>我确认发起一次真实模型调用，可能产生费用</Checkbox>
         </Form.Item>
-        <Button type="primary" htmlType="submit" loading={diagnosticMutation.isPending}>开始后台诊断</Button>
+        <Button type="primary" htmlType="submit" loading={diagnosticMutation.isPending}
+          disabled={diagnosticProjectsQuery.isPending || diagnosticProjectsQuery.isError || diagnosticMutation.isPending}>开始后台诊断</Button>
       </Form>
       {diagnosticRunId && diagnosticQuery.data && <Alert style={{ marginTop: 16 }} type={diagnosticQuery.data.status === 'FAILED' ? 'error' : 'info'}
         message={`诊断 ${diagnosticQuery.data.status}`} description={diagnosticQuery.data.result.message} />}

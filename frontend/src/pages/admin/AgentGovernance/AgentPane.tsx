@@ -152,17 +152,6 @@ export function AgentPane() {
         {cardRows.map((agent) => <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
           <Card
             size="small"
-            hoverable
-            role="button"
-            tabIndex={0}
-            aria-label={`查看 Agent ${agent.name}`}
-            onClick={(event) => {
-              if ((event.target as HTMLElement).closest('button')) return;
-              setEditing(agent);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setEditing(agent); }
-            }}
             style={{ height: '100%' }}
             styles={{ body: { height: '100%', display: 'flex', flexDirection: 'column', padding: 12 } }}
           >
