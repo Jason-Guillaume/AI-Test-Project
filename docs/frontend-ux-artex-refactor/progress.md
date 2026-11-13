@@ -5,6 +5,7 @@
 ## 当前状态
 
 - 当前分支：`feature/frontend-ux-artex`，基于本地缓存 main 快照 `e3747c0`；未提交到 main。
+- 实现提交：`e41e062b7761b76c123e3a3af9a68f10c6627d33`（`feat: redesign agent governance and responsive UX`）。
 - 原始 `codex/jenkins-provider` 工作区的已有修改保留在独立 worktree `/private/tmp/ai-test-project-jenkins`；本 worktree 的 `.idea/` 与 `docs/platform-fixes-2026-11-12.md` 未纳入本次修改。
 - 资源目录完成第一轮：LLM、Agent、MCP、Skill、Tool；共享侧栏响应式、详情 Drawer 兼容扩展。
 - 后端初始迁移重复 Organization 生命周期字段的问题已修复并验证到 Alembic `0084`。

@@ -45,4 +45,4 @@
 
 - 分支：`feature/frontend-ux-artex`
 - 基线：本地 `main` / 缓存 `origin/main` `e3747c0`。
-- 提交：实现提交和文档补记提交将在完成报告后记录；本次变更没有直接提交至 `main`。
+- 实现提交：`e41e062b7761b76c123e3a3af9a68f10c6627d33`（`feat: redesign agent governance and responsive UX`）。报告中的该提交是本次功能实现提交；后续文档补记只记录此提交号。本次变更没有直接提交至 `main`。
