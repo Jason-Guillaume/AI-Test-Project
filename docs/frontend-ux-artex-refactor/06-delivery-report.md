@@ -23,7 +23,7 @@
 - `frontend/e2e/all-routes-responsive.spec.ts`
 - `frontend/src/pages/admin/Users.tsx`、`frontend/src/pages/console/AutomationCenter/Integration.tsx`
 - `backend/alembic/versions/0001_initial_schema.py`
-- `frontend/e2e/all-routes-responsive.spec.ts` 全路由四视口宽度巡检，以及本目录六份报告和 `screenshots/` 里的 24 张验收截图。
+- `frontend/e2e/all-routes-responsive.spec.ts` 全路由四视口宽度巡检、11 个核心业务页四视口截图，以及本目录六份报告和 `screenshots/` 里的 68 张验收截图。
 
 ## 后端、数据库与 API
 
@@ -33,7 +33,7 @@
 
 ## 测试
 
-前端 typecheck、lint、41 项 Node 测试、Vite build、4 项后端 schema/seed 测试、63 条页面路由四视口巡检和两项资源工作区 Playwright 测试均通过。Tool 执行器筛选还单独做了浏览器复验。具体命令、覆盖和截图索引见 [05-test-and-acceptance.md](05-test-and-acceptance.md)。
+前端 typecheck、lint、41 项 Node 测试、Vite build、4 项后端 schema/seed 测试、63 条页面路由四视口巡检、11 个核心业务页截图验收和两项资源工作区 Playwright 测试均通过。具体命令、覆盖和截图索引见 [05-test-and-acceptance.md](05-test-and-acceptance.md)。
 
 ## 未完成事项
 

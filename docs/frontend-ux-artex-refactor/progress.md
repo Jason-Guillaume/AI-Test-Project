@@ -9,7 +9,7 @@
 - 原始 `codex/jenkins-provider` 工作区的已有修改保留在独立 worktree `/private/tmp/ai-test-project-jenkins`；本 worktree 的 `.idea/` 与 `docs/platform-fixes-2026-11-12.md` 未纳入本次修改。
 - 资源目录完成第一轮：LLM、Agent、MCP、Skill、Tool；共享侧栏响应式、详情 Drawer 兼容扩展。
 - 后端初始迁移重复 Organization 生命周期字段的问题已修复并验证到 Alembic `0084`。
-- 24 张截图已写入 `screenshots/`。
+- 68 张截图已写入 `screenshots/`，包括五类资源页、Skill 工作区和 11 个代表性业务页面四视口截图。
 - 六份交付报告已建立。
 - 全站路由巡检已通过：63 条管理端/控制台页面路径在四视口无页面级横向溢出；Knowledge 检索栏移动端超宽问题已修复。
 
@@ -17,7 +17,7 @@
 
 - `frontend`: typecheck、lint、41 个单元测试和 build 通过。
 - 后端 `tests/test_01_schema_and_seed.py`: 4 passed、1 个既有弃用告警。
-- Playwright 最终运行：路由巡检 1 passed，Skill 工作区 1 passed，五个资源页面 1 passed；Tool 执行器筛选另做定向浏览器复验并通过。四视口宽度、Skill 版本保存/恢复、详情 Drawer 和未保存关闭确认均通过；隔离数据库已删除。
+- Playwright 最终运行：全路由巡检、11 页核心截图、Skill 工作区、五类资源页均通过；Tool 执行器筛选另做定向浏览器复验并通过。四视口宽度、Skill 版本保存/恢复、详情 Drawer 和未保存关闭确认均通过；隔离数据库已删除。
 
 ## 后续范围
 

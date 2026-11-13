@@ -1,5 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { expect, request, test, type Page } from '@playwright/test';
 
+const API = process.env.E2E_API_URL ?? 'http://127.0.0.1:8101/api/v1';
 const ADMIN = process.env.E2E_ADMIN_USERNAME ?? 'e2e-admin';
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? '';
 
@@ -73,4 +75,59 @@ test('all registered business routes render without page-level horizontal overfl
       expect(dimensions.documentWidth, `${route} 在 ${viewport.label} 出现横向溢出：${JSON.stringify(overflowElements)}`).toBeLessThanOrEqual(dimensions.viewportWidth + 1);
     }
   }
+});
+
+test('representative business pages render and save four-viewport screenshots', async ({ page }) => {
+  test.setTimeout(120_000);
+  const screenshots = `/tmp/ai-test-project-ux-core-${Date.now()}`;
+  mkdirSync(screenshots, { recursive: true });
+  const api = await request.newContext();
+  const login = await api.post(`${API}/login`, { data: { username: ADMIN, password: PASSWORD } });
+  expect(login.ok()).toBeTruthy();
+  const token = (await login.json()).access_token as string;
+  const authenticatedApi = await request.newContext({ extraHTTPHeaders: { Authorization: `Bearer ${token}` } });
+  const projectResponse = await authenticatedApi.post(`${API}/projects`, {
+    data: { name: `E2E 截图项目 ${Date.now()}`, description: '通过项目 API 创建的真实验收项目。' },
+  });
+  expect(projectResponse.status()).toBe(201);
+  const projectId = (await projectResponse.json()).id as number;
+  const pages = [
+    { path: '/console', name: 'console-home' },
+    { path: '/console/projects', name: 'projects' },
+    { path: '/console/api-catalog', name: 'api-catalog' },
+    { path: '/console/business-management', name: 'business-management' },
+    { path: '/console/test-asset', name: 'test-assets' },
+    { path: '/console/test-data', name: 'test-data' },
+    { path: '/console/execution-center', name: 'execution-center' },
+    { path: '/console/security-testing', name: 'security-testing' },
+    { path: '/console/test-reports', name: 'test-reports' },
+    { path: '/admin/dashboard', name: 'admin-dashboard' },
+    { path: '/admin/users', name: 'admin-users' },
+  ];
+  const viewports = [
+    { width: 1440, height: 900, label: '1440x900' },
+    { width: 1024, height: 768, label: '1024x768' },
+    { width: 768, height: 1024, label: '768x1024' },
+    { width: 390, height: 844, label: '390x844' },
+  ];
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await loginThroughUi(page);
+  await page.evaluate((pid) => {
+    const user = JSON.parse(localStorage.getItem('user') ?? '{}');
+    localStorage.setItem('console.current_project_id', String(pid));
+    localStorage.setItem('console.scope_user_id', String(user.id ?? ''));
+  }, projectId);
+  for (const item of pages) {
+    for (const viewport of viewports) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto(item.path);
+      await expect(page.locator('.app-content')).toBeVisible();
+      await page.waitForTimeout(150);
+      const dimensions = await page.evaluate('({ documentWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth })') as { documentWidth: number; viewportWidth: number };
+      expect(dimensions.documentWidth, `${item.path} 在 ${viewport.label} 出现横向溢出`).toBeLessThanOrEqual(dimensions.viewportWidth + 1);
+      await page.screenshot({ path: `${screenshots}/${item.name}-${viewport.label}.png`, fullPage: true });
+    }
+  }
+  await authenticatedApi.dispose();
+  await api.dispose();
 });
