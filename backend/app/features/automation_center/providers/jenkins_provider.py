@@ -13,6 +13,11 @@ from app.features.automation_center.providers.base import (
     ProviderExecution,
 )
 from app.features.automation_center.providers.jenkins_client import JenkinsClient
+from app.features.automation_center.validation import (
+    MAX_EXECUTION_TIMEOUT_SECONDS,
+    SENSITIVE_PARAMETER,
+    validate_pipeline_parameters,
+)
 
 
 class JenkinsProvider:
@@ -39,6 +44,10 @@ class JenkinsProvider:
             allow_private_network=config.allow_private_network,
         )
         return cls(client)
+
+    def close(self) -> None:
+        """Close the connection pool at the end of a service operation."""
+        self._client.close()
 
     def test_connection(self, resource_id: str | None = None) -> ProviderConnectionResult:
         identity = self._client.test_connection()
@@ -96,7 +105,13 @@ class JenkinsProvider:
         }
 
     def trigger_build(self, resource_id: str, params: dict[str, Any]) -> ProviderExecution:
-        parameters = {
+        try:
+            timeout_seconds = int(params.get("timeout_seconds", 7200))
+        except (TypeError, ValueError) as exc:
+            raise ProviderError("Jenkins 执行超时必须是整数") from exc
+        if not 60 <= timeout_seconds <= MAX_EXECUTION_TIMEOUT_SECONDS:
+            raise ProviderError("Jenkins 执行超时必须在 60 到 10800 秒之间")
+        system_parameters = {
             "BRANCH_NAME": params.get("branch", ""),
             "TEST_ENV": params.get("environment_name", ""),
             "PYTEST_ARGS": params.get("pytest_args", ""),
@@ -104,7 +119,7 @@ class JenkinsProvider:
             "TEST_SCOPE": params.get("test_scope", ""),
             "REPOSITORY_URL": params.get("repository_url", ""),
             "REPOSITORY_ID": params.get("repository_id", ""),
-            "BUILD_TIMEOUT_MINUTES": str(min(max((int(params.get("timeout_seconds", 7200)) + 59) // 60, 1), 180)),
+            "BUILD_TIMEOUT_MINUTES": str((timeout_seconds + 59) // 60),
             "AUTOMATION_EXECUTION_ID": str(params.get("execution_id", "")),
             "AUTOMATION_PROJECT_ID": str(params.get("automation_project_id", "")),
             "AUTOMATION_CALLBACK_KEY": str(params.get("callback_key", "")),
@@ -113,8 +128,20 @@ class JenkinsProvider:
             "AUTOMATION_PROVIDER": self.provider_type,
         }
         variables = params.get("variables")
-        if isinstance(variables, dict):
-            parameters.update(variables)
+        if variables is not None and not isinstance(variables, dict):
+            raise ProviderError("Jenkins 自定义参数必须是对象")
+        try:
+            custom_parameters = validate_pipeline_parameters(
+                variables,
+                reject_reserved=True,
+            )
+        except ValueError as exc:
+            raise ProviderError(str(exc)) from exc
+        custom_parameters = {
+            name: value for name, value in custom_parameters.items()
+            if not SENSITIVE_PARAMETER.search(name)
+        }
+        parameters = {**custom_parameters, **system_parameters}
         safe = self._client.validate_parameters(parameters)
         queue_id = self._client.trigger_build(resource_id, safe)
         return ProviderExecution(
@@ -125,8 +152,22 @@ class JenkinsProvider:
             external_status="QUEUED",
         )
 
-    def get_queue_item(self, queue_id: str) -> ProviderExecution | None:
-        payload = self._client.get_queue_item(queue_id)
+    def get_queue_item(self, queue_id: str, resource_id: str | None = None) -> ProviderExecution | None:
+        try:
+            payload = self._client.get_queue_item(queue_id)
+        except ProviderError as exc:
+            if exc.status_code != 404 or not resource_id:
+                raise
+            build_number = self._client.find_build_by_queue_id(resource_id, queue_id)
+            if build_number is None:
+                return ProviderExecution(
+                    provider_type=self.provider_type,
+                    queue_id=str(queue_id),
+                    status="PENDING",
+                    external_status="QUEUE_MISSING",
+                    error_message="Jenkins Queue 项不存在，尚未发现 Queue ID 匹配的 Build",
+                )
+            return self.get_build(resource_id, build_number=build_number)
         if payload.get("cancelled"):
             return ProviderExecution(
                 provider_type=self.provider_type,
@@ -180,7 +221,7 @@ class JenkinsProvider:
         status = {
             "SUCCESS": "SUCCESS",
             "FAILURE": "FAILED",
-            "ABORTED": "CANCELLED",
+            "ABORTED": "FAILED",
             "UNSTABLE": "FAILED",
         }.get(raw_status, "RUNNING" if is_building else "FAILED")
         timestamp = self._millis(payload.get("timestamp"))
@@ -198,6 +239,7 @@ class JenkinsProvider:
         return ProviderExecution(
             provider_type=self.provider_type,
             external_run_id=str(number),
+            queue_id=str(payload.get("queueId")) if payload.get("queueId") is not None else None,
             build_number=number,
             build_url=str(payload.get("url") or "") or None,
             status=status,
@@ -255,12 +297,14 @@ class JenkinsProvider:
         return self._client.get_build(resource_id, number).get("url")
 
     def list_runs(self, resource_id: str, *, per_page: int = 10) -> list[ProviderExecution]:
-        job = self._client.get_item(resource_id)
-        builds = job.get("builds") or []
+        builds = self._client.list_recent_builds(resource_id, limit=min(max(per_page, 1), 100))
         result = []
-        for item in builds[: min(max(per_page, 1), 50)]:
+        for item in builds:
             if isinstance(item, dict) and item.get("number") is not None:
-                result.append(self.get_build(resource_id, build_number=int(item["number"])))
+                try:
+                    result.append(self.get_build(resource_id, build_number=int(item["number"])))
+                except (TypeError, ValueError) as exc:
+                    raise ProviderError("Jenkins Build 列表返回了无效编号") from exc
         return result
 
     @staticmethod

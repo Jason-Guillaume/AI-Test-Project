@@ -171,7 +171,7 @@ export function ConsoleAutomationIntegrationPage() {
           <Form.Item name="callback_secret" label="回调密钥" rules={!editing ? [{ required: true, min: 8 }] : []}>
             <Input.Password placeholder={editing?.callback_secret_configured ? '已配置；留空保持原值' : ''} autoComplete="new-password" />
           </Form.Item>
-          <Form.Item name="default_timeout_seconds" label="默认超时（秒）"><InputNumber min={60} max={86400} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="default_timeout_seconds" label="默认超时（秒，最多 10800）"><InputNumber min={60} max={10800} style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="enabled" label="启用接入" valuePropName="checked"><Switch /></Form.Item>
         </Form>
       </Modal>

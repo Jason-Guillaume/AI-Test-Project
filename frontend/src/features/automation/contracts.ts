@@ -61,6 +61,8 @@ export interface AutomationExecution {
   external_run_url: string;
   trigger_source: string;
   status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'TIMEOUT';
+  stop_requested: boolean;
+  stop_reason: 'CANCELLED' | 'TIMEOUT' | null;
   branch: string;
   environment_name: string;
   pytest_args: string;

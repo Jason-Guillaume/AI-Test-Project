@@ -33,9 +33,13 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def signed_headers(secret: str, callback_key: str, idempotency_key: str, report: bytes, metadata: str) -> dict[str, str]:
+def signed_headers(
+    secret: str, callback_key: str, idempotency_key: str, report: bytes, metadata: str,
+    *, report_sha256: str | None = None,
+) -> dict[str, str]:
     timestamp = str(int(time.time()))
-    canonical = "\n".join((timestamp, callback_key, idempotency_key, sha(report), sha(metadata.encode("utf-8"))))
+    report_digest = report_sha256 or sha(report)
+    canonical = "\n".join((timestamp, callback_key, idempotency_key, report_digest, sha(metadata.encode("utf-8"))))
     signature = hmac.new(secret.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
     return {
         "X-Automation-Timestamp": timestamp,
@@ -144,7 +148,10 @@ def _multipart(fields: dict[str, str], files: list[tuple[str, Path]]) -> tuple[b
     for field, path in files:
         if not path.is_file():
             continue
-        data = path.read_bytes()
+        if field == "log" and path.stat().st_size > MAX_LOG_BYTES:
+            data = _read_tail(path, MAX_LOG_BYTES)
+        else:
+            data = path.read_bytes()
         total += len(data)
         limit = MAX_LOG_BYTES if field == "log" else MAX_UPLOAD_BYTES
         if len(data) > limit or total > MAX_UPLOAD_BYTES:
@@ -173,6 +180,49 @@ def _allure_stats(report_dir: Path) -> dict[str, int]:
         return {}
 
 
+def _read_tail(path: Path, limit: int) -> bytes:
+    """Read a bounded log tail, including when Jenkins produced a very large file."""
+    with path.open("rb") as stream:
+        stream.seek(0, os.SEEK_END)
+        stream.seek(max(0, stream.tell() - limit))
+        return stream.read(limit)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _valid_report_archive(path: Path) -> bool:
+    """Only attach a generated Allure site when the archive has its root entry point."""
+    try:
+        if not path.is_file() or path.stat().st_size > MAX_UPLOAD_BYTES:
+            return False
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+            return len(members) <= 20_000 and any(member.filename == "index.html" for member in members)
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+
+def normalize_status(automation_status: str, jenkins_result: str) -> str:
+    """Keep timeout/cancel intent explicit; an unknown Jenkins ABORTED is a failure."""
+    requested = automation_status.strip().upper()
+    result = jenkins_result.strip().upper()
+    if requested in {"CANCELLED", "TIMEOUT", "FAILED", "FAILURE", "UNSTABLE", "ABORTED"}:
+        return "FAILED" if requested in {"FAILURE", "UNSTABLE", "ABORTED"} else requested
+    if result in {"FAILURE", "UNSTABLE", "ABORTED"}:
+        return "FAILED"
+    if result == "SUCCESS":
+        return "SUCCESS"
+    if requested == "SUCCESS":
+        return "SUCCESS"
+    return "FAILED"
+
+
 def upload() -> int:
     callback_url, callback_key, secret, project_id = callback_settings()
     execution_id = os.environ.get("AUTOMATION_EXECUTION_ID", "").strip()
@@ -184,6 +234,7 @@ def upload() -> int:
     report_dir = Path(os.environ.get("AUTOMATION_REPORT_DIR", "allure-report"))
     started_ms = int(os.environ.get("AUTOMATION_START_MS", "0") or 0)
     duration = max(0, int(time.time() * 1000) - started_ms) if started_ms else 0
+    jenkins_result = os.environ.get("JENKINS_RESULT", "").strip().upper()
     metadata_obj = {
         "execution_id": int(execution_id),
         "automation_project_id": int(project_id),
@@ -192,24 +243,33 @@ def upload() -> int:
         "provider_type": "JENKINS",
         "build_number": int(os.environ["BUILD_NUMBER"]) if os.environ.get("BUILD_NUMBER", "").isdigit() else None,
         "build_url": os.environ.get("BUILD_URL", ""),
-        "status": os.environ.get("AUTOMATION_STATUS", "FAILURE"),
+        "status": normalize_status(os.environ.get("AUTOMATION_STATUS", ""), jenkins_result),
+        "jenkins_result": jenkins_result,
         "branch": os.environ.get("BRANCH_NAME", os.environ.get("GIT_BRANCH", "")),
         "environment": os.environ.get("TEST_ENV", ""),
         "git_commit": os.environ.get("GIT_COMMIT", ""),
         "duration_ms": duration,
         "started_at_ms": started_ms or None,
         "stats": _allure_stats(report_dir),
-        "log_excerpt": log_path.read_text(encoding="utf-8", errors="replace")[-20_000:] if log_path.is_file() else "",
+        "log_excerpt": _read_tail(log_path, 20_000).decode("utf-8", errors="replace") if log_path.is_file() else "",
     }
     metadata = json.dumps(metadata_obj, ensure_ascii=False, separators=(",", ":"))
     job_scope = hashlib.sha256(os.environ.get("JOB_NAME", "job").encode()).hexdigest()[:20]
     idempotency = f"jenkins:{job_scope}:{os.environ.get('BUILD_NUMBER', execution_id)}"
     fields = {"metadata": metadata}
-    files = [("report", report_path), ("results", results_path), ("log", log_path)]
+    report_available = _valid_report_archive(report_path)
+    if report_path.is_file() and not report_available:
+        print("Allure HTML archive is incomplete or too large; uploading Results, logs, and execution metadata only.")
+    files = ([ ("report", report_path) ] if report_available else []) + [
+        ("results", results_path), ("log", log_path),
+    ]
 
     def make_request():
         body, content_type = _multipart(fields, files)
-        headers = signed_headers(secret, callback_key, idempotency, report_path.read_bytes() if report_path.is_file() else b"", metadata)
+        report_digest = _file_sha256(report_path) if report_available else sha(b"")
+        headers = signed_headers(
+            secret, callback_key, idempotency, b"", metadata, report_sha256=report_digest,
+        )
         headers["Content-Type"] = content_type
         headers["Content-Length"] = str(len(body))
         return urllib.request.Request(callback_url, data=body, headers=headers, method="POST")

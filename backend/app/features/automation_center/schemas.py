@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.features.automation_center.validation import validate_pipeline_parameters
+
 Deployment = Literal["central", "region"]
 ProviderType = Literal["YUNXIAO", "JENKINS"]
 NotifyCondition = Literal["ALWAYS", "ONLY_FAILED", "NEVER"]
@@ -62,7 +64,7 @@ class IntegrationCreate(BaseModel):
     allow_private_network: bool = False
     enabled: bool = True
     callback_secret: str = Field(min_length=8, max_length=200)
-    default_timeout_seconds: int = Field(3600, ge=60, le=86400)
+    default_timeout_seconds: int = Field(3600, ge=60, le=10800)
 
     @field_validator("api_base_url")
     @classmethod
@@ -107,7 +109,7 @@ class IntegrationUpdate(BaseModel):
     allow_private_network: bool | None = None
     enabled: bool | None = None
     callback_secret: str | None = Field(None, max_length=200)
-    default_timeout_seconds: int | None = Field(None, ge=60, le=86400)
+    default_timeout_seconds: int | None = Field(None, ge=60, le=10800)
 
     @field_validator("api_base_url")
     @classmethod
@@ -208,6 +210,7 @@ class AutomationProjectCreate(BaseModel):
     """创建自动化项目并绑定一条流水线。"""
 
     integration_config_id: int
+    provider_type: ProviderType | None = None
     name: str = Field(min_length=1, max_length=120)
     description: str = Field("", max_length=500)
     repository_url: str = Field("", max_length=500)
@@ -220,7 +223,7 @@ class AutomationProjectCreate(BaseModel):
     test_tags: str = Field("", max_length=300)
     test_scope: str = Field("", max_length=500)
     pipeline_params: dict[str, str] = Field(default_factory=dict)
-    timeout_seconds: int = Field(3600, ge=60, le=86400)
+    timeout_seconds: int = Field(3600, ge=60, le=10800)
     notification_channel_id: int | None = None
     notify_condition: NotifyCondition = "ALWAYS"
 
@@ -230,11 +233,18 @@ class AutomationProjectCreate(BaseModel):
         """流水线 ID 会进入云效 URL。"""
         return _validate_resource_path(value)
 
+    @model_validator(mode="after")
+    def jenkins_parameters_safe(self):
+        if self.provider_type == "JENKINS":
+            validate_pipeline_parameters(self.pipeline_params, reject_reserved=True)
+        return self
+
 
 class AutomationProjectUpdate(BaseModel):
     """更新自动化项目。未传字段保持不变。"""
 
     name: str | None = Field(None, min_length=1, max_length=120)
+    provider_type: ProviderType | None = None
     description: str | None = Field(None, max_length=500)
     repository_url: str | None = Field(None, max_length=500)
     repository_id: str | None = Field(None, max_length=64)
@@ -246,12 +256,18 @@ class AutomationProjectUpdate(BaseModel):
     test_tags: str | None = Field(None, max_length=300)
     test_scope: str | None = Field(None, max_length=500)
     pipeline_params: dict[str, str] | None = None
-    timeout_seconds: int | None = Field(None, ge=60, le=86400)
+    timeout_seconds: int | None = Field(None, ge=60, le=10800)
     notification_channel_id: int | None = None
     clear_notification_channel: bool = False
     notify_condition: NotifyCondition | None = None
     enabled: bool | None = None
     integration_config_id: int | None = None
+
+    @model_validator(mode="after")
+    def jenkins_parameters_safe(self):
+        if self.provider_type == "JENKINS" and self.pipeline_params is not None:
+            validate_pipeline_parameters(self.pipeline_params, reject_reserved=True)
+        return self
 
 
 class AutomationProjectResponse(BaseModel):
@@ -329,6 +345,8 @@ class ExecutionResponse(BaseModel):
     test_scope: str
     git_commit: str
     external_status: str
+    stop_requested: bool = False
+    stop_reason: Literal["CANCELLED", "TIMEOUT"] | None = None
     log_excerpt: str
     error_message: str
     started_at: datetime | None

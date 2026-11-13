@@ -42,6 +42,7 @@ class JenkinsClient:
             timeout=httpx.Timeout(timeout_seconds, connect=min(timeout_seconds, 5)),
             follow_redirects=False,
             trust_env=False,
+            verify=True,
             headers={"Accept": "application/json"},
         )
         self._owns_client = client is None
@@ -107,8 +108,31 @@ class JenkinsClient:
     def get_item(self, job_path: str) -> dict:
         path = self._job_url(job_path)
         return self._get_json(f"{path}/api/json", params={
-            "tree": "name,url,_class,color,buildable,concurrentBuild,property[parameterDefinitions[name,type,defaultParameterValue[value]]],lastBuild[number,url,result,building],builds[number,url]",
+            "tree": "name,url,_class,color,buildable,concurrentBuild,property[parameterDefinitions[name,type,defaultParameterValue[value]]],lastBuild[number,url,result,building]",
         })
+
+    def find_build_by_queue_id(self, job_path: str, queue_id: str, *, limit: int = 50) -> int | None:
+        """Recover a queue item only when a recent build reports the exact Queue ID."""
+        safe_queue_id = self._safe_number(queue_id, "Queue ID")
+        for item in self.list_recent_builds(job_path, limit=limit):
+            if str(item.get("queueId")) != safe_queue_id:
+                continue
+            try:
+                return int(item["number"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ProviderError("Jenkins Build 列表返回了无效编号") from exc
+        return None
+
+    def list_recent_builds(self, job_path: str, *, limit: int = 10) -> list[dict]:
+        """Read only a bounded number of build summaries from one Job."""
+        if not 1 <= limit <= 100:
+            raise ProviderError("Jenkins Build 搜索范围无效")
+        path = self._job_url(job_path)
+        payload = self._get_json(
+            f"{path}/api/json", params={"tree": f"builds[number,queueId,url]{{0,{limit}}}"},
+        )
+        builds = payload.get("builds")
+        return [item for item in builds if isinstance(item, dict)] if isinstance(builds, list) else []
 
     def list_items(self, folder_path: str = "") -> list[dict]:
         if folder_path.strip("/"):
@@ -154,14 +178,13 @@ class JenkinsClient:
     def cancel_queue_item(self, queue_id: str) -> bool:
         safe_id = self._safe_number(queue_id, "Queue ID")
         self._post(f"/queue/cancelItem?id={safe_id}")
-        item = self.get_queue_item(safe_id)
-        return bool(item.get("cancelled"))
+        return True
 
     def get_build(self, job_path: str, build_number: int) -> dict:
         number = self._safe_number(build_number, "Build Number")
         path = f"{self._job_url(job_path)}/{number}/api/json"
         return self._get_json(path, params={
-            "tree": "number,url,building,result,timestamp,duration,estimatedDuration,description,displayName,changeSet[items[commitId]],actions[parameters[name,value]]",
+            "tree": "number,queueId,url,building,result,timestamp,duration,estimatedDuration,description,displayName,changeSet[items[commitId]],actions[parameters[name,value]]",
         })
 
     def stop_build(self, job_path: str, build_number: int) -> bool:
@@ -169,17 +192,18 @@ class JenkinsClient:
         path = f"{self._job_url(job_path)}/{number}"
         build = self._get_json(f"{path}/api/json", params={"tree": "building,result"})
         if not build.get("building"):
-            return False
+            return True
         self._post(f"{path}/stop")
-        confirmed = self._get_json(f"{path}/api/json", params={"tree": "building,result"})
-        return not bool(confirmed.get("building")) or confirmed.get("result") == "ABORTED"
+        return True
 
     def get_console_log(self, job_path: str, build_number: int, *, max_bytes: int = 200_000) -> str:
         number = self._safe_number(build_number, "Build Number")
         if not 1 <= max_bytes <= 1_000_000:
             raise ProviderError("Console 日志长度限制无效")
-        response = self._request("GET", f"{self._job_url(job_path)}/{number}/consoleText")
-        body = response.content[-max_bytes:]
+        response = self._request(
+            "GET", f"{self._job_url(job_path)}/{number}/consoleText", tail_bytes=max_bytes,
+        )
+        body = response.content
         text = body.decode("utf-8", errors="replace")
         basic = base64.b64encode(f"{self._username}:{self._api_token}".encode()).decode()
         return text.replace(self._api_token, "***").replace(basic, "***")
@@ -209,17 +233,37 @@ class JenkinsClient:
             self._raise_status(response)
         return response
 
-    def _request(self, method: str, path: str, *, params=None, data=None, headers=None, allow_forbidden=False):
+    def _request(
+        self, method: str, path: str, *, params=None, data=None, headers=None,
+        allow_forbidden=False, tail_bytes: int | None = None,
+    ):
         self._validate_destination()
         if path.startswith("http://") or path.startswith("https://") or path.startswith("//"):
             raise ProviderError("Jenkins API 路径无效")
         url = urljoin(self.base_url + "/", path.lstrip("/"))
         try:
-            response = self._client.request(method, url, params=params, data=data, headers=headers)
+            if tail_bytes is None:
+                response = self._client.request(method, url, params=params, data=data, headers=headers)
+            else:
+                tail = bytearray()
+                with self._client.stream(method, url, params=params, data=data, headers=headers) as streamed:
+                    self._check_response(method, streamed, url, allow_forbidden=allow_forbidden)
+                    for chunk in streamed.iter_bytes():
+                        tail.extend(chunk)
+                        if len(tail) > tail_bytes:
+                            del tail[: len(tail) - tail_bytes]
+                    response = httpx.Response(
+                        streamed.status_code, headers=streamed.headers,
+                        content=bytes(tail), request=streamed.request,
+                    )
         except httpx.TimeoutException as exc:
             raise ProviderError("Jenkins 请求超时") from exc
         except httpx.RequestError as exc:
             raise ProviderError("无法连接 Jenkins") from exc
+        self._check_response(method, response, url, allow_forbidden=allow_forbidden)
+        return response
+
+    def _check_response(self, method: str, response: httpx.Response, url: str, *, allow_forbidden: bool) -> None:
         if response.is_redirect:
             location = response.headers.get("Location", "")
             target = urlsplit(urljoin(str(response.url), location))
@@ -230,7 +274,6 @@ class JenkinsClient:
                 raise ProviderError("Jenkins 查询请求发生重定向")
         if response.status_code >= 400 and not (allow_forbidden and response.status_code == 403):
             self._raise_status(response)
-        return response
 
     def _validate_destination(self) -> None:
         parsed = urlsplit(self.base_url)
@@ -268,7 +311,7 @@ class JenkinsClient:
             if not isinstance(name, str) or not _PARAMETER.fullmatch(name):
                 raise ProviderError("Jenkins 构建参数名不合法")
             text = str(value)
-            if len(text) > 2000 or "\x00" in text:
+            if len(text) > 2000 or any(ord(char) < 32 or ord(char) == 127 for char in text):
                 raise ProviderError(f"Jenkins 构建参数 {name} 超过长度限制或包含非法字符")
             clean[name] = text
         return clean

@@ -71,27 +71,40 @@ def build_command(root: Path, env: dict[str, str]) -> list[str]:
 
 def main() -> int:
     root = Path.cwd().resolve()
+    log_path = root / "run.log"
     try:
         command = build_command(root, dict(os.environ))
     except ValueError as exc:
-        print(f"自动化测试参数无效：{exc}", file=sys.stderr)
+        message = f"自动化测试参数无效：{exc}\n"
+        print(message, end="", file=sys.stderr)
+        log_path.write_text(message, encoding="utf-8")
         return 2
     print("运行 pytest（参数由平台白名单校验）")
-    process = subprocess.Popen(
-        command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        env=os.environ.copy(),
-    )
-    tail = bytearray()
-    assert process.stdout is not None
-    while chunk := process.stdout.read(8192):
-        sys.stdout.buffer.write(chunk)
-        sys.stdout.buffer.flush()
-        tail.extend(chunk)
-        if len(tail) > 1_900_000:
-            del tail[: len(tail) - 1_900_000]
-    code = process.wait()
-    Path("run.log").write_bytes(bytes(tail))
-    return code
+    try:
+        with log_path.open("wb") as log_file:
+            try:
+                process = subprocess.Popen(
+                    command, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    env=os.environ.copy(),
+                )
+            except OSError as exc:
+                message = f"无法启动 pytest：{type(exc).__name__}: {exc}\n".encode("utf-8", errors="replace")
+                log_file.write(message)
+                log_file.flush()
+                sys.stdout.buffer.write(message)
+                sys.stdout.buffer.flush()
+                return 127
+            assert process.stdout is not None
+            read_chunk = getattr(process.stdout, "read1", process.stdout.read)
+            while chunk := read_chunk(8192):
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+                log_file.write(chunk)
+                log_file.flush()
+            return process.wait()
+    except OSError as exc:
+        print(f"执行日志写入失败：{type(exc).__name__}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

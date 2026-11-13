@@ -13,10 +13,11 @@ import logging
 import re
 import secrets
 import shutil
+from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Iterator
 
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,10 @@ from app.features.automation_center.services.stats import (
     map_pipeline_status,
     pass_rate,
 )
+from app.features.automation_center.validation import (
+    SENSITIVE_PARAMETER,
+    validate_pipeline_parameters,
+)
 from app.platform.notifications.models.channel import NotificationChannel
 from app.platform.notifications.services.feishu_service import FeishuNotificationService
 from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
@@ -76,7 +81,7 @@ from app.core.security.roles import PROJECT_ROLE_EDITOR, has_project_role, proje
 
 logger = logging.getLogger(__name__)
 _ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
-_SECRET_KEY = re.compile(r"(?i)secret|token|password|webhook")
+_SECRET_KEY = SENSITIVE_PARAMETER
 _SECRET_VALUE = re.compile(r"(?i)(secret|token|password|webhook_url)\s*[:=]\s*\S+")
 _PAT = re.compile(r"pt-[A-Za-z0-9_*\-]{6,}")
 
@@ -266,7 +271,8 @@ class AutomationCenterService:
         """通过绑定的 Provider 验证凭据和流水线标识。"""
         row = self._config_for_write(db, config_id, actor)
         try:
-            result = self._provider(row).test_connection(pipeline_id)
+            with self._provider_session(row) as provider:
+                result = provider.test_connection(pipeline_id)
         except ProviderError as exc:
             raise bad_request(str(exc)) from exc
         return ConnectionTestResponse(
@@ -281,7 +287,8 @@ class AutomationCenterService:
         if config.provider_type != "JENKINS":
             raise bad_request("此接入配置不是 Jenkins")
         try:
-            items = self._provider(config).list_items(folder_path)
+            with self._provider_session(config) as provider:
+                items = provider.list_items(folder_path)
         except ProviderError as exc:
             raise bad_request(str(exc)) from exc
         return JenkinsJobListResponse(folder_path=folder_path.strip("/"), items=items)
@@ -294,7 +301,8 @@ class AutomationCenterService:
         if config.provider_type != "JENKINS":
             raise bad_request("此接入配置不是 Jenkins")
         try:
-            result = self._provider(config).inspect_job(job_path)
+            with self._provider_session(config) as provider:
+                result = provider.inspect_job(job_path)
         except ProviderError as exc:
             raise bad_request(str(exc)) from exc
         return JenkinsJobInspectResponse(**result)
@@ -322,7 +330,10 @@ class AutomationCenterService:
         """创建自动化项目并绑定默认流水线。"""
         require_writable_project(db, project_id, actor)
         config = self._owned_config(db, project_id, body.integration_config_id)
+        if body.provider_type is not None and body.provider_type != config.provider_type:
+            raise bad_request("自动化项目的执行平台与 CI 接入配置不一致")
         self._validate_resource_id(config.provider_type, body.pipeline_id)
+        pipeline_params = self._validated_pipeline_params(config.provider_type, body.pipeline_params)
         self._ensure_channel(db, project_id, body.notification_channel_id)
         row = AutomationProject(
             project_id=project_id,
@@ -336,7 +347,7 @@ class AutomationCenterService:
             pytest_args=body.pytest_args.strip(),
             test_tags=body.test_tags.strip(),
             test_scope=body.test_scope.strip(),
-            pipeline_params=self._public_params(body.pipeline_params),
+            pipeline_params=pipeline_params,
             timeout_seconds=body.timeout_seconds,
             notification_channel_id=body.notification_channel_id,
             notify_condition=body.notify_condition,
@@ -369,6 +380,9 @@ class AutomationCenterService:
         bound_config = db.get(AutomationIntegrationConfig, row.integration_config_id)
         if bound_config is None:
             raise not_found("接入配置不存在")
+        if body.provider_type is not None and body.provider_type != bound_config.provider_type:
+            raise bad_request("自动化项目的执行平台与 CI 接入配置不一致")
+        self._validated_pipeline_params(bound_config.provider_type, row.pipeline_params)
         bound_pipeline = self._default_pipeline(db, row)
         self._validate_resource_id(
             bound_config.provider_type,
@@ -382,7 +396,7 @@ class AutomationCenterService:
             if value is not None:
                 setattr(row, field, value.strip())
         if body.pipeline_params is not None:
-            row.pipeline_params = self._public_params(body.pipeline_params)
+            row.pipeline_params = self._validated_pipeline_params(bound_config.provider_type, body.pipeline_params)
         if body.timeout_seconds is not None:
             row.timeout_seconds = body.timeout_seconds
         if body.notify_condition is not None:
@@ -469,7 +483,8 @@ class AutomationCenterService:
         params = self._execution_params(config, project, pipeline, execution)
         execution.run_params = params
         try:
-            result = self._provider(config).trigger_build(pipeline.pipeline_id, params)
+            with self._provider_session(config) as provider:
+                result = provider.trigger_build(pipeline.pipeline_id, params)
             if not result.external_run_id and not result.queue_id:
                 raise ProviderError("CI 平台未返回运行实例 ID")
         except ProviderError as exc:
@@ -491,7 +506,23 @@ class AutomationCenterService:
         execution.finished_at = result.finished_at
         execution.duration_ms = result.duration_ms
         execution.timeout_at = datetime.now() + timedelta(seconds=project.timeout_seconds)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if config.provider_type == "JENKINS" and result.queue_id:
+                identities = [AutomationExecution.external_queue_id == result.queue_id]
+                if result.build_number is not None:
+                    identities.append(and_(
+                        AutomationExecution.external_pipeline_id == pipeline.pipeline_id,
+                        AutomationExecution.external_build_number == result.build_number,
+                    ))
+                existing = db.query(AutomationExecution).filter_by(
+                    integration_config_id=config.id, provider_type="JENKINS",
+                ).filter(or_(*identities)).first()
+                if existing is not None:
+                    return self._execution_response(db, existing)
+            raise
         db.refresh(execution)
         return self._execution_response(db, execution)
 
@@ -542,9 +573,10 @@ class AutomationCenterService:
         if row.provider_type == "JENKINS" and row.external_build_number is not None:
             try:
                 config, resource_id = self._execution_provider_args(db, row)
-                content = self._provider(config).get_console_log(
-                    resource_id, row.pipeline_run_id, row.external_build_number, max_bytes=200_000,
-                ) or content
+                with self._provider_session(config) as provider:
+                    content = provider.get_console_log(
+                        resource_id, row.pipeline_run_id, row.external_build_number, max_bytes=200_000,
+                    ) or content
                 callback_secret = decrypt_secret(config.callback_secret_encrypted)
                 if callback_secret:
                     content = content.replace(callback_secret, "***")
@@ -558,19 +590,51 @@ class AutomationCenterService:
         )
 
     def cancel(self, db: Session, execution_id: int, actor: User) -> ExecutionResponse:
-        """请求 Provider 终止运行；未确认时不在本地伪装成已取消。"""
+        """Request an idempotent stop; Jenkins cancellation is final only after polling confirms it."""
         row = self._execution_for(db, execution_id, actor, write=True)
+        if row.status in TERMINAL_STATUSES:
+            return self._execution_response(db, row)
         if row.status not in {"PENDING", "RUNNING"}:
             raise bad_request("当前状态不能取消")
+        if row.provider_type == "JENKINS":
+            if row.stop_requested_at is not None:
+                return self._execution_response(db, row)
+            if not (row.external_queue_id or row.external_build_number):
+                self._transition(row, "CANCELLED")
+                row.external_status = "NO_EXTERNAL_RUN"
+                db.commit()
+                self._notify(db, row.id)
+                db.refresh(row)
+                return self._execution_response(db, row)
+            row.stop_reason = "CANCELLED"
+            row.stop_requested_at = datetime.now()
+            row.external_status = "STOP_REQUESTED"
+            db.commit()
+            try:
+                config, resource_id = self._execution_provider_args(db, row)
+                with self._provider_session(config) as provider:
+                    provider.stop_build(
+                        resource_id, row.pipeline_run_id,
+                        queue_id=row.external_queue_id,
+                        build_number=row.external_build_number,
+                    )
+            except ProviderError as exc:
+                row = db.get(AutomationExecution, execution_id)
+                if row is not None:
+                    row.error_message = str(exc)[:500]
+                    db.commit()
+            db.refresh(row)
+            return self._execution_response(db, row)
         if row.pipeline_run_id or row.external_queue_id or row.external_build_number:
             config, resource_id = self._execution_provider_args(db, row)
             try:
-                stopped = self._provider(config).stop_build(
-                    resource_id,
-                    row.pipeline_run_id,
-                    queue_id=row.external_queue_id,
-                    build_number=row.external_build_number,
-                )
+                with self._provider_session(config) as provider:
+                    stopped = provider.stop_build(
+                        resource_id,
+                        row.pipeline_run_id,
+                        queue_id=row.external_queue_id,
+                        build_number=row.external_build_number,
+                    )
             except ProviderError as exc:
                 raise bad_request(str(exc)) from exc
             if not stopped:
@@ -806,9 +870,14 @@ class AutomationCenterService:
 
     def poll(self, db: Session) -> None:
         """轮询运行中的实例，并通过支持发现的 Provider 导入外部运行。"""
+        active_status = AutomationExecution.status.in_(["PENDING", "RUNNING"])
+        stopping_terminal = and_(
+            AutomationExecution.status.in_(list(TERMINAL_STATUSES)),
+            AutomationExecution.stop_requested_at.isnot(None),
+        )
         active = (
             db.query(AutomationExecution.id)
-            .filter(AutomationExecution.status.in_(["PENDING", "RUNNING"]))
+            .filter(or_(active_status, stopping_terminal))
             .filter(or_(
                 AutomationExecution.pipeline_run_id.isnot(None),
                 AutomationExecution.external_queue_id.isnot(None),
@@ -840,12 +909,14 @@ class AutomationCenterService:
             self._notify(db, execution_id)
 
     def _sync_one(self, db: Session, execution_id: int, *, force: bool = False) -> None:
-        """查询 Provider 并更新一条执行。网络调用放在数据库提交之后。"""
+        """Sync one run; Jenkins stop requests stay pending until a terminal Build is observed."""
         execution = (
             db.query(AutomationExecution).filter_by(id=execution_id)
             .with_for_update(skip_locked=True).one_or_none()
         )
-        if execution is None or execution.status in TERMINAL_STATUSES:
+        if execution is None:
+            return
+        if execution.status in TERMINAL_STATUSES and execution.stop_requested_at is None:
             return
         if (
             not force and execution.last_sync_at is not None
@@ -855,47 +926,76 @@ class AutomationCenterService:
             return
         if not (execution.pipeline_run_id or execution.external_queue_id or execution.external_build_number):
             return
-        if execution.timeout_at and execution.timeout_at <= datetime.now():
+        if execution.status in {"PENDING", "RUNNING"} and execution.timeout_at and execution.timeout_at <= datetime.now():
             self._mark_timeout(db, execution)
             return
         config, resource_id = self._execution_provider_args(db, execution)
         execution.last_sync_at = datetime.now()
         db.commit()
         try:
-            provider = self._provider(config)
-            if execution.provider_type == "JENKINS":
-                if execution.external_build_number is None:
-                    queued = provider.get_queue_item(execution.external_queue_id)
-                    if queued is None:
+            with self._provider_session(config) as provider:
+                stop_error = None
+                if execution.provider_type == "JENKINS":
+                    if execution.stop_requested_at is not None:
+                        try:
+                            provider.stop_build(
+                                resource_id, execution.pipeline_run_id,
+                                queue_id=execution.external_queue_id,
+                                build_number=execution.external_build_number,
+                            )
+                        except ProviderError as exc:
+                            stop_error = str(exc)
+                    if execution.external_build_number is None:
+                        queued = provider.get_queue_item(execution.external_queue_id, resource_id)
+                        execution = db.get(AutomationExecution, execution_id)
+                        if execution is None:
+                            return
+                        execution.last_sync_at = datetime.now()
+                        if queued is None:
+                            db.commit()
+                            return
+                        if queued.external_status == "QUEUE_MISSING":
+                            execution.queue_missing_since = execution.queue_missing_since or datetime.now()
+                            execution.external_status = "QUEUE_MISSING"
+                            execution.error_message = (queued.error_message or "Jenkins Queue Item 不存在")[:500]
+                            if datetime.now() - execution.queue_missing_since >= timedelta(minutes=10):
+                                if execution.stop_reason != "TIMEOUT":
+                                    final_status = "CANCELLED" if execution.stop_reason == "CANCELLED" else "FAILED"
+                                    self._transition(execution, final_status)
+                                    execution.finished_at = execution.finished_at or datetime.now()
+                                    if final_status == "FAILED":
+                                        execution.error_message = (
+                                            "Jenkins Queue Item 不存在，且最近 Build 中没有匹配的 Queue ID"
+                                        )
+                                execution.stop_requested_at = None
+                            db.commit()
+                            if execution.status in TERMINAL_STATUSES:
+                                self._notify(db, execution.id)
+                            return
+                        execution.queue_missing_since = None
+                        execution.external_status = queued.external_status[:40]
+                        if queued.error_message:
+                            execution.error_message = queued.error_message[:500]
+                        if queued.status == "CANCELLED":
+                            final_status = "TIMEOUT" if execution.stop_reason == "TIMEOUT" else "CANCELLED"
+                            self._transition(execution, final_status)
+                            execution.stop_requested_at = None
+                            execution.finished_at = execution.finished_at or datetime.now()
+                            db.commit()
+                            self._notify(db, execution.id)
+                            return
+                        if queued.build_number is None:
+                            db.commit()
+                            return
+                        execution.external_build_number = queued.build_number
+                        execution.external_run_url = queued.build_url or ""
+                        execution.started_at = queued.started_at or datetime.now()
+                        if execution.status not in TERMINAL_STATUSES:
+                            execution.status = "RUNNING"
                         db.commit()
-                        return
-                    execution = db.get(AutomationExecution, execution_id)
-                    if execution is None:
-                        return
-                    execution.last_sync_at = datetime.now()
-                    execution.external_status = queued.external_status[:40]
-                    if queued.error_message:
-                        execution.error_message = queued.error_message[:500]
-                    if queued.status == "CANCELLED":
-                        self._transition(execution, "CANCELLED")
-                        execution.finished_at = execution.finished_at or datetime.now()
-                        db.commit()
-                        self._notify(db, execution.id)
-                        return
-                    if queued.build_number is None:
-                        db.commit()
-                        return
-                    execution.external_build_number = queued.build_number
-                    execution.external_run_url = queued.build_url or ""
-                    execution.started_at = queued.started_at or datetime.now()
-                    execution.status = "RUNNING"
-                    execution.external_status = "BUILDING"
-                    db.commit()
-                result = provider.get_build(
-                    resource_id, build_number=execution.external_build_number,
-                )
-            else:
-                result = provider.get_build(resource_id, external_run_id=execution.pipeline_run_id)
+                    result = provider.get_build(resource_id, build_number=execution.external_build_number)
+                else:
+                    result = provider.get_build(resource_id, external_run_id=execution.pipeline_run_id)
         except ProviderError as exc:
             execution = db.get(AutomationExecution, execution_id)
             if execution is not None:
@@ -914,6 +1014,8 @@ class AutomationCenterService:
             execution.duration_ms = result.duration_ms
         if result.error_message:
             execution.error_message = result.error_message[:500]
+        elif stop_error and result.status in {"PENDING", "RUNNING"}:
+            execution.error_message = stop_error[:500]
         if result.build_number is not None:
             execution.external_build_number = result.build_number
         if result.build_url:
@@ -932,6 +1034,11 @@ class AutomationCenterService:
                 if item.get("name") in {"TEST_ENV", "ENVIRONMENT"} and item.get("value"):
                     execution.environment_name = str(item["value"])[:100]
         execution.last_sync_at = datetime.now()
+        if execution.provider_type == "JENKINS" and result.external_status.upper() == "ABORTED":
+            mapped = execution.stop_reason if execution.stop_reason in {"CANCELLED", "TIMEOUT"} else "FAILED"
+        if mapped in TERMINAL_STATUSES:
+            execution.stop_requested_at = None
+            execution.finished_at = execution.finished_at or datetime.now()
         if execution.status != "FAILED" or mapped != "SUCCESS":
             self._transition(execution, mapped)
         db.commit()
@@ -939,20 +1046,27 @@ class AutomationCenterService:
             self._notify(db, execution.id)
 
     def _mark_timeout(self, db: Session, execution: AutomationExecution) -> None:
-        """本地超时后尝试终止外部运行，并把执行记为超时。"""
-        if execution.pipeline_run_id or execution.external_queue_id or execution.external_build_number:
-            try:
-                config, resource_id = self._execution_provider_args(db, execution)
-                self._provider(config).stop_build(
-                    resource_id, execution.pipeline_run_id,
-                    queue_id=execution.external_queue_id,
-                    build_number=execution.external_build_number,
-                )
-            except ProviderError:
-                logger.warning("超时后终止外部执行失败 execution=%s", execution.id)
+        """Mark timeout promptly and continue polling Jenkins until its Build stops."""
+        is_jenkins = execution.provider_type == "JENKINS"
+        if is_jenkins:
+            execution.stop_reason = "TIMEOUT"
+            execution.stop_requested_at = execution.stop_requested_at or datetime.now()
+            execution.external_status = "STOP_REQUESTED"
+            execution.error_message = "平台执行超时，正在请求 Jenkins 停止 Build"
         self._transition(execution, "TIMEOUT")
         execution.last_sync_at = datetime.now()
         db.commit()
+        if execution.pipeline_run_id or execution.external_queue_id or execution.external_build_number:
+            try:
+                config, resource_id = self._execution_provider_args(db, execution)
+                with self._provider_session(config) as provider:
+                    provider.stop_build(
+                        resource_id, execution.pipeline_run_id,
+                        queue_id=execution.external_queue_id,
+                        build_number=execution.external_build_number,
+                    )
+            except ProviderError:
+                logger.warning("超时后终止外部执行失败 execution=%s", execution.id)
         self._notify(db, execution.id)
 
     def _discover(self, db: Session) -> None:
@@ -966,7 +1080,8 @@ class AutomationCenterService:
             if config is None or pipeline is None or not config.enabled:
                 continue
             try:
-                runs = self._provider(config).list_runs(pipeline.pipeline_id, per_page=10)
+                with self._provider_session(config) as provider:
+                    runs = provider.list_runs(pipeline.pipeline_id, per_page=10)
             except ProviderError as exc:
                 logger.warning("读取外部运行列表失败 project=%s: %s", project.id, exc)
                 continue
@@ -976,6 +1091,7 @@ class AutomationCenterService:
             db.commit()
         except IntegrityError:
             db.rollback()
+            logger.warning("外部运行发现时遇到唯一标识冲突，已回滚本批次；下一轮会重试")
 
     def _import_remote_run(
         self, db: Session, project: AutomationProject, pipeline: AutomationPipeline, item: ProviderExecution,
@@ -987,11 +1103,64 @@ class AutomationCenterService:
             return
         if start < project.created_at or start < datetime.now() - timedelta(hours=24):
             return
-        exists = db.query(AutomationExecution.id).filter_by(
-            automation_project_id=project.id, pipeline_run_id=str(run_id),
-        ).first()
-        if exists:
-            return
+        if item.provider_type == "JENKINS" and item.build_number is not None:
+            build_match = db.query(AutomationExecution).filter(
+                AutomationExecution.provider_type == "JENKINS",
+                AutomationExecution.integration_config_id == project.integration_config_id,
+                AutomationExecution.external_pipeline_id == pipeline.pipeline_id,
+                AutomationExecution.external_build_number == item.build_number,
+            ).first()
+            queue_match = None
+            if item.queue_id:
+                queue_match = db.query(AutomationExecution).filter_by(
+                    provider_type="JENKINS", integration_config_id=project.integration_config_id,
+                    external_queue_id=item.queue_id,
+                ).first()
+            if build_match is not None and queue_match is not None and build_match.id != queue_match.id:
+                logger.error(
+                    "Jenkins Build/Queue identities point to different executions config=%s build=%s queue=%s",
+                    project.integration_config_id, item.build_number, item.queue_id,
+                )
+                return
+            exists = build_match or queue_match
+            if exists is not None:
+                try:
+                    with db.begin_nested():
+                        if exists.external_build_number is None:
+                            exists.external_build_number = item.build_number
+                        if exists.external_queue_id is None and item.queue_id:
+                            exists.external_queue_id = item.queue_id
+                        if item.build_url:
+                            exists.external_run_url = item.build_url[:1000]
+                        exists.external_status = (item.external_status or item.status)[:40]
+                        if exists.started_at is None and item.started_at is not None:
+                            exists.started_at = item.started_at
+                        if exists.status == "PENDING" and item.status == "RUNNING":
+                            exists.status = "RUNNING"
+                        if item.status in TERMINAL_STATUSES:
+                            final_status = item.status
+                            if item.provider_type == "JENKINS" and item.external_status.upper() == "ABORTED":
+                                final_status = (
+                                    exists.stop_reason
+                                    if exists.stop_reason in {"CANCELLED", "TIMEOUT"}
+                                    else "FAILED"
+                                )
+                            self._transition(exists, final_status)
+                            exists.finished_at = exists.finished_at or item.finished_at or datetime.now()
+                            exists.stop_requested_at = None
+                        db.flush()
+                except IntegrityError:
+                    logger.info(
+                        "忽略并发 Build/Queue identity 冲突 config=%s build=%s queue=%s",
+                        project.integration_config_id, item.build_number, item.queue_id,
+                    )
+                return
+        else:
+            exists = db.query(AutomationExecution.id).filter_by(
+                automation_project_id=project.id, pipeline_run_id=str(run_id),
+            ).first()
+            if exists:
+                return
         status = item.status
         execution = AutomationExecution(
             project_id=project.project_id,
@@ -1017,7 +1186,15 @@ class AutomationCenterService:
             duration_ms=item.duration_ms,
             notify_status="WAITING",
         )
-        db.add(execution)
+        try:
+            with db.begin_nested():
+                db.add(execution)
+                db.flush()
+        except IntegrityError:
+            logger.info(
+                "忽略并发重复导入的外部执行 project=%s provider=%s",
+                project.id, item.provider_type,
+            )
 
     # ---------------------------------------------------------------- 内部
 
@@ -1155,13 +1332,40 @@ class AutomationCenterService:
                 credential.base_url, build_url,
             ):
                 execution.external_run_url = build_url[:1000]
-        incoming = map_pipeline_status(str(metadata.get("status") or execution.external_status or "SUCCESS"))
+        requested_status = str(metadata.get("status") or execution.external_status or "").upper()
+        jenkins_result = str(metadata.get("jenkins_result") or "").upper()
+        if execution.provider_type == "JENKINS" and jenkins_result:
+            execution.external_status = jenkins_result[:40]
+            if jenkins_result == "ABORTED":
+                if execution.stop_reason in {"CANCELLED", "TIMEOUT"}:
+                    incoming = execution.stop_reason
+                elif requested_status in {"CANCELLED", "TIMEOUT"}:
+                    incoming = requested_status
+                else:
+                    incoming = "FAILED"
+            elif requested_status in {"CANCELLED", "TIMEOUT"}:
+                incoming = requested_status
+            elif requested_status in {"FAILED", "FAILURE", "UNSTABLE"}:
+                incoming = "FAILED"
+            elif jenkins_result in {"FAILURE", "UNSTABLE"}:
+                incoming = "FAILED"
+            elif jenkins_result == "SUCCESS":
+                incoming = "SUCCESS"
+            else:
+                incoming = map_pipeline_status(requested_status)
+            if jenkins_result in {"SUCCESS", "FAILURE", "UNSTABLE", "ABORTED"}:
+                execution.stop_requested_at = None
+        else:
+            incoming = map_pipeline_status(requested_status or "SUCCESS")
         failed = report.failed_cases if report else int((metadata.get("stats") or {}).get("failed") or 0)
         broken = report.broken_cases if report else int((metadata.get("stats") or {}).get("broken") or 0)
         self._transition(execution, apply_test_outcome(incoming, failed=failed, broken=broken))
-        execution.external_status = str(metadata.get("status") or incoming)[:40]
+        if not (execution.provider_type == "JENKINS" and jenkins_result):
+            execution.external_status = str(metadata.get("status") or incoming)[:40]
         if execution.started_at is None:
             execution.started_at = datetime.now()
+        if execution.status in TERMINAL_STATUSES:
+            execution.finished_at = execution.finished_at or datetime.now()
 
     @staticmethod
     def _trusted_jenkins_build_url(base_url: str, candidate: str) -> bool:
@@ -1285,6 +1489,7 @@ class AutomationCenterService:
         variables = self._public_params(project.pipeline_params)
         variables.update(self._public_params(pipeline.extra_params))
         if config.provider_type == "JENKINS":
+            variables = self._validated_pipeline_params(config.provider_type, variables)
             if not callback_url.startswith("https://"):
                 raise bad_request("Jenkins 回调要求 PUBLIC_APP_BASE_URL 配置为 HTTPS")
             self._validate_jenkins_run_options(execution)
@@ -1369,6 +1574,27 @@ class AutomationCenterService:
     def _provider(self, config: AutomationIntegrationConfig) -> AutomationProvider:
         """按配置选择 Provider；阶段 1 的既有记录默认走云效适配器。"""
         return provider_factory.get(getattr(config, "provider_type", "YUNXIAO"), config)
+
+    @contextmanager
+    def _provider_session(self, config: AutomationIntegrationConfig) -> Iterator[AutomationProvider]:
+        """Bound the Jenkins connection pool to one service operation."""
+        provider = self._provider(config)
+        try:
+            yield provider
+        finally:
+            close = getattr(provider, "close", None)
+            if callable(close):
+                close()
+
+    @classmethod
+    def _validated_pipeline_params(cls, provider_type: str, params: dict | None) -> dict[str, str]:
+        """Validate Jenkins custom parameters while preserving Yunxiao's old filtering."""
+        if provider_type != "JENKINS":
+            return cls._public_params(params)
+        try:
+            return cls._public_params(validate_pipeline_parameters(params, reject_reserved=True))
+        except ValueError as exc:
+            raise bad_request(str(exc)) from exc
 
     def _execution_provider_args(self, db, execution: AutomationExecution):
         """取出调用 Provider 所需的接入配置和外部 Job/流水线标识。"""
@@ -1566,7 +1792,8 @@ class AutomationCenterService:
             external_run_url=row.external_run_url, trigger_source=row.trigger_source, status=row.status,
             branch=row.branch, environment_name=row.environment_name, pytest_args=row.pytest_args,
             test_tags=row.test_tags, test_scope=row.test_scope, git_commit=row.git_commit,
-            external_status=row.external_status, log_excerpt=row.log_excerpt, error_message=row.error_message,
+            external_status=row.external_status, stop_requested=row.stop_requested_at is not None,
+            stop_reason=row.stop_reason, log_excerpt=row.log_excerpt, error_message=row.error_message,
             started_at=row.started_at, finished_at=row.finished_at, duration_ms=row.duration_ms,
             notify_status=row.notify_status, report_id=report.id if report else None, created_at=row.created_at,
         )

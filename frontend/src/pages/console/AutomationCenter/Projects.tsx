@@ -3,7 +3,8 @@ import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Tag, Typog
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { automationApi } from '@/features/automation/api/automation';
-import type { AutomationProject } from '@/features/automation/contracts';
+import type { AutomationProject, AutomationProviderType } from '@/features/automation/contracts';
+import { parseJenkinsCustomParameters } from '@/features/automation/jenkinsParameters';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageContainer } from '@/shared/ui/PageState';
@@ -12,6 +13,7 @@ import { ProjectRequired, StatusTag } from '@/pages/console/AutomationCenter/sha
 
 interface ProjectForm {
   integration_config_id: number;
+  provider_type?: AutomationProviderType;
   name: string;
   repository_url?: string;
   repository_id?: string;
@@ -22,6 +24,7 @@ interface ProjectForm {
   pytest_args?: string;
   test_tags?: string;
   test_scope?: string;
+  pipeline_params_json?: string;
   timeout_seconds?: number;
   notify_condition?: 'ALWAYS' | 'ONLY_FAILED' | 'NEVER';
   notification_channel_id?: number | null;
@@ -60,9 +63,16 @@ export function ConsoleAutomationProjectsPage() {
   useEffect(() => setFolderPath(''), [selectedConfigId]);
 
   const saveMutation = useMutation({
-    mutationFn: (values: ProjectForm) => editing
-      ? automationApi.updateProject(editing.id, values)
-      : automationApi.createProject(projectId!, values),
+    mutationFn: (values: ProjectForm) => {
+      const providerType = values.provider_type || selectedIntegration?.provider_type;
+      const { pipeline_params_json, ...rest } = values;
+      const payload = providerType === 'JENKINS'
+        ? { ...rest, provider_type: providerType, pipeline_params: parseJenkinsCustomParameters(pipeline_params_json || '{}') }
+        : rest;
+      return editing
+        ? automationApi.updateProject(editing.id, payload)
+        : automationApi.createProject(projectId!, payload);
+    },
     onSuccess: () => {
       message.success(editing ? '已更新' : '已创建');
       setOpen(false);
@@ -99,7 +109,7 @@ export function ConsoleAutomationProjectsPage() {
     setEditing(null);
     setFolderPath('');
     form.resetFields();
-    form.setFieldsValue({ default_branch: 'master', timeout_seconds: 3600, notify_condition: 'ALWAYS' });
+    form.setFieldsValue({ default_branch: 'master', timeout_seconds: 3600, notify_condition: 'ALWAYS', pipeline_params_json: '{}' });
     setOpen(true);
   };
   const openEdit = (row: AutomationProject) => {
@@ -107,6 +117,7 @@ export function ConsoleAutomationProjectsPage() {
     setFolderPath('');
     form.setFieldsValue({
       integration_config_id: row.integration_config_id,
+      provider_type: row.provider_type,
       name: row.name,
       repository_url: row.repository_url,
       repository_id: row.repository_id,
@@ -117,6 +128,7 @@ export function ConsoleAutomationProjectsPage() {
       pytest_args: row.pytest_args,
       test_tags: row.test_tags,
       test_scope: row.test_scope,
+      pipeline_params_json: JSON.stringify(row.pipeline_params || {}, null, 2),
       timeout_seconds: row.timeout_seconds,
       notify_condition: row.notify_condition,
       notification_channel_id: row.notification_channel_id,
@@ -171,8 +183,12 @@ export function ConsoleAutomationProjectsPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
+          <Form.Item name="provider_type" hidden><Input /></Form.Item>
           <Form.Item name="integration_config_id" label="CI 接入" rules={[{ required: true, message: '请选择接入配置' }]}>
-            <Select options={(integrations.data?.items || []).filter((item) => item.enabled).map((item) => ({ value: item.id, label: `${item.name} · ${item.provider_type === 'JENKINS' ? 'Jenkins' : '云效 Flow'}` }))} />
+            <Select
+              options={(integrations.data?.items || []).filter((item) => item.enabled).map((item) => ({ value: item.id, label: `${item.name} · ${item.provider_type === 'JENKINS' ? 'Jenkins' : '云效 Flow'}` }))}
+              onChange={(id: number) => form.setFieldValue('provider_type', integrations.data?.items.find((item) => item.id === id)?.provider_type)}
+            />
           </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请填写名称' }]}><Input /></Form.Item>
           <Form.Item name="repository_url" label="Codeup 仓库地址"><Input placeholder="https://codeup.aliyun.com/org/demo.git" /></Form.Item>
@@ -200,6 +216,18 @@ export function ConsoleAutomationProjectsPage() {
             <Button size="small" loading={inspectJob.isPending} disabled={!selectedConfigId || !selectedPipelineId} onClick={() => inspectJob.mutate()}>
               查询 Job 参数与执行能力
             </Button>
+            <Form.Item
+              name="pipeline_params_json"
+              label="自定义 Job 参数（JSON）"
+              extra="仅传递自定义参数；平台保留字段不可覆盖。Token、Secret、Password 等凭据字段由平台过滤，请使用 Jenkins Credentials。"
+              rules={[{
+                validator: async (_rule, value) => {
+                  if (value) parseJenkinsCustomParameters(value);
+                },
+              }]}
+            >
+              <Input.TextArea autoSize={{ minRows: 3, maxRows: 8 }} placeholder={'{\n  "TEST_SUITE": "smoke"\n}'} />
+            </Form.Item>
           </>}
           <Form.Item name="pipeline_name" label={isJenkins ? 'Job 显示名称' : '流水线名称'}><Input /></Form.Item>
           <Form.Item name="default_branch" label="默认分支"><Input /></Form.Item>
@@ -207,7 +235,7 @@ export function ConsoleAutomationProjectsPage() {
           <Form.Item name="pytest_args" label="pytest 参数"><Input placeholder="-q --maxfail=1" /></Form.Item>
           <Form.Item name="test_tags" label="测试标签"><Input placeholder="smoke" /></Form.Item>
           <Form.Item name="test_scope" label="测试范围"><Input placeholder="tests/login" /></Form.Item>
-          <Form.Item name="timeout_seconds" label="超时（秒）"><InputNumber min={60} max={86400} style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="timeout_seconds" label="超时（秒，最多 10800）"><InputNumber min={60} max={10800} style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="notify_condition" label="飞书通知">
             <Select options={[
               { value: 'ALWAYS', label: '每次完成都通知' },

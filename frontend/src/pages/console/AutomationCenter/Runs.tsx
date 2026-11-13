@@ -27,8 +27,8 @@ export function ConsoleAutomationRunsPage() {
     queryFn: () => automationApi.getExecution(current!.id),
     enabled: current != null,
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === 'PENDING' || status === 'RUNNING' ? 3000 : false;
+      const row = query.state.data;
+      return row?.status === 'PENDING' || row?.status === 'RUNNING' || row?.stop_requested ? 3000 : false;
     },
   });
   const execution = detail.data || current;
@@ -38,7 +38,7 @@ export function ConsoleAutomationRunsPage() {
     queryKey: ['automation-console-log', execution?.id],
     queryFn: () => automationApi.consoleLog(execution!.id),
     enabled: consoleOpen && execution != null,
-    refetchInterval: execution?.status === 'PENDING' || execution?.status === 'RUNNING' ? 5000 : false,
+    refetchInterval: execution?.stop_requested || execution?.status === 'PENDING' || execution?.status === 'RUNNING' ? 5000 : false,
   });
 
   const trigger = useMutation({
@@ -93,6 +93,7 @@ export function ConsoleAutomationRunsPage() {
             <Descriptions.Item label="外部运行 ID">{execution.pipeline_run_id || '-'}</Descriptions.Item>
             <Descriptions.Item label="状态"><StatusTag status={execution.status} /></Descriptions.Item>
             <Descriptions.Item label="外部状态">{execution.external_status || '-'}</Descriptions.Item>
+            {execution.stop_requested && <Descriptions.Item label="终止请求">已提交，等待 Jenkins 确认</Descriptions.Item>}
             <Descriptions.Item label="构建链接">{execution.external_run_url ? <a href={execution.external_run_url} target="_blank" rel="noreferrer">打开 CI 构建</a> : '-'}</Descriptions.Item>
             <Descriptions.Item label="分支">{execution.branch || '-'}</Descriptions.Item>
             <Descriptions.Item label="环境">{execution.environment_name || '-'}</Descriptions.Item>
@@ -102,7 +103,7 @@ export function ConsoleAutomationRunsPage() {
           {execution.error_message && <Typography.Paragraph type="danger">{execution.error_message}</Typography.Paragraph>}
           <Space>
             <Button
-              disabled={execution.status !== 'PENDING' && execution.status !== 'RUNNING'}
+              disabled={execution.stop_requested || (execution.status !== 'PENDING' && execution.status !== 'RUNNING')}
               loading={cancel.isPending}
               onClick={() => cancel.mutate(execution.id)}
             >取消</Button>

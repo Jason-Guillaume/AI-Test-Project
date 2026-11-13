@@ -141,6 +141,27 @@ class AutomationExecution(Base):
             unique=True,
             postgresql_where=text("pipeline_run_id IS NOT NULL"),
         ),
+        Index(
+            "uq_automation_execution_jenkins_queue",
+            "integration_config_id", "external_queue_id", unique=True,
+            postgresql_where=text(
+                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_queue_id IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_queue_id IS NOT NULL"
+            ),
+        ),
+        Index(
+            "uq_automation_execution_jenkins_build",
+            "integration_config_id", "external_pipeline_id", "external_build_number", unique=True,
+            postgresql_where=text(
+                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_build_number IS NOT NULL"
+            ),
+            sqlite_where=text(
+                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_build_number IS NOT NULL"
+            ),
+        ),
+        Index("ix_automation_execution_stop_requested", "status", "stop_requested_at"),
         {"comment": "云效自动化执行记录"},
     )
 
@@ -161,6 +182,9 @@ class AutomationExecution(Base):
     external_queue_id = Column(String(64), nullable=True)
     external_build_number = Column(Integer, nullable=True)
     external_run_url = Column(String(1000), nullable=False, server_default=text("''"))
+    stop_reason = Column(String(20), nullable=True, comment="外部终止请求原因：CANCELLED 或 TIMEOUT")
+    stop_requested_at = Column(DateTime, nullable=True)
+    queue_missing_since = Column(DateTime, nullable=True)
     trigger_source = Column(String(20), nullable=False, server_default=text("'MANUAL'"))
     status = Column(String(20), nullable=False, server_default=text("'PENDING'"), index=True)
     branch = Column(String(200), nullable=False, server_default=text("''"))
