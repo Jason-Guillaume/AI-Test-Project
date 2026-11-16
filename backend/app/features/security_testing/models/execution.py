@@ -33,7 +33,6 @@ class SecurityExecution(Base):
     __table_args__ = (
         UniqueConstraint("case_execution_id", name="uq_security_execution_case"),
         Index("ix_security_execution_project_result", "project_id", "security_result"),
-        Index("ix_security_execution_run", "test_run_id"),
         {"comment": "安全细结果：基线结论 + 变异 trace（脱敏）+ 五态结论"},
     )
 

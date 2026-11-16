@@ -18,8 +18,9 @@ def test_automation_migration_graph_has_one_head_and_unique_revisions():
     revisions = list(script.walk_revisions())
     revision_ids = [revision.revision for revision in revisions]
     assert len(revision_ids) == len(set(revision_ids))
-    assert script.get_heads() == ["0085"]
+    assert script.get_heads() == ["0086"]
     chain = {revision.revision: revision.down_revision for revision in revisions}
+    assert chain["0086"] == "0085"
     assert chain["0085"] == "0084"
     assert chain["0084"] == "0083"
     assert chain["0083"] == "0082"
@@ -31,7 +32,7 @@ def test_upgrade_head_is_repeatable_and_creates_jenkins_constraints(isolated_mig
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0085"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0086"
         inspector = inspect(connection)
         config_columns = {column["name"] for column in inspector.get_columns("automation_integration_config")}
         execution_columns = {column["name"] for column in inspector.get_columns("automation_execution")}
@@ -45,6 +46,33 @@ def test_upgrade_head_is_repeatable_and_creates_jenkins_constraints(isolated_mig
             "uq_automation_execution_jenkins_queue", "uq_automation_execution_jenkins_build",
             "ix_automation_execution_stop_requested",
         } <= indexes
+        security_indexes = [
+            index for index in inspector.get_indexes("security_execution")
+            if index.get("column_names") == ["test_run_id"]
+        ]
+        assert [index["name"] for index in security_indexes] == ["ix_security_execution_test_run_id"]
+
+
+def test_security_execution_index_downgrade_restores_legacy_index(isolated_migration_database):
+    config, engine = isolated_migration_database
+    command.downgrade(config, "0085")
+    with engine.connect() as connection:
+        security_indexes = {
+            index["name"] for index in inspect(connection).get_indexes("security_execution")
+            if index.get("column_names") == ["test_run_id"]
+        }
+        assert security_indexes == {
+            "ix_security_execution_test_run_id", "ix_security_execution_run",
+        }
+
+    command.upgrade(config, "0086")
+    with engine.connect() as connection:
+        security_indexes = {
+            index["name"] for index in inspect(connection).get_indexes("security_execution")
+            if index.get("column_names") == ["test_run_id"]
+        }
+        assert security_indexes == {"ix_security_execution_test_run_id"}
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0086"
 
 
 def test_legacy_jenkins_0082_stamp_upgrades_without_duplicate_ddl(isolated_migration_database):
@@ -96,7 +124,7 @@ def test_legacy_jenkins_0082_stamp_upgrades_without_duplicate_ddl(isolated_migra
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0085"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0086"
         columns = {column["name"] for column in inspect(connection).get_columns("api_response")}
         execution_columns = {column["name"] for column in inspect(connection).get_columns("automation_execution")}
         assert "response_key" in columns
