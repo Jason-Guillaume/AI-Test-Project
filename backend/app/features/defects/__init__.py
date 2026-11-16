@@ -9,7 +9,7 @@ Phase-1 范围（**已接入**）：
 Phase-1 范围外（**未接入**，属后续阶段）：
 - 缺陷回归关联（DefectRegressionLink）：依赖 CaseGenerationRun / TestPoint 表，
   Phase-1 尚未建立
-- 各渠道执行证据（Jenkins/GitLab/禅道 等）：与测试执行链路一起接入
+- 各渠道执行证据：与测试执行链路一起接入
 - 缺陷趋势看板、修复时长统计等聚合指标
 - 通知渠道推送（邮件/短信/IM）：目前只写库，未做实际推送
 """
