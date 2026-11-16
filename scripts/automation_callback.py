@@ -49,6 +49,7 @@ def signed_headers(
 
 
 def callback_settings() -> tuple[str, str, str, str]:
+    """读取并校验回调地址、公开标识、HMAC 密钥和自动化项目 ID。"""
     url = os.environ.get("AUTOMATION_CALLBACK_URL", "").strip()
     key = os.environ.get("AUTOMATION_CALLBACK_KEY", "").strip()
     secret = os.environ.get("AUTOMATION_CALLBACK_SECRET", "")
@@ -62,7 +63,7 @@ def callback_settings() -> tuple[str, str, str, str]:
     ):
         raise ValueError("AUTOMATION_CALLBACK_URL 必须是可信 HTTPS 地址")
     if not key or not secret or not project_id.isdigit():
-        raise ValueError("Jenkins Credentials 或自动化项目参数未配置")
+        raise ValueError("自动化回调凭证或项目参数未配置")
     return url, key, secret, project_id
 
 
@@ -93,14 +94,18 @@ def retry_request(request_factory, *, allow_history_404: bool = False) -> bytes:
 
 
 def fetch_history() -> int:
+    """签名请求平台上一份 Allure history，并安全解压到本次结果目录。"""
     callback_url, callback_key, secret, project_id = callback_settings()
     parsed = urllib.parse.urlsplit(callback_url)
     query = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
     query = [(key, value) for key, value in query if key != "automation_project_id"]
     query.append(("automation_project_id", project_id))
     url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") + "/history", urllib.parse.urlencode(query), ""))
-    build_scope = hashlib.sha256(os.environ.get("BUILD_TAG", "manual").encode()).hexdigest()[:20]
-    idempotency = f"jenkins-history:{project_id}:{build_scope}"
+    provider = os.environ.get("AUTOMATION_PROVIDER_TYPE", "YUNXIAO").strip().upper()
+    run_id = os.environ.get("DAG_RUN_ID" if provider == "DAGU" else "PIPELINE_RUN_ID", "").strip()
+    run_id = run_id or os.environ.get("AUTOMATION_EXECUTION_ID", "manual").strip()
+    run_scope = hashlib.sha256(run_id.encode()).hexdigest()[:24]
+    idempotency = f"{provider.lower()}-history:{project_id}:{run_scope}"
 
     def make_request():
         headers = signed_headers(secret, callback_key, idempotency, b"", project_id)
@@ -181,7 +186,7 @@ def _allure_stats(report_dir: Path) -> dict[str, int]:
 
 
 def _read_tail(path: Path, limit: int) -> bytes:
-    """Read a bounded log tail, including when Jenkins produced a very large file."""
+    """从日志文件末尾读取指定字节数，避免大日志占满回调内存。"""
     with path.open("rb") as stream:
         stream.seek(0, os.SEEK_END)
         stream.seek(max(0, stream.tell() - limit))
@@ -208,15 +213,17 @@ def _valid_report_archive(path: Path) -> bool:
         return False
 
 
-def normalize_status(automation_status: str, jenkins_result: str) -> str:
-    """Keep timeout/cancel intent explicit; an unknown Jenkins ABORTED is a failure."""
+def normalize_status(automation_status: str, provider_result: str = "") -> str:
+    """保留超时和取消意图，并把不同 CI 的结果标签归一化。"""
     requested = automation_status.strip().upper()
-    result = jenkins_result.strip().upper()
-    if requested in {"CANCELLED", "TIMEOUT", "FAILED", "FAILURE", "UNSTABLE", "ABORTED"}:
-        return "FAILED" if requested in {"FAILURE", "UNSTABLE", "ABORTED"} else requested
-    if result in {"FAILURE", "UNSTABLE", "ABORTED"}:
+    result = provider_result.strip().upper()
+    if requested in {"CANCELLED", "CANCELED", "TIMEOUT", "FAILED", "FAILURE", "UNSTABLE", "ABORTED"}:
+        if requested in {"CANCELED", "CANCELLED"}:
+            return "CANCELLED"
+        return "TIMEOUT" if requested == "TIMEOUT" else "FAILED"
+    if result in {"FAILURE", "FAILED", "UNSTABLE", "ABORTED", "ERROR"}:
         return "FAILED"
-    if result == "SUCCESS":
+    if result in {"SUCCESS", "SUCCEEDED", "PASSED"}:
         return "SUCCESS"
     if requested == "SUCCESS":
         return "SUCCESS"
@@ -224,6 +231,7 @@ def normalize_status(automation_status: str, jenkins_result: str) -> str:
 
 
 def upload() -> int:
+    """校验附件、构造稳定幂等键并签名上传 Allure 结果和执行元数据。"""
     callback_url, callback_key, secret, project_id = callback_settings()
     execution_id = os.environ.get("AUTOMATION_EXECUTION_ID", "").strip()
     if not execution_id.isdigit():
@@ -234,18 +242,22 @@ def upload() -> int:
     report_dir = Path(os.environ.get("AUTOMATION_REPORT_DIR", "allure-report"))
     started_ms = int(os.environ.get("AUTOMATION_START_MS", "0") or 0)
     duration = max(0, int(time.time() * 1000) - started_ms) if started_ms else 0
-    jenkins_result = os.environ.get("JENKINS_RESULT", "").strip().upper()
+    provider_type = os.environ.get("AUTOMATION_PROVIDER_TYPE", "YUNXIAO").strip().upper()
+    dag_run_id = os.environ.get("DAG_RUN_ID", "").strip()
+    pipeline_run_id = os.environ.get("PIPELINE_RUN_ID", "").strip()
     metadata_obj = {
         "execution_id": int(execution_id),
         "automation_project_id": int(project_id),
-        "pipeline_id": os.environ.get("JOB_NAME", ""),
+        "pipeline_id": os.environ.get("AUTOMATION_PIPELINE_ID", ""),
         "trigger_source": "MANUAL",
-        "provider_type": "JENKINS",
-        "build_number": int(os.environ["BUILD_NUMBER"]) if os.environ.get("BUILD_NUMBER", "").isdigit() else None,
-        "build_url": os.environ.get("BUILD_URL", ""),
-        "status": normalize_status(os.environ.get("AUTOMATION_STATUS", ""), jenkins_result),
-        "jenkins_result": jenkins_result,
-        "branch": os.environ.get("BRANCH_NAME", os.environ.get("GIT_BRANCH", "")),
+        "provider_type": provider_type if provider_type in {"DAGU", "YUNXIAO"} else "YUNXIAO",
+        "dag_run_id": dag_run_id or None,
+        "pipeline_run_id": pipeline_run_id or None,
+        "build_url": os.environ.get("AUTOMATION_RUN_URL", ""),
+        "status": normalize_status(
+            os.environ.get("AUTOMATION_STATUS", ""), os.environ.get("AUTOMATION_PROVIDER_RESULT", ""),
+        ),
+        "branch": os.environ.get("BRANCH_NAME", ""),
         "environment": os.environ.get("TEST_ENV", ""),
         "git_commit": os.environ.get("GIT_COMMIT", ""),
         "duration_ms": duration,
@@ -254,8 +266,15 @@ def upload() -> int:
         "log_excerpt": _read_tail(log_path, 20_000).decode("utf-8", errors="replace") if log_path.is_file() else "",
     }
     metadata = json.dumps(metadata_obj, ensure_ascii=False, separators=(",", ":"))
-    job_scope = hashlib.sha256(os.environ.get("JOB_NAME", "job").encode()).hexdigest()[:20]
-    idempotency = f"jenkins:{job_scope}:{os.environ.get('BUILD_NUMBER', execution_id)}"
+    if provider_type == "DAGU":
+        if not dag_run_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for char in dag_run_id):
+            raise ValueError("DAG_RUN_ID 无效")
+        idempotency = f"dagu:{dag_run_id}:report-v1"
+    else:
+        stable_run_id = pipeline_run_id or execution_id
+        if any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for char in stable_run_id):
+            raise ValueError("PIPELINE_RUN_ID 无效")
+        idempotency = f"yunxiao:{execution_id}:{stable_run_id}:report-v1"
     fields = {"metadata": metadata}
     report_available = _valid_report_archive(report_path)
     if report_path.is_file() and not report_available:
@@ -275,7 +294,7 @@ def upload() -> int:
         return urllib.request.Request(callback_url, data=body, headers=headers, method="POST")
 
     response = retry_request(make_request)
-    print("测开平台已确认 Jenkins 执行回调。")
+    print("测开平台已确认自动化执行回调。")
     return 0
 
 

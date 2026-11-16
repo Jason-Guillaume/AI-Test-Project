@@ -1,0 +1,6 @@
+# Merge this block into the active Dagu server config.
+queues:
+  enabled: true
+  config:
+    - name: automation-tests
+      max_concurrency: 1

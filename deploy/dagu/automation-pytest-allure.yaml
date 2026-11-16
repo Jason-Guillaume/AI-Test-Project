@@ -1,0 +1,57 @@
+name: automation-pytest-allure
+description: Run a Codeup pytest suite and return an Allure report to the automation center.
+queue: automation-tests
+timeout_sec: 14400
+
+params:
+  - name: execution_id
+    type: string
+  - name: automation_project_id
+    type: string
+  - name: integration_config_id
+    type: string
+  - name: repository_url
+    type: string
+  - name: repository_id
+    type: string
+    default: ""
+  - name: branch
+    type: string
+  - name: environment_name
+    type: string
+    default: ""
+  - name: pytest_args
+    type: string
+    default: ""
+  - name: test_tags
+    type: string
+    default: ""
+  - name: test_scope
+    type: string
+    default: ""
+  - name: timeout_seconds
+    type: string
+    default: "3600"
+  - name: queue
+    type: string
+    default: automation-tests
+
+env:
+  - AUTOMATION_EXECUTION_ID: ${params.execution_id}
+  - AUTOMATION_PROJECT_ID: ${params.automation_project_id}
+  - INTEGRATION_CONFIG_ID: ${params.integration_config_id}
+  - AUTOMATION_PIPELINE_ID: ${context.dag.name}
+  - AUTOMATION_PROVIDER_TYPE: DAGU
+  - REPOSITORY_URL: ${params.repository_url}
+  - REPOSITORY_ID: ${params.repository_id}
+  - BRANCH_NAME: ${params.branch}
+  - TEST_ENV: ${params.environment_name}
+  - PYTEST_ARGS: ${params.pytest_args}
+  - TEST_TAGS: ${params.test_tags}
+  - TEST_SCOPE: ${params.test_scope}
+  - TIMEOUT_SECONDS: ${params.timeout_seconds}
+  - AUTOMATION_CALLBACK_ORIGIN: ${AUTOMATION_CALLBACK_ORIGIN}
+
+steps:
+  - id: run_automation
+    run: python3 /opt/automation-runner/runner.py

@@ -30,8 +30,7 @@ from app.features.automation_center.schemas import (
     IntegrationListResponse,
     IntegrationResponse,
     IntegrationUpdate,
-    JenkinsJobInspectResponse,
-    JenkinsJobListResponse,
+    DaguDagListResponse,
     ReportCompareResponse,
     ReportGrantResponse,
     ReportListResponse,
@@ -93,9 +92,9 @@ def update_integration(
     return _SERVICE.update_integration(db, config_id, body, user)
 
 
-@router.delete("/automation-integrations/{config_id}", status_code=204, summary="删除云效接入配置")
+@router.delete("/automation-integrations/{config_id}", status_code=204, summary="删除 CI 接入配置")
 def delete_integration(config_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """删除云效接入配置。"""
+    """删除 CI 接入配置。"""
     _SERVICE.delete_integration(db, config_id, user)
 
 
@@ -107,29 +106,20 @@ def rotate_callback_key(config_id: int, db: Session = Depends(get_db), user: Use
 
 @router.post("/automation-integrations/{config_id}/test-connection", response_model=ConnectionTestResponse, summary="测试 CI 连接")
 def test_connection(
-    config_id: int, pipeline_id: str = Query(min_length=1, max_length=255),
+    config_id: int, pipeline_id: str | None = Query(None, max_length=255),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """测试 CI 凭据和流水线或 Job。"""
+    """测试 CI 凭据和可选的流水线或 DAG。"""
     return _SERVICE.test_connection(db, config_id, user, pipeline_id)
 
 
-@router.get("/automation-integrations/{config_id}/jenkins-jobs", response_model=JenkinsJobListResponse, summary="查询 Jenkins Job 和 Folder")
-def list_jenkins_jobs(
-    config_id: int, folder_path: str = Query("", max_length=255),
+@router.get("/automation-integrations/{config_id}/dags", response_model=DaguDagListResponse, summary="查询 Dagu DAG")
+def list_dagu_dags(
+    config_id: int,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """查询 Jenkins 根目录或指定 Folder 的下一层。"""
-    return _SERVICE.list_jenkins_jobs(db, config_id, user, folder_path)
-
-
-@router.get("/automation-integrations/{config_id}/jenkins-jobs/inspect", response_model=JenkinsJobInspectResponse, summary="检查 Jenkins Job 参数")
-def inspect_jenkins_job(
-    config_id: int, job_path: str = Query(min_length=1, max_length=255),
-    db: Session = Depends(get_db), user: User = Depends(get_current_user),
-):
-    """查询 Job 可执行性、并发能力和参数定义。"""
-    return _SERVICE.inspect_jenkins_job(db, config_id, user, job_path)
+    """查询当前接入可读取的 DAG Name。"""
+    return _SERVICE.list_dagu_dags(db, config_id, user)
 
 
 @router.get("/projects/{project_id}/automation-projects", response_model=AutomationProjectListResponse, summary="自动化项目列表")
@@ -188,7 +178,7 @@ def trigger_execution(
     automation_project_id: int, body: ExecutionTrigger,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """触发云效流水线。"""
+    """触发绑定的 CI 流水线或 DAG。"""
     return _SERVICE.trigger(db, automation_project_id, body, user)
 
 
@@ -199,14 +189,13 @@ def list_executions(
     automation_project_id: int | None = None, status: str | None = None, branch: str | None = None,
     environment_name: str | None = None, started_from: datetime | None = None, started_to: datetime | None = None,
     provider_type: str | None = None, pipeline_id: str | None = Query(None, max_length=255),
-    build_number: int | None = Query(None, ge=1),
 ):
     """列出自动化执行。"""
     return _SERVICE.list_executions(
         db, project_id, user, page=page, page_size=page_size, automation_project_id=automation_project_id,
         status=status, branch=branch, environment_name=environment_name,
         started_from=started_from, started_to=started_to,
-        provider_type=provider_type, pipeline_id=pipeline_id, build_number=build_number,
+        provider_type=provider_type, pipeline_id=pipeline_id,
     )
 
 
@@ -220,7 +209,7 @@ def get_execution(execution_id: int, db: Session = Depends(get_db), user: User =
 def get_execution_console_log(
     execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """读取平台保存的日志或服务端获取的 Jenkins Console Output。"""
+    """读取平台保存或服务端获取的执行日志。"""
     return _SERVICE.get_console_log(db, execution_id, user)
 
 
@@ -303,9 +292,9 @@ def report_file(report_id: int, token: str, file_path: str, db: Session = Depend
     })
 
 
-@router.post("/automation-callbacks/{callback_key}", response_model=CallbackResponse, summary="接收云效执行回传")
+@router.post("/automation-callbacks/{callback_key}", response_model=CallbackResponse, summary="接收 CI 执行回传")
 async def ingest_callback(callback_key: str, request: Request, db: Session = Depends(get_db)):
-    """接收云效回传的状态和 Allure 报告。"""
+    """接收 CI 回传的状态和 Allure 报告。"""
     content_type = request.headers.get("content-type", "")
     report_bytes = b""
     results_bytes = b""

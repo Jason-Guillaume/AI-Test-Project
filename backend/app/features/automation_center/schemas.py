@@ -3,41 +3,46 @@
 from __future__ import annotations
 
 import re
+import ipaddress
 from datetime import datetime
 from typing import Literal
 from urllib.parse import urlsplit
 
+from app.core.config import settings
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.features.automation_center.validation import validate_pipeline_parameters
-
 Deployment = Literal["central", "region"]
-ProviderType = Literal["YUNXIAO", "JENKINS"]
+ProviderType = Literal["YUNXIAO", "DAGU"]
 NotifyCondition = Literal["ALWAYS", "ONLY_FAILED", "NEVER"]
 ExecutionStatus = Literal["PENDING", "RUNNING", "SUCCESS", "FAILED", "CANCELLED", "TIMEOUT"]
 _ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
-def _validate_jenkins_url(value: str | None) -> str:
+def _validate_dagu_url(value: str | None) -> str:
     if not value:
-        raise ValueError("Jenkins 必须填写 Base URL")
+        raise ValueError("Dagu 必须填写 Base URL")
     parsed = urlsplit(value.strip())
-    if parsed.scheme.lower() != "https" or not parsed.hostname:
-        raise ValueError("Jenkins 地址必须是 HTTPS URL")
+    if parsed.scheme.lower() not in {"https", "http"} or not parsed.hostname:
+        raise ValueError("Dagu API 地址必须使用 HTTP 或 HTTPS")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("Jenkins 地址不能包含账号、密码、查询参数或片段")
-    try:
-        port = parsed.port or 443
-    except ValueError as exc:
-        raise ValueError("Jenkins 地址端口无效") from exc
-    if port not in {443, 8443, 9443}:
-        raise ValueError("Jenkins 仅允许使用 HTTPS 端口 443、8443 或 9443")
+        raise ValueError("Dagu API 地址不能包含账号、密码、查询参数或片段")
+    if parsed.path not in {"", "/", "/api/v1"}:
+        raise ValueError("Dagu API 地址路径只允许为空或 /api/v1")
+    if parsed.scheme.lower() == "http":
+        hostname = parsed.hostname.lower().rstrip(".")
+        try:
+            address = ipaddress.ip_address(hostname)
+            private_host = address.is_private or address.is_loopback or address.is_link_local
+        except ValueError:
+            private_host = hostname == "localhost" or hostname.endswith((".localhost", ".internal", ".local"))
+        if not settings.DAGU_ALLOW_INSECURE_HTTP or not private_host:
+            raise ValueError("API Key 禁止通过公网 HTTP 传输；请配置 HTTPS 或受控私网地址")
     return value.strip().rstrip("/")
 
 
 def _validate_resource_path(value: str | None) -> str:
     if value is None:
-        raise ValueError("流水线或 Jenkins Job 路径不能为空")
+        raise ValueError("流水线或 DAG Name 不能为空")
     path = value.strip().strip("/")
     segments = path.split("/")
     if (
@@ -45,7 +50,7 @@ def _validate_resource_path(value: str | None) -> str:
         or any(not part or part in {".", ".."} or part.strip() != part
                or re.search(r"[\\?#%\x00-\x1f]", part) for part in segments)
     ):
-        raise ValueError("流水线或 Jenkins Job 路径不合法")
+        raise ValueError("流水线或 DAG Name 不合法")
     return path
 
 
@@ -58,10 +63,8 @@ class IntegrationCreate(BaseModel):
     organization_id: str = ""
     deployment: Deployment = "central"
     access_token: str | None = Field(None, min_length=8, max_length=500)
-    jenkins_base_url: str | None = Field(None, max_length=500)
-    jenkins_username: str | None = Field(None, max_length=200)
-    jenkins_api_token: str | None = Field(None, min_length=8, max_length=500)
-    allow_private_network: bool = False
+    dagu_base_url: str | None = Field(None, max_length=500)
+    dagu_api_key: str | None = Field(None, min_length=8, max_length=500)
     enabled: bool = True
     callback_secret: str = Field(min_length=8, max_length=200)
     default_timeout_seconds: int = Field(3600, ge=60, le=10800)
@@ -79,11 +82,11 @@ class IntegrationCreate(BaseModel):
 
     @model_validator(mode="after")
     def provider_fields_valid(self):
-        """按 Provider 校验字段，避免把 Jenkins 配置混入云效凭据列。"""
-        if self.provider_type == "JENKINS":
-            _validate_jenkins_url(self.jenkins_base_url)
-            if not self.jenkins_username or not self.jenkins_api_token:
-                raise ValueError("Jenkins 必须填写 Username 和 API Token")
+        """按 Provider 校验字段，Dagu API Key 仅写入请求接受明文。"""
+        if self.provider_type == "DAGU":
+            _validate_dagu_url(self.dagu_base_url)
+            if not self.dagu_api_key:
+                raise ValueError("Dagu 必须填写 API Key")
             return self
         if not self.api_base_url or not self.access_token:
             raise ValueError("云效必须填写 API 地址和访问令牌")
@@ -103,10 +106,8 @@ class IntegrationUpdate(BaseModel):
     organization_id: str | None = None
     deployment: Deployment | None = None
     access_token: str | None = Field(None, max_length=500)
-    jenkins_base_url: str | None = Field(None, max_length=500)
-    jenkins_username: str | None = Field(None, max_length=200)
-    jenkins_api_token: str | None = Field(None, max_length=500)
-    allow_private_network: bool | None = None
+    dagu_base_url: str | None = Field(None, max_length=500)
+    dagu_api_key: str | None = Field(None, max_length=500)
     enabled: bool | None = None
     callback_secret: str | None = Field(None, max_length=200)
     default_timeout_seconds: int | None = Field(None, ge=60, le=10800)
@@ -122,11 +123,11 @@ class IntegrationUpdate(BaseModel):
             raise ValueError("云效 API 地址必须使用 HTTPS")
         return normalized
 
-    @field_validator("jenkins_base_url")
+    @field_validator("dagu_base_url")
     @classmethod
-    def jenkins_url_valid(cls, value: str | None) -> str | None:
+    def dagu_url_valid(cls, value: str | None) -> str | None:
         if value is not None:
-            _validate_jenkins_url(value)
+            _validate_dagu_url(value)
         return value.rstrip("/") if value else value
 
 
@@ -136,12 +137,10 @@ class IntegrationResponse(BaseModel):
     id: int
     project_id: int
     name: str
-    provider_type: ProviderType = "YUNXIAO"
+    provider_type: str = "YUNXIAO"
     enabled: bool = True
-    allow_private_network: bool = False
-    jenkins_base_url: str | None = None
-    jenkins_username: str | None = None
-    api_token_configured: bool = False
+    dagu_base_url: str | None = None
+    dagu_api_key_configured: bool = False
     api_base_url: str
     organization_id: str
     deployment: str
@@ -163,54 +162,27 @@ class IntegrationListResponse(BaseModel):
 
 
 class ConnectionTestResponse(BaseModel):
-    """连通性结果。不回传云效运行详情。"""
+    """CI 连通性结果。"""
 
     ok: bool
     message: str
     sample_run_count: int = 0
+    service_version: str | None = None
 
 
-class JenkinsJobItem(BaseModel):
-    """One Jenkins folder or buildable Job."""
-
+class DaguDagItem(BaseModel):
     name: str
-    job_path: str
-    url: str
-    is_folder: bool
-    buildable: bool
-    color: str = ""
+    description: str = ""
 
 
-class JenkinsJobListResponse(BaseModel):
-    """One-level Jenkins folder contents."""
-
-    folder_path: str
-    items: list[JenkinsJobItem]
-
-
-class JenkinsJobParameter(BaseModel):
-    name: str
-    type: str = ""
-    default_value: str = ""
-
-
-class JenkinsJobInspectResponse(BaseModel):
-    """Jenkins Job execution capabilities and declared parameters."""
-
-    name: str
-    job_path: str
-    url: str
-    is_folder: bool
-    buildable: bool
-    concurrent_build: bool
-    parameters: list[JenkinsJobParameter]
+class DaguDagListResponse(BaseModel):
+    items: list[DaguDagItem]
 
 
 class AutomationProjectCreate(BaseModel):
     """创建自动化项目并绑定一条流水线。"""
 
     integration_config_id: int
-    provider_type: ProviderType | None = None
     name: str = Field(min_length=1, max_length=120)
     description: str = Field("", max_length=500)
     repository_url: str = Field("", max_length=500)
@@ -230,21 +202,13 @@ class AutomationProjectCreate(BaseModel):
     @field_validator("pipeline_id")
     @classmethod
     def pipeline_id_safe(cls, value: str) -> str:
-        """流水线 ID 会进入云效 URL。"""
+        """Provider resource ID enters a Dagu or Yunxiao API path."""
         return _validate_resource_path(value)
-
-    @model_validator(mode="after")
-    def jenkins_parameters_safe(self):
-        if self.provider_type == "JENKINS":
-            validate_pipeline_parameters(self.pipeline_params, reject_reserved=True)
-        return self
-
 
 class AutomationProjectUpdate(BaseModel):
     """更新自动化项目。未传字段保持不变。"""
 
     name: str | None = Field(None, min_length=1, max_length=120)
-    provider_type: ProviderType | None = None
     description: str | None = Field(None, max_length=500)
     repository_url: str | None = Field(None, max_length=500)
     repository_id: str | None = Field(None, max_length=64)
@@ -263,20 +227,13 @@ class AutomationProjectUpdate(BaseModel):
     enabled: bool | None = None
     integration_config_id: int | None = None
 
-    @model_validator(mode="after")
-    def jenkins_parameters_safe(self):
-        if self.provider_type == "JENKINS" and self.pipeline_params is not None:
-            validate_pipeline_parameters(self.pipeline_params, reject_reserved=True)
-        return self
-
-
 class AutomationProjectResponse(BaseModel):
     """自动化项目及最近一次执行摘要。"""
 
     id: int
     project_id: int
     integration_config_id: int
-    provider_type: ProviderType = "YUNXIAO"
+    provider_type: str = "YUNXIAO"
     name: str
     description: str
     repository_url: str
@@ -324,7 +281,7 @@ class ExecutionTrigger(BaseModel):
 
 
 class ExecutionResponse(BaseModel):
-    """执行记录。云效运行 ID 与平台执行 ID 同时保留。"""
+    """执行记录。外部运行 ID 与平台执行 ID 同时保留。"""
 
     id: int
     project_id: int
@@ -332,9 +289,7 @@ class ExecutionResponse(BaseModel):
     automation_project_name: str
     pipeline_id: str
     pipeline_run_id: str | None
-    provider_type: ProviderType = "YUNXIAO"
-    queue_id: str | None = None
-    build_number: int | None = None
+    provider_type: str = "YUNXIAO"
     external_run_url: str = ""
     trigger_source: str
     status: ExecutionStatus
@@ -394,8 +349,7 @@ class ReportResponse(BaseModel):
     branch: str
     environment_name: str
     git_commit: str
-    provider_type: ProviderType = "YUNXIAO"
-    build_number: int | None = None
+    provider_type: str = "YUNXIAO"
     external_run_url: str = ""
     generated_at: datetime | None
     created_at: datetime

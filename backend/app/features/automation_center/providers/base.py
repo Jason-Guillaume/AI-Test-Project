@@ -21,9 +21,7 @@ class ProviderExecution:
 
     provider_type: str
     external_run_id: str | None = None
-    queue_id: str | None = None
-    build_number: int | None = None
-    build_url: str | None = None
+    run_url: str | None = None
     status: str = "PENDING"
     external_status: str = ""
     started_at: datetime | None = None
@@ -41,6 +39,7 @@ class ProviderConnectionResult:
     ok: bool
     message: str
     sample_run_count: int = 0
+    service_version: str | None = None
 
 
 class AutomationProvider(Protocol):
@@ -50,40 +49,22 @@ class AutomationProvider(Protocol):
 
     def test_connection(self, resource_id: str | None = None) -> ProviderConnectionResult: ...
 
-    def trigger_build(self, resource_id: str, params: dict[str, Any]) -> ProviderExecution: ...
+    def trigger_run(self, resource_id: str, params: dict[str, Any]) -> ProviderExecution: ...
 
-    def get_queue_item(self, queue_id: str, resource_id: str | None = None) -> ProviderExecution | None: ...
+    def get_run(self, resource_id: str, external_run_id: str | None = None) -> ProviderExecution: ...
 
-    def get_build(
+    def stop_run(
         self,
         resource_id: str,
         external_run_id: str | None = None,
-        build_number: int | None = None,
-    ) -> ProviderExecution: ...
-
-    def stop_build(
-        self,
-        resource_id: str,
-        external_run_id: str | None = None,
-        *,
-        queue_id: str | None = None,
-        build_number: int | None = None,
     ) -> bool: ...
 
-    def get_console_log(
+    def get_log(
         self,
         resource_id: str,
         external_run_id: str | None = None,
-        build_number: int | None = None,
         *,
         max_bytes: int = 200_000,
-    ) -> str | None: ...
-
-    def get_build_url(
-        self,
-        resource_id: str,
-        external_run_id: str | None = None,
-        build_number: int | None = None,
     ) -> str | None: ...
 
     def list_runs(self, resource_id: str, *, per_page: int = 10) -> list[ProviderExecution]: ...

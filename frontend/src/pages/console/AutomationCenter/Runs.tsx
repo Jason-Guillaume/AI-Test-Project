@@ -1,5 +1,5 @@
-// 选择分支和环境后触发云效流水线，并展示本次执行状态。
-import { App, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd';
+// 选择分支和环境后触发 CI 运行，并展示本次执行状态。
+import { App, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { automationApi } from '@/features/automation/api/automation';
@@ -48,9 +48,8 @@ export function ConsoleAutomationRunsPage() {
     },
     onSuccess: (row) => {
       setCurrent(row);
-      message.success(row.provider_type === 'JENKINS'
-        ? `已触发 Jenkins Queue ${row.queue_id || '处理中'}`
-        : `已触发云效运行实例 ${row.pipeline_run_id || '尚未返回'}`);
+      const providerName = row.provider_type === 'DAGU' ? 'Dagu' : row.provider_type === 'LEGACY' ? '历史执行平台' : '云效';
+      message.success(`已提交至 ${providerName}，运行实例 ${row.pipeline_run_id || '等待返回'}`);
       queryClient.invalidateQueries({ queryKey: ['automation-executions'] });
     },
     onError: (error) => message.error(getErrorMessage(error, '触发失败')),
@@ -63,6 +62,30 @@ export function ConsoleAutomationRunsPage() {
     },
     onError: (error) => message.error(getErrorMessage(error, '取消失败')),
   });
+  const sync = useMutation({
+    mutationFn: (id: number) => automationApi.sync(id),
+    onSuccess: (row) => {
+      setCurrent(row);
+      message.success('状态已同步');
+      queryClient.invalidateQueries({ queryKey: ['automation-executions'] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '同步失败')),
+  });
+  const retry = useMutation({
+    mutationFn: (row: AutomationExecution) => automationApi.trigger(row.automation_project_id, {
+      branch: row.branch,
+      environment_name: row.environment_name,
+      pytest_args: row.pytest_args,
+      test_tags: row.test_tags,
+      test_scope: row.test_scope,
+    }),
+    onSuccess: (row) => {
+      setCurrent(row);
+      message.success('已创建重试执行');
+      queryClient.invalidateQueries({ queryKey: ['automation-executions'] });
+    },
+    onError: (error) => message.error(getErrorMessage(error, '重试失败')),
+  });
 
   return (
     <PageContainer>
@@ -70,10 +93,10 @@ export function ConsoleAutomationRunsPage() {
       <Card title="触发 CI 执行">
         <Form form={form} layout="vertical" onFinish={(values) => trigger.mutate(values)}>
           <Form.Item name="automation_project_id" label="自动化项目" rules={[{ required: true, message: '请选择项目' }]}>
-            <Select options={(projects.data?.items || []).map((item) => ({ value: item.id, label: `${item.name} / ${item.pipeline_id}` }))} />
+            <Select options={(projects.data?.items || []).map((item) => ({ value: item.id, disabled: item.provider_type === 'LEGACY', label: `${item.name} / ${item.pipeline_id}${item.provider_type === 'LEGACY' ? '（已停用）' : ''}` }))} />
           </Form.Item>
           {selectedProject && <Typography.Paragraph type="secondary">
-            {selectedProject.provider_type === 'JENKINS' ? 'Jenkins Job' : '云效流水线'}：{selectedProject.pipeline_id}
+            {selectedProject.provider_type === 'DAGU' ? 'Dagu DAG' : selectedProject.provider_type === 'LEGACY' ? '已停用历史配置' : '云效流水线'}：{selectedProject.pipeline_id}
           </Typography.Paragraph>}
           <Form.Item name="branch" label="Git 分支"><Input placeholder={`留空使用默认分支${selectedProject ? `（${selectedProject.default_branch}）` : ''}`} /></Form.Item>
           <Form.Item name="environment_name" label="测试环境"><Input placeholder="留空使用默认环境" /></Form.Item>
@@ -87,14 +110,12 @@ export function ConsoleAutomationRunsPage() {
         <Card title="本次执行" style={{ marginTop: 16 }}>
           <Descriptions column={2}>
             <Descriptions.Item label="平台执行 ID">{execution.id}</Descriptions.Item>
-            <Descriptions.Item label="CI 平台">{execution.provider_type === 'JENKINS' ? <Tag color="blue">Jenkins</Tag> : '云效 Flow'}</Descriptions.Item>
-            <Descriptions.Item label="Queue ID">{execution.queue_id || '-'}</Descriptions.Item>
-            <Descriptions.Item label="Build Number">{execution.build_number ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label="CI 平台">{execution.provider_type === 'DAGU' ? 'Dagu' : execution.provider_type === 'LEGACY' ? '历史执行平台' : '云效 Flow'}</Descriptions.Item>
             <Descriptions.Item label="外部运行 ID">{execution.pipeline_run_id || '-'}</Descriptions.Item>
             <Descriptions.Item label="状态"><StatusTag status={execution.status} /></Descriptions.Item>
             <Descriptions.Item label="外部状态">{execution.external_status || '-'}</Descriptions.Item>
-            {execution.stop_requested && <Descriptions.Item label="终止请求">已提交，等待 Jenkins 确认</Descriptions.Item>}
-            <Descriptions.Item label="构建链接">{execution.external_run_url ? <a href={execution.external_run_url} target="_blank" rel="noreferrer">打开 CI 构建</a> : '-'}</Descriptions.Item>
+            {execution.stop_requested && <Descriptions.Item label="终止请求">已提交，等待执行平台确认</Descriptions.Item>}
+            <Descriptions.Item label="运行链接">{execution.external_run_url ? <a href={execution.external_run_url} target="_blank" rel="noreferrer">打开 CI 运行</a> : '-'}</Descriptions.Item>
             <Descriptions.Item label="分支">{execution.branch || '-'}</Descriptions.Item>
             <Descriptions.Item label="环境">{execution.environment_name || '-'}</Descriptions.Item>
             <Descriptions.Item label="通知">{execution.notify_status}</Descriptions.Item>
@@ -107,6 +128,16 @@ export function ConsoleAutomationRunsPage() {
               loading={cancel.isPending}
               onClick={() => cancel.mutate(execution.id)}
             >取消</Button>
+            <Button
+              disabled={execution.provider_type === 'LEGACY' || execution.stop_requested || (execution.status !== 'PENDING' && execution.status !== 'RUNNING')}
+              loading={sync.isPending}
+              onClick={() => sync.mutate(execution.id)}
+            >手动同步状态</Button>
+            <Button
+              disabled={execution.provider_type === 'LEGACY' || !['FAILED', 'TIMEOUT', 'CANCELLED'].includes(execution.status)}
+              loading={retry.isPending}
+              onClick={() => retry.mutate(execution)}
+            >重试执行</Button>
             <Button onClick={() => setConsoleOpen(true)}>Console 日志</Button>
           </Space>
           {execution.log_excerpt && (

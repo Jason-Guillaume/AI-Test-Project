@@ -1,11 +1,10 @@
-"""云效自动化测试中心的数据模型。
+"""自动化测试中心的数据模型。
 
-一次云效运行对应一条 AutomationExecution，报告文件只存路径。
+一次 CI 运行对应一条 AutomationExecution，报告文件只存路径。
 凭证列只保存 Fernet 密文，响应层不得读出明文。
 """
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
@@ -13,7 +12,7 @@ from app.core.database.soft_delete import SoftDeleteBase
 
 
 class AutomationIntegrationConfig(SoftDeleteBase):
-    """一个业务项目下的云效接入配置。令牌和回调密钥只以密文保存。"""
+    """一个业务项目下的 CI 接入配置。令牌和回调密钥只以密文保存。"""
 
     __tablename__ = "automation_integration_config"
     __table_args__ = (
@@ -27,7 +26,7 @@ class AutomationIntegrationConfig(SoftDeleteBase):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
-        {"comment": "云效接入配置：地址、组织、密文凭证与回调标识"},
+        {"comment": "CI 接入配置：地址、组织、密文凭证与回调标识"},
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -35,37 +34,19 @@ class AutomationIntegrationConfig(SoftDeleteBase):
     name = Column(String(100), nullable=False, comment="配置名称")
     provider_type = Column(String(20), nullable=False, server_default=text("'YUNXIAO'"), comment="执行平台")
     enabled = Column(Boolean, nullable=False, server_default=text("true"))
-    allow_private_network = Column(Boolean, nullable=False, server_default=text("false"), comment="管理员授权访问内网 Jenkins")
     api_base_url = Column(String(300), nullable=False, comment="云效 OpenAPI 域名")
     organization_id = Column(String(64), nullable=False, server_default=text("''"), comment="云效企业 ID，Region 版可空")
     deployment = Column(String(20), nullable=False, server_default=text("'central'"), comment="central 或 region")
     access_token_encrypted = Column(Text, nullable=False, comment="个人访问令牌密文")
     callback_key = Column(String(64), nullable=False, comment="回调地址中的公开标识，不是密钥")
     callback_secret_encrypted = Column(Text, nullable=False, comment="回调 HMAC 密钥密文")
+    dagu_base_url = Column(String(500), nullable=True, comment="Dagu REST API Base URL")
+    dagu_api_key_encrypted = Column(Text, nullable=True, comment="Dagu Builtin Auth API Key 密文")
+    dagu_api_key_configured = Column(Boolean, nullable=False, server_default=text("false"))
     default_timeout_seconds = Column(Integer, nullable=False, server_default=text("3600"), comment="默认执行超时秒数")
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-    jenkins_credential = relationship(
-        "AutomationJenkinsCredential", uselist=False, cascade="all, delete-orphan", lazy="select",
-    )
-
-
-class AutomationJenkinsCredential(Base):
-    """Jenkins 凭据独立保存；Username 可读，API Token 只保存 Fernet 密文。"""
-
-    __tablename__ = "automation_jenkins_credential"
-
-    integration_config_id = Column(
-        Integer, ForeignKey("automation_integration_config.id", ondelete="CASCADE"), primary_key=True,
-    )
-    base_url = Column(String(500), nullable=False)
-    username = Column(String(200), nullable=False)
-    api_token_encrypted = Column(Text, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
-
-
 class AutomationProject(SoftDeleteBase):
     """外部自动化项目。脚本留在 Codeup，这里只保存绑定和默认执行参数。"""
 
@@ -107,12 +88,12 @@ class AutomationProject(SoftDeleteBase):
 
 
 class AutomationPipeline(Base):
-    """自动化项目绑定的一条云效 Flow 流水线。"""
+    """自动化项目绑定的一条云效 Flow 流水线或 Dagu DAG。"""
 
     __tablename__ = "automation_pipeline"
     __table_args__ = (
         UniqueConstraint("automation_project_id", "pipeline_id", name="uq_automation_pipeline_binding"),
-        {"comment": "云效流水线绑定"},
+        {"comment": "外部 CI 流水线或 DAG 绑定"},
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -120,7 +101,7 @@ class AutomationPipeline(Base):
         Integer, ForeignKey("automation_project.id", ondelete="CASCADE"), nullable=False, index=True,
     )
     name = Column(String(120), nullable=False, server_default=text("''"))
-    pipeline_id = Column(String(255), nullable=False, comment="云效流水线 ID 或 Jenkins Folder/Job 路径")
+    pipeline_id = Column(String(255), nullable=False, comment="云效流水线 ID 或 Dagu DAG Name")
     is_default = Column(Boolean, nullable=False, server_default=text("true"))
     extra_params = Column(JSON, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
@@ -128,7 +109,7 @@ class AutomationPipeline(Base):
 
 
 class AutomationExecution(Base):
-    """一次流水线运行。重复运行新增记录，不覆盖历史。"""
+    """一次 CI 流水线或 DAG 运行。重复运行新增记录，不覆盖历史。"""
 
     __tablename__ = "automation_execution"
     __table_args__ = (
@@ -141,28 +122,8 @@ class AutomationExecution(Base):
             unique=True,
             postgresql_where=text("pipeline_run_id IS NOT NULL"),
         ),
-        Index(
-            "uq_automation_execution_jenkins_queue",
-            "integration_config_id", "external_queue_id", unique=True,
-            postgresql_where=text(
-                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_queue_id IS NOT NULL"
-            ),
-            sqlite_where=text(
-                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_queue_id IS NOT NULL"
-            ),
-        ),
-        Index(
-            "uq_automation_execution_jenkins_build",
-            "integration_config_id", "external_pipeline_id", "external_build_number", unique=True,
-            postgresql_where=text(
-                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_build_number IS NOT NULL"
-            ),
-            sqlite_where=text(
-                "provider_type = 'JENKINS' AND integration_config_id IS NOT NULL AND external_build_number IS NOT NULL"
-            ),
-        ),
         Index("ix_automation_execution_stop_requested", "status", "stop_requested_at"),
-        {"comment": "云效自动化执行记录"},
+        {"comment": "自动化执行记录"},
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -178,13 +139,10 @@ class AutomationExecution(Base):
     )
     provider_type = Column(String(20), nullable=False, server_default=text("'YUNXIAO'"))
     external_pipeline_id = Column(String(255), nullable=False, server_default=text("''"))
-    pipeline_run_id = Column(String(64), nullable=True, comment="云效运行实例 ID")
-    external_queue_id = Column(String(64), nullable=True)
-    external_build_number = Column(Integer, nullable=True)
+    pipeline_run_id = Column(String(64), nullable=True, comment="外部运行实例 ID")
     external_run_url = Column(String(1000), nullable=False, server_default=text("''"))
     stop_reason = Column(String(20), nullable=True, comment="外部终止请求原因：CANCELLED 或 TIMEOUT")
     stop_requested_at = Column(DateTime, nullable=True)
-    queue_missing_since = Column(DateTime, nullable=True)
     trigger_source = Column(String(20), nullable=False, server_default=text("'MANUAL'"))
     status = Column(String(20), nullable=False, server_default=text("'PENDING'"), index=True)
     branch = Column(String(200), nullable=False, server_default=text("''"))
@@ -269,7 +227,7 @@ class AutomationCallbackReceipt(Base):
     __tablename__ = "automation_callback_receipt"
     __table_args__ = (
         UniqueConstraint("integration_config_id", "idempotency_key", name="uq_automation_callback_idempotency"),
-        {"comment": "云效回调幂等收据"},
+        {"comment": "自动化回调幂等收据"},
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from app.features.automation_center.models.entities import AutomationIntegrationConfig
 from app.features.automation_center.providers.base import AutomationProvider, ProviderError
-from app.features.automation_center.providers.jenkins_provider import JenkinsProvider
+from app.features.automation_center.providers.dagu_provider import DaguProvider
 from app.features.automation_center.providers.yunxiao_provider import YunxiaoProvider
 
 ProviderBuilder = Callable[[AutomationIntegrationConfig], AutomationProvider]
@@ -18,7 +18,7 @@ class ProviderFactory:
     def __init__(self) -> None:
         self._builders: dict[str, ProviderBuilder] = {
             "YUNXIAO": YunxiaoProvider.from_config,
-            "JENKINS": JenkinsProvider.from_config,
+            "DAGU": DaguProvider.from_config,
         }
 
     def register(self, provider_type: str, builder: ProviderBuilder) -> None:

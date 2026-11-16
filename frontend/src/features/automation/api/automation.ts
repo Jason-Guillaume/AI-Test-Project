@@ -6,8 +6,7 @@ import type {
   AutomationProject,
   AutomationReport,
   ConsoleLog,
-  JenkinsJobInspect,
-  JenkinsJobItem,
+  DaguDag,
   Paginated,
   ReportGrant,
 } from '@/features/automation/contracts';
@@ -24,15 +23,15 @@ export const automationApi = {
     api.patch<AutomationIntegration>(`/automation-integrations/${id}`, body),
   /** 删除接入配置。 */
   deleteIntegration: (id: number) => api.delete<void>(`/automation-integrations/${id}`),
-  /** 测试 Jenkins Job 或云效流水线连接。 */
-  testConnection: (id: number, pipelineId: string) =>
-    api.post<{ ok: boolean; message: string }>(`/automation-integrations/${id}/test-connection`, undefined, { params: { pipeline_id: pipelineId } }),
-  /** 查询 Jenkins 根目录或 Folder 的下一层。 */
-  listJenkinsJobs: (id: number, folderPath = '') =>
-    api.get<{ folder_path: string; items: JenkinsJobItem[] }>(`/automation-integrations/${id}/jenkins-jobs`, { params: { folder_path: folderPath } }),
-  /** 检查 Jenkins Job 参数和可执行状态。 */
-  inspectJenkinsJob: (id: number, jobPath: string) =>
-    api.get<JenkinsJobInspect>(`/automation-integrations/${id}/jenkins-jobs/inspect`, { params: { job_path: jobPath } }),
+  /** 测试 CI 凭据和可选的流水线或 DAG。 */
+  testConnection: (id: number, pipelineId?: string) =>
+    api.post<{ ok: boolean; message: string; service_version?: string | null }>(
+      `/automation-integrations/${id}/test-connection`, undefined,
+      pipelineId ? { params: { pipeline_id: pipelineId } } : undefined,
+    ),
+  /** 查询 Dagu 接入可读取的 DAG。 */
+  listDags: (id: number) =>
+    api.get<{ items: DaguDag[] }>(`/automation-integrations/${id}/dags`),
   /** 列出自动化项目。 */
   listProjects: (projectId: number) =>
     api.get<Paginated<AutomationProject>>(`/projects/${projectId}/automation-projects`, { params: { page: 1, page_size: 100 } }),
@@ -58,7 +57,7 @@ export const automationApi = {
   cancel: (id: number) => api.post<AutomationExecution>(`/automation-executions/${id}/cancel`),
   /** 立即同步外部 CI 状态。 */
   sync: (id: number) => api.post<AutomationExecution>(`/automation-executions/${id}/sync`),
-  /** 读取平台保存或 Jenkins 提供的 Console 日志。 */
+  /** 读取平台保存或 CI Provider 提供的运行日志。 */
   consoleLog: (id: number) => api.get<ConsoleLog>(`/automation-executions/${id}/console-log`),
   /** 报告列表。 */
   listReports: (projectId: number, params: Record<string, unknown> = {}) =>

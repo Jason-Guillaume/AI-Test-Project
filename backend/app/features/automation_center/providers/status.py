@@ -4,10 +4,12 @@ from __future__ import annotations
 
 _STATUS_MAP = {
     "SUCCESS": "SUCCESS",
+    "SUCCEEDED": "SUCCESS",
     "PASS": "SUCCESS",
     "PASSED": "SUCCESS",
     "FAIL": "FAILED",
     "FAILED": "FAILED",
+    "ERROR": "FAILED",
     "FAILURE": "FAILED",
     "RUNNING": "RUNNING",
     "PENDING": "PENDING",
@@ -18,6 +20,9 @@ _STATUS_MAP = {
     "CANCELLED": "CANCELLED",
     "TIMEOUT": "TIMEOUT",
     "TIMED_OUT": "TIMEOUT",
+    "PARTIALLY_SUCCEEDED": "FAILED",
+    "REJECTED": "FAILED",
+    "ABORTED": "FAILED",
 }
 
 
@@ -27,7 +32,7 @@ def map_external_status(payload: dict | str | None) -> str:
         return _STATUS_MAP.get(payload.upper(), "RUNNING")
     if not isinstance(payload, dict):
         return "RUNNING"
-    raw = str(payload.get("status") or "").upper()
+    raw = str(payload.get("statusLabel") or payload.get("status") or "").upper()
     if raw:
         return _STATUS_MAP.get(raw, "RUNNING")
     job_statuses: list[str] = []
