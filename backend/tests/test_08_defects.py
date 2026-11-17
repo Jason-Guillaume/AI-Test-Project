@@ -336,13 +336,19 @@ def test_defect_clear_assignee_by_putting_none(api, admin):
 
 def test_batch_create_is_atomic_and_attachments_follow_project_permissions(api, admin):
     project_id, _ = _create_project(api, admin)
-    body = [{"project_id": project_id, "title": "批量一"}, {"project_id": project_id, "title": "批量二", "assignee_id": 999999999}]
+    body = {
+        "project_id": project_id,
+        "items": [
+            {"title": "批量一", "category": "前端"},
+            {"title": "批量二", "category": "后端", "assignee_id": 999999999},
+        ],
+    }
     assert api.post('/bugs/batch', username=admin, json=body).status_code == 400
     assert api.get('/bugs', username=admin, params={"project_id": project_id}).json()['total'] == 0
-    body[1].pop('assignee_id')
+    body["items"][1].pop('assignee_id')
     response = api.post('/bugs/batch', username=admin, json=body)
     assert response.status_code == 201, response.text
-    bug_id = response.json()[0]['id']
+    bug_id = response.json()["items"][0]['id']
     upload = api.post(f'/bugs/{bug_id}/attachments', username=admin, files={'file': ('test.txt', b'proof', 'text/plain')})
     assert upload.status_code == 201, upload.text
     attachment_id = upload.json()['id']

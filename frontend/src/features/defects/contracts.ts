@@ -1,10 +1,16 @@
 // 本领域请求、响应与查询合同；HTTP 适配器只负责调用服务端接口。
 
+/** 缺陷前后端划分：仅前端与后端两类；历史存量缺陷允许为空（展示为「未划分」）。 */
+export type BugCategory = '前端' | '后端';
+
+/** 缺陷列表筛选用的归属值，包含历史「未划分」。 */
+export type BugCategoryFilter = BugCategory | '未划分';
 
 /** 新建缺陷的请求体。 */
 export interface BugCreate {
   project_id: number; // 所属项目 ID
   title: string; // 缺陷标题（必填）
+  category?: BugCategory; // 前后端划分；缺陷控制台表单必填，历史来源关联允许暂不传
   description?: string; // 描述
   severity?: 1 | 2 | 3 | 4; // 严重度 1-4，默认 2
   status?: BugStatus; // 状态，默认 '待确认'
@@ -13,9 +19,41 @@ export interface BugCreate {
   assignee_id?: number | null; // 处理人；必须是项目成员；null 表示清空
 }
 
+/** 批量创建中的单条缺陷入参（标题与前后端划分均必填）。 */
+export interface BugBatchCreateItem {
+  title: string; // 缺陷标题（必填）
+  category: BugCategory; // 前后端划分（必填）
+  description?: string; // 描述
+  severity?: BugSeverity; // 严重度 1-4，默认 2
+  status?: BugStatus; // 状态，默认 '待确认'
+  steps_to_reproduce?: string; // 复现步骤
+  environment?: string; // 发现环境
+  assignee_id?: number | null; // 处理人；必须是项目成员
+}
+
+/** 批量创建缺陷请求体。 */
+export interface BugBatchCreate {
+  project_id: number; // 所属项目 ID
+  items: BugBatchCreateItem[]; // 待创建明细列表（1-100 条）
+}
+
+/** 批量创建缺陷响应体。 */
+export interface BugBatchCreateResponse {
+  items: Bug[]; // 创建成功后的缺陷列表
+  created_count: number; // 成功条数
+}
+
+/** 批量创建服务端返回的单行校验错误结构。 */
+export interface BugBatchRowError {
+  row: number; // 1-based 行号
+  field: string; // 出错字段名
+  message: string; // 错误原因
+}
+
 /** 修改缺陷的请求体；全部字段可选，只提交要改的项。 */
 export interface BugUpdate {
   title?: string;
+  category?: BugCategory | null;
   description?: string;
   severity?: 1 | 2 | 3 | 4;
   status?: BugStatus;
@@ -53,6 +91,7 @@ export interface Bug {
   project_id: number; // 所属项目 ID
   project_name: string | null; // 项目名称；服务端 join 后填充
   title: string; // 缺陷标题
+  category: BugCategory | null; // 前后端划分；历史存量允许为 null
   description: string | null; // 描述
   severity: BugSeverity; // 严重度 1-4（1=致命，4=轻微）
   status: BugStatus; // 状态
@@ -166,6 +205,7 @@ export interface BugListQuery {
   page?: number; // 页码，从 1 开始
   page_size?: number; // 每页条数
   project_id?: number; // 按项目过滤
+  category?: BugCategoryFilter; // 按前后端划分过滤
   status?: BugStatus; // 按状态过滤
   severity?: BugSeverity; // 按严重度过滤
   assignee_id?: number; // 按处理人过滤

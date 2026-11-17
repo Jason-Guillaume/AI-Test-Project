@@ -3,6 +3,7 @@
 沿用旧项目的表名、字段与约束语义：
 - 表名 ``bug`` 与旧项目一致
 - 状态取值：``待确认 / 处理中 / 已修复 / 已关闭 / 已拒绝``，由服务层校验
+- 前后端划分（``category``）：``前端 / 后端``，历史存量允许为空（展示为「未划分」）
 - 严重度 1-4，1 为最低、4 为最高
 - 与旧项目差异：去除 ``testcase_id`` 字段，因新平台 Phase-1 尚未接入测试用例与
   回归关联（DefectRegressionLink / CaseGenerationRun 属后续阶段）
@@ -22,6 +23,7 @@ class Bug(SoftDeleteBase):
     __tablename__ = "bug"
     __table_args__ = (
         Index("ix_bug_project_status_severity", "project_id", "status", "severity"),
+        Index("ix_bug_project_category", "project_id", "category"),
         Index("ix_bug_project_created", "project_id", "created_at"),
         {"comment": "测试缺陷及其处理状态"},
     )
@@ -35,6 +37,11 @@ class Bug(SoftDeleteBase):
     )
     # project_id 带 ondelete="CASCADE"：项目被删除时缺陷一并清理，不留下孤儿行。
     title = Column(String(200), nullable=False, index=True, comment="缺陷标题")
+    category = Column(
+        String(20), nullable=True, index=True,
+        comment="前后端划分：前端/后端，历史存量允许为空",
+    )
+    # 历史存量缺陷允许为 NULL，界面展示为「未划分」，避免迁移强塞不准确的默认归属。
     description = Column(String(1000), nullable=True, comment="缺陷描述")
     severity = Column(
         Integer, nullable=False, default=2, server_default=text("2"),
