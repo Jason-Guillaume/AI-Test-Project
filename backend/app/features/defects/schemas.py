@@ -15,6 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 BUG_STATUSES = ("待确认", "处理中", "已修复", "已关闭", "已拒绝")
 BugStatus = Literal["待确认", "处理中", "已修复", "已关闭", "已拒绝"]
 
+# 前后端划分集合；历史存量允许为空，在列表筛选时以「未划分」指代 NULL。
+BUG_CATEGORIES = ("前端", "后端")
+UNCATEGORIZED_BUG_CATEGORY = "未划分"
+BugCategory = Literal["前端", "后端"]
+BugCategoryFilter = Literal["前端", "后端", "未划分"]
+
 # 严重度 1-4，1 最低、4 最高。
 BugSeverity = Literal[1, 2, 3, 4]
 
@@ -31,6 +37,7 @@ class BugBase(BaseModel):
     """缺陷共有字段。"""
 
     title: str = Field(..., min_length=1, max_length=200, description="缺陷标题")
+    category: BugCategory | None = Field(default=None, description="前后端划分：前端/后端")
     description: str | None = Field(None, max_length=1000, description="缺陷描述")
     severity: BugSeverity = Field(default=2, description="严重度 1-4")
     status: BugStatus = Field(default="待确认", description="状态")
@@ -50,10 +57,27 @@ class BugCreate(BugBase):
     assignee_id: int | None = Field(None, gt=0, description="处理人ID")
 
 
+class BugBatchItem(BugBase):
+    """批量创建中的单条缺陷入参（前后端划分必填）。"""
+
+    category: BugCategory = Field(..., description="前后端划分：前端/后端")
+    assignee_id: int | None = Field(None, gt=0, description="处理人ID")
+
+
+class BugBatchCreate(BaseModel):
+    """批量创建缺陷入参：同项目下整批原子创建。"""
+
+    project_id: int = Field(..., gt=0, description="所属项目ID")
+    items: list[BugBatchItem] = Field(
+        ..., min_length=1, max_length=100, description="待批量创建的缺陷明细"
+    )
+
+
 class BugUpdate(BaseModel):
     """修改缺陷入参（局部）。"""
 
     title: str | None = Field(None, min_length=1, max_length=200)
+    category: BugCategory | None = None
     description: str | None = Field(None, max_length=1000)
     severity: BugSeverity | None = None
     status: BugStatus | None = None
@@ -70,6 +94,7 @@ class BugResponse(BaseModel):
     project_id: int
     project_name: str | None = None
     title: str
+    category: BugCategory | None = None
     description: str | None = None
     severity: int
     status: str
@@ -96,6 +121,13 @@ class BugListResponse(BaseModel):
     page_size: int = 1
 
 
+class BugBatchCreateResponse(BaseModel):
+    """批量创建缺陷响应。"""
+
+    items: list[BugResponse]
+    created_count: int
+
+
 class DefectSourceRequest(BaseModel):
     """关联现有缺陷，或提交人工填写的缺陷并原子创建关联。"""
     source_type: Literal["CASE_EXECUTION", "SECURITY_FINDING"]
@@ -117,13 +149,22 @@ class DefectSourceResponse(BaseModel):
 
 
 __all__ = [
+    "BUG_CATEGORIES",
     "BUG_STATUSES",
     "BugBase",
+    "BugBatchCreate",
+    "BugBatchCreateResponse",
+    "BugBatchItem",
+    "BugCategory",
+    "BugCategoryFilter",
     "BugCreate",
     "BugListResponse",
     "BugResponse",
     "BugSeverity",
     "BugStatus",
     "BugUpdate",
+    "DefectSourceRequest",
+    "DefectSourceResponse",
     "SEVERITY_LABELS",
+    "UNCATEGORIZED_BUG_CATEGORY",
 ]

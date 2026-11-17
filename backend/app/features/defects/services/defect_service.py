@@ -14,19 +14,30 @@
 
 from __future__ import annotations
 
+from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.features.defects.models.bug import Bug
 from app.features.defects.schemas import (
+    BUG_CATEGORIES,
     BUG_STATUSES,
+    BugBase,
+    BugBatchCreate,
     BugCreate,
     BugUpdate,
     SEVERITY_LABELS,
+    UNCATEGORIZED_BUG_CATEGORY,
 )
 from app.core.models.identity import User
 from app.core.models.project import Project
-from app.core.http.errors import bad_request, conflict, forbidden, not_found
+from app.core.http.errors import (
+    CODE_BAD_REQUEST,
+    bad_request,
+    conflict,
+    forbidden,
+    not_found,
+)
 from app.core.notifications.notify import notify
 from app.platform.projects.services.access_service import check_writable, get_project_or_404
 from app.core.security.roles import (
@@ -66,6 +77,7 @@ class DefectService:
         page: int,
         page_size: int,
         project_id: int | None = None,
+        category: str | None = None,
         status: str | None = None,
         severity: int | None = None,
         assignee_id: int | None = None,
@@ -76,7 +88,7 @@ class DefectService:
         Args:
             project_id: 可选的项目过滤；传入后先校验该项目的可见性，
                 不可见时直接返回空列表（不抛 404，因为列表接口语义是「没有」而非「无权」）。
-            status / severity / assignee_id: 精确过滤。
+            category / status / severity / assignee_id: 精确过滤（category 为「未划分」时匹配 NULL）。
             keyword: 对 title 做不区分大小写的模糊匹配。
 
         Returns:
@@ -96,6 +108,14 @@ class DefectService:
         elif project_id is not None:
             query = query.filter(Bug.project_id == project_id)
 
+        if category:
+            if category == UNCATEGORIZED_BUG_CATEGORY:
+                # 历史存量缺陷 category 为空，用「未划分」显式筛选 NULL 行。
+                query = query.filter(Bug.category.is_(None))
+            elif category in BUG_CATEGORIES:
+                query = query.filter(Bug.category == category)
+            else:
+                raise bad_request("前后端划分取值非法")
         if status:
             if status not in BUG_STATUSES:
                 raise bad_request("状态取值非法")
@@ -140,46 +160,154 @@ class DefectService:
             raise bad_request("处理人必须是该项目成员")
         return assignee
 
+    def _build_bug(
+        self,
+        *,
+        project_id: int,
+        actor: User,
+        item: BugBase,
+        assignee_id: int | None,
+    ) -> Bug:
+        """根据请求契约构造 Bug ORM 实例，统一空白裁剪与默认值规则。"""
+        return Bug(
+            project_id=project_id,
+            title=item.title.strip(),
+            category=item.category,
+            description=(item.description or "").strip() or None,
+            severity=item.severity,
+            status=item.status,
+            steps_to_reproduce=(item.steps_to_reproduce or "").strip() or None,
+            environment=(item.environment or "").strip() or None,
+            reporter_id=actor.id,
+            assignee_id=assignee_id,
+        )
+
+    def _notify_created(
+        self, db: Session, *, bug: Bug, project_id: int, actor: User
+    ) -> None:
+        """写入缺陷创建站内通知；复用 notify 的吞异常约定不阻断主事务。"""
+        category_part = f"归属：{bug.category}；" if bug.category else ""
+        notify(
+            db,
+            user_id=actor.id,
+            event_type="defect.created",
+            title=f"你已创建缺陷「{bug.title}」",
+            body=(
+                f"{category_part}"
+                f"严重度：{SEVERITY_LABELS.get(bug.severity, str(bug.severity))}；"
+                f"状态：{bug.status}"
+            ),
+            project_id=project_id,
+            actor_id=actor.id,
+            actor_username=actor.username,
+            detail={
+                "bug_id": bug.id,
+                "project_id": project_id,
+                "category": bug.category,
+            },
+        )
+
     def create_bug(self, db: Session, body: BugCreate, *, actor: User, commit: bool = True) -> Bug:
         """新增缺陷；创建者成为报告人。"""
         project = get_project_or_404(db, body.project_id, actor)
         check_writable(db, project, actor)
 
+        if not body.title.strip():
+            raise bad_request("缺陷标题不能为空")
+
         # 创建时若直接指定处理人，走与更新相同的校验；报告人本身默认可作为处理人。
         if body.assignee_id is not None and body.assignee_id != actor.id:
             self._validate_assignee(db, project, body.assignee_id)
 
-        bug = Bug(
+        bug = self._build_bug(
             project_id=project.id,
-            title=body.title.strip(),
-            description=(body.description or "").strip() or None,
-            severity=body.severity,
-            status=body.status,
-            steps_to_reproduce=(body.steps_to_reproduce or "").strip() or None,
-            environment=(body.environment or "").strip() or None,
-            reporter_id=actor.id,
+            actor=actor,
+            item=body,
             assignee_id=body.assignee_id,
         )
         db.add(bug)
         db.flush()  # 先落库拿到 ID，便于通知 detail 引用。
 
         # 通知：报告人自己确认收到（对齐 user.created 的自我通知模式）。
-        notify(
-            db,
-            user_id=actor.id,
-            event_type="defect.created",
-            title=f"你已创建缺陷「{bug.title}」",
-            body=f"严重度：{SEVERITY_LABELS.get(bug.severity, str(bug.severity))}；状态：{bug.status}",
-            project_id=project.id,
-            actor_id=actor.id,
-            actor_username=actor.username,
-            detail={"bug_id": bug.id, "project_id": project.id},
-        )
+        self._notify_created(db, bug=bug, project_id=project.id, actor=actor)
 
         if commit:
             db.commit()
             db.refresh(bug)
         return bug
+
+    def batch_create_bugs(
+        self, db: Session, body: BugBatchCreate, *, actor: User
+    ) -> list[Bug]:
+        """同一项目下原子批量创建缺陷；任意一行失败则整批不落库并返回行号定位。"""
+        project = get_project_or_404(db, body.project_id, actor)
+        check_writable(db, project, actor)
+
+        row_errors: list[dict[str, object]] = []
+        # 缓存已校验过的处理人结果，避免同一批次多行指向同一处理人时重复查库。
+        assignee_error_cache: dict[int, str | None] = {}
+
+        for row_no, item in enumerate(body.items, start=1):
+            if not item.title.strip():
+                row_errors.append({
+                    "row": row_no,
+                    "field": "title",
+                    "message": "缺陷标题不能为空",
+                })
+            if item.category not in BUG_CATEGORIES:
+                row_errors.append({
+                    "row": row_no,
+                    "field": "category",
+                    "message": "前后端划分必须是「前端」或「后端」",
+                })
+            if item.assignee_id is not None and item.assignee_id != actor.id:
+                if item.assignee_id not in assignee_error_cache:
+                    try:
+                        self._validate_assignee(db, project, item.assignee_id)
+                        assignee_error_cache[item.assignee_id] = None
+                    except HTTPException as exc:
+                        assignee_error_cache[item.assignee_id] = str(exc.detail)
+                cached_error = assignee_error_cache[item.assignee_id]
+                if cached_error:
+                    row_errors.append({
+                        "row": row_no,
+                        "field": "assignee_id",
+                        "message": cached_error,
+                    })
+
+        if row_errors:
+            # 任意一行不合法即在写库前中断，确保整批原子语义并返回精确定位信息。
+            preview_lines = [
+                f"第 {err['row']} 行：{err['message']}" for err in row_errors[:5]
+            ]
+            if len(row_errors) > 5:
+                preview_lines.append(f"另有 {len(row_errors) - 5} 处错误")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": CODE_BAD_REQUEST,
+                    "message": "批量创建校验失败：" + "；".join(preview_lines),
+                    "meta": {"errors": row_errors},
+                },
+            )
+
+        bugs = [
+            self._build_bug(
+                project_id=project.id,
+                actor=actor,
+                item=item,
+                assignee_id=item.assignee_id,
+            )
+            for item in body.items
+        ]
+        db.add_all(bugs)
+        db.flush()  # 一次性生成全部主键，再统一写入站内通知。
+        for bug in bugs:
+            self._notify_created(db, bug=bug, project_id=project.id, actor=actor)
+        db.commit()
+        for bug in bugs:
+            db.refresh(bug)
+        return bugs
 
     def update_bug(
         self, db: Session, bug: Bug, body: BugUpdate, *, actor: User
@@ -197,6 +325,12 @@ class DefectService:
         data = body.model_dump(exclude_unset=True)
         if not data:
             return bug
+
+        if "title" in data:
+            cleaned_title = (data["title"] or "").strip()
+            if not cleaned_title:
+                raise bad_request("缺陷标题不能为空")
+            data["title"] = cleaned_title
 
         # 处理人变更：新值必须为 None 或合法的项目成员。
         if "assignee_id" in data and data["assignee_id"] is not None:

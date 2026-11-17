@@ -3,9 +3,10 @@ import { collectPages } from '@/shared/api/pagination';
 // 本模块导出 ConsoleDefectsPage，由路由 /console/defects 挂载。
 //
 // 功能：
-//   - 列表：分页展示当前用户可见项目下的缺陷，支持项目/状态/严重度/关键字过滤；
-//   - 新建：弹窗收集标题、严重度、状态、复现步骤、环境、处理人；
-//   - 编辑：与新建共用同一弹窗，处理人可为空表示「未分配」；
+//   - 列表：按前后端划分页签（全部 / 前端 / 后端 / 未划分）与项目/状态/严重度/关键字过滤；
+//   - 新建：弹窗收集所属项目、前后端划分（必填）、标题、严重度、状态、复现步骤、环境、处理人；
+//   - 批量创建：结构化可编辑表格批量录入全部字段，支持统一预设默认值与多行文本快速拆分；
+//   - 编辑：与新建共用同一弹窗，处理人可为空表示「未分配」，历史未划分缺陷允许补充前后端划分；
 //   - 删除：Modal.confirm 二次确认。
 //
 // 权限（服务端为准，前端隐藏只是辅助）：
@@ -23,8 +24,10 @@ import {
   Form,
   Input,
   Modal,
+  Radio,
   Select,
   Space,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
@@ -36,7 +39,15 @@ import { useAuth } from '@/app/providers/AuthProvider';
 import { bugsApi } from '@/features/defects/api/defects';
 import { DefectShareHistory } from '@/features/defects/components/DefectShareHistory';
 import { DefectShareModal } from '@/features/defects/components/DefectShareModal';
-import type { BugCreate, BugUpdate } from '@/features/defects/contracts';
+import type {
+  Bug,
+  BugCategory,
+  BugCategoryFilter,
+  BugCreate,
+  BugSeverity,
+  BugStatus,
+  BugUpdate,
+} from '@/features/defects/contracts';
 import { projectsApi } from '@/features/projects/api/projects';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
@@ -45,36 +56,23 @@ import { DefectOrigins } from '@/widgets/execution-detail/DefectOrigins';
 import { tasksApi } from '@/features/tasks/api/tasks';
 import { clearTaskCreateUncertainty, readTaskCreateUncertainty, rememberTaskCreateUncertainty, type TaskCreateUncertainty } from '@/features/tasks/createUncertainty';
 import { isAxiosError } from 'axios';
-import type { Bug, BugSeverity, BugStatus } from '@/features/defects/contracts';
 import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 import type { Paginated } from '@/shared/api/contracts';
-
-
-// 后端约定的状态与严重度常量；与 BugStatus/BugSeverity 类型保持同步。
-const BUG_STATUSES: BugStatus[] = ['待确认', '处理中', '已修复', '已关闭', '已拒绝'];
-const SEVERITY_OPTIONS: { label: string; value: BugSeverity }[] = [
-  { label: '1 低', value: 1 },
-  { label: '2 中', value: 2 },
-  { label: '3 高', value: 3 },
-  { label: '4 严重', value: 4 },
-];
-const STATUS_COLOR: Record<BugStatus, string> = {
-  待确认: 'orange',
-  处理中: 'blue',
-  已修复: 'cyan',
-  已关闭: 'default',
-  已拒绝: 'red',
-};
-const SEVERITY_COLOR: Record<BugSeverity, string> = {
-  1: 'gold',
-  2: 'orange',
-  3: 'volcano',
-  4: 'red',
-};
+import { BatchCreateBugsModal } from './BatchCreateBugsModal';
+import {
+  BUG_STATUSES,
+  CATEGORY_COLOR,
+  CATEGORY_OPTIONS,
+  SEVERITY_COLOR,
+  SEVERITY_OPTIONS,
+  STATUS_COLOR,
+} from './constants';
 
 // 新建/编辑弹窗的表单值。severity 与 status 都有默认值，减少空态。
 interface BugFormValues {
+  project_id?: number;
   title: string;
+  category?: BugCategory;
   description?: string;
   severity: BugSeverity;
   status: BugStatus;
@@ -110,8 +108,9 @@ export function ConsoleDefectsPage() {
     page: 1,
     page_size: 10,
   });
-  // 过滤：project_id / status / severity / keyword；空串归一为 undefined
+  // 过滤：project_id / category / status / severity / keyword；空串归一为 undefined
   const [projectId, setProjectId] = useState<number | undefined>(undefined);
+  const [categoryFilter, setCategoryFilter] = useState<BugCategoryFilter | undefined>(undefined);
   const [status, setStatus] = useState<BugStatus | undefined>(undefined);
   const [severity, setSeverity] = useState<BugSeverity | undefined>(undefined);
   const [keyword, setKeyword] = useState('');
@@ -121,6 +120,7 @@ export function ConsoleDefectsPage() {
   const [modalState, setModalState] = useState<
     { mode: 'create' } | { mode: 'edit'; bug: Bug } | null
   >(null);
+  const [batchModalOpen, setBatchModalOpen] = useState(false);
   // 编辑时把 bug 值回填进 form；用 key 触发 antd Form 的 resetFields
   const [formKey, setFormKey] = useState(0);
 
@@ -130,11 +130,12 @@ export function ConsoleDefectsPage() {
       page: pagination.page,
       page_size: pagination.page_size,
       project_id: projectId,
+      category: categoryFilter,
       status,
       severity,
       keyword: keyword || undefined,
     }),
-    [pagination, projectId, status, severity, keyword],
+    [pagination, projectId, categoryFilter, status, severity, keyword],
   );
 
   const listQuery = useQuery<Paginated<Bug>>({
@@ -150,11 +151,12 @@ export function ConsoleDefectsPage() {
   });
 
   // 弹窗内需要展示「某项目的成员列表」作为「处理人」下拉；
-  // 只在弹窗打开并选定 project_id 时才请求，避免无谓流量。
+  // 新建时跟随表单内选定的项目，编辑时固定为缺陷所属项目。
+  const createFormProjectId = Form.useWatch('project_id', bugForm);
   const modalProjectId =
     modalState?.mode === 'edit'
       ? modalState.bug.project_id
-      : projectId;
+      : (createFormProjectId ?? projectId ?? projectsQuery.data?.items?.[0]?.id);
   const membersQuery = useQuery({
     queryKey: ['project', modalProjectId, 'members'],
     queryFn: () =>
@@ -254,6 +256,9 @@ export function ConsoleDefectsPage() {
   const canManage = (id: number) => isPlatformAdmin || ['member', 'editor', 'owner'].includes(projectRole(id) || '');
   const canPermanent = (id: number) => isPlatformAdmin || ['editor', 'owner'].includes(projectRole(id) || '');
 
+  const activeTabCategory: BugCategory | undefined =
+    categoryFilter === '前端' || categoryFilter === '后端' ? categoryFilter : undefined;
+
   // 加载中 / 失败：整页占位，不渲染空表格
   if (listQuery.isPending) return <LoadingState />;
   if (listQuery.isError)
@@ -267,6 +272,21 @@ export function ConsoleDefectsPage() {
 
   return (
     <PageContainer>
+      <Tabs
+        activeKey={categoryFilter ?? 'ALL'}
+        onChange={(key) => {
+          setCategoryFilter(key === 'ALL' ? undefined : (key as BugCategoryFilter));
+          setSelectedBugIds([]);
+          setPagination((p) => ({ ...p, page: 1 }));
+        }}
+        items={[
+          { key: 'ALL', label: '全部缺陷' },
+          { key: '前端', label: '前端缺陷' },
+          { key: '后端', label: '后端缺陷' },
+          { key: '未划分', label: '未划分' },
+        ]}
+      />
+
       <div className="console-toolbar">
         <Input.Search
           placeholder="按标题或描述搜索"
@@ -317,6 +337,9 @@ export function ConsoleDefectsPage() {
         <Button type="primary" onClick={openCreate} loading={createMutation.isPending}>
           新建缺陷
         </Button>
+        <Button onClick={() => setBatchModalOpen(true)} disabled={projectOptions.length === 0}>
+          批量创建
+        </Button>
       </div>
 
       <div className="console-toolbar">
@@ -356,13 +379,20 @@ export function ConsoleDefectsPage() {
 
       <ResourceTable
         rowKey={(r) => r.id}
-        scroll={{ x: 1280 }}
+        scroll={{ x: 1360 }}
         columns={[
           { title: 'ID', dataIndex: 'id', width: 70 },
           {
             title: '项目',
             dataIndex: 'project_name',
             render: (v: string | null) => v ?? '-',
+          },
+          {
+            title: '前后端',
+            dataIndex: 'category',
+            width: 90,
+            render: (v: BugCategory | null) =>
+              v ? <Tag color={CATEGORY_COLOR[v]}>{v}</Tag> : <Tag>未划分</Tag>,
           },
           { title: '标题', dataIndex: 'title' },
           {
@@ -444,6 +474,16 @@ export function ConsoleDefectsPage() {
 
       <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnHidden>
         {bugDetail.isLoading ? <LoadingState /> : bugDetail.isError || !bugDetail.data ? <ErrorState error={bugDetail.error} onRetry={bugDetail.refetch} /> : <Space direction="vertical" style={{ width: '100%' }}>
+          <Space wrap>
+            {bugDetail.data.category ? (
+              <Tag color={CATEGORY_COLOR[bugDetail.data.category]}>{bugDetail.data.category}</Tag>
+            ) : (
+              <Tag>未划分</Tag>
+            )}
+            <Tag color={SEVERITY_COLOR[bugDetail.data.severity]}>严重度 {bugDetail.data.severity}</Tag>
+            <Tag color={STATUS_COLOR[bugDetail.data.status]}>{bugDetail.data.status}</Tag>
+            {bugDetail.data.environment && <Tag>{bugDetail.data.environment}</Tag>}
+          </Space>
           <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
           <Typography.Text strong>关联来源</Typography.Text>
           <DefectOrigins bugId={bugDetail.data.id} />
@@ -460,6 +500,19 @@ export function ConsoleDefectsPage() {
         <DefectShareModal bugs={shareBugs} canPermanent={canPermanent(shareBugs[0].project_id)} onClose={() => { setShareBugs(null); queryClient.invalidateQueries({ queryKey: ['bugs'] }); queryClient.invalidateQueries({ queryKey: ['bug-shares'] }); }} />
       )}
 
+      {batchModalOpen && (
+        <BatchCreateBugsModal
+          initialProjectId={projectId ?? projectOptions[0]?.value}
+          initialCategory={activeTabCategory}
+          projectOptions={projectOptions}
+          onClose={() => setBatchModalOpen(false)}
+          onCreated={() => {
+            setBatchModalOpen(false);
+            setPagination((p) => ({ ...p, page: 1 }));
+          }}
+        />
+      )}
+
       {/* 新建 / 编辑弹窗 */}
       <Modal
         title={
@@ -472,21 +525,31 @@ export function ConsoleDefectsPage() {
         onOk={async () => {
           if (modalState == null) return;
           const values = await bugForm.validateFields();
+          const basePayload = {
+            title: values.title,
+            category: values.category,
+            description: values.description,
+            severity: values.severity,
+            status: values.status,
+            steps_to_reproduce: values.steps_to_reproduce,
+            environment: values.environment,
+            assignee_id: values.assignee_id,
+          };
           if (modalState.mode === 'create') {
-            // 新建：project_id 从顶部过滤器取；若用户未选，用第一条可见项目。
-            const projectIdForCreate = projectId ?? projectOptions[0]?.value;
+            const projectIdForCreate =
+              values.project_id ?? projectId ?? projectOptions[0]?.value;
             if (projectIdForCreate == null) {
               message.error('请先选择一个项目，或先创建项目');
               return;
             }
             await createMutation.mutateAsync({
-              ...values,
+              ...basePayload,
               project_id: projectIdForCreate,
             });
           } else {
             await updateMutation.mutateAsync({
               id: modalState.bug.id,
-              body: values,
+              body: basePayload,
             });
           }
         }}
@@ -504,6 +567,7 @@ export function ConsoleDefectsPage() {
             modalState?.mode === 'edit'
               ? {
                   title: modalState.bug.title,
+                  category: modalState.bug.category ?? undefined,
                   description: modalState.bug.description ?? undefined,
                   severity: modalState.bug.severity,
                   status: modalState.bug.status,
@@ -511,13 +575,56 @@ export function ConsoleDefectsPage() {
                   environment: modalState.bug.environment ?? undefined,
                   assignee_id: modalState.bug.assignee_id ?? undefined,
                 }
-              : { severity: 2, status: '待确认' }
+              : {
+                  project_id: projectId ?? projectOptions[0]?.value,
+                  category: activeTabCategory,
+                  severity: 2,
+                  status: '待确认',
+                }
           }
         >
+          {modalState?.mode === 'create' && (
+            <Form.Item
+              name="project_id"
+              label="所属项目"
+              rules={[{ required: true, message: '请选择所属项目' }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                options={projectOptions}
+                placeholder="请选择所属项目"
+                onChange={() => {
+                  // 切换所属项目时清空已选处理人，避免带入原项目成员 ID。
+                  bugForm.setFieldValue('assignee_id', undefined);
+                }}
+              />
+            </Form.Item>
+          )}
+          <Form.Item
+            name="category"
+            label="前后端划分"
+            rules={
+              modalState?.mode === 'create' || modalState?.bug.category != null
+                ? [{ required: true, message: '请选择前端或后端' }]
+                : []
+            }
+            tooltip={
+              modalState?.mode === 'edit' && modalState.bug.category == null
+                ? '历史存量缺陷暂未划分，可补充选择前端或后端'
+                : '区分缺陷归属前端或后端处理'
+            }
+          >
+            <Radio.Group
+              options={CATEGORY_OPTIONS}
+              optionType="button"
+              buttonStyle="solid"
+            />
+          </Form.Item>
           <Form.Item
             name="title"
             label="标题"
-            rules={[{ required: true, message: '请输入缺陷标题' }]}
+            rules={[{ required: true, whitespace: true, message: '请输入缺陷标题' }]}
           >
             <Input placeholder="一句话描述问题" maxLength={200} />
           </Form.Item>
@@ -570,8 +677,8 @@ export function ConsoleDefectsPage() {
               notFoundContent={
                 membersQuery.isPending
                   ? '加载中...'
-                  : projectId == null
-                    ? '请先在项目选择框中选择一个项目'
+                  : modalProjectId == null
+                    ? '请先选择一个所属项目'
                     : '该项目下暂无其他成员'
               }
             />

@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.features.defects.models.bug import Bug
 from app.features.defects.schemas import (
+    BugBatchCreate,
+    BugBatchCreateResponse,
     BugCreate,
     BugListResponse,
     BugResponse,
@@ -40,36 +42,74 @@ SOURCE_SERVICE = DefectSourceService()
 SHARE_SERVICE = DefectShareService()
 
 
-def _response(db: Session, bug: Bug, active_share_count: int | None = None) -> BugResponse:
-    """构造单个缺陷响应，联表补上项目名与用户名字段。
+def _responses(
+    db: Session,
+    bugs: list[Bug],
+    counts: dict[int, int] | None = None,
+) -> list[BugResponse]:
+    """批量构造缺陷响应，一次加载关联项目与用户，避免列表或批量接口 N+1 查询。
 
-    负责人/组织/用户可能被删除，此时对应字段回退为 None 而非报错。
+    负责人/报告人/处理人可能被删除，此时对应字段回退为 None 而非报错。
     """
-    project = db.get(Project, bug.project_id)
-    reporter = db.get(User, bug.reporter_id) if bug.reporter_id else None
-    assignee = db.get(User, bug.assignee_id) if bug.assignee_id else None
-    return BugResponse(
-        id=bug.id,
-        project_id=bug.project_id,
-        project_name=project.name if project else None,
-        title=bug.title,
-        description=bug.description,
-        severity=bug.severity,
-        status=bug.status,
-        steps_to_reproduce=bug.steps_to_reproduce,
-        environment=bug.environment,
-        reporter_id=bug.reporter_id,
-        reporter_username=reporter.username if reporter else None,
-        assignee_id=bug.assignee_id,
-        assignee_username=assignee.username if assignee else None,
-        created_at=bug.created_at,
-        updated_at=bug.updated_at,
-        active_share_count=(
-            active_share_count
-            if active_share_count is not None
-            else SHARE_SERVICE.active_counts(db, [bug.id]).get(bug.id, 0)
-        ),
+    if not bugs:
+        return []
+    project_ids = {bug.project_id for bug in bugs}
+    user_ids = {
+        uid
+        for bug in bugs
+        for uid in (bug.reporter_id, bug.assignee_id)
+        if uid is not None
+    }
+    projects = {
+        row.id: row
+        for row in db.query(Project).filter(Project.id.in_(project_ids)).all()
+    }
+    users = (
+        {
+            row.id: row
+            for row in db.query(User).filter(User.id.in_(user_ids)).all()
+        }
+        if user_ids
+        else {}
     )
+    share_counts = (
+        counts
+        if counts is not None
+        else SHARE_SERVICE.active_counts(db, [bug.id for bug in bugs])
+    )
+    items: list[BugResponse] = []
+    for bug in bugs:
+        project = projects.get(bug.project_id)
+        reporter = users.get(bug.reporter_id) if bug.reporter_id else None
+        assignee = users.get(bug.assignee_id) if bug.assignee_id else None
+        items.append(
+            BugResponse(
+                id=bug.id,
+                project_id=bug.project_id,
+                project_name=project.name if project else None,
+                title=bug.title,
+                category=bug.category,
+                description=bug.description,
+                severity=bug.severity,
+                status=bug.status,
+                steps_to_reproduce=bug.steps_to_reproduce,
+                environment=bug.environment,
+                reporter_id=bug.reporter_id,
+                reporter_username=reporter.username if reporter else None,
+                assignee_id=bug.assignee_id,
+                assignee_username=assignee.username if assignee else None,
+                created_at=bug.created_at,
+                updated_at=bug.updated_at,
+                active_share_count=share_counts.get(bug.id, 0),
+            )
+        )
+    return items
+
+
+def _response(db: Session, bug: Bug, active_share_count: int | None = None) -> BugResponse:
+    """构造单个缺陷响应，复用批量映射函数保持口径一致。"""
+    counts = {bug.id: active_share_count} if active_share_count is not None else None
+    return _responses(db, [bug], counts=counts)[0]
 
 
 @router.get("", response_model=BugListResponse)
@@ -79,6 +119,7 @@ def list_bugs(
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     project_id: int | None = Query(None, ge=1),
+    category: str | None = Query(None),
     status: str | None = Query(None),
     severity: int | None = Query(None, ge=1, le=4),
     assignee_id: int | None = Query(None, ge=1),
@@ -94,6 +135,7 @@ def list_bugs(
         page=page,
         page_size=page_size,
         project_id=project_id,
+        category=category,
         status=status,
         severity=severity,
         assignee_id=assignee_id,
@@ -101,7 +143,7 @@ def list_bugs(
     )
     counts = SHARE_SERVICE.active_counts(db, [item.id for item in items])
     return BugListResponse(
-        items=[_response(db, item, counts.get(item.id, 0)) for item in items],
+        items=_responses(db, items, counts=counts),
         total=total,
         page=page,
         page_size=page_size,
@@ -141,6 +183,19 @@ def get_bug(
     """查询缺陷详情；越权与不存在共用 404。"""
     bug = SERVICE.get_bug_or_404(db, bug_id, user)
     return _response(db, bug)
+
+
+@router.post("/batch", response_model=BugBatchCreateResponse, status_code=status.HTTP_201_CREATED)
+def batch_create_bugs(
+    body: BugBatchCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """同一项目下原子批量新增缺陷；至少 member 权限。"""
+    bugs = SERVICE.batch_create_bugs(db, body, actor=user)
+    # 新建缺陷尚未分享，直接传空映射避免无谓查询分享表。
+    items = _responses(db, bugs, counts={})
+    return BugBatchCreateResponse(items=items, created_count=len(items))
 
 
 @router.post("", response_model=BugResponse, status_code=status.HTTP_201_CREATED)
