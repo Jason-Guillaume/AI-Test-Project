@@ -27,6 +27,7 @@ import {
   Space,
   Tag,
   Typography,
+  Upload,
 } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -123,6 +124,10 @@ export function ConsoleDefectsPage() {
   >(null);
   // 编辑时把 bug 值回填进 form；用 key 触发 antd Form 的 resetFields
   const [formKey, setFormKey] = useState(0);
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [batchTitles, setBatchTitles] = useState('');
+  const [batchProject, setBatchProject] = useState<number>();
+  const [files, setFiles] = useState<File[]>([]);
 
   // 拼装查询参数
   const query = useMemo(
@@ -171,6 +176,12 @@ export function ConsoleDefectsPage() {
       setModalState(null);
     },
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: (items: BugCreate[]) => bugsApi.createBatch(items),
+    onSuccess: (items) => { message.success(`已创建 ${items.length} 条缺陷`); queryClient.invalidateQueries({ queryKey: ['bugs'] }); setBatchOpen(false); },
+    onError: (error) => message.error(getErrorMessage(error, '批量创建失败')),
   });
 
   // 改缺陷
@@ -234,6 +245,7 @@ export function ConsoleDefectsPage() {
 
   const openCreate = () => {
     setFormKey((k) => k + 1);
+    setFiles([]);
     setModalState({ mode: 'create' });
   };
   const openEdit = (bug: Bug) => {
@@ -317,6 +329,7 @@ export function ConsoleDefectsPage() {
         <Button type="primary" onClick={openCreate} loading={createMutation.isPending}>
           新建缺陷
         </Button>
+        <Button onClick={() => { setBatchProject(projectId); setBatchTitles(''); setBatchOpen(true); }}>批量创建</Button>
       </div>
 
       <div className="console-toolbar">
@@ -445,6 +458,7 @@ export function ConsoleDefectsPage() {
       <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnHidden>
         {bugDetail.isLoading ? <LoadingState /> : bugDetail.isError || !bugDetail.data ? <ErrorState error={bugDetail.error} onRetry={bugDetail.refetch} /> : <Space direction="vertical" style={{ width: '100%' }}>
           <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
+          <BugAttachments bugId={bugDetail.data.id} />
           <Typography.Text strong>关联来源</Typography.Text>
           <DefectOrigins bugId={bugDetail.data.id} />
           <BugVerificationPanel bug={bugDetail.data} />
@@ -460,6 +474,10 @@ export function ConsoleDefectsPage() {
         <DefectShareModal bugs={shareBugs} canPermanent={canPermanent(shareBugs[0].project_id)} onClose={() => { setShareBugs(null); queryClient.invalidateQueries({ queryKey: ['bugs'] }); queryClient.invalidateQueries({ queryKey: ['bug-shares'] }); }} />
       )}
 
+      <Modal title="批量创建缺陷" open={batchOpen} onCancel={() => setBatchOpen(false)} okText="创建" cancelText="取消" confirmLoading={batchMutation.isPending}
+        onOk={async () => { const titles = batchTitles.split(/\r?\n/).map((title) => title.trim()).filter(Boolean); if (!batchProject) { message.error('请选择项目'); return; } if (!titles.length || titles.length > 100 || titles.some((title) => title.length > 200)) { message.error('请输入 1 至 100 条标题，每条不超过 200 字'); return; } await batchMutation.mutateAsync(titles.map((title) => ({ project_id: batchProject, title, severity: 2, status: '待确认' }))); }}>
+        <Space direction="vertical" style={{ width: '100%' }}><Typography.Text>每行输入一条标题。默认严重度为中、状态为待确认。</Typography.Text><Select aria-label="所属项目" placeholder="选择项目" style={{ width: '100%' }} options={projectOptions} value={batchProject} onChange={setBatchProject} /><Input.TextArea aria-label="缺陷标题" rows={8} value={batchTitles} onChange={(e) => setBatchTitles(e.target.value)} placeholder={'每行一条缺陷标题\n最多 100 条'} /></Space>
+      </Modal>
       {/* 新建 / 编辑弹窗 */}
       <Modal
         title={
@@ -479,10 +497,10 @@ export function ConsoleDefectsPage() {
               message.error('请先选择一个项目，或先创建项目');
               return;
             }
-            await createMutation.mutateAsync({
-              ...values,
-              project_id: projectIdForCreate,
-            });
+            const created = await createMutation.mutateAsync({ ...values, project_id: projectIdForCreate });
+            const results = await Promise.allSettled(files.map((file) => bugsApi.uploadAttachment(created.id, file)));
+            const failed = results.filter((result) => result.status === 'rejected').length;
+            if (failed) message.warning(`缺陷 #${created.id} 已创建，${failed} 个附件上传失败，请在详情中重试`);
           } else {
             await updateMutation.mutateAsync({
               id: modalState.bug.id,
@@ -555,6 +573,9 @@ export function ConsoleDefectsPage() {
           >
             <Input.TextArea rows={4} placeholder={'1. 打开登录页\n2. 输入错误密码\n3. 点击登录'} />
           </Form.Item>
+          {modalState?.mode === 'create' && <Form.Item label="附件" extra="每个文件不超过 10 MB；保存后上传">
+            <Upload multiple beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } setFiles((previous) => [...previous, file]); return false; }} onRemove={(file) => { setFiles((previous) => previous.filter((item) => item !== file.originFileObj)); }}><Button>选择附件</Button></Upload>
+          </Form.Item>}
           <Form.Item
             name="assignee_id"
             label="处理人"
@@ -695,3 +716,15 @@ function BugVerificationPanel({ bug }: { bug: Bug }) {
   );
 }
 
+
+function BugAttachments({ bugId }: { bugId: number }) {
+  const { message, modal } = App.useApp();
+  const queryClient = useQueryClient();
+  const query = useQuery({ queryKey: ['bug-attachments', bugId], queryFn: () => bugsApi.attachments(bugId) });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['bug-attachments', bugId] });
+  return <Space direction="vertical" style={{ width: '100%' }}><Typography.Text strong>附件</Typography.Text>
+    {query.isError ? <Typography.Text type="danger">附件读取失败</Typography.Text> : query.data?.map((attachment) => <Space key={attachment.id}>
+      <Button type="link" onClick={() => bugsApi.downloadAttachment(bugId, attachment).catch((error) => message.error(getErrorMessage(error, '下载失败')))}>{attachment.filename}</Button><Typography.Text type="secondary">{(attachment.size / 1024).toFixed(1)} KB</Typography.Text>
+      <Button size="small" danger onClick={() => modal.confirm({ title: '删除此附件？', onOk: async () => { try { await bugsApi.deleteAttachment(bugId, attachment.id); await refresh(); } catch (error) { message.error(getErrorMessage(error, '删除失败')); } } })}>删除</Button></Space>)}
+    <Upload multiple showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { await bugsApi.uploadAttachment(bugId, file as File); await refresh(); onSuccess?.({}); message.success('附件已上传'); } catch (error) { onError?.(error as Error); message.error(getErrorMessage(error, '上传失败')); } }} beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } return true; }}><Button>上传附件</Button></Upload><Typography.Text type="secondary">单个文件不超过 10 MB</Typography.Text></Space>;
+}

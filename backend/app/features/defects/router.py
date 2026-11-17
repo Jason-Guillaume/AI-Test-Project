@@ -12,7 +12,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi.responses import Response
+from urllib.parse import quote
+
+from app.features.defects.models.attachment import BugAttachment
+from app.core.http.errors import bad_request, not_found
+from app.platform.projects.services.access_service import check_writable
 from sqlalchemy.orm import Session
 
 from app.features.defects.models.bug import Bug
@@ -124,6 +130,65 @@ def list_source_links(source_type: Literal["CASE_EXECUTION", "SECURITY_FINDING"]
 def link_source(body: DefectSourceRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """人工创建或关联缺陷，重复请求安全返回已有关系。"""
     return SOURCE_SERVICE.link(db, body, user)
+
+
+@router.post("/batch", response_model=list[BugResponse], status_code=status.HTTP_201_CREATED)
+def create_bugs(body: list[BugCreate], db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """All records and their notifications are committed together."""
+    if not 1 <= len(body) <= 100:
+        raise bad_request("每次可创建 1 至 100 条缺陷")
+    try:
+        bugs = [SERVICE.create_bug(db, item, actor=user, commit=False) for item in body]
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return [_response(db, bug) for bug in bugs]
+
+
+def _attachment_response(row: BugAttachment):
+    return {"id": row.id, "filename": row.filename, "size": row.size, "created_at": row.created_at}
+
+
+@router.get("/{bug_id}/attachments")
+def list_attachments(bug_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SERVICE.get_bug_or_404(db, bug_id, user)
+    return [_attachment_response(row) for row in db.query(BugAttachment).filter_by(bug_id=bug_id).order_by(BugAttachment.id).all()]
+
+
+@router.post("/{bug_id}/attachments", status_code=status.HTTP_201_CREATED)
+async def upload_attachment(bug_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    bug = SERVICE.get_bug_or_404(db, bug_id, user)
+    check_writable(db, db.get(Project, bug.project_id), user)
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if not content or len(content) > 10 * 1024 * 1024:
+        raise bad_request("附件不能为空且不能超过 10 MB")
+    filename = (file.filename or 'attachment').replace('\\', '/').split('/')[-1][:255] or 'attachment'
+    row = BugAttachment(bug_id=bug_id, filename=filename, content_type=(file.content_type or 'application/octet-stream')[:255], content=content, size=len(content))
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _attachment_response(row)
+
+
+@router.get("/{bug_id}/attachments/{attachment_id}")
+def download_attachment(bug_id: int, attachment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    SERVICE.get_bug_or_404(db, bug_id, user)
+    row = db.query(BugAttachment).filter_by(id=attachment_id, bug_id=bug_id).first()
+    if row is None:
+        raise not_found("附件不存在")
+    return Response(content=row.content, media_type='application/octet-stream', headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(row.filename, safe=''), "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"})
+
+
+@router.delete("/{bug_id}/attachments/{attachment_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_attachment(bug_id: int, attachment_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    bug = SERVICE.get_bug_or_404(db, bug_id, user)
+    check_writable(db, db.get(Project, bug.project_id), user)
+    row = db.query(BugAttachment).filter_by(id=attachment_id, bug_id=bug_id).first()
+    if row is None:
+        raise not_found("附件不存在")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/{bug_id}/sources", response_model=list[DefectSourceResponse])
