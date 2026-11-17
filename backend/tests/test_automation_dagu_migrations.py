@@ -25,8 +25,10 @@ def test_automation_migration_graph_has_one_dagu_head():
     revisions = list(script.walk_revisions())
     identifiers = [revision.revision for revision in revisions]
     assert len(identifiers) == len(set(identifiers))
-    assert script.get_heads() == ["0089"]
+    assert script.get_heads() == ["0091"]
     chain = {revision.revision: revision.down_revision for revision in revisions}
+    assert chain["0091"] == "0090"
+    assert chain["0090"] == "0089"
     assert chain["0089"] == "0088"
     assert chain["0088"] == "0087"
     assert chain["0087"] == "0086"
@@ -37,7 +39,7 @@ def test_head_schema_removes_jenkins_columns_and_adds_dagu_configuration(isolate
     """Match the ORM schema after a clean base-to-head Alembic upgrade."""
     _config, engine = isolated_migration_database
     with engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0089"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0091"
         inspector = inspect(connection)
         config_columns = {column["name"] for column in inspector.get_columns("automation_integration_config")}
         execution_columns = {column["name"] for column in inspector.get_columns("automation_execution")}
@@ -180,7 +182,7 @@ def test_upgrade_from_legacy_share_0088_adds_missing_dagu_schema(isolated_migrat
     command.upgrade(config, "head")
     with engine.connect() as connection:
         inspector = inspect(connection)
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0089"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0091"
         assert "defect_share_link" in inspector.get_table_names()
         assert "automation_execution_idempotency" in inspector.get_table_names()
         assert "dispatch_state" in {column["name"] for column in inspector.get_columns("automation_execution")}
