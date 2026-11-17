@@ -188,6 +188,18 @@ body {
 .knowledge-search-controls .ant-input-number { width: 150px; max-width: 100%; }
 .form-field-row { display: flex; width: 100%; align-items: flex-start; gap: 12px; }
 .form-field-row > .ant-form-item { min-width: 0; }
+/* 缺陷详情弹窗中的接口报文块：限制高度并保留换行，避免长报文撑破弹窗。 */
+.bug-api-pre {
+  margin: 4px 0 8px;
+  padding: 8px 12px;
+  max-height: 200px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 12px;
+}
 .agent-card-actions { display: flex; width: 100%; gap: 8px; }
 .resource-table .ant-table-cell { overflow-wrap: anywhere; }
 .ui-list-toolbar.ant-space { display: flex; width: 100%; }

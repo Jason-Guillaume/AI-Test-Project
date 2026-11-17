@@ -6,8 +6,20 @@ export type BugCategory = '前端' | '前后端' | '接口';
 /** 缺陷列表筛选用的归属值，包含历史「未划分」。 */
 export type BugCategoryFilter = BugCategory | '未划分';
 
+/** 接口缺陷的请求方法集合。 */
+export type ApiMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+
+/** 接口缺陷专属字段：仅 category='接口' 时表单展示。 */
+export interface BugApiFields {
+  api_method?: ApiMethod | null; // 请求方法
+  api_url?: string | null; // 请求地址（完整 URL 或路径）
+  api_request_headers?: string | null; // 请求头（JSON 或原始文本）
+  api_request_body?: string | null; // 请求体
+  api_response?: string | null; // 实际响应结果（脱敏后填写）
+}
+
 /** 新建缺陷的请求体。 */
-export interface BugCreate {
+export interface BugCreate extends BugApiFields {
   project_id: number; // 所属项目 ID
   title: string; // 缺陷标题（必填）
   category?: BugCategory; // 前后端划分；缺陷控制台表单必填，历史来源关联允许暂不传
@@ -51,7 +63,7 @@ export interface BugBatchRowError {
 }
 
 /** 修改缺陷的请求体；全部字段可选，只提交要改的项。 */
-export interface BugUpdate {
+export interface BugUpdate extends BugApiFields {
   title?: string;
   category?: BugCategory | null;
   description?: string;
@@ -86,7 +98,7 @@ export type BugStatus = '待确认' | '处理中' | '已修复' | '已关闭' | 
 
 export type BugSeverity = 1 | 2 | 3 | 4;
 
-export interface Bug {
+export interface Bug extends BugApiFields {
   id: number; // 缺陷主键
   project_id: number; // 所属项目 ID
   project_name: string | null; // 项目名称；服务端 join 后填充

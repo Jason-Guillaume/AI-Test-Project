@@ -44,8 +44,25 @@ SEVERITY_LABELS: dict[int, str] = {
     4: "严重",
 }
 
+# 接口缺陷的请求方法集合；仅 category='接口' 时表单展示。
+API_METHODS = ("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS")
+ApiMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 
-class BugBase(BaseModel):
+
+class BugApiFields(BaseModel):
+    """接口缺陷专属字段：请求方法/地址/请求头/请求体/响应结果。
+
+    全部可选；仅 category='接口' 时表单展示，其他类别提交这些字段会被忽略落空。
+    """
+
+    api_method: ApiMethod | None = Field(None, description="请求方法")
+    api_url: str | None = Field(None, max_length=500, description="请求地址")
+    api_request_headers: str | None = Field(None, max_length=2000, description="请求头")
+    api_request_body: str | None = Field(None, max_length=5000, description="请求体")
+    api_response: str | None = Field(None, max_length=5000, description="实际响应结果")
+
+
+class BugBase(BugApiFields):
     """缺陷共有字段。"""
 
     title: str = Field(..., min_length=1, max_length=200, description="缺陷标题")
@@ -100,7 +117,7 @@ class BugBatchCreate(BaseModel):
     )
 
 
-class BugUpdate(BaseModel):
+class BugUpdate(BugApiFields):
     """修改缺陷入参（局部）。"""
 
     title: str | None = Field(None, min_length=1, max_length=200)
@@ -120,7 +137,7 @@ class BugUpdate(BaseModel):
         return normalize_bug_category(value)
 
 
-class BugResponse(BaseModel):
+class BugResponse(BugApiFields):
     """缺陷响应。"""
 
     id: int
@@ -182,9 +199,11 @@ class DefectSourceResponse(BaseModel):
 
 
 __all__ = [
+    "API_METHODS",
     "BUG_CATEGORIES",
     "BUG_CATEGORY_ALIASES",
     "BUG_STATUSES",
+    "BugApiFields",
     "BugBase",
     "BugBatchCreate",
     "BugBatchCreateResponse",

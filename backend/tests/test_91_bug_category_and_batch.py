@@ -82,11 +82,26 @@ def test_bug_category_crud_and_filtering(api, admin):
     r_api = api.post(
         "/bugs",
         username=admin,
-        json={"project_id": project_id, "title": "订单查询接口返回字段缺失", "category": "接口", "severity": 3},
+        json={
+            "project_id": project_id,
+            "title": "订单查询接口返回字段缺失",
+            "category": "接口",
+            "severity": 3,
+            "api_method": "GET",
+            "api_url": "/v1/orders/SO-12345",
+            "api_request_headers": '{"Authorization": "Bearer ***"}',
+            "api_request_body": None,
+            "api_response": '{"code": 200, "data": {"orderNo": null}}',
+        },
     )
     assert r_api.status_code == 201, r_api.text
     api_bug = r_api.json()
     assert api_bug["category"] == "接口"
+    # 接口专属字段随创建落库并在响应中回显
+    assert api_bug["api_method"] == "GET"
+    assert api_bug["api_url"] == "/v1/orders/SO-12345"
+    assert api_bug["api_request_headers"] == '{"Authorization": "Bearer ***"}'
+    assert api_bug["api_response"] == '{"code": 200, "data": {"orderNo": null}}'
 
     r_uncat = api.post(
         "/bugs",
@@ -141,6 +156,29 @@ def test_bug_category_crud_and_filtering(api, admin):
     merge_cat = api.put(f"/bugs/{fe_bug['id']}", username=admin, json={"category": "后端"})
     assert merge_cat.status_code == 200
     assert merge_cat.json()["category"] == "接口"
+
+    # 5. 类别从「接口」切走时，提交置空的接口专属字段会被清空
+    clear_api = api.put(
+        f"/bugs/{api_bug['id']}",
+        username=admin,
+        json={"category": "前端", "api_method": None, "api_url": None,
+              "api_request_headers": None, "api_response": None},
+    )
+    assert clear_api.status_code == 200
+    cleared = clear_api.json()
+    assert cleared["category"] == "前端"
+    assert cleared["api_method"] is None
+    assert cleared["api_url"] is None
+    assert cleared["api_request_headers"] is None
+    assert cleared["api_response"] is None
+
+    # 非法请求方法被拒绝
+    bad_method = api.post(
+        "/bugs",
+        username=admin,
+        json={"project_id": project_id, "title": "非法方法", "category": "接口", "api_method": "FETCH"},
+    )
+    assert bad_method.status_code == 422
 
 
 def test_batch_create_bugs_success_and_notifications(api, admin, db):
@@ -322,7 +360,7 @@ def test_migration_0092_merges_backend_into_api(isolated_migration_database):
             )
         )
 
-    command.upgrade(config, "head")
+    command.upgrade(config, "0092")
     with engine.connect() as connection:
         category = connection.execute(
             text("SELECT category FROM bug WHERE title = '历史后端缺陷'")

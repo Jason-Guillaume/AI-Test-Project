@@ -44,6 +44,15 @@ class Bug(SoftDeleteBase):
     )
     # 历史存量缺陷允许为 NULL，界面展示为「未划分」，避免迁移强塞不准确的默认归属。
     description = Column(String(1000), nullable=True, comment="缺陷描述")
+    # 接口专属字段：仅 category='接口' 时由表单填写，其余类别保持 NULL。
+    api_method = Column(
+        String(10), nullable=True,
+        comment="请求方法：GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS",
+    )
+    api_url = Column(String(500), nullable=True, comment="请求地址（完整 URL 或路径）")
+    api_request_headers = Column(Text, nullable=True, comment="请求头（JSON 或原始文本）")
+    api_request_body = Column(Text, nullable=True, comment="请求体")
+    api_response = Column(Text, nullable=True, comment="实际响应结果（脱敏后填写）")
     severity = Column(
         Integer, nullable=False, default=2, server_default=text("2"),
         comment="严重度 1-4，1 低 2 中 3 高 4 严重",

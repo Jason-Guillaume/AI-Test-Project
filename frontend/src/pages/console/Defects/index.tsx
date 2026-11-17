@@ -41,6 +41,7 @@ import { bugsApi } from '@/features/defects/api/defects';
 import { DefectShareHistory } from '@/features/defects/components/DefectShareHistory';
 import { DefectShareModal } from '@/features/defects/components/DefectShareModal';
 import type {
+  ApiMethod,
   Bug,
   BugCategory,
   BugCategoryFilter,
@@ -61,6 +62,7 @@ import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 import type { Paginated } from '@/shared/api/contracts';
 import { BatchCreateBugsModal } from './BatchCreateBugsModal';
 import {
+  API_METHOD_OPTIONS,
   BUG_CATEGORIES,
   BUG_STATUSES,
   CATEGORY_COLOR,
@@ -76,6 +78,11 @@ interface BugFormValues {
   title: string;
   category?: BugCategory;
   description?: string;
+  api_method?: ApiMethod;
+  api_url?: string;
+  api_request_headers?: string;
+  api_request_body?: string;
+  api_response?: string;
   severity: BugSeverity;
   status: BugStatus;
   steps_to_reproduce?: string;
@@ -104,6 +111,8 @@ export function ConsoleDefectsPage() {
   // antd Form 实例：必须在使用 useForm 的组件内创建；
   // 每次弹窗打开用 key 强制重建以重置值，无需手工 resetFields。
   const [bugForm] = Form.useForm<BugFormValues>();
+  // 监听前后端划分：选择「接口」时展开请求方法/地址/请求头/请求体等接口专属字段。
+  const selectedCategory = Form.useWatch<BugFormValues['category']>('category', bugForm);
 
   // 分页：默认第一页、每页 10 条
   const [pagination, setPagination] = useState<PaginationState>({
@@ -492,6 +501,33 @@ export function ConsoleDefectsPage() {
             {bugDetail.data.environment && <Tag>{bugDetail.data.environment}</Tag>}
           </Space>
           <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
+          {(bugDetail.data.api_url || bugDetail.data.api_method || bugDetail.data.api_request_headers || bugDetail.data.api_request_body || bugDetail.data.api_response) && (
+            <>
+              <Typography.Text strong>接口信息</Typography.Text>
+              <Typography.Paragraph copyable={false} style={{ marginBottom: 0 }}>
+                {bugDetail.data.api_method && <Tag color="geekblue">{bugDetail.data.api_method}</Tag>}
+                <Typography.Text code>{bugDetail.data.api_url || '未填写请求地址'}</Typography.Text>
+              </Typography.Paragraph>
+              {bugDetail.data.api_request_headers && (
+                <>
+                  <Typography.Text type="secondary">请求头</Typography.Text>
+                  <pre className="bug-api-pre">{bugDetail.data.api_request_headers}</pre>
+                </>
+              )}
+              {bugDetail.data.api_request_body && (
+                <>
+                  <Typography.Text type="secondary">请求体</Typography.Text>
+                  <pre className="bug-api-pre">{bugDetail.data.api_request_body}</pre>
+                </>
+              )}
+              {bugDetail.data.api_response && (
+                <>
+                  <Typography.Text type="secondary">实际响应</Typography.Text>
+                  <pre className="bug-api-pre">{bugDetail.data.api_response}</pre>
+                </>
+              )}
+            </>
+          )}
           <BugAttachments bugId={bugDetail.data.id} />
           <Typography.Text strong>关联来源</Typography.Text>
           <DefectOrigins bugId={bugDetail.data.id} />
@@ -533,10 +569,17 @@ export function ConsoleDefectsPage() {
         onOk={async () => {
           if (modalState == null) return;
           const values = await bugForm.validateFields();
+          // 接口专属字段仅在选择「接口」时提交；切换到其他类别时显式置空以清除旧值。
+          const isApiBug = values.category === '接口';
           const basePayload = {
             title: values.title,
             category: values.category,
             description: values.description,
+            api_method: isApiBug ? (values.api_method ?? null) : null,
+            api_url: isApiBug ? (values.api_url ?? null) : null,
+            api_request_headers: isApiBug ? (values.api_request_headers ?? null) : null,
+            api_request_body: isApiBug ? (values.api_request_body ?? null) : null,
+            api_response: isApiBug ? (values.api_response ?? null) : null,
             severity: values.severity,
             status: values.status,
             steps_to_reproduce: values.steps_to_reproduce,
@@ -582,6 +625,11 @@ export function ConsoleDefectsPage() {
                   title: modalState.bug.title,
                   category: modalState.bug.category ?? undefined,
                   description: modalState.bug.description ?? undefined,
+                  api_method: modalState.bug.api_method ?? undefined,
+                  api_url: modalState.bug.api_url ?? undefined,
+                  api_request_headers: modalState.bug.api_request_headers ?? undefined,
+                  api_request_body: modalState.bug.api_request_body ?? undefined,
+                  api_response: modalState.bug.api_response ?? undefined,
                   severity: modalState.bug.severity,
                   status: modalState.bug.status,
                   steps_to_reproduce: modalState.bug.steps_to_reproduce ?? undefined,
@@ -634,6 +682,54 @@ export function ConsoleDefectsPage() {
               buttonStyle="solid"
             />
           </Form.Item>
+          {selectedCategory === '接口' && (
+            <>
+              <Typography.Title level={5} style={{ marginTop: 8, marginBottom: 8 }}>
+                接口信息
+              </Typography.Title>
+              <div className="form-field-row">
+                <Form.Item
+                  name="api_method"
+                  label="请求方法"
+                  style={{ width: 160, flex: 'none', margin: 0 }}
+                >
+                  <Select placeholder="GET" options={API_METHOD_OPTIONS} allowClear />
+                </Form.Item>
+                <Form.Item
+                  name="api_url"
+                  label="请求地址"
+                  style={{ flex: 1, margin: 0 }}
+                >
+                  <Input placeholder="如 https://api.example.com/v1/orders 或 /v1/orders" maxLength={500} />
+                </Form.Item>
+              </div>
+              <Form.Item
+                name="api_request_headers"
+                label="请求头"
+                tooltip="JSON 或原始文本；请勿填写真实密钥，敏感值请脱敏"
+              >
+                <Input.TextArea
+                  rows={2}
+                  placeholder={'{"Authorization": "Bearer ***", "Content-Type": "application/json"}'}
+                  maxLength={2000}
+                />
+              </Form.Item>
+              <Form.Item name="api_request_body" label="请求体">
+                <Input.TextArea
+                  rows={3}
+                  placeholder='{"order_no": "SO-12345"}'
+                  maxLength={5000}
+                />
+              </Form.Item>
+              <Form.Item
+                name="api_response"
+                label="实际响应"
+                tooltip="接口返回的错误响应或异常报文；请脱敏后填写"
+              >
+                <Input.TextArea rows={3} placeholder='{"code": 500, "message": "internal error"}' maxLength={5000} />
+              </Form.Item>
+            </>
+          )}
           <Form.Item
             name="title"
             label="标题"

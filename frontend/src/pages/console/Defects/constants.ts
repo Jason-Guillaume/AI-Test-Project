@@ -1,6 +1,11 @@
 // 缺陷管理页面常量：前后端划分、状态与严重度选项及标签配色，与后端 defects/schemas.py 严格对齐。
 
-import type { BugCategory, BugSeverity, BugStatus } from '@/features/defects/contracts';
+import type { ApiMethod, BugCategory, BugSeverity, BugStatus } from '@/features/defects/contracts';
+
+/** 接口缺陷请求方法表单选项。 */
+export const API_METHOD_OPTIONS: { label: string; value: ApiMethod }[] = (
+  ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] as ApiMethod[]
+).map((m) => ({ label: m, value: m }));
 
 /** 前后端划分合法值；原「后端」已并入「接口」，「前后端」保留自身类型。 */
 export const BUG_CATEGORIES: BugCategory[] = ['前端', '前后端', '接口'];
