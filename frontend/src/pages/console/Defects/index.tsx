@@ -29,7 +29,7 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { ExclamationCircleOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, InboxOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -574,7 +574,11 @@ export function ConsoleDefectsPage() {
             <Input.TextArea rows={4} placeholder={'1. 打开登录页\n2. 输入错误密码\n3. 点击登录'} />
           </Form.Item>
           {modalState?.mode === 'create' && <Form.Item label="附件" extra="每个文件不超过 10 MB；保存后上传">
-            <Upload multiple beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } setFiles((previous) => [...previous, file]); return false; }} onRemove={(file) => { setFiles((previous) => previous.filter((item) => item !== file.originFileObj)); }}><Button>选择附件</Button></Upload>
+            <Upload.Dragger multiple beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } setFiles((previous) => [...previous, file]); return false; }} onRemove={(file) => { setFiles((previous) => previous.filter((item) => item !== file.originFileObj)); }}>
+              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+              <p className="ant-upload-text">点击或拖拽文件到此处</p>
+              <p className="ant-upload-hint">支持同时选择多个文件</p>
+            </Upload.Dragger>
           </Form.Item>}
           <Form.Item
             name="assignee_id"
@@ -726,5 +730,9 @@ function BugAttachments({ bugId }: { bugId: number }) {
     {query.isError ? <Typography.Text type="danger">附件读取失败</Typography.Text> : query.data?.map((attachment) => <Space key={attachment.id}>
       <Button type="link" onClick={() => bugsApi.downloadAttachment(bugId, attachment).catch((error) => message.error(getErrorMessage(error, '下载失败')))}>{attachment.filename}</Button><Typography.Text type="secondary">{(attachment.size / 1024).toFixed(1)} KB</Typography.Text>
       <Button size="small" danger onClick={() => modal.confirm({ title: '删除此附件？', onOk: async () => { try { await bugsApi.deleteAttachment(bugId, attachment.id); await refresh(); } catch (error) { message.error(getErrorMessage(error, '删除失败')); } } })}>删除</Button></Space>)}
-    <Upload multiple showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { await bugsApi.uploadAttachment(bugId, file as File); await refresh(); onSuccess?.({}); message.success('附件已上传'); } catch (error) { onError?.(error as Error); message.error(getErrorMessage(error, '上传失败')); } }} beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } return true; }}><Button>上传附件</Button></Upload><Typography.Text type="secondary">单个文件不超过 10 MB</Typography.Text></Space>;
+    <Upload.Dragger multiple showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { await bugsApi.uploadAttachment(bugId, file as File); await refresh(); onSuccess?.({}); message.success('附件已上传'); } catch (error) { onError?.(error as Error); message.error(getErrorMessage(error, '上传失败')); } }} beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } return true; }}>
+      <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+      <p className="ant-upload-text">点击或拖拽文件到此处上传</p>
+      <p className="ant-upload-hint">支持多个文件，单个文件不超过 10 MB</p>
+    </Upload.Dragger></Space>;
 }
