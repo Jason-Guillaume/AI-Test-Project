@@ -59,12 +59,12 @@
 ## 6. 飞书推送与公开分享验收（需隔离测试群）
 
 - [ ] **公网 URL 检查**：调用分享预览接口验证 `public_url_valid === true`，生成的卡片跳转链接为完整 `https://.../#<token>`（Token 位于 Fragment，不进服务端 Query 日志）。
-- [ ] **真实测试群联调（当前标注 `BLOCKED`）**：使用隔离测试群 Webhook 验证：
+- [x] **真实测试群联调（已基于提供测试机器人 Webhook 通过，切换生产/新测试群时附带签名再复核）**：使用隔离测试群 Webhook 验证：
   ```bash
   FEISHU_INTEGRATION_ENABLED=true FEISHU_TEST_WEBHOOK_URL=<测试群Webhook> FEISHU_TEST_SECRET=<签名密钥> \
     .venv/bin/python -m pytest -v integration_tests/test_feishu_integration.py
   ```
-- [ ] 手机/桌面飞书客户端点击卡片进入公开分享页后，确认地址栏 Hash 被立即清除，刷新后不会从 LocalStorage 泄漏凭证而是清晰引导重新通过链接打开，外部修复提交后缺陷状态正常推进为 `已修复` 并留存审计。
+- [ ] 在目标手机/桌面飞书客户端实测点击卡片进入公开分享页后，确认地址栏 Hash 被立即清除，刷新后不会从 LocalStorage 泄漏凭证而是清晰引导重新通过链接打开，外部修复提交后缺陷状态正常推进为 `已修复` 并留存审计。
 
 ## 7. Nginx、HTTPS 与安全配置（[frontend/nginx.conf](frontend/nginx.conf)）
 

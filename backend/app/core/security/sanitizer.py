@@ -72,6 +72,12 @@ _SECRET_TOKEN_PATTERN = re.compile(
     r"(?i)\b(secret|sign|signing[_\-\s]?key|webhook|token|password|api[_\-\s]?key)\b"
     r"[\"']?\s*[:：=]?\s*[\"']?([A-Za-z0-9_\-]{16,})"
 )
+_BARE_BEARER_PATTERN = re.compile(
+    r"(?i)\b(Bearer\s+)(?!\$\{token\})([A-Za-z0-9._\-+/=]{12,})"
+)
+_JWT_PATTERN = re.compile(
+    r"\beyJ[A-Za-z0-9_-]{4,}\.eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\b"
+)
 
 
 def mask_secret_values(text: str) -> str:
@@ -82,6 +88,8 @@ def mask_secret_values(text: str) -> str:
     """
     text = _WEBHOOK_URL_PATTERN.sub(_WEBHOOK_PLACEHOLDER, text)
     text = _SECRET_QUERY_PATTERN.sub(r"\1" + _TEXT_MASKED, text)
+    text = _BARE_BEARER_PATTERN.sub(r"\1" + _TEXT_MASKED, text)
+    text = _JWT_PATTERN.sub(_TEXT_MASKED, text)
     text = _SECRET_TOKEN_PATTERN.sub(r"\1" + _TEXT_MASKED, text)
     return text
 

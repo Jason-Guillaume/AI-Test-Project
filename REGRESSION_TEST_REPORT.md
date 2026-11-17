@@ -9,9 +9,10 @@
 
 | 检验项目 | 执行命令 | 历史参考基线 | 本机初始基线（`fe13026`） | 整改后最终实测结果 | 状态 |
 |---|---|---|---|---|---|
-| 后端主测试套件 | `pytest -q tests`（独立 PG 库） | 1237 passed / 42 failed / 6 errors | 1272 passed / 7 failed / 6 errors | **1312 passed, 0 failed, 0 errors**（615.26s） | PASS |
-| 后端嵌套业务模块测试 | `pytest -q app/platform/organizations/tests app/features/api_catalog/tests app/features/asr_evaluation/tests app/features/test_management/tests` | 未单列 | 纳入后续全量检查 | **120 passed, 0 failed, 0 errors**（10.68s） | PASS |
-| 真实外部集成套件 | `pytest -rs integration_tests` | 无 | 无 | **2 skipped（env-gated `BLOCKED`）** | BLOCKED |
+| 后端主测试套件 | `pytest -q tests`（独立 PG 库） | 1237 passed / 42 failed / 6 errors | 1272 passed / 7 failed / 6 errors | **1312 passed, 0 failed, 0 errors**（654.56s） | PASS |
+| 后端嵌套业务模块测试 | `pytest -q app/platform/organizations/tests app/features/api_catalog/tests app/features/asr_evaluation/tests app/features/test_management/tests` | 未单列 | 纳入后续全量检查 | **120 passed, 0 failed, 0 errors**（12.79s） | PASS |
+| 飞书真实机器人联调 | `FEISHU_INTEGRATION_ENABLED=true pytest -v integration_tests/test_feishu_integration.py` | 无 | 无 | **1 passed（2.06s，`open.feishu.cn` 返回 `code: 0`；常规无开关运行按设计跳过）** | PASS |
+| Dagu 真实外部集成测试 | `pytest -rs integration_tests/test_dagu_integration.py` | 无 | 无 | **1 skipped（env-gated `BLOCKED`：缺隔离 Dagu 实例）** | BLOCKED |
 | Python 字节码编译 | `python -m compileall -q app tests integration_tests ../deploy` | — | 未校验 `deploy` | **exit 0（全树无语法错误）** | PASS |
 | Alembic 迁移头检验 | `python -m alembic heads` | 存在分叉/未审计风险 | `0089` | **`0089 (head)`（唯一 head）** | PASS |
 | 前端 Node 单元测试 | `cd frontend && npm test` | 40 passed / 1 failed | 40 passed / 1 failed | **51 passed, 0 failed**（2.51s） | PASS |
@@ -48,7 +49,7 @@
 - **权限与生命周期扩展**（[test_79_auth_isolation_lifecycle.py](backend/tests/test_79_auth_isolation_lifecycle.py)、[test_platform_admin_management.py](backend/app/platform/organizations/tests/test_platform_admin_management.py)）：组织管理员边界、退组立即收回可见性、Owner/Editor/Member/Viewer 分级矩阵、注册事务原子回滚。
 - **Playwright 浏览器环境与生命周期**（[test_browser_lifecycle.py](backend/tests/test_browser_lifecycle.py) + `test_30` ~ `test_35`）：容器 launch args、缺失 Chromium/依赖分类报错、超时与异常下 `_SLOTS` 必释放、挂死关闭超时、同会话并发打开单槽序列化、`test_real_console_create_confirm_debug_report` 全过。
 - **缺陷公开分享安全测试**（[test_89_defect_public_share.py](backend/tests/test_89_defect_public_share.py) + [test_89b_defect_share_security.py](backend/tests/test_89b_defect_share_security.py)）：随机令牌散列存储、字段白名单、暴力猜测/错误桶独立限流、Redis 7-alpine 多实例原子计数与 TTL、IPv4/IPv6 可信反代链与 `X-Forwarded-For` 伪造拒绝、Redis 不可用降级与 fail-closed 模式、重推旧链立即作废及失败审计、定时自动归档幂等性及重跑、已删缺陷立即失效、`PUBLIC_APP_BASE_URL` 生产校验、请求体大小上限、跨项目/并发提交防护。
-- **飞书卡片可靠与脱敏测试**（[test_89c_feishu_card_reliability.py](backend/tests/test_89c_feishu_card_reliability.py)）：中文、尖括号/脚本转义、超长正文边界截断、HMAC 签名、超时重试与幂等键保护。
+- **飞书卡片可靠与脱敏测试**（[test_89c_feishu_card_reliability.py](backend/tests/test_89c_feishu_card_reliability.py)、[test_feishu_integration.py](backend/integration_tests/test_feishu_integration.py)）：中文、尖括号/脚本转义、超长正文边界截断、裸 `Bearer`/三段式 JWT 脱敏、HMAC 签名、超时重试与幂等键保护，并经隔离测试群真实 Webhook 实测投递交互式缺陷卡片与 `build_report_card` 均返回 `code: 0`。
 - **Dagu 执行中心专项**（[test_automation_dagu_remediation.py](backend/tests/test_automation_dagu_remediation.py) + `test_automation_dagu_service.py` + `test_78_automation_center.py`）：v2.26.0 状态映射、分页游标、`_PinnedSyncBackend` 防 DNS 重绑定与私网直连拦截、等待态停止与 `/openapi.json` 404 降级、派发超时/取消意图竞态保护。
 - **数据库迁移专项**（[test_migration_audit_0089.py](backend/tests/test_migration_audit_0089.py) + `test_automation_dagu_migrations.py` + `test_57_organization_recycle_bin_migration.py`）：单 head `0089`、`0086→0089` 升级与索引约束验证、`0089→0088→0089` 降级与重升幂等性。
 
@@ -71,7 +72,6 @@
 
 ## 四、失败与跳过用例明细
 
-- **当前环境失败用例数**：`0 failed`、`0 errors`（前后端主线及 E2E）。
+- **当前环境失败用例数**：`0 failed`、`0 errors`（前后端主线、飞书真实测试群联调及 E2E）。
 - **受外部环境阻塞跳过（`BLOCKED`）**：
   1. `backend/integration_tests/test_dagu_integration.py::test_live_dagu_connectivity_and_dag_contract`（需设置 `DAGU_INTEGRATION_ENABLED=true`、`DAGU_BASE_URL`、`DAGU_API_KEY`）
-  2. `backend/integration_tests/test_feishu_integration.py::test_live_feishu_webhook_card_delivery`（需设置 `FEISHU_INTEGRATION_ENABLED=true`、`FEISHU_TEST_WEBHOOK_URL`）

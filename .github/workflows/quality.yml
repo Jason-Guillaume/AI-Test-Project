@@ -36,6 +36,7 @@ jobs:
           ruff check \
             app/core/config.py \
             app/core/security/roles.py \
+            app/core/security/sanitizer.py \
             app/execution/browser/playwright_executor.py \
             app/execution/browser/session_manager.py \
             app/features/api_catalog/services/module_service.py \

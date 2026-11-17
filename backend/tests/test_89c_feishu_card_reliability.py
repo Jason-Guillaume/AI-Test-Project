@@ -14,8 +14,12 @@ from tests.conftest import unique
 
 
 def test_defect_share_card_sanitizes_chinese_special_chars_and_bounds_long_text():
+    sample_jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
     long_title = "【紧急】支付链路 <script>alert(1)</script> " + "异常详情" * 80
-    long_summary = "步骤：\n1. **加粗注入**\n2. token=secret_abc_123 " + "日志内容" * 300
+    long_summary = (
+        f"步骤：\n1. **加粗注入**\n2. token=secret_abc_123 Bearer raw_bearer_secret_456 JWT={sample_jwt} "
+        + "日志内容" * 300
+    )
     card = build_defect_share_card(
         [
             {
@@ -41,6 +45,9 @@ def test_defect_share_card_sanitizes_chinese_special_chars_and_bounds_long_text(
 
     serialized = str(card)
     assert "<script>" not in serialized
+    assert "raw_bearer_secret_456" not in serialized
+    assert sample_jwt not in serialized
+    assert "secret_abc_123" not in serialized
     assert len(serialized) < 25_000
     assert "产研协同群" in serialized
     assert "tester_a" in serialized

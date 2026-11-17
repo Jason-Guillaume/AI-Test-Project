@@ -10,9 +10,9 @@
 
 | 验收维度 | 历史审查参考（prompt 描述） | 本机基线实测（`fe13026`） | 整改后最终验收结果 |
 |---|---|---|---|
-| 后端主测试集 `backend/tests` | 1237 passed / 42 failed / 6 errors | **1272 passed / 7 failed / 6 errors** | **1312 passed / 0 failed / 0 errors**（615.26s） |
-| 后端嵌套模块测试（4 模块） | — | 已通过基线校验 | **120 passed / 0 failed / 0 errors**（10.68s） |
-| 真实外部集成测试 `backend/integration_tests` | 缺少真实联调测试 | 无独立集成套件 | **2 skipped（`BLOCKED`：未配置隔离 Dagu / 飞书测试群）** |
+| 后端主测试集 `backend/tests` | 1237 passed / 42 failed / 6 errors | **1272 passed / 7 failed / 6 errors** | **1312 passed / 0 failed / 0 errors**（654.56s） |
+| 后端嵌套模块测试（4 模块） | — | 已通过基线校验 | **120 passed / 0 failed / 0 errors**（12.79s） |
+| 真实外部集成测试 `backend/integration_tests` | 缺少真实联调测试 | 无独立集成套件 | **飞书真实群机器人联调通过（1 passed, 2.06s）；Dagu 真实联调仍 `BLOCKED`（缺隔离 Dagu 实例）** |
 | 前端 Node 单元测试 `npm test` | 40 passed / 1 failed（71 vs 70） | **40 passed / 1 failed** | **51 passed / 0 failed**（2.51s） |
 | 前端 TypeScript / ESLint / Vite Build | Build 未完成有效验收 | 需对齐验收 | **`tsc -b --noEmit` / `eslint --max-warnings=0` / `vite build` 全部通过（6.42s）** |
 | Playwright E2E（独立库与服务） | 30 passed / 5 failed | **31 passed / 4 failed** | **35 passed / 0 failed（7.4m）**，覆盖 62 路由 × 6 视口 |
@@ -29,7 +29,7 @@
 - **所属模块**：前端路由与 Nginx 入口
 - **文件位置**：[frontendRoutes.test.mjs](frontend/tests/frontendRoutes.test.mjs)、[App.tsx](frontend/src/app/App.tsx)、[nginx.conf](frontend/nginx.conf)
 - **复现步骤**：在 `frontend/` 执行 `npm test`，路由契约测试抛出 `ERR_ASSERTION: 71 !== 70`。
-- **根本原因**：新增公开缺陷分享路由 `/public/defect-shares/:shareId` 后，`frontendRoutes.test.mjs` 仍使用过时的静态数量 `70` 与笼统数量断言，未结构化校验「既有路由不缺失 + 新增路由显式声明 + 守卫边界（`/public/defect-shares/:shareId` 不受 `RequireAuth` 拦截）+ Nginx SPA fallback」。
+- **根本原因**：新增公开缺陷分享路由 `/public/defects/share/:shareId` 后，`frontendRoutes.test.mjs` 仍使用过时的静态数量 `70` 与笼统数量断言，未结构化校验「既有路由不缺失 + 新增路由显式声明 + 守卫边界（`/public/defects/share/:shareId` 不受 `RequireAuth` 拦截）+ Nginx SPA fallback」。
 - **是否本次新增回归**：是（`fe13026` 合入缺陷分享路由后测试未同步更新）。
 - **修复方案**：重构 `frontendRoutes.test.mjs` 为基于 AST 解析与集合显式对比测试：校验路由树无重复无缺失 `element`、70 条既有路由全保留、新增路由显式登记、`/public/*` 顶层无平台登录守卫、`/admin/*` 走 `RequireAdmin`、`/console/*` 走 `RequireAuth`，并静态校验 `frontend/nginx.conf` 对非 `/api/` 路由执行 `try_files $uri $uri/ /index.html`。
 - **对应测试与结果**：`npm test` 中路由专项全部通过（含在 `51 passed, 0 failed` 内）。
@@ -71,15 +71,15 @@
 - **所属模块**：缺陷公开分享（前端页面、推送弹窗、历史记录、后端公开路由、限流与归档）
 - **文件位置**：
   - 前端：[shareToken.ts](frontend/src/features/defects/api/shareToken.ts)、[DefectShare/index.tsx](frontend/src/pages/public/DefectShare/index.tsx)、[publicShare.ts](frontend/src/features/defects/api/publicShare.ts)、[DefectShareHistory.tsx](frontend/src/features/defects/components/DefectShareHistory.tsx)、[DefectShareModal.tsx](frontend/src/features/defects/components/DefectShareModal.tsx)、[contracts.ts](frontend/src/features/defects/contracts.ts)
-  - 后端：[public_rate_limit.py](backend/app/features/defects/services/public_rate_limit.py)、[public_router.py](backend/app/features/defects/public_router.py)、[share_service.py](backend/app/features/defects/services/share_service.py)、[share_archive_worker.py](backend/app/features/defects/services/share_archive_worker.py)、[schemas_share.py](backend/app/features/defects/schemas_share.py)、[main.py](backend/app/main.py)、[config.py](backend/app/core/config.py)、[card_builder.py](backend/app/orchestration/report_delivery/card_builder.py)
+  - 后端：[public_rate_limit.py](backend/app/features/defects/services/public_rate_limit.py)、[public_router.py](backend/app/features/defects/public_router.py)、[share_service.py](backend/app/features/defects/services/share_service.py)、[share_archive_worker.py](backend/app/features/defects/services/share_archive_worker.py)、[schemas_share.py](backend/app/features/defects/schemas_share.py)、[main.py](backend/app/main.py)、[config.py](backend/app/core/config.py)、[card_builder.py](backend/app/orchestration/report_delivery/card_builder.py)、[sanitizer.py](backend/app/core/security/sanitizer.py)
 - **核心问题与修复方案**：
   1. **Token 生命周期（4.1）**：提取模块内纯内存管理器 `shareToken.ts`（首帧捕获并立即执行 `history.replaceState` 剥离 URL Fragment；通过组件未挂载延迟/幂等守卫兼容 React 18 `StrictMode` 重挂载不丢凭证；严禁写入 `localStorage`/`sessionStorage`/`cookie`/query/控制台；全页刷新后无内存 Token 时提示通过原分享链接重新进入）。
   2. **分布式限流与反代 IP 提取（4.2）**：`public_rate_limit.py` 引入基于 `redis>=5,<6` Lua 脚本的原子滑动窗口限流（独立维度覆盖 IP、`(ip, share_id)`、`share_id`、以及失败凭证独立桶，区分 `view`/`resolve`/`failure` 操作策略，键摘要使用 HMAC/SHA256 脱敏并设置过期 TTL）。IP 提取基于 `TRUSTED_PROXY_CIDRS` 从右向左仅剥离可信反代（兼容 IPv4/IPv6），防止客户端伪造 `X-Forwarded-For` 绕过；提供 `PUBLIC_SHARE_RATE_LIMIT_FAIL_CLOSED` 控制 Redis 不可用时降级有界内存滑窗或直接拒绝 503。`compose.yaml` 新增 `redis:7-alpine` 服务。
   3. **重新推送体验（4.3）**：`DefectShareHistory.tsx` 重推后展示只读可选中 `<Input>` 新链接、复制按钮（Clipboard API 失败时优雅降级提示手动选择复制而不抛异常）、明确提示旧链接已失效、展示飞书推送结果状态并使用并发守卫禁用连点。
   4. **自动归档与已删缺陷失效（4.4）**：`share_service.py` 抽离幂等 `archive_expired_shares()`，新增后台周期 Worker `share_archive_worker.py` 并在 `main.py` lifespan 注册；校验并阻止已删除缺陷（`Bug.deleted_at`）或已撤销/已归档链接继续访问；修正 `record_view` 原子 SQL 更新消除并发计数覆盖竞态；归档失败记录错误并支持下次调度重试。
   5. **生产 URL 配置校验（4.5）**：新增 `validate_public_share_base_url()` 校验 `PUBLIC_APP_BASE_URL`（生产 `APP_ENV=production` 强制非空完整 `https://` 域名，拒绝内网开发地址与相对路径），并在 `SharePreviewResponse` 返回 `public_url_valid`/`public_url_error`，前后端均清晰提示错误而不伪装成功；`scripts/e2e_case_generation.sh` 注入隔离测试 `PUBLIC_APP_BASE_URL`。
-  6. **飞书卡片与输入安全（4.6 & P2）**：`card_builder.py` 新增 `_safe_md_text()` 转义危险标记并限制字段长度，防止长文本或特殊字符破坏卡片结构或泄露内部信息；补充 `test_89b_defect_share_security.py`（含真实 `redis:7-alpine` 容器联测多实例限流、IPv4/IPv6 伪造防护、重放/并发/跨项目/过期/失效/降级）与 `test_89c_feishu_card_reliability.py`。
-- **对应测试与结果**：前端 [defectShareToken.test.mjs](frontend/tests/defectShareToken.test.mjs) 全过，后端 `test_89_defect_public_share.py`、`test_89b_defect_share_security.py`、`test_89c_feishu_card_reliability.py` 全过；真实飞书外部群 Webhook `integration_tests/test_feishu_integration.py` 标记为 `BLOCKED`。
+  6. **飞书卡片与输入安全（4.6 & P2）**：`card_builder.py` 新增 `_safe_md_text()` 转义危险标记并限制字段长度，防止长文本或特殊字符破坏卡片结构；在真实飞书机器人实验中进一步发现无 `Authorization:` 前缀的裸 `Bearer <token>` 与三段式 JWT（`eyJ...`）未被旧正则拦截，已在 [sanitizer.py](backend/app/core/security/sanitizer.py) 补齐 `_BARE_BEARER_PATTERN` 与 `_JWT_PATTERN` 掩码；补充 `test_89b_defect_share_security.py`（含真实 `redis:7-alpine` 容器联测多实例限流、IPv4/IPv6 伪造防护、重放/并发/跨项目/过期/失效/降级）与 `test_89c_feishu_card_reliability.py`。
+- **对应测试与结果**：前端 [defectShareToken.test.mjs](frontend/tests/defectShareToken.test.mjs) 全过，后端 `test_89_defect_public_share.py`、`test_89b_defect_share_security.py`、`test_89c_feishu_card_reliability.py` 全过；使用隔离环境变量传入的飞书测试群 Webhook 实测 [test_feishu_integration.py](backend/integration_tests/test_feishu_integration.py) **通过（1 passed, 2.06s）**，且实时投递 `build_defect_share_card` 与 `build_report_card` 交互卡片均返回 HTTP 200 `{"code": 0, "msg": "success"}`、DB 审计快照已掩码 `#token=` 与 Webhook URL。
 
 ### P1-5：Dagu 自动化执行中心兼容性、SSRF/DNS Rebinding 与生命周期加固
 - **所属模块**：自动化执行中心 & Dagu Runner
@@ -121,5 +121,4 @@
 | 阻塞项 | 原因与影响范围 | 解除条件与下一步操作 |
 |---|---|---|
 | `backend/integration_tests/test_dagu_integration.py` | 当前仓库未连接可控的隔离 Dagu 测试实例（未设置 `DAGU_INTEGRATION_ENABLED=true`） | 在预发布/测试环境提供受控 Dagu 地址与凭据后执行 `DAGU_INTEGRATION_ENABLED=true pytest -v integration_tests/test_dagu_integration.py`（禁止指向生产 Dagu） |
-| `backend/integration_tests/test_feishu_integration.py` | 缺少隔离的测试飞书群机器人 Webhook，禁止向生产业务群推送验证消息 | 配置 `FEISHU_INTEGRATION_ENABLED=true` 与 `FEISHU_TEST_WEBHOOK_URL`/`FEISHU_TEST_SECRET` 后执行联调脚本，验证真实手机/PC 端卡片渲染与跳转 |
-| 本地 Docker Hub 镜像重构建 & 离线 `npm audit` / 本地 `ruff` | 本机网络无法连通 `registry-1.docker.io`（TLS EOF）及 npm 官方 audit 接口，且本机 venv 未安装 `ruff` | 推送至 GitHub `develop` 后由 GitHub Actions `quality.yml`（Stage 1 / Stage 5 / Stage 6）自动拉取镜像与运行 `ruff check --exact` 与 `npm audit` |
+| 本地 Docker Hub 镜像重构建 & 离线 `npm audit` / 本地 `ruff` | 本机网络无法连通 `registry-1.docker.io`（TLS EOF）及 npm 官方 audit 接口，且本机 venv 未安装 `ruff` | 推送至 GitHub `develop` 后由 GitHub Actions `quality.yml`（Stage 1 / Stage 5 / Stage 6）自动拉取镜像与运行 `ruff check` 与 `npm audit` |
