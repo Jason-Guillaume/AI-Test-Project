@@ -3,6 +3,8 @@
 
 export const MAX_BATCH_BUG_ROWS = 100;
 
+const VALID_CATEGORIES = new Set(['前端', '后端', '前后端']);
+
 const CATEGORY_ALIASES = {
   前端: '前端',
   frontend: '前端',
@@ -13,6 +15,13 @@ const CATEGORY_ALIASES = {
   be: '后端',
   api: '后端',
   server: '后端',
+  前后端: '前后端',
+  both: '前后端',
+  fullstack: '前后端',
+  'full-stack': '前后端',
+  'fe+be': '前后端',
+  'be+fe': '前后端',
+  '前端+后端': '前后端',
 };
 
 const SEVERITY_ALIASES = {
@@ -74,7 +83,7 @@ export function isPristineEmptyRow(row) {
  *
  * 支持两种格式：
  * 1. 纯文本每行一个标题，其余字段继承顶部默认值；
- * 2. 使用「|」或制表符分隔的列：`标题 | 前端/后端 | 严重度 | 描述 | 复现步骤 | 环境`。
+ * 2. 使用「|」或制表符分隔的列：`标题 | 前端/后端/前后端 | 严重度 | 描述 | 复现步骤 | 环境`。
  */
 export function parseBatchDefectLines(rawText, defaults, createKey) {
   const lines = String(rawText ?? '')
@@ -170,8 +179,8 @@ export function validateBatchDefectRows(rows) {
       errors.push({ row: rowNo, field: 'title', message: '缺陷标题不能超过 200 字' });
     }
 
-    if (row?.category !== '前端' && row?.category !== '后端') {
-      errors.push({ row: rowNo, field: 'category', message: '请选择前后端划分（前端或后端）' });
+    if (!VALID_CATEGORIES.has(row?.category)) {
+      errors.push({ row: rowNo, field: 'category', message: '请选择前后端划分（前端、后端或前后端）' });
     }
 
     if (description.length > 1000) {
