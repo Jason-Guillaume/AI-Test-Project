@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # 缺陷状态集合，与旧项目保持一致；数据库层不做枚举约束，服务层校验。
 BUG_STATUSES = ("待确认", "处理中", "已修复", "已关闭", "已拒绝")
@@ -31,6 +31,14 @@ class BugBase(BaseModel):
     """缺陷共有字段。"""
 
     title: str = Field(..., min_length=1, max_length=200, description="缺陷标题")
+    @field_validator("title")
+    @classmethod
+    def valid_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("标题不能为空")
+        return value
+
     description: str | None = Field(None, max_length=1000, description="缺陷描述")
     severity: BugSeverity = Field(default=2, description="严重度 1-4")
     status: BugStatus = Field(default="待确认", description="状态")

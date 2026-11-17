@@ -332,3 +332,26 @@ def test_defect_clear_assignee_by_putting_none(api, admin):
     assert r.status_code == 200
     assert r.json()["assignee_id"] is None
     assert r.json()["assignee_username"] is None
+
+
+def test_batch_create_is_atomic_and_attachments_follow_project_permissions(api, admin):
+    project_id, _ = _create_project(api, admin)
+    body = [{"project_id": project_id, "title": "批量一"}, {"project_id": project_id, "title": "批量二", "assignee_id": 999999999}]
+    assert api.post('/bugs/batch', username=admin, json=body).status_code == 400
+    assert api.get('/bugs', username=admin, params={"project_id": project_id}).json()['total'] == 0
+    body[1].pop('assignee_id')
+    response = api.post('/bugs/batch', username=admin, json=body)
+    assert response.status_code == 201, response.text
+    bug_id = response.json()[0]['id']
+    upload = api.post(f'/bugs/{bug_id}/attachments', username=admin, files={'file': ('test.txt', b'proof', 'text/plain')})
+    assert upload.status_code == 201, upload.text
+    attachment_id = upload.json()['id']
+    assert api.get(f'/bugs/{bug_id}/attachments/{attachment_id}', username=admin).content == b'proof'
+    viewer = unique('viewer')
+    viewer_id = _register_and_login(api, viewer)
+    _add_project_member(api, admin, project_id, viewer_id, 'viewer')
+    assert api.get(f'/bugs/{bug_id}/attachments', username=viewer).status_code == 200
+    assert api.post(f'/bugs/{bug_id}/attachments', username=viewer, files={'file': ('x.txt', b'x')}).status_code == 403
+    assert api.delete(f'/bugs/{bug_id}/attachments/{attachment_id}', username=viewer).status_code == 403
+    assert api.delete(f'/bugs/{bug_id}/attachments/{attachment_id}', username=admin).status_code == 204
+    assert api.get(f'/bugs/{bug_id}/attachments/{attachment_id}', username=admin).status_code == 404
