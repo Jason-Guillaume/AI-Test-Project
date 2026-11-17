@@ -88,7 +88,7 @@ export function PreconditionsTab({ caseId, items }: { caseId: number; items: Tes
     <>
       <Space style={{ marginBottom: 8 }}><Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增前置条件</Button></Space>
       <Table rowKey="id" size="small" columns={columns} dataSource={items} pagination={false} />
-      <Modal title={editing ? '编辑前置条件' : '新增前置条件'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnClose width={480}>
+      <Modal title={editing ? '编辑前置条件' : '新增前置条件'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnHidden width={480}>
         <Form<PreconditionFormValues> form={form} layout="vertical" initialValues={{ type: 'VARIABLE', operator: 'EQ', sort: 0 }}>
           <Form.Item name="type" label="类型"><Select options={TEST_PRECONDITION_TYPE_OPTIONS} /></Form.Item>
           <Form.Item name="target" label="目标"><Input maxLength={200} /></Form.Item>
@@ -251,7 +251,7 @@ export function DataTab({ caseId, items, fixtures }: { caseId: number; items: Te
     <>
       <Space style={{ marginBottom: 8 }}><Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增测试数据</Button></Space>
       <Table rowKey="id" size="small" columns={columns} dataSource={items} pagination={false} />
-      <Modal title={editing ? '编辑测试数据' : '新增测试数据'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnClose width={480}>
+      <Modal title={editing ? '编辑测试数据' : '新增测试数据'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnHidden width={480}>
         <Form<DataFormValues> form={form} layout="vertical" initialValues={{ value_type: 'STRING', source_type: 'STATIC', required: false, sort: 0 }}>
           <Form.Item name="source_type" label="来源" extra={sourceHint}>
             <Select options={TEST_DATA_SOURCE_OPTIONS} />

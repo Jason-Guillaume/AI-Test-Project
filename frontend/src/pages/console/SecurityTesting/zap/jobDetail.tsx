@@ -66,7 +66,7 @@ export function ScanJobDetailDrawer({
       open
       onClose={onClose}
       width={920}
-      destroyOnClose
+      destroyOnHidden
     >
       <div style={{ marginBottom: 16 }}>
         {progressQuery.isLoading ? (

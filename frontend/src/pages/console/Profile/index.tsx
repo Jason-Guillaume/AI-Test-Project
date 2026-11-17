@@ -230,7 +230,7 @@ export function ConsoleProfilePage() {
         // confirmLoading 绑定 mutation 状态，按钮转圈期间 onOk 不会重复触发提交
         confirmLoading={changePasswordMutation.isPending}
         // 关闭即销毁 DOM，确保下次打开表单是全新实例
-        destroyOnClose
+        destroyOnHidden
       >
         <Form<PasswordForm>
           form={passwordForm}

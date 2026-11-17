@@ -1,9 +1,15 @@
 // 云效自动化测试中心的接口契约。凭证只在创建和更新请求里出现。
+export type AutomationProviderType = 'YUNXIAO' | 'DAGU';
+export type AutomationProviderHistoryType = AutomationProviderType | 'LEGACY';
 
 export interface AutomationIntegration {
   id: number;
   project_id: number;
   name: string;
+  provider_type: AutomationProviderHistoryType;
+  enabled: boolean;
+  dagu_base_url: string | null;
+  dagu_api_key_configured: boolean;
   api_base_url: string;
   organization_id: string;
   deployment: 'central' | 'region';
@@ -19,6 +25,7 @@ export interface AutomationProject {
   id: number;
   project_id: number;
   integration_config_id: number;
+  provider_type: AutomationProviderHistoryType;
   name: string;
   description: string;
   repository_url: string;
@@ -47,8 +54,12 @@ export interface AutomationExecution {
   automation_project_name: string;
   pipeline_id: string;
   pipeline_run_id: string | null;
+  provider_type: AutomationProviderHistoryType;
+  external_run_url: string;
   trigger_source: string;
   status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'TIMEOUT';
+  stop_requested: boolean;
+  stop_reason: 'CANCELLED' | 'TIMEOUT' | null;
   branch: string;
   environment_name: string;
   pytest_args: string;
@@ -86,6 +97,8 @@ export interface AutomationReport {
   branch: string;
   environment_name: string;
   git_commit: string;
+  provider_type: AutomationProviderHistoryType;
+  external_run_url: string;
   generated_at: string | null;
   created_at: string;
 }
@@ -101,4 +114,15 @@ export interface Paginated<T> {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface DaguDag {
+  name: string;
+  description: string;
+}
+
+export interface ConsoleLog {
+  execution_id: number;
+  content: string;
+  truncated: boolean;
 }

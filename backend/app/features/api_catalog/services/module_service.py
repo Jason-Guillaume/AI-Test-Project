@@ -241,9 +241,11 @@ def delete_modules(
         raise
 
 
-def delete_module(db: Session, module_id: int, *, actor: User) -> ApiModuleDeleteResponse:
-    module = get_writable_module_or_404(db, module_id, actor)
-    return delete_modules(db, module.project_id, [module_id], actor=actor)
+def delete_module(db: Session, module_id: int, *, actor: User) -> None:
+    """软删除空模块；若仍有子模块或接口则返回 409，整树移入回收站走 delete_modules。"""
+    from app.lifecycle.service import delete_resource
+
+    delete_resource(db, "api_module", module_id, actor=actor)
 
 
 def resolve_parent_for_create(db: Session, project: Project, parent_id: int | None

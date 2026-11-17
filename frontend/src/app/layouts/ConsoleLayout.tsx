@@ -18,6 +18,7 @@ import {
   BellOutlined,
   BlockOutlined,
   ChromeOutlined,
+  CloseOutlined,
   CloudServerOutlined,
   BugOutlined,
   DatabaseOutlined,
@@ -29,6 +30,7 @@ import {
   HistoryOutlined,
   AudioOutlined,
   LogoutOutlined,
+  MenuOutlined,
   PartitionOutlined,
   PlayCircleOutlined,
   ProjectOutlined,
@@ -45,6 +47,7 @@ import { useAuth } from '@/app/providers/AuthProvider';
 import { platformRoleLabel } from '@/features/identity/components/RoleTag';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
+import { isNarrowViewport } from '@/shared/lib/viewport';
 import { projectsApi } from '@/features/projects/api/projects';
 import { organizationsApi } from '@/features/organizations/api/organizations';
 import { collectPages } from '@/shared/api/pagination';
@@ -164,13 +167,16 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/web-ui': 'Web UI 工作区',
   '/console/web-ui-agent': '浏览器智能编写',
   '/console/security-testing': '安全测试工作区',
-  '/console/asr/audio': '音频列表',
+  '/console/asr/audio': '音频资产',
   '/console/asr/connections': '接口配置',
   '/console/asr/jobs': '评测任务',
-  '/console/asr/jobs/:jobId': '评测任务详情',
+  '/console/asr/jobs/:jobId': '任务详情',
+  '/console/asr/runs/:runId': '单模型音频工作台',
+  '/console/asr/runs/:runId/listen': '单模型音频工作台',
   '/console/asr/comparisons': '识别结果对比',
   '/console/asr/comparisons/:comparisonId': '识别结果对比',
-  '/console/asr/experiments': '参数对比',
+  '/console/asr/experiments': '参数实验',
+  '/console/asr/funasr': 'AI 分析与调优',
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI 助手',
   '/console/tasks': '统一任务', // 全局任务列表
@@ -227,6 +233,9 @@ export function ConsoleLayout() {
   );
   const menuStorageKey = user?.id == null ? null : `console.menu-open-sections:${user.id}`;
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
+  const [collapsedOpenKeys, setCollapsedOpenKeys] = useState<string[]>([]);
+  const [narrowViewport, setNarrowViewport] = useState(isNarrowViewport);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(isNarrowViewport);
   const initializedMenuForRef = useRef<string | null>(null);
 
   // 分页读取当前用户可见项目并限制收集规模；超限或请求失败时显示重试入口。
@@ -271,7 +280,15 @@ export function ConsoleLayout() {
     }
   }, [activeSectionKey, menuItems, menuStorageKey]);
 
+  useEffect(() => {
+    setCollapsedOpenKeys([]);
+  }, [location.pathname, sidebarCollapsed]);
+
   const handleMenuOpenChange = (keys: string[]) => {
+    if (sidebarCollapsed) {
+      setCollapsedOpenKeys(keys);
+      return;
+    }
     const valid = keys.filter((key) => menuItems.some((section) => section.key === key));
     setOpenMenuKeys(valid);
     if (!menuStorageKey) return;
@@ -353,12 +370,17 @@ export function ConsoleLayout() {
   // 项目选择器按组织分组并可搜索；清空后回到不限定项目的作用域。
   return (
       <Layout className={`app-layout${location.pathname === '/console/agent' ? ' app-layout--workspace' : ''}`}>
+      {narrowViewport && !sidebarCollapsed && <button className="app-nav-scrim" type="button" aria-label="关闭导航" onClick={() => setSidebarCollapsed(true)} />}
       <Sider
-        className="app-sidebar"
+        className={`app-sidebar${narrowViewport && !sidebarCollapsed ? ' app-sidebar--mobile-open' : ''}`}
         theme="light"
         width={248}
-        collapsedWidth={72}
+        collapsed={sidebarCollapsed}
+        collapsedWidth={narrowViewport ? 0 : 72}
         breakpoint="lg"
+        trigger={null}
+        onBreakpoint={(broken) => { setNarrowViewport(broken); setSidebarCollapsed(broken); }}
+        onCollapse={setSidebarCollapsed}
       >
         <div className="app-brand">
           <span className="app-brand-mark" aria-hidden="true">Q</span>
@@ -371,8 +393,9 @@ export function ConsoleLayout() {
           className="app-sidebar-menu"
           theme="light"
           mode="inline"
-          openKeys={openMenuKeys}
+          openKeys={sidebarCollapsed ? collapsedOpenKeys : openMenuKeys}
           onOpenChange={handleMenuOpenChange}
+          onClick={() => { if (narrowViewport) setSidebarCollapsed(true); }}
           selectedKeys={[selectedMenuKey]}
           items={menuItems.map((item) => {
             return {
@@ -382,6 +405,7 @@ export function ConsoleLayout() {
               children: item.children.map((child) => ({
                 key: child.key,
                 icon: child.icon,
+                title: child.label,
                 label: <Link to={child.key}>{child.label}</Link>,
               })),
             };
@@ -399,6 +423,14 @@ export function ConsoleLayout() {
         <Header className="app-topbar">
           {/* 窄屏时项目选择器按视口宽度收窄，并允许整体换行 */}
           <Flex className="app-topbar-left" wrap="wrap" gap="middle" align="center">
+            <Button
+              className="app-sidebar-toggle"
+              type="text"
+              aria-label={sidebarCollapsed ? '展开导航' : '收起导航'}
+              aria-expanded={!sidebarCollapsed}
+              icon={narrowViewport && !sidebarCollapsed ? <CloseOutlined /> : <MenuOutlined />}
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            />
             <Select
               className="app-scope-select"
               style={{ width: 'min(300px, 52vw)' }}

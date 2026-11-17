@@ -35,7 +35,11 @@ from app.features.asr_evaluation.runtime.funasr_worker import FunAsrTuningWorker
 from app.lifecycle.router import router as lifecycle_router
 from app.features.business.router import router as business_router
 from app.features.dashboard.router import router as dashboard_router
+from app.features.defects.public_body_limit import PublicShareBodyLimit
+from app.features.defects.public_router import apply_public_share_headers
+from app.features.defects.public_router import router as public_defect_share_router
 from app.features.defects.router import router as defects_router
+from app.features.defects.share_router import router as defect_share_router
 from app.platform.environment_configuration.router import router as environments_router
 from app.features.mocking.router import router as mock_management_router
 from app.features.mocking.runtime_router import router as mock_runtime_router
@@ -110,8 +114,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         finally:
             session.close()
     from app.execution.browser.session_manager import configure_stale_session_callback
+    from app.features.defects.services.share_archive_worker import defect_share_archive_worker
+    from app.features.defects.services.share_service import validate_public_share_base_url
     from app.features.web_testing.services.runtime_lifecycle_service import mark_session_closed_by_runtime
     configure_stale_session_callback(mark_session_closed_by_runtime)
+    if (settings.APP_ENV or "").strip().lower() in {"prod", "production"}:
+        url_ok, url_err = validate_public_share_base_url()
+        if not url_ok:
+            logger.error("生产环境缺陷公开分享配置异常：%s", url_err)
     started_workers = []
     try:
         # 先登记启动责任，确保 start() 部分启动后抛错时 finally 仍会释放 Worker。
@@ -126,6 +136,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             scan_worker.start()
         started_workers.append(automation_poller)
         automation_poller.start()
+        if settings.DEFECT_SHARE_ARCHIVE_ENABLED:
+            started_workers.append(defect_share_archive_worker)
+            defect_share_archive_worker.start()
         from app.knowledge.worker import start as start_knowledge_worker
         knowledge_stop = start_knowledge_worker()
         try:
@@ -165,6 +178,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    application.add_middleware(PublicShareBodyLimit)
+
     # 跨域：来源由环境变量给出并逐条去空白（空串直接丢弃）；
     # 显式 expose X-Request-ID，前端报障时可以带上同一请求 ID 便于后端按日志定位。
     application.add_middleware(
@@ -191,6 +206,8 @@ def create_app() -> FastAPI:
         finally:
             request_id_context.reset(token)
         response.headers["X-Request-ID"] = request_id
+        # 公开分享不能被缓存或收录；页面本身的 CSP 由前端网关按同一路径补充。
+        apply_public_share_headers(request.url.path, response)
         logger.info(
             "method=%s path=%s status=%s duration_ms=%.1f",
             request.method,
@@ -235,6 +252,8 @@ def create_app() -> FastAPI:
     application.include_router(knowledge_router, prefix=API_PREFIX)
     application.include_router(projects_router, prefix=API_PREFIX)
     application.include_router(defects_router, prefix=API_PREFIX)
+    application.include_router(defect_share_router, prefix=API_PREFIX)
+    application.include_router(public_defect_share_router, prefix=API_PREFIX)
     application.include_router(api_catalog_router, prefix=API_PREFIX)
     application.include_router(asr_evaluation_router, prefix=API_PREFIX)
     application.include_router(business_router, prefix=API_PREFIX)

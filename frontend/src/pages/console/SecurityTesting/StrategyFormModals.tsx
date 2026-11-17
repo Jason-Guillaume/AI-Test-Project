@@ -32,7 +32,7 @@ export function StrategyModal({
       confirmLoading={submitting}
       okText="保存"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
       onOk={() => form.validateFields().then((v) => onSubmit(v))}
     >
       <Form
@@ -180,7 +180,7 @@ export function RuleModal({
       confirmLoading={createMutation.isPending || updateMutation.isPending}
       okText="保存"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
       width={620}
       onOk={handleOk}
     >

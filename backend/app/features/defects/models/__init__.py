@@ -5,6 +5,7 @@ Bug 是缺陷管理的核心实体，回归关联（DefectRegressionLink / TestP
 """
 
 from app.features.defects.models.bug import Bug
+from app.features.defects.models.share import DefectExternalAction, DefectShareLink
 from app.features.defects.models.source_link import DefectSourceLink
 
-__all__ = ["Bug"]
+__all__ = ["Bug", "DefectExternalAction", "DefectShareLink"]

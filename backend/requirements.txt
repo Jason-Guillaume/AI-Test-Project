@@ -37,3 +37,6 @@ pytest>=8.0,<10
 
 # Text PDF knowledge extraction
 pypdf>=5,<7
+
+# 分布式限流（Redis 客户端）
+redis>=5,<6

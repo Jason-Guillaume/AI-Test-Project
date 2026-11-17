@@ -167,7 +167,7 @@ function StateFormModal({
   submitting: boolean;
 }) {
   return (
-    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnClose width={480}>
+    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnHidden width={480}>
       <Form<BusinessStateCreate> form={form} layout="vertical">
         <Form.Item name="entity" label="业务实体" rules={[{ required: true, message: '请输入业务实体名' }]}>
           <Input maxLength={100} placeholder="如 task、project、user" />

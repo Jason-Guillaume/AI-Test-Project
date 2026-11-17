@@ -105,7 +105,12 @@ function toTemplateConfig(values: Partial<FormValues>): TaskTemplate['config'] {
   };
 }
 
-export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, initialCaseIds = [], initialTargetType = 'API', initialTemplateId, initialTemplateMode = 'apply', initialReplayTaskId }: Props) {
+export function TaskCreateModal(props: Props) {
+  if (!props.open) return null;
+  return <TaskCreateModalDialog {...props} />;
+}
+
+function TaskCreateModalDialog({ open, onClose, onCreated, initialProjectId, initialCaseIds = [], initialTargetType = 'API', initialTemplateId, initialTemplateMode = 'apply', initialReplayTaskId }: Props) {
   const [form] = Form.useForm<FormValues>();
   const initialized = useRef(false);
   const restoredCase = useRef(false);
@@ -546,7 +551,7 @@ export function TaskCreateModal({ open, onClose, onCreated, initialProjectId, in
       open={open}
       onCancel={requestClose}
       footer={null}
-      destroyOnClose
+      destroyOnHidden
       width={640}
     >
       {projectsQuery.isError ? (

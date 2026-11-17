@@ -104,7 +104,7 @@ export function CaseExecutionDetail({ open, execution, onClose }: CaseExecutionD
       onClose={onClose}
       title={execution ? `用例执行 #${execution.id} · ${execution.case_name ?? '未命名'}` : '用例执行详情'}
       width={DETAIL_DRAWER_WIDTH.EXECUTION}
-      destroyOnClose
+      destroyOnHidden
     >
       {execution == null ? null : (
         <>

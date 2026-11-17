@@ -116,7 +116,6 @@ def create_organization(
     Returns:
         新建组织的响应体。
     """
-    _require_platform_admin(user)
     name = body.name.strip()  # 去除首尾空白，避免「 测试组织  」与「测试组织」重复
     if len(name) < 2:
         raise bad_request("组织名称至少 2 个字符")  # 错误信封：名称过短
@@ -157,7 +156,7 @@ def update_organization(
     Returns:
         更新后的组织响应体。
     """
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     organization = get_organization_or_404(db, organization_id)  # 不存在时抛 404
     name = (body.name or "").strip()  # 允许空字符串，但要统一 strip 后再判空
     if not name:
@@ -303,7 +302,7 @@ def find_candidate(
     Returns:
         CandidateResponse；找不到匹配时 item 为 None。
     """
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     get_organization_or_404(db, organization_id)
     target = (
         db.query(User)
@@ -321,7 +320,7 @@ def list_candidates(
     organization_id: int, db: Session, user: User, *, keyword: str = "", page: int = 1, page_size: int = 50,
 ) -> CandidateListResponse:
     """按用户名模糊搜索启用账号，并标记其是否已加入目标组织。"""
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     get_organization_or_404(db, organization_id)
     query = db.query(User).filter(User.is_active.is_(True))
     if keyword.strip():
@@ -357,7 +356,7 @@ def available_models(
     Returns:
         可分配模型选项列表。
     """
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     get_organization_or_404(db, organization_id)
     rows = (
         db.query(ModelConfiguration)
@@ -390,7 +389,7 @@ def put_member(
     Returns:
         更新后的成员响应体。
     """
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     if member_id != body.user_id:
         raise bad_request("路径成员 ID 与请求体不一致")  # 幂等保护：防止前端拼错参数导致误改他人
 
@@ -422,7 +421,7 @@ def delete_member(
         db: 数据库会话。
         user: 当前登录用户，必须是组织管理员。
     """
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     organization = get_organization_or_404(db, organization_id)
     remove_member(db, organization=organization, member_user_id=member_id, actor=user)
     return None
@@ -447,7 +446,7 @@ def transfer_ownership(
     Returns:
         更新后的组织响应体。
     """
-    _require_platform_admin(user)
+    require_organization_admin(db, organization_id, user)
     organization = get_organization_or_404(db, organization_id)
     if organization.owner_id == member_id:
         # 幂等保护：目标已经是负责人时直接返回，不做任何变更

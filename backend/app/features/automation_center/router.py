@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from app.features.automation_center.schemas import (
     AutomationProjectUpdate,
     CallbackResponse,
     ConnectionTestResponse,
+    ConsoleLogResponse,
     ExecutionListResponse,
     ExecutionResponse,
     ExecutionTrigger,
@@ -29,6 +30,7 @@ from app.features.automation_center.schemas import (
     IntegrationListResponse,
     IntegrationResponse,
     IntegrationUpdate,
+    DaguDagListResponse,
     ReportCompareResponse,
     ReportGrantResponse,
     ReportListResponse,
@@ -62,37 +64,37 @@ def _headers(request: Request) -> dict[str, str]:
     return {key.lower(): value for key, value in request.headers.items()}
 
 
-@router.get("/projects/{project_id}/automation-integrations", response_model=IntegrationListResponse, summary="云效接入配置列表")
+@router.get("/projects/{project_id}/automation-integrations", response_model=IntegrationListResponse, summary="CI 接入配置列表")
 def list_integrations(
     project_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
     page: int = Query(1, ge=1), page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
 ):
-    """列出云效接入配置。"""
+    """列出 CI 接入配置。"""
     return _SERVICE.list_integrations(db, project_id, user, page=page, page_size=page_size)
 
 
 @router.post(
     "/projects/{project_id}/automation-integrations", response_model=IntegrationResponse,
-    status_code=201, summary="创建云效接入配置",
+    status_code=201, summary="创建 CI 接入配置",
 )
 def create_integration(
     project_id: int, body: IntegrationCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """创建云效接入配置。"""
+    """创建 CI 接入配置。"""
     return _SERVICE.create_integration(db, project_id, body, user)
 
 
-@router.patch("/automation-integrations/{config_id}", response_model=IntegrationResponse, summary="更新云效接入配置")
+@router.patch("/automation-integrations/{config_id}", response_model=IntegrationResponse, summary="更新 CI 接入配置")
 def update_integration(
     config_id: int, body: IntegrationUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """更新云效接入配置。"""
+    """更新 CI 接入配置。"""
     return _SERVICE.update_integration(db, config_id, body, user)
 
 
-@router.delete("/automation-integrations/{config_id}", status_code=204, summary="删除云效接入配置")
+@router.delete("/automation-integrations/{config_id}", status_code=204, summary="删除 CI 接入配置")
 def delete_integration(config_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """删除云效接入配置。"""
+    """删除 CI 接入配置。"""
     _SERVICE.delete_integration(db, config_id, user)
 
 
@@ -102,13 +104,22 @@ def rotate_callback_key(config_id: int, db: Session = Depends(get_db), user: Use
     return _SERVICE.rotate_callback_key(db, config_id, user)
 
 
-@router.post("/automation-integrations/{config_id}/test-connection", response_model=ConnectionTestResponse, summary="测试云效连接")
+@router.post("/automation-integrations/{config_id}/test-connection", response_model=ConnectionTestResponse, summary="测试 CI 连接")
 def test_connection(
-    config_id: int, pipeline_id: str = Query(min_length=1, max_length=64),
+    config_id: int, pipeline_id: str | None = Query(None, max_length=255),
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
 ):
-    """测试云效连接。"""
+    """测试 CI 凭据和可选的流水线或 DAG。"""
     return _SERVICE.test_connection(db, config_id, user, pipeline_id)
+
+
+@router.get("/automation-integrations/{config_id}/dags", response_model=DaguDagListResponse, summary="查询 Dagu DAG")
+def list_dagu_dags(
+    config_id: int,
+    db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """查询当前接入可读取的 DAG Name。"""
+    return _SERVICE.list_dagu_dags(db, config_id, user)
 
 
 @router.get("/projects/{project_id}/automation-projects", response_model=AutomationProjectListResponse, summary="自动化项目列表")
@@ -166,8 +177,11 @@ def verify_project(
 def trigger_execution(
     automation_project_id: int, body: ExecutionTrigger,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    """触发云效流水线。"""
+    """触发绑定的 CI 流水线或 DAG。重复的幂等键返回同一次执行。"""
+    if idempotency_key and not body.idempotency_key:
+        body = body.model_copy(update={"idempotency_key": idempotency_key})
     return _SERVICE.trigger(db, automation_project_id, body, user)
 
 
@@ -177,12 +191,14 @@ def list_executions(
     page: int = Query(1, ge=1), page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
     automation_project_id: int | None = None, status: str | None = None, branch: str | None = None,
     environment_name: str | None = None, started_from: datetime | None = None, started_to: datetime | None = None,
+    provider_type: str | None = None, pipeline_id: str | None = Query(None, max_length=255),
 ):
     """列出自动化执行。"""
     return _SERVICE.list_executions(
         db, project_id, user, page=page, page_size=page_size, automation_project_id=automation_project_id,
         status=status, branch=branch, environment_name=environment_name,
         started_from=started_from, started_to=started_to,
+        provider_type=provider_type, pipeline_id=pipeline_id,
     )
 
 
@@ -192,15 +208,23 @@ def get_execution(execution_id: int, db: Session = Depends(get_db), user: User =
     return _SERVICE.get_execution(db, execution_id, user)
 
 
+@router.get("/automation-executions/{execution_id}/console-log", response_model=ConsoleLogResponse, summary="获取执行 Console 日志")
+def get_execution_console_log(
+    execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user),
+):
+    """读取平台保存或服务端获取的执行日志。"""
+    return _SERVICE.get_console_log(db, execution_id, user)
+
+
 @router.post("/automation-executions/{execution_id}/cancel", response_model=ExecutionResponse, summary="取消自动化执行")
 def cancel_execution(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """取消云效运行。"""
+    """请求 Provider 取消执行，并要求外部平台确认。"""
     return _SERVICE.cancel(db, execution_id, user)
 
 
-@router.post("/automation-executions/{execution_id}/sync", response_model=ExecutionResponse, summary="同步云效执行状态")
+@router.post("/automation-executions/{execution_id}/sync", response_model=ExecutionResponse, summary="同步 CI 执行状态")
 def sync_execution(execution_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """立即同步云效状态。"""
+    """立即同步 CI 状态。"""
     return _SERVICE.sync_execution(db, execution_id, user)
 
 
@@ -271,9 +295,9 @@ def report_file(report_id: int, token: str, file_path: str, db: Session = Depend
     })
 
 
-@router.post("/automation-callbacks/{callback_key}", response_model=CallbackResponse, summary="接收云效执行回传")
+@router.post("/automation-callbacks/{callback_key}", response_model=CallbackResponse, summary="接收 CI 执行回传")
 async def ingest_callback(callback_key: str, request: Request, db: Session = Depends(get_db)):
-    """接收云效回传的状态和 Allure 报告。"""
+    """接收 CI 回传的状态和 Allure 报告。"""
     content_type = request.headers.get("content-type", "")
     report_bytes = b""
     results_bytes = b""

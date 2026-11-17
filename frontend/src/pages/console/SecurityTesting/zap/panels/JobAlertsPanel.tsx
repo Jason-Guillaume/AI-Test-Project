@@ -154,7 +154,7 @@ function AlertDrawer({ alert, onClose }: { alert: ScanAlert; onClose: () => void
       open
       onClose={onClose}
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       <Descriptions
         size="small"

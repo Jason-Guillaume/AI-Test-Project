@@ -80,3 +80,88 @@ def build_report_card(report: "TestReport") -> dict[str, Any]:
     # 卡片内容整体脱敏（§二十）：字段名掩码 + 值形态掩码（webhook / 签名密钥），
     # 防止快照里残留的敏感串被 LLM 回显后发进飞书群。
     return sanitize_context(card)
+
+
+def _safe_md_text(value: Any, *, max_len: int = 500) -> str:
+    """脱敏后转义 HTML 尖括号并限长，避免超长文本或标签注入污染飞书卡片。"""
+    cleaned = sanitize_text(value) if value is not None else ""
+    if not cleaned:
+        return ""
+    escaped = cleaned.replace("<", "&lt;").replace(">", "&gt;")
+    if len(escaped) > max_len:
+        return escaped[: max_len - 1] + "…"
+    return escaped
+
+
+def build_defect_share_card(
+    items: list[dict[str, Any]],
+    *,
+    channel_name: str,
+    pusher_name: str,
+    expires_label: str,
+    allow_resolve: bool,
+    keyword: str | None = None,
+    part: int = 1,
+    parts: int = 1,
+) -> dict[str, Any]:
+    """构造缺陷分享卡片。正文先脱敏，按钮链接在脱敏之后写入。
+
+    分享凭证位于 URL Fragment。若先对整张卡片做值形态脱敏，链接里的 token 会被掩掉，
+    开发人员将无法打开页面。调用方发给飞书的是返回值；入库快照由飞书服务另行脱敏。
+    """
+    if not items:
+        raise ValueError("缺陷分享卡片至少需要一条缺陷")
+    title = "缺陷分享"
+    if len(items) > 1:
+        title = f"缺陷分享 · {len(items)} 条"
+    if parts > 1:
+        title = f"{title}（{part}/{parts}）"
+    elements: list[dict[str, Any]] = [{
+        "tag": "div",
+        "text": {
+            "tag": "lark_md",
+            "content": (
+                f"**项目** {sanitize_text(items[0].get('project_name')) or '-'}\n"
+                f"**推送人** {sanitize_text(pusher_name) or '-'}\n"
+                f"**有效期** {sanitize_text(expires_label) or '-'}\n"
+                f"**开发提交已解决** {'允许' if allow_resolve else '不允许'}"
+            ),
+        },
+    }]
+    for item in items:
+        summary = _safe_md_text(item.get("summary"), max_len=500) or "无摘要"
+        steps = _safe_md_text(item.get("steps_summary"), max_len=240) or "无"
+        elements.append({"tag": "hr"})
+        elements.append({
+            "tag": "div",
+            "text": {
+                "tag": "lark_md",
+                "content": (
+                    f"**{_safe_md_text(item.get('bug_no'), max_len=40) or '-'}** "
+                    f"{_safe_md_text(item.get('title'), max_len=180) or '-'}\n"
+                    f"严重度：{_safe_md_text(item.get('severity_label'), max_len=30) or '-'}　"
+                    f"状态：{_safe_md_text(item.get('status'), max_len=30) or '-'}\n"
+                    f"摘要：{summary}\n复现步骤：{steps}\n"
+                    f"创建时间：{_safe_md_text(item.get('created_at'), max_len=40) or '-'}"
+                ),
+            },
+        })
+        elements.append({
+            "tag": "action",
+            "actions": [{
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "查看缺陷详情"},
+                "type": "primary",
+                "url": item["share_url"],
+            }],
+        })
+    note = f"测试开发平台 · {sanitize_text(channel_name) or '飞书群'} · 卡片不含请求和响应正文"
+    elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content": note}]})
+    # 关键词机器人要求原文出现；关键词本身是渠道配置，不能先被凭证掩码改写。
+    if keyword:
+        elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content": str(keyword)[:30]}]})
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {"title": {"tag": "plain_text", "content": title}, "template": "red"},
+        "elements": elements,
+    }

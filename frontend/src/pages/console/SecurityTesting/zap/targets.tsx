@@ -313,7 +313,7 @@ function TargetDrawer({
       open
       onClose={onCancel}
       width={600}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={onCancel}>取消</Button>

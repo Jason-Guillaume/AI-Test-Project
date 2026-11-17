@@ -215,7 +215,7 @@ function VariableFormModal({
   submitting: boolean;
 }) {
   return (
-    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnClose width={520}>
+    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnHidden width={520}>
       <Form<BusinessVariableCreate> form={form} layout="vertical">
         <Form.Item name="name" label="变量名" rules={[{ required: true, message: '请输入变量名' }]}>
           <Input maxLength={100} placeholder="如 project_id" />

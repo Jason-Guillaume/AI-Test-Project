@@ -262,7 +262,7 @@ export function FixtureStepList({
         onOk={handleAdd}
         okText="添加"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={560}
       >
         <Form<ModalValues> form={form} layout="vertical" initialValues={{ on_failure: 'ABORT' }}>

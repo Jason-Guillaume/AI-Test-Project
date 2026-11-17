@@ -3,12 +3,14 @@
 import { Button, Layout, Menu, Dropdown, Avatar, Space, theme } from 'antd';
 import {
   AppstoreOutlined,
+  CloseOutlined,
   DashboardOutlined,
   CloudOutlined,
   ApiOutlined,
   ProjectOutlined,
   TeamOutlined,
   LogoutOutlined,
+  MenuOutlined,
   UserOutlined,
   RobotOutlined,
   BarChartOutlined,
@@ -17,11 +19,12 @@ import {
   FileTextOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { PlatformRoleTag } from '@/features/identity/components/RoleTag';
 import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
+import { isNarrowViewport } from '@/shared/lib/viewport';
 
 // antd Layout 的子部件解构，用于组合侧边栏/头部/内容区。
 const { Header, Sider, Content } = Layout;
@@ -58,6 +61,8 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth(); // 当前用户与登出操作
   const { token: themeToken } = theme.useToken(); // antd 设计令牌，用于边框等主题色
+  const [narrowViewport, setNarrowViewport] = useState(isNarrowViewport);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(isNarrowViewport);
 
   // 高亮当前菜单：用前缀匹配，这样 /admin/users/123 也会高亮“用户管理”。
   const selectedKey = useMemo(() => {
@@ -93,12 +98,17 @@ export function AdminLayout() {
 
   return (
     <Layout className="app-layout">
+      {narrowViewport && !sidebarCollapsed && <button className="app-nav-scrim" type="button" aria-label="关闭导航" onClick={() => setSidebarCollapsed(true)} />}
       <Sider
-        className="app-sidebar"
+        className={`app-sidebar${narrowViewport && !sidebarCollapsed ? ' app-sidebar--mobile-open' : ''}`}
         theme="light"
         width={248}
-        collapsedWidth={72}
+        collapsed={sidebarCollapsed}
+        collapsedWidth={narrowViewport ? 0 : 72}
         breakpoint="lg"
+        trigger={null}
+        onBreakpoint={(broken) => { setNarrowViewport(broken); setSidebarCollapsed(broken); }}
+        onCollapse={setSidebarCollapsed}
       >
         <div className="app-brand">
           <span className="app-brand-mark" aria-hidden="true">Q</span>
@@ -112,8 +122,10 @@ export function AdminLayout() {
           theme="light"
           mode="inline"
           selectedKeys={[selectedKey]}
+          onClick={() => { if (narrowViewport) setSidebarCollapsed(true); }}
           items={MENU_ITEMS.map((item) => ({
             ...item,
+            title: item.label,
             // 用 Link 替换纯文本，让菜单项走路由跳转而不是 href 刷新。
             label: <Link to={item.key}>{item.label}</Link>,
           }))}
@@ -121,8 +133,16 @@ export function AdminLayout() {
       </Sider>
       <Layout>
         <Header className="app-topbar">
-          <div className="app-admin-context">
-            平台管理<span>/ 全局治理</span>
+          <div className="app-topbar-left">
+            <Button
+              className="app-sidebar-toggle"
+              type="text"
+              aria-label={sidebarCollapsed ? '展开导航' : '收起导航'}
+              aria-expanded={!sidebarCollapsed}
+              icon={narrowViewport && !sidebarCollapsed ? <CloseOutlined /> : <MenuOutlined />}
+              onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            />
+            <div className="app-admin-context">平台管理<span>/ 全局治理</span></div>
           </div>
           <Space size="middle">
             <Button

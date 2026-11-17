@@ -1,4 +1,4 @@
-"""云效运行状态轮询。
+"""自动化中心 CI 运行状态轮询。
 
 这是回调丢失时的兜底，不进入 Agent 或统一任务调度器。
 """
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class AutomationPoller:
-    """按固定间隔同步运行中的云效流水线。"""
+    """按固定间隔同步运行中的外部 CI 执行。"""
 
     def __init__(self) -> None:
         self._stop = threading.Event()

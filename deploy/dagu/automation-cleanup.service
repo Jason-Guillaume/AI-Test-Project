@@ -1,0 +1,13 @@
+[Unit]
+Description=Remove acknowledged Dagu automation workspaces older than seven days
+
+[Service]
+Type=oneshot
+User=dagu
+Group=dagu
+ExecStart=/usr/local/libexec/automation-cleanup-runs
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/automation-runs /opt/automation-cache
+PrivateTmp=true

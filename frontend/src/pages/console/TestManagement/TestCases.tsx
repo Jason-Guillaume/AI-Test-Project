@@ -435,7 +435,7 @@ export function ConsoleTestCasesPage() {
         </Col>
       </Row>
       <NodeModal open={nodeModal != null} initial={nodeModal} onCancel={() => setNodeModal(null)} onSubmit={(values) => createNode.mutate(values)} />
-      <Modal title="移动到范围" open={moveOpen} onCancel={() => setMoveOpen(false)} footer={null} destroyOnClose>
+      <Modal title="移动到范围" open={moveOpen} onCancel={() => setMoveOpen(false)} footer={null} destroyOnHidden>
         <Select
           showSearch
           style={{ width: '100%' }}
@@ -479,7 +479,7 @@ function NodeModal({ open, initial, onCancel, onSubmit }: {
 }) {
   const [form] = Form.useForm();
   return (
-    <Modal title={initial?.mode === 'edit' ? '编辑范围' : '新建范围'} open={open} onCancel={onCancel} onOk={() => form.validateFields().then(onSubmit)} destroyOnClose>
+    <Modal title={initial?.mode === 'edit' ? '编辑范围' : '新建范围'} open={open} onCancel={onCancel} onOk={() => form.validateFields().then(onSubmit)} destroyOnHidden>
       <Form form={form} layout="vertical" initialValues={{ node_type: 'FOLDER', name: initial?.node?.name, description: initial?.node?.description }}>
         <Form.Item name="name" label="名称" rules={[{ required: true, whitespace: true, max: 200 }]}><Input /></Form.Item>
         <Form.Item name="description" label="说明"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
@@ -503,7 +503,7 @@ function CreateCaseModal({ open, onCancel, onSubmit }: {
 }) {
   const [form] = Form.useForm();
   return (
-    <Modal title="手工用例" open={open} onCancel={onCancel} onOk={() => form.validateFields().then(onSubmit)} destroyOnClose>
+    <Modal title="手工用例" open={open} onCancel={onCancel} onOk={() => form.validateFields().then(onSubmit)} destroyOnHidden>
       <Form form={form} layout="vertical" initialValues={{ priority: 'P1', case_type: 'FUNCTIONAL' }}>
         <Form.Item name="name" label="用例名称" rules={[{ required: true, whitespace: true }]}><Input /></Form.Item>
         <Form.Item name="priority" label="优先级"><Select options={['P0', 'P1', 'P2', 'P3'].map((value) => ({ value, label: value }))} /></Form.Item>

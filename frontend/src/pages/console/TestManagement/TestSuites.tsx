@@ -265,7 +265,7 @@ export function ConsoleTestSuitesPage() {
         confirmLoading={createMutation.isPending || updateMutation.isPending}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={480}
       >
         <Form<SuiteFormValues> form={form} layout="vertical" initialValues={{ suite_type: 'REGRESSION', enabled: true }}>
@@ -385,7 +385,7 @@ function SuiteCasesDrawer({
   ];
 
   return (
-    <Drawer title="管理套件用例" width={640} open={suiteId != null} onClose={onClose} destroyOnClose>
+    <Drawer title="管理套件用例" width={640} open={suiteId != null} onClose={onClose} destroyOnHidden>
       <div className="member-add-row">
         <Select
           className="member-add-row__select"

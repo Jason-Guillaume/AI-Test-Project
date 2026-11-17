@@ -184,7 +184,7 @@ export function ImportDialog({
           </Space>
         )
       }
-      destroyOnClose
+      destroyOnHidden
     >
       {preview ? (
         <ImportPreview

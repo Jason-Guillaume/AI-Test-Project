@@ -233,7 +233,7 @@ function DraftCard({ draft, onChanged }: { draft: CaseDraft; onChanged: () => vo
       {draft.status === 'ACCEPTED' && draft.test_case_id ? (
         <div style={{ marginTop: 8 }}><Typography.Text type="success">已入库为用例 #{draft.test_case_id}</Typography.Text></div>
       ) : null}
-      <Modal title="编辑草稿" open={editOpen} width={640} onCancel={() => setEditOpen(false)} onOk={submitEdit} destroyOnClose okButtonProps={{ 'data-testid': 'gen-edit-save' } as ButtonProps}>
+      <Modal title="编辑草稿" open={editOpen} width={640} onCancel={() => setEditOpen(false)} onOk={submitEdit} destroyOnHidden okButtonProps={{ 'data-testid': 'gen-edit-save' } as ButtonProps}>
         <Form form={form} layout="vertical">
           <Form.Item name="title" label="用例标题" rules={[{ required: true, whitespace: true, max: 200 }]}><Input /></Form.Item>
           <Form.Item name="priority" label="优先级" rules={[{ required: true }]}>

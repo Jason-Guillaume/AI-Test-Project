@@ -23,12 +23,9 @@ async function loginThroughUi(page: Page) {
 }
 
 async function selectAgentTableView(page: Page) {
-  const view = page.getByRole('main').locator('.ant-select').filter({ hasText: '主子关系' });
-  await view.locator('.ant-select-selector').click();
-  const input = view.getByRole('combobox');
-  await input.press('ArrowDown');
-  await input.press('ArrowDown');
-  await input.press('Enter');
+  const viewSelect = page.getByRole('main').locator('.ant-select').filter({ has: page.getByRole('combobox', { name: 'Agent 视图' }) });
+  await viewSelect.locator('.ant-select-selector').click();
+  await page.locator('.ant-select-dropdown:visible').getByText('表格与批量删除', { exact: true }).click();
   await expect(page.getByRole('button', { name: /批量删除/ })).toBeVisible();
   await expect(page.getByRole('table')).toBeVisible();
 }
@@ -168,7 +165,7 @@ test('Skill 管理多选删除 → 管理回收站恢复 → 原 Skill 列表', 
   await page.goto('/admin/skills');
   await expect(page.getByText(skillName, { exact: true })).toBeVisible();
   await page.getByRole('checkbox', { name: `选择 Skill ${skillName}` }).check();
-  await page.getByRole('button', { name: /批量删除/ }).click();
+  await page.getByRole('button', { name: /^(删除\s*\d+|批量删除)$/ }).click();
   await expect(page.locator('.ant-modal-confirm')).toContainText('将 1 个 Skill 移入回收站');
   await page.locator('.ant-modal-confirm .ant-btn-primary').click();
   await expect(page.getByText(skillName, { exact: true })).toHaveCount(0);
