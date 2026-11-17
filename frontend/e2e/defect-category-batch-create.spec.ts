@@ -20,7 +20,7 @@ test('缺陷管理支持前后端划分筛选与结构化批量创建', async ({
   const projectName = `E2E 缺陷前后端项目 ${suffix}`;
   const legacyTitle = `E2E 历史未划分 ${suffix}`;
   const singleFeTitle = `E2E 前端单条 ${suffix}`;
-  const batchBeTitle = `E2E 后端批建 ${suffix}`;
+  const batchBeTitle = `E2E 接口批建 ${suffix}`;
   const batchFeTitle = `E2E 前端批建 ${suffix}`;
   const batchBothTitle = `E2E 前后端批建 ${suffix}`;
 
@@ -71,7 +71,7 @@ test('缺陷管理支持前后端划分筛选与结构化批量创建', async ({
 
   await batchDialog.getByText(/粘贴多行文本快速拆分/).click();
   await batchDialog.getByLabel('多行文本快速拆分输入').fill(
-    `${batchBeTitle} | 后端 | 严重 | 接口返回 500 | 1. 发起提交\\n2. 观察报错 | staging\n${batchFeTitle}\n${batchBothTitle} | 前后端 | 高 | 接口协议联调不一致 | 1. 提交保存 | test`,
+    `${batchBeTitle} | 接口 | 严重 | 接口返回 500 | 1. 发起提交\\n2. 观察报错 | staging\n${batchFeTitle}\n${batchBothTitle} | 前后端 | 高 | 接口协议联调不一致 | 1. 提交保存 | test`,
   );
   await batchDialog.getByRole('button', { name: '拆分为下方表格行' }).click();
 
@@ -96,7 +96,7 @@ test('缺陷管理支持前后端划分筛选与结构化批量创建', async ({
   await expect(batchDialog).toBeHidden();
 
   // 3. 验证前后端划分标签页筛选准确性。
-  await page.getByRole('tab', { name: '后端缺陷', exact: true }).click();
+  await page.getByRole('tab', { name: '接口缺陷', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: batchBeTitle })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: singleFeTitle })).toHaveCount(0);
 

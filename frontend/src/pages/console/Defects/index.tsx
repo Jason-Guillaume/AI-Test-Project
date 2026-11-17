@@ -3,7 +3,7 @@ import { collectPages } from '@/shared/api/pagination';
 // 本模块导出 ConsoleDefectsPage，由路由 /console/defects 挂载。
 //
 // 功能：
-//   - 列表：按前后端划分页签（全部 / 前端 / 后端 / 前后端 / 未划分）与项目/状态/严重度/关键字过滤；
+//   - 列表：按前后端划分页签（全部 / 前端 / 前后端 / 接口 / 未划分）与项目/状态/严重度/关键字过滤；
 //   - 新建：弹窗收集所属项目、前后端划分（必填）、标题、严重度、状态、复现步骤、环境、处理人；
 //   - 批量创建：结构化可编辑表格批量录入全部字段，支持统一预设默认值与多行文本快速拆分；
 //   - 编辑：与新建共用同一弹窗，处理人可为空表示「未分配」，历史未划分缺陷允许补充前后端划分；
@@ -288,8 +288,8 @@ export function ConsoleDefectsPage() {
         items={[
           { key: 'ALL', label: '全部缺陷' },
           { key: '前端', label: '前端缺陷' },
-          { key: '后端', label: '后端缺陷' },
           { key: '前后端', label: '前后端缺陷' },
+          { key: '接口', label: '接口缺陷' },
           { key: '未划分', label: '未划分' },
         ]}
       />
@@ -624,8 +624,8 @@ export function ConsoleDefectsPage() {
             }
             tooltip={
               modalState?.mode === 'edit' && modalState.bug.category == null
-                ? '历史存量缺陷暂未划分，可补充选择前端、后端或前后端'
-                : '区分缺陷归属前端、后端或前后端联合处理'
+                ? '历史存量缺陷暂未划分，可补充选择前端、前后端或接口'
+                : '区分缺陷归属前端、前后端联合处理或接口层'
             }
           >
             <Radio.Group

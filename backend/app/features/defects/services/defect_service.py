@@ -28,6 +28,7 @@ from app.features.defects.schemas import (
     BugUpdate,
     SEVERITY_LABELS,
     UNCATEGORIZED_BUG_CATEGORY,
+    normalize_bug_category,
 )
 from app.core.models.identity import User
 from app.core.models.project import Project
@@ -109,6 +110,8 @@ class DefectService:
             query = query.filter(Bug.project_id == project_id)
 
         if category:
+            # 旧筛选值「后端」与「接口」同义：统一按接口归属查询。
+            category = normalize_bug_category(category)
             if category == UNCATEGORIZED_BUG_CATEGORY:
                 # 历史存量缺陷 category 为空，用「未划分」显式筛选 NULL 行。
                 query = query.filter(Bug.category.is_(None))
@@ -258,7 +261,7 @@ class DefectService:
                 row_errors.append({
                     "row": row_no,
                     "field": "category",
-                    "message": "前后端划分必须是「前端」「后端」或「前后端」",
+                    "message": "前后端划分必须是「前端」「前后端」或「接口」",
                 })
             if item.assignee_id is not None and item.assignee_id != actor.id:
                 if item.assignee_id not in assignee_error_cache:

@@ -340,7 +340,7 @@ def test_batch_create_is_atomic_and_attachments_follow_project_permissions(api, 
         "project_id": project_id,
         "items": [
             {"title": "批量一", "category": "前端"},
-            {"title": "批量二", "category": "后端", "assignee_id": 999999999},
+            {"title": "批量二", "category": "接口", "assignee_id": 999999999},
         ],
     }
     assert api.post('/bugs/batch', username=admin, json=body).status_code == 400

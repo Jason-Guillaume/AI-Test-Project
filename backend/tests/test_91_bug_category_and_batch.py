@@ -1,10 +1,10 @@
 """缺陷前后端划分与原子批量创建测试。
 
 覆盖：
-- 单条缺陷前后端划分（前端/后端/前后端）创建、编辑、更新保留语义、按分类与「未划分」筛选
+- 单条缺陷前后端划分（前端/前后端/接口；旧「后端」自动归并为「接口」）创建、编辑、更新保留语义、按分类与「未划分」筛选
 - 批量创建接口 POST /bugs/batch：全字段写入、站内通知、权限控制（viewer 403 / outsider 404）
 - 批量创建原子事务与行号精确定位：任一行失败时整批不入库并返回 meta.errors
-- Alembic 0091 迁移升降级及历史存量空分类兼容
+- Alembic 0091 迁移升降级及历史存量空分类兼容；0092 将存量「后端」归并为「接口」
 """
 
 from __future__ import annotations
@@ -46,10 +46,10 @@ def _add_member(api, actor, project_id: int, user_id: int, role: str = "member")
 
 
 def test_bug_category_crud_and_filtering(api, admin):
-    """缺陷支持前后端划分创建、修改及按前端/后端/前后端/未划分过滤。"""
+    """缺陷支持前后端划分创建、修改及按前端/前后端/接口/未划分过滤；旧「后端」入参自动归并为「接口」。"""
     project_id = _create_project(api, admin)
 
-    # 1. 创建前端缺陷、后端缺陷、前后端缺陷与未划分缺陷（兼容旧调用方）
+    # 1. 创建前端缺陷、接口缺陷（含旧「后端」入参）、前后端缺陷与未划分缺陷
     r_fe = api.post(
         "/bugs",
         username=admin,
@@ -59,14 +59,15 @@ def test_bug_category_crud_and_filtering(api, admin):
     fe_bug = r_fe.json()
     assert fe_bug["category"] == "前端"
 
-    r_be = api.post(
+    # 旧入参「后端」自动归并为「接口」：选择后端即关联接口缺陷
+    r_legacy_be = api.post(
         "/bugs",
         username=admin,
         json={"project_id": project_id, "title": "接口超时 504", "category": "后端", "severity": 4},
     )
-    assert r_be.status_code == 201, r_be.text
-    be_bug = r_be.json()
-    assert be_bug["category"] == "后端"
+    assert r_legacy_be.status_code == 201, r_legacy_be.text
+    legacy_be_bug = r_legacy_be.json()
+    assert legacy_be_bug["category"] == "接口"
 
     r_both = api.post(
         "/bugs",
@@ -75,25 +76,39 @@ def test_bug_category_crud_and_filtering(api, admin):
     )
     assert r_both.status_code == 201, r_both.text
     both_bug = r_both.json()
+    # 「前后端」与「前端」共用同一提交表单，但落库类型保留「前后端」
     assert both_bug["category"] == "前后端"
 
-    r_legacy = api.post(
+    r_api = api.post(
+        "/bugs",
+        username=admin,
+        json={"project_id": project_id, "title": "订单查询接口返回字段缺失", "category": "接口", "severity": 3},
+    )
+    assert r_api.status_code == 201, r_api.text
+    api_bug = r_api.json()
+    assert api_bug["category"] == "接口"
+
+    r_uncat = api.post(
         "/bugs",
         username=admin,
         json={"project_id": project_id, "title": "历史未划分缺陷"},
     )
-    assert r_legacy.status_code == 201, r_legacy.text
-    legacy_bug = r_legacy.json()
-    assert legacy_bug["category"] is None
+    assert r_uncat.status_code == 201, r_uncat.text
+    uncat_bug = r_uncat.json()
+    assert uncat_bug["category"] is None
 
-    # 2. 按前后端划分过滤列表
+    # 2. 按前后端划分过滤列表；「接口」与旧「后端」筛选值同义
     fe_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "前端"})
     assert fe_list.status_code == 200
     assert [item["id"] for item in fe_list.json()["items"]] == [fe_bug["id"]]
 
-    be_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "后端"})
-    assert be_list.status_code == 200
-    assert [item["id"] for item in be_list.json()["items"]] == [be_bug["id"]]
+    api_cat_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "接口"})
+    assert api_cat_list.status_code == 200
+    assert {item["id"] for item in api_cat_list.json()["items"]} == {legacy_be_bug["id"], api_bug["id"]}
+
+    alias_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "后端"})
+    assert alias_list.status_code == 200
+    assert {item["id"] for item in alias_list.json()["items"]} == {legacy_be_bug["id"], api_bug["id"]}
 
     both_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "前后端"})
     assert both_list.status_code == 200
@@ -101,7 +116,7 @@ def test_bug_category_crud_and_filtering(api, admin):
 
     uncat_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "未划分"})
     assert uncat_list.status_code == 200
-    assert [item["id"] for item in uncat_list.json()["items"]] == [legacy_bug["id"]]
+    assert [item["id"] for item in uncat_list.json()["items"]] == [uncat_bug["id"]]
 
     # 3. 非法分类入参和筛选分别被拒绝
     bad_create = api.post(
@@ -119,9 +134,13 @@ def test_bug_category_crud_and_filtering(api, admin):
     assert keep_cat.status_code == 200
     assert keep_cat.json()["category"] == "前端"
 
-    switch_cat = api.put(f"/bugs/{legacy_bug['id']}", username=admin, json={"category": "前后端"})
+    switch_cat = api.put(f"/bugs/{uncat_bug['id']}", username=admin, json={"category": "前后端"})
     assert switch_cat.status_code == 200
     assert switch_cat.json()["category"] == "前后端"
+
+    merge_cat = api.put(f"/bugs/{fe_bug['id']}", username=admin, json={"category": "后端"})
+    assert merge_cat.status_code == 200
+    assert merge_cat.json()["category"] == "接口"
 
 
 def test_batch_create_bugs_success_and_notifications(api, admin, db):
@@ -146,7 +165,7 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
             },
             {
                 "title": "批量导出接口偶发 500",
-                "category": "后端",
+                "category": "接口",
                 "description": "并发请求时连接池耗尽",
                 "severity": 4,
                 "status": "处理中",
@@ -172,7 +191,7 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
     assert body["items"][0]["assignee_id"] == dev_id
     assert body["items"][0]["assignee_username"] == dev_name
     assert body["items"][0]["environment"] == "test"
-    assert body["items"][1]["category"] == "后端"
+    assert body["items"][1]["category"] == "接口"
     assert body["items"][1]["severity"] == 4
     assert body["items"][1]["status"] == "处理中"
     assert body["items"][2]["category"] == "前后端"
@@ -205,7 +224,7 @@ def test_batch_create_bugs_is_atomic_and_reports_row_errors(api, admin, db):
             "project_id": project_id,
             "items": [
                 {"title": "第一条合法缺陷", "category": "前端", "severity": 2},
-                {"title": "   ", "category": "后端", "assignee_id": stranger_id},
+                {"title": "   ", "category": "接口", "assignee_id": stranger_id},
             ],
         },
     )
@@ -273,8 +292,6 @@ def test_migration_0091_downgrade_and_upgrade_idempotent(isolated_migration_data
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0090"
 
     command.upgrade(config, "0091")
-    # 重复执行 upgrade head 保持幂等
-    command.upgrade(config, "head")
     with engine.connect() as connection:
         inspector = inspect(connection)
         cols = {col["name"] for col in inspector.get_columns("bug")}
@@ -282,3 +299,33 @@ def test_migration_0091_downgrade_and_upgrade_idempotent(isolated_migration_data
         assert "category" in cols
         assert {"ix_bug_category", "ix_bug_project_category"} <= indexes
         assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0091"
+
+    # 重复执行 upgrade head 保持幂等
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        inspector = inspect(connection)
+        assert "category" in {col["name"] for col in inspector.get_columns("bug")}
+
+
+def test_migration_0092_merges_backend_into_api(isolated_migration_database):
+    """0092 迁移把存量「后端」类别归并为「接口」；降级不回写数据。"""
+    config, engine = isolated_migration_database
+
+    command.downgrade(config, "0091")
+    with engine.begin() as connection:
+        # 跳过外键触发器直接插入缺陷行：迁移测试只关心 category 数据改写。
+        connection.execute(text("SET session_replication_role = replica"))
+        connection.execute(
+            text(
+                "INSERT INTO bug (project_id, title, category) "
+                "VALUES (424242, '历史后端缺陷', '后端')"
+            )
+        )
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        category = connection.execute(
+            text("SELECT category FROM bug WHERE title = '历史后端缺陷'")
+        ).scalar_one()
+        assert category == "接口"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0092"

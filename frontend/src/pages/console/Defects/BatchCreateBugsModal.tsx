@@ -589,7 +589,7 @@ export function BatchCreateBugsModal({
             {
               key: 'quick-paste',
               label:
-                '粘贴多行文本快速拆分（可选：支持纯标题逐行粘贴，或用「|」/ Tab 分隔：标题 | 前端/后端/前后端 | 严重度 | 描述 | 复现步骤 | 环境）',
+                '粘贴多行文本快速拆分（可选：支持纯标题逐行粘贴，或用「|」/ Tab 分隔：标题 | 前端/前后端/接口 | 严重度 | 描述 | 复现步骤 | 环境）',
               children: (
                 <Space direction="vertical" style={{ width: '100%' }}>
                   <Input.TextArea

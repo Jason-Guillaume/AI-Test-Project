@@ -16,10 +16,22 @@ BUG_STATUSES = ("待确认", "处理中", "已修复", "已关闭", "已拒绝")
 BugStatus = Literal["待确认", "处理中", "已修复", "已关闭", "已拒绝"]
 
 # 前后端划分集合；历史存量允许为空，在列表筛选时以「未划分」指代 NULL。
-BUG_CATEGORIES = ("前端", "后端", "前后端")
+# 「接口」吸收原「后端」类别：接口与后端视为同一归属，旧入参「后端」自动映射为「接口」。
+# 「前后端」保留自身类型，与「前端」共用同一提交表单。
+BUG_CATEGORIES = ("前端", "前后端", "接口")
 UNCATEGORIZED_BUG_CATEGORY = "未划分"
-BugCategory = Literal["前端", "后端", "前后端"]
-BugCategoryFilter = Literal["前端", "后端", "前后端", "未划分"]
+BugCategory = Literal["前端", "前后端", "接口"]
+BugCategoryFilter = Literal["前端", "前后端", "接口", "未划分"]
+
+# 旧类别别名：提交「后端」时自动归并为「接口」，兼容历史调用方。
+BUG_CATEGORY_ALIASES: dict[str, BugCategory] = {"后端": "接口"}
+
+
+def normalize_bug_category(value):
+    """把旧类别「后端」归并为「接口」，其余值原样返回。"""
+    if isinstance(value, str):
+        return BUG_CATEGORY_ALIASES.get(value, value)
+    return value
 
 # 严重度 1-4，1 最低、4 最高。
 BugSeverity = Literal[1, 2, 3, 4]
@@ -37,7 +49,7 @@ class BugBase(BaseModel):
     """缺陷共有字段。"""
 
     title: str = Field(..., min_length=1, max_length=200, description="缺陷标题")
-    category: BugCategory | None = Field(default=None, description="前后端划分：前端/后端/前后端")
+    category: BugCategory | None = Field(default=None, description="前后端划分：前端/前后端/接口")
     description: str | None = Field(None, max_length=1000, description="缺陷描述")
     severity: BugSeverity = Field(default=2, description="严重度 1-4")
     status: BugStatus = Field(default="待确认", description="状态")
@@ -47,6 +59,12 @@ class BugBase(BaseModel):
     environment: str | None = Field(
         None, max_length=200, description="发现环境"
     )
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def merge_legacy_category(cls, value):
+        """旧入参「后端」自动归并为「接口」，选择后端即关联接口缺陷。"""
+        return normalize_bug_category(value)
 
 
 class BugCreate(BugBase):
@@ -69,7 +87,7 @@ class BugCreate(BugBase):
 class BugBatchItem(BugBase):
     """批量创建中的单条缺陷入参（前后端划分必填）。"""
 
-    category: BugCategory = Field(..., description="前后端划分：前端/后端/前后端")
+    category: BugCategory = Field(..., description="前后端划分：前端/前后端/接口")
     assignee_id: int | None = Field(None, gt=0, description="处理人ID")
 
 
@@ -94,6 +112,12 @@ class BugUpdate(BaseModel):
     environment: str | None = Field(None, max_length=200)
     # None 表示清空处理人；仅当调用方未提交该字段时保持原值不变（exclude_unset 语义）。
     assignee_id: int | None = Field(None, gt=0)
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def merge_legacy_category(cls, value):
+        """旧入参「后端」自动归并为「接口」。"""
+        return normalize_bug_category(value)
 
 
 class BugResponse(BaseModel):
@@ -159,6 +183,7 @@ class DefectSourceResponse(BaseModel):
 
 __all__ = [
     "BUG_CATEGORIES",
+    "BUG_CATEGORY_ALIASES",
     "BUG_STATUSES",
     "BugBase",
     "BugBatchCreate",
@@ -176,4 +201,5 @@ __all__ = [
     "DefectSourceResponse",
     "SEVERITY_LABELS",
     "UNCATEGORIZED_BUG_CATEGORY",
+    "normalize_bug_category",
 ]

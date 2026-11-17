@@ -3,18 +3,21 @@
 
 export const MAX_BATCH_BUG_ROWS = 100;
 
-const VALID_CATEGORIES = new Set(['前端', '后端', '前后端']);
+const VALID_CATEGORIES = new Set(['前端', '前后端', '接口']);
 
+// 「后端」与「接口」为同一归属：录入后端时自动归并为接口提交。
 const CATEGORY_ALIASES = {
   前端: '前端',
   frontend: '前端',
   fe: '前端',
   web: '前端',
-  后端: '后端',
-  backend: '后端',
-  be: '后端',
-  api: '后端',
-  server: '后端',
+  后端: '接口',
+  backend: '接口',
+  be: '接口',
+  server: '接口',
+  接口: '接口',
+  api: '接口',
+  interface: '接口',
   前后端: '前后端',
   both: '前后端',
   fullstack: '前后端',
@@ -83,7 +86,7 @@ export function isPristineEmptyRow(row) {
  *
  * 支持两种格式：
  * 1. 纯文本每行一个标题，其余字段继承顶部默认值；
- * 2. 使用「|」或制表符分隔的列：`标题 | 前端/后端/前后端 | 严重度 | 描述 | 复现步骤 | 环境`。
+ * 2. 使用「|」或制表符分隔的列：`标题 | 前端/前后端/接口 | 严重度 | 描述 | 复现步骤 | 环境`。
  */
 export function parseBatchDefectLines(rawText, defaults, createKey) {
   const lines = String(rawText ?? '')
@@ -180,7 +183,7 @@ export function validateBatchDefectRows(rows) {
     }
 
     if (!VALID_CATEGORIES.has(row?.category)) {
-      errors.push({ row: rowNo, field: 'category', message: '请选择前后端划分（前端、后端或前后端）' });
+      errors.push({ row: rowNo, field: 'category', message: '请选择前后端划分（前端、前后端或接口）' });
     }
 
     if (description.length > 1000) {

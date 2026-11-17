@@ -2,8 +2,8 @@
 
 import type { BugCategory, BugSeverity, BugStatus } from '@/features/defects/contracts';
 
-/** 前后端划分合法值。 */
-export const BUG_CATEGORIES: BugCategory[] = ['前端', '后端', '前后端'];
+/** 前后端划分合法值；原「后端」已并入「接口」，「前后端」保留自身类型。 */
+export const BUG_CATEGORIES: BugCategory[] = ['前端', '前后端', '接口'];
 
 /** 前后端划分表单选项。 */
 export const CATEGORY_OPTIONS: { label: string; value: BugCategory }[] = BUG_CATEGORIES.map((c) => ({
@@ -14,8 +14,8 @@ export const CATEGORY_OPTIONS: { label: string; value: BugCategory }[] = BUG_CAT
 /** 前后端划分标签颜色。 */
 export const CATEGORY_COLOR: Record<BugCategory, string> = {
   前端: 'blue',
-  后端: 'purple',
   前后端: 'cyan',
+  接口: 'geekblue',
 };
 
 /** 缺陷状态合法值，与后端 BUG_STATUSES 保持同步。 */
