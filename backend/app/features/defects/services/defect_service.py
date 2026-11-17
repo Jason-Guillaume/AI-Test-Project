@@ -258,7 +258,7 @@ class DefectService:
                 row_errors.append({
                     "row": row_no,
                     "field": "category",
-                    "message": "前后端划分必须是「前端」或「后端」",
+                    "message": "前后端划分必须是「前端」「后端」或「前后端」",
                 })
             if item.assignee_id is not None and item.assignee_id != actor.id:
                 if item.assignee_id not in assignee_error_cache:

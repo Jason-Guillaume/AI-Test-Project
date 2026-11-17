@@ -3,18 +3,19 @@
 import type { BugCategory, BugSeverity, BugStatus } from '@/features/defects/contracts';
 
 /** 前后端划分合法值。 */
-export const BUG_CATEGORIES: BugCategory[] = ['前端', '后端'];
+export const BUG_CATEGORIES: BugCategory[] = ['前端', '后端', '前后端'];
 
 /** 前后端划分表单选项。 */
-export const CATEGORY_OPTIONS: { label: string; value: BugCategory }[] = [
-  { label: '前端', value: '前端' },
-  { label: '后端', value: '后端' },
-];
+export const CATEGORY_OPTIONS: { label: string; value: BugCategory }[] = BUG_CATEGORIES.map((c) => ({
+  label: c,
+  value: c,
+}));
 
 /** 前后端划分标签颜色。 */
 export const CATEGORY_COLOR: Record<BugCategory, string> = {
   前端: 'blue',
   后端: 'purple',
+  前后端: 'cyan',
 };
 
 /** 缺陷状态合法值，与后端 BUG_STATUSES 保持同步。 */

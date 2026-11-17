@@ -1,10 +1,10 @@
 """缺陷前后端划分与原子批量创建测试。
 
 覆盖：
-- 单条缺陷前后端划分（前端/后端）创建、编辑、更新保留语义、按分类与「未划分」筛选
+- 单条缺陷前后端划分（前端/后端/前后端）创建、编辑、更新保留语义、按分类与「未划分」筛选
 - 批量创建接口 POST /bugs/batch：全字段写入、站内通知、权限控制（viewer 403 / outsider 404）
 - 批量创建原子事务与行号精确定位：任一行失败时整批不入库并返回 meta.errors
-- Alembic 0090 迁移升降级及历史存量空分类兼容
+- Alembic 0091 迁移升降级及历史存量空分类兼容
 """
 
 from __future__ import annotations
@@ -46,10 +46,10 @@ def _add_member(api, actor, project_id: int, user_id: int, role: str = "member")
 
 
 def test_bug_category_crud_and_filtering(api, admin):
-    """缺陷支持前后端划分创建、修改及按前端/后端/未划分过滤。"""
+    """缺陷支持前后端划分创建、修改及按前端/后端/前后端/未划分过滤。"""
     project_id = _create_project(api, admin)
 
-    # 1. 创建前端缺陷、后端缺陷与未划分缺陷（兼容旧调用方）
+    # 1. 创建前端缺陷、后端缺陷、前后端缺陷与未划分缺陷（兼容旧调用方）
     r_fe = api.post(
         "/bugs",
         username=admin,
@@ -68,6 +68,15 @@ def test_bug_category_crud_and_filtering(api, admin):
     be_bug = r_be.json()
     assert be_bug["category"] == "后端"
 
+    r_both = api.post(
+        "/bugs",
+        username=admin,
+        json={"project_id": project_id, "title": "鉴权字段前后端协议不一致", "category": "前后端", "severity": 3},
+    )
+    assert r_both.status_code == 201, r_both.text
+    both_bug = r_both.json()
+    assert both_bug["category"] == "前后端"
+
     r_legacy = api.post(
         "/bugs",
         username=admin,
@@ -85,6 +94,10 @@ def test_bug_category_crud_and_filtering(api, admin):
     be_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "后端"})
     assert be_list.status_code == 200
     assert [item["id"] for item in be_list.json()["items"]] == [be_bug["id"]]
+
+    both_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "前后端"})
+    assert both_list.status_code == 200
+    assert [item["id"] for item in both_list.json()["items"]] == [both_bug["id"]]
 
     uncat_list = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "未划分"})
     assert uncat_list.status_code == 200
@@ -106,9 +119,9 @@ def test_bug_category_crud_and_filtering(api, admin):
     assert keep_cat.status_code == 200
     assert keep_cat.json()["category"] == "前端"
 
-    switch_cat = api.put(f"/bugs/{legacy_bug['id']}", username=admin, json={"category": "后端"})
+    switch_cat = api.put(f"/bugs/{legacy_bug['id']}", username=admin, json={"category": "前后端"})
     assert switch_cat.status_code == 200
-    assert switch_cat.json()["category"] == "后端"
+    assert switch_cat.json()["category"] == "前后端"
 
 
 def test_batch_create_bugs_success_and_notifications(api, admin, db):
@@ -140,13 +153,21 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
                 "steps_to_reproduce": "1. 连续触发 10 次导出",
                 "environment": "staging",
             },
+            {
+                "title": "登录态过期后前端未清理缓存且接口返回 401",
+                "category": "前后端",
+                "description": "token 刷新与拦截器跳转配合异常",
+                "severity": 3,
+                "status": "待确认",
+                "environment": "test",
+            },
         ],
     }
     response = api.post("/bugs/batch", username=admin, json=payload)
     assert response.status_code == 201, response.text
     body = response.json()
-    assert body["created_count"] == 2
-    assert len(body["items"]) == 2
+    assert body["created_count"] == 3
+    assert len(body["items"]) == 3
     assert body["items"][0]["category"] == "前端"
     assert body["items"][0]["assignee_id"] == dev_id
     assert body["items"][0]["assignee_username"] == dev_name
@@ -154,9 +175,10 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
     assert body["items"][1]["category"] == "后端"
     assert body["items"][1]["severity"] == 4
     assert body["items"][1]["status"] == "处理中"
+    assert body["items"][2]["category"] == "前后端"
 
     # 数据库落库数量核对
-    assert db.query(Bug).filter(Bug.project_id == project_id, Bug.deleted_at.is_(None)).count() == 2
+    assert db.query(Bug).filter(Bug.project_id == project_id, Bug.deleted_at.is_(None)).count() == 3
 
     # 站内通知核对
     notifs = api.get("/notifications", username=admin, params={"page_size": 20})

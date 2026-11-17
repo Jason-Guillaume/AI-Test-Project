@@ -295,7 +295,7 @@ export function BatchCreateBugsModal({
     {
       title: '前后端 *',
       key: 'category',
-      width: 108,
+      width: 120,
       render: (_value, row, index) => (
         <Select<BugCategory>
           aria-label={`第 ${index + 1} 行前后端划分`}
@@ -507,7 +507,7 @@ export function BatchCreateBugsModal({
                 onChange={(val) =>
                   setDefaults((prev) => ({ ...prev, category: val }))
                 }
-                style={{ width: 108 }}
+                style={{ width: 118 }}
               />
             </Space>
             <Space size={6}>
@@ -589,7 +589,7 @@ export function BatchCreateBugsModal({
             {
               key: 'quick-paste',
               label:
-                '粘贴多行文本快速拆分（可选：支持纯标题逐行粘贴，或用「|」/ Tab 分隔：标题 | 前端/后端 | 严重度 | 描述 | 复现步骤 | 环境）',
+                '粘贴多行文本快速拆分（可选：支持纯标题逐行粘贴，或用「|」/ Tab 分隔：标题 | 前端/后端/前后端 | 严重度 | 描述 | 复现步骤 | 环境）',
               children: (
                 <Space direction="vertical" style={{ width: '100%' }}>
                   <Input.TextArea

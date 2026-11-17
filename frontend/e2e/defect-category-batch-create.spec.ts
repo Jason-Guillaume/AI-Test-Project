@@ -22,6 +22,7 @@ test('缺陷管理支持前后端划分筛选与结构化批量创建', async ({
   const singleFeTitle = `E2E 前端单条 ${suffix}`;
   const batchBeTitle = `E2E 后端批建 ${suffix}`;
   const batchFeTitle = `E2E 前端批建 ${suffix}`;
+  const batchBothTitle = `E2E 前后端批建 ${suffix}`;
 
   const login = await request.newContext();
   const loginRes = await login.post(`${API}/login`, { data: { username: ADMIN, password: PASSWORD } });
@@ -51,14 +52,14 @@ test('缺陷管理支持前后端划分筛选与结构化批量创建', async ({
   await expect(legacyRow).toBeVisible();
   await expect(legacyRow).toContainText('未划分');
 
-  // 1. 新建单条缺陷时强制选择前端/后端。
+  // 1. 新建单条缺陷时强制选择前端/后端/前后端。
   await page.getByRole('button', { name: '新建缺陷' }).click();
   const createDialog = page.getByRole('dialog', { name: '新建缺陷' });
   await expect(createDialog).toBeVisible();
   await createDialog.getByPlaceholder('一句话描述问题').fill(singleFeTitle);
   await createDialog.getByRole('button', { name: /保\s*存/ }).click();
-  await expect(createDialog).toContainText('请选择前端或后端');
-  await createDialog.locator('.ant-radio-button-wrapper', { hasText: '前端' }).click();
+  await expect(createDialog).toContainText('请选择前后端划分');
+  await createDialog.locator('.ant-radio-button-wrapper', { hasText: /^前端$/ }).click();
   await createDialog.getByRole('button', { name: /保\s*存/ }).click();
   await expect(createDialog).toBeHidden();
   await expect(page.getByRole('row').filter({ hasText: singleFeTitle })).toContainText('前端');
@@ -70,40 +71,46 @@ test('缺陷管理支持前后端划分筛选与结构化批量创建', async ({
 
   await batchDialog.getByText(/粘贴多行文本快速拆分/).click();
   await batchDialog.getByLabel('多行文本快速拆分输入').fill(
-    `${batchBeTitle} | 后端 | 严重 | 接口返回 500 | 1. 发起提交\\n2. 观察报错 | staging\n${batchFeTitle}`,
+    `${batchBeTitle} | 后端 | 严重 | 接口返回 500 | 1. 发起提交\\n2. 观察报错 | staging\n${batchFeTitle}\n${batchBothTitle} | 前后端 | 高 | 接口协议联调不一致 | 1. 提交保存 | test`,
   );
   await batchDialog.getByRole('button', { name: '拆分为下方表格行' }).click();
 
   await expect(batchDialog.getByLabel('第 1 行标题')).toHaveValue(batchBeTitle);
   await expect(batchDialog.getByLabel('第 2 行标题')).toHaveValue(batchFeTitle);
+  await expect(batchDialog.getByLabel('第 3 行标题')).toHaveValue(batchBothTitle);
 
   // 为第 2 行在结构化表格中补充前后端划分与描述。
   await batchDialog.getByRole('combobox', { name: '第 2 行前后端划分' }).click();
-  await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: '前端' }).first().click();
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({ hasText: /^前端$/ }).first().click();
   await batchDialog.getByLabel('第 2 行缺陷描述').fill('页面弹窗按钮对齐异常');
 
-  // 添加一行空行直接提交，验证拦截第 3 行且不丢失第 1、2 行数据。
+  // 添加一行空行直接提交，验证拦截第 4 行且不丢失前面行数据。
   await batchDialog.getByRole('button', { name: /添加一行/ }).click();
   await batchDialog.getByRole('button', { name: /确认批量创建/ }).click();
-  await expect(batchDialog).toContainText('第 3 行：缺陷标题不能为空');
+  await expect(batchDialog).toContainText('第 4 行：缺陷标题不能为空');
   await expect(batchDialog.getByLabel('第 1 行标题')).toHaveValue(batchBeTitle);
 
-  // 删除第 3 行空行后再次确认提交，验证两条结构化缺陷成功入库。
-  await batchDialog.getByRole('button', { name: '删除第 3 行' }).click();
-  await batchDialog.getByRole('button', { name: /确认批量创建（2 条）/ }).click();
+  // 删除第 4 行空行后再次确认提交，验证三条结构化缺陷成功入库。
+  await batchDialog.getByRole('button', { name: '删除第 4 行' }).click();
+  await batchDialog.getByRole('button', { name: /确认批量创建（3 条）/ }).click();
   await expect(batchDialog).toBeHidden();
 
   // 3. 验证前后端划分标签页筛选准确性。
-  await page.getByRole('tab', { name: '后端缺陷' }).click();
+  await page.getByRole('tab', { name: '后端缺陷', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: batchBeTitle })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: singleFeTitle })).toHaveCount(0);
 
-  await page.getByRole('tab', { name: '前端缺陷' }).click();
+  await page.getByRole('tab', { name: '前端缺陷', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: singleFeTitle })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: batchFeTitle })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: batchBeTitle })).toHaveCount(0);
 
-  await page.getByRole('tab', { name: '未划分' }).click();
+  await page.getByRole('tab', { name: '前后端缺陷', exact: true }).click();
+  await expect(page.getByRole('row').filter({ hasText: batchBothTitle })).toBeVisible();
+  await expect(page.getByRole('row').filter({ hasText: batchBeTitle })).toHaveCount(0);
+  await expect(page.getByRole('row').filter({ hasText: singleFeTitle })).toHaveCount(0);
+
+  await page.getByRole('tab', { name: '未划分', exact: true }).click();
   await expect(page.getByRole('row').filter({ hasText: legacyTitle })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: batchBeTitle })).toHaveCount(0);
 });
