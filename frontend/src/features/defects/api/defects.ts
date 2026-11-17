@@ -5,7 +5,7 @@ import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { Bug, BugListQuery } from '@/features/defects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
-import type { BugCreate, BugUpdate, DefectSourceType, DefectSourceLink, DefectSourceContext } from '../contracts';
+import type { BugCreate, BugUpdate, DefectShareDetail, DefectShareOptions, DefectSharePreview, DefectSharePushResult, DefectShareSummary, DefectSourceType, DefectSourceLink, DefectSourceContext } from '../contracts';
 
 
 
@@ -35,4 +35,27 @@ export const bugsApi = {
   remove: (id: number) => api.delete<void>(`/bugs/${id}`),
   removeMany: (projectId: number, ids: number[]) =>
     dataLifecycleApi.deleteMany('bug', projectId, ids),
+  /** 预览飞书推送，不创建分享。 */
+  previewShare: (body: DefectShareOptions & { bug_ids: number[] }) =>
+    api.post<DefectSharePreview>('/bugs/shares/preview', body),
+  /** 推送一条缺陷。 */
+  share: (bugId: number, body: DefectShareOptions) =>
+    api.post<DefectSharePushResult>(`/bugs/${bugId}/shares`, body),
+  /** 批量推送同一项目的缺陷。 */
+  shareBatch: (body: DefectShareOptions & { bug_ids: number[] }) =>
+    api.post<{ items: DefectSharePushResult[]; card_count: number }>('/bugs/shares/batch', body),
+  /** 分享历史。 */
+  listShares: (bugId: number) => api.get<{ items: DefectShareSummary[] }>(`/bugs/${bugId}/shares`),
+  /** 分享详情，含外部修复记录。 */
+  getShare: (bugId: number, shareId: string) =>
+    api.get<DefectShareDetail>(`/bugs/${bugId}/shares/${shareId}`),
+  /** 撤销一条分享。 */
+  revokeShare: (bugId: number, shareId: string) =>
+    api.post<DefectShareSummary>(`/bugs/${bugId}/shares/${shareId}/revoke`),
+  /** 重新推送。传入 access_token 时不轮换凭证。 */
+  retryShare: (bugId: number, shareId: string, accessToken?: string) =>
+    api.post<DefectSharePushResult>(`/bugs/${bugId}/shares/${shareId}/retry`, { access_token: accessToken ?? null }),
+  /** 批量撤销。 */
+  revokeShares: (items: Array<{ bug_id: number; share_id: string }>) =>
+    api.post<DefectShareSummary[]>('/bugs/shares/revoke-batch', { items }),
 };

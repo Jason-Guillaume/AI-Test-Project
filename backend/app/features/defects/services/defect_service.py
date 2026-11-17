@@ -26,7 +26,7 @@ from app.features.defects.schemas import (
 )
 from app.core.models.identity import User
 from app.core.models.project import Project
-from app.core.http.errors import bad_request, forbidden, not_found
+from app.core.http.errors import bad_request, conflict, forbidden, not_found
 from app.core.notifications.notify import notify
 from app.platform.projects.services.access_service import check_writable, get_project_or_404
 from app.core.security.roles import (
@@ -245,6 +245,53 @@ class DefectService:
         db.commit()
         db.refresh(bug)
         return bug
+
+    def apply_external_repair(
+        self, db: Session, bug: Bug, *, display_name: str | None,
+    ) -> tuple[str, str, bool]:
+        """把免登录分享提交映射为已修复。不提交事务，也不伪造内部用户。
+
+        已关闭和已拒绝不能被公开链接改回。已经是已修复时不产生新的状态变化。
+        调用方负责在同一事务里写外部处理记录。
+
+        Returns:
+            (old_status, new_status, changed)
+        """
+        locked = db.query(Bug).filter(Bug.id == bug.id).with_for_update().one()
+        # 公开链接不能越过测试关闭或拒绝结论。
+        if locked.status in {"已关闭", "已拒绝"}:
+            raise conflict("当前缺陷状态不允许通过分享链接修改")
+        old_status = locked.status
+        if old_status == "已修复":
+            return old_status, old_status, False
+        locked.status = "已修复"
+        db.flush()
+        actor_name = f"{display_name}（免登录分享，未经认证）" if display_name else "免登录分享链接"
+        detail = {
+            "bug_id": locked.id,
+            "project_id": locked.project_id,
+            "old_status": old_status,
+            "new_status": "已修复",
+            "actor_type": "EXTERNAL_SHARE",
+        }
+        recipients: list[int] = []
+        if locked.reporter_id:
+            recipients.append(locked.reporter_id)
+        if locked.assignee_id and locked.assignee_id not in recipients:
+            recipients.append(locked.assignee_id)
+        for user_id in recipients:
+            notify(
+                db,
+                user_id=user_id,
+                event_type="defect.external_resolved",
+                title=f"缺陷「{locked.title}」已由开发人员标记为已修复",
+                body="该操作来自免登录分享链接，姓名未经平台认证。请回归验证后再关闭缺陷。",
+                project_id=locked.project_id,
+                actor_id=None,
+                actor_username=actor_name,
+                detail=detail,
+            )
+        return old_status, locked.status, True
 
     def delete_bug(self, db: Session, bug: Bug, *, actor: User) -> None:
         """删除缺陷；至少 member。"""

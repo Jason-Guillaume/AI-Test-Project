@@ -7,6 +7,7 @@ import hashlib
 import fcntl
 import json
 import os
+import platform
 import re
 import selectors
 import shutil
@@ -26,6 +27,7 @@ RUN_ROOT = Path(os.environ.get("AUTOMATION_RUN_ROOT", "/opt/automation-runs"))
 CACHE_ROOT = Path(os.environ.get("AUTOMATION_CACHE_ROOT", "/opt/automation-cache"))
 CALLBACK_ROOT = Path(os.environ.get("AUTOMATION_CALLBACK_SECRET_ROOT", "/etc/dagu/automation-callback-secrets"))
 CODEUP_KEY = Path("/etc/dagu/keys/codeup_automation")
+GITHUB_KEY = Path("/etc/dagu/keys/github_automation")
 CODEUP_KNOWN_HOSTS = Path("/etc/dagu/keys/known_hosts")
 STOP_SIGNAL: int | None = None
 
@@ -56,23 +58,32 @@ def _required_env(name: str, *, pattern: str | None = None, max_length: int = 50
 
 
 def _repository_ssh_url(value: str) -> str:
-    """只接受 Codeup 固定主机，并将 HTTPS 地址映射到只读 SSH Deploy Key。"""
-    if value.startswith("git@codeup.aliyun.com:"):
-        path = value.partition(":")[2]
-        if not path or path.startswith("/") or ".." in path.split("/"):
-            raise ValueError("Codeup SSH 仓库路径无效")
-        return value
+    """只接受 Codeup 或 GitHub，并把 HTTPS 地址映射到对应的只读 Deploy Key。"""
+    for prefix, label in (("git@codeup.aliyun.com:", "Codeup"), ("git@github.com:", "GitHub")):
+        if value.startswith(prefix):
+            path = value.partition(":")[2]
+            if not path or path.startswith("/") or ".." in path.split("/"):
+                raise ValueError(f"{label} SSH 仓库路径无效")
+            return value
     parsed = urlsplit(value)
+    hosts = {"codeup.aliyun.com": "git@codeup.aliyun.com:", "github.com": "git@github.com:"}
     if (
         parsed.scheme not in {"https", "ssh"}
-        or parsed.hostname != "codeup.aliyun.com"
+        or parsed.hostname not in hosts
         or parsed.username not in {None, "git"}
         or parsed.password or parsed.query or parsed.fragment
         or not parsed.path.strip("/")
         or ".." in parsed.path.split("/")
     ):
-        raise ValueError("仓库地址必须是无凭据的 Codeup HTTPS 或 SSH URL")
-    return f"git@codeup.aliyun.com:{parsed.path.lstrip('/')}"
+        raise ValueError("仓库地址必须是无凭据的 Codeup 或 GitHub HTTPS/SSH URL")
+    return hosts[parsed.hostname] + parsed.path.lstrip("/")
+
+
+def _deploy_key_for(repository_url: str) -> Path:
+    """按仓库主机选择 Deploy Key 文件。命令行只放路径，不放私钥内容。"""
+    if "github.com" in repository_url:
+        return GITHUB_KEY
+    return CODEUP_KEY
 
 
 def _read_callback_credentials(config_id: str, origin: str) -> dict[str, str]:
@@ -214,18 +225,80 @@ def _dependency_manifest(repo_dir: Path) -> Path | None:
     ) if path.is_file()), None)
 
 
-def _cached_python(
-    repo_dir: Path, repository_url: str, git_commit: str, log_path: Path, env: dict[str, str],
-) -> tuple[Path, BinaryIO]:
+def _environment_cache_key(manifest: Path | None) -> str:
+    """依赖缓存只跟解释器、系统和依赖清单有关，代码提交变化不重新安装。"""
+    digest = hashlib.sha256()
+    digest.update(platform.python_version().encode("utf-8"))
+    digest.update(sys.version.encode("utf-8"))
+    digest.update(platform.system().encode("utf-8"))
+    digest.update(platform.machine().encode("utf-8"))
+    digest.update(manifest.read_bytes() if manifest is not None else b"<no-requirements>")
+    digest.update(b"\0pytest\0allure-pytest")
+    return digest.hexdigest()[:24]
+
+
+def _cleanup_expired_venvs(active_key: str | None = None) -> None:
+    """删除过期虚拟环境。拿不到独占锁的目录视为正在使用，不能删。"""
+    root = CACHE_ROOT / "venvs"
+    if not root.is_dir():
+        return
+    expiry = time.time() - 14 * 86_400
+    for ready in root.glob("*/.ready"):
+        venv_dir = ready.parent
+        if venv_dir.name.startswith(".") or ready.stat().st_mtime >= expiry:
+            continue
+        try:
+            cache_key = ready.read_text(encoding="ascii").strip()[:24]
+        except OSError:
+            continue
+        if not cache_key or cache_key == active_key:
+            continue
+        lock_path = CACHE_ROOT / "locks" / f"{cache_key}.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_path.open("a+b")
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            lock_file.close()
+            continue
+        try:
+            if venv_dir.exists() and not venv_dir.is_symlink():
+                shutil.rmtree(venv_dir)
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+
+
+def _ensure_disk_budget(root: Path) -> None:
+    """剩余空间过低时拒绝新的执行，避免多个任务把磁盘写满。"""
+    root.mkdir(parents=True, exist_ok=True)
+    minimum_free = int(os.environ.get("AUTOMATION_MIN_FREE_BYTES", str(1024 ** 3)))
+    if shutil.disk_usage(root).free < minimum_free:
+        raise RuntimeError("执行机剩余磁盘不足，已拒绝本次运行")
+
+
+def _acquire_run_slot() -> BinaryIO:
+    """用文件锁限制同时运行的任务数，锁在进程退出时释放。"""
+    slots = int(os.environ.get("AUTOMATION_MAX_CONCURRENT", "2") or "2")
+    slot_root = RUN_ROOT / "slots"
+    slot_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    last_error: BlockingIOError | None = None
+    for index in range(max(1, min(slots, 8))):
+        handle = (slot_root / f"slot-{index}").open("a+b")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return handle
+        except BlockingIOError as exc:
+            last_error = exc
+            handle.close()
+    raise RuntimeError("执行机并发已满，请稍后重试") from last_error
+
+
+def _cached_python(repo_dir: Path, log_path: Path, env: dict[str, str]) -> tuple[Path, BinaryIO]:
     """缓存 venv 并持有共享运行锁，避免定时清理删除正在使用的环境。"""
     manifest = _dependency_manifest(repo_dir)
-    digest = hashlib.sha256()
-    digest.update(repository_url.encode("utf-8"))
-    digest.update(git_commit.encode("ascii", errors="ignore"))
-    digest.update(sys.version.encode("utf-8"))
-    if manifest:
-        digest.update(manifest.read_bytes())
-    cache_key = digest.hexdigest()[:24]
+    cache_key = _environment_cache_key(manifest)
+    _cleanup_expired_venvs(cache_key)
     venv_dir = CACHE_ROOT / "venvs" / cache_key
     cache_python = venv_dir / "bin" / "python"
     lock_root = CACHE_ROOT / "locks"
@@ -342,7 +415,7 @@ def main() -> int:
     }
     env.update({
         "GIT_SSH_COMMAND": (
-            f"ssh -i {CODEUP_KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "
+            f"ssh -i {_deploy_key_for(repository_url)} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "
             f"-o UserKnownHostsFile={CODEUP_KNOWN_HOSTS}"
         ),
         "GIT_TERMINAL_PROMPT": "0",
@@ -361,6 +434,8 @@ def main() -> int:
     result_code = 0
     status = "FAILED"
     cache_lock: BinaryIO | None = None
+    _ensure_disk_budget(RUN_ROOT)
+    run_slot = _acquire_run_slot()
     try:
         clone_env = {**env, "GIT_CONFIG_NOSYSTEM": "1"}
         clone_code = _run_command(
@@ -375,7 +450,7 @@ def main() -> int:
             check=True, capture_output=True, text=True, timeout=15,
         ).stdout.strip()
         callback_env["GIT_COMMIT"] = git_commit[:64]
-        venv_python, cache_lock = _cached_python(repo_dir, repository_url, git_commit, log_path, env)
+        venv_python, cache_lock = _cached_python(repo_dir, log_path, env)
         venv_dir = venv_python.parent.parent
 
         child_env = env.copy()
@@ -500,6 +575,7 @@ def main() -> int:
         _append_log(log_path, "回调未成功确认；保留工作目录供重试和排查。\n".encode("utf-8"))
         result_code = result_code or 1
     print(f"自动化状态：{status}；工作目录：{work_dir}")
+    run_slot.close()
     return result_code
 
 

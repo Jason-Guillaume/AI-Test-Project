@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import re
-import ipaddress
 from datetime import datetime
 from typing import Literal
-from urllib.parse import urlsplit
 
 from app.core.config import settings
+from app.features.automation_center.providers.base import ProviderError
+from app.features.automation_center.providers.dagu_client import assert_dagu_endpoint
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 Deployment = Literal["central", "region"]
@@ -19,24 +19,13 @@ _ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 
 def _validate_dagu_url(value: str | None) -> str:
+    """与 Dagu 客户端使用同一套地址规则，避免入库后才发现内网地址不被允许。"""
     if not value:
         raise ValueError("Dagu 必须填写 Base URL")
-    parsed = urlsplit(value.strip())
-    if parsed.scheme.lower() not in {"https", "http"} or not parsed.hostname:
-        raise ValueError("Dagu API 地址必须使用 HTTP 或 HTTPS")
-    if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("Dagu API 地址不能包含账号、密码、查询参数或片段")
-    if parsed.path not in {"", "/", "/api/v1"}:
-        raise ValueError("Dagu API 地址路径只允许为空或 /api/v1")
-    if parsed.scheme.lower() == "http":
-        hostname = parsed.hostname.lower().rstrip(".")
-        try:
-            address = ipaddress.ip_address(hostname)
-            private_host = address.is_private or address.is_loopback or address.is_link_local
-        except ValueError:
-            private_host = hostname == "localhost" or hostname.endswith((".localhost", ".internal", ".local"))
-        if not settings.DAGU_ALLOW_INSECURE_HTTP or not private_host:
-            raise ValueError("API Key 禁止通过公网 HTTP 传输；请配置 HTTPS 或受控私网地址")
+    try:
+        assert_dagu_endpoint(value, allow_insecure_http=settings.DAGU_ALLOW_INSECURE_HTTP)
+    except ProviderError as exc:
+        raise ValueError(str(exc)) from exc
     return value.strip().rstrip("/")
 
 
@@ -273,11 +262,22 @@ class ExecutionTrigger(BaseModel):
     test_tags: str | None = Field(None, max_length=300)
     test_scope: str | None = Field(None, max_length=500)
     pipeline_id: str | None = Field(None, max_length=255)
+    idempotency_key: str | None = Field(None, max_length=120)
 
     @field_validator("pipeline_id")
     @classmethod
     def resource_path_safe(cls, value: str | None) -> str | None:
         return _validate_resource_path(value) if value else value
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def idempotency_key_safe(cls, value: str | None) -> str | None:
+        """幂等键只接受可见且可入库的短标识，避免把任意字符串写成唯一约束。"""
+        if value is None or value == "":
+            return None
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{8,120}", value):
+            raise ValueError("幂等键不合法")
+        return value
 
 
 class ExecutionResponse(BaseModel):

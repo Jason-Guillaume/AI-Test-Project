@@ -5,16 +5,63 @@ from __future__ import annotations
 import json
 import ipaddress
 import re
+import socket
+from collections.abc import Callable
 from urllib.parse import quote, urlsplit
 
 import httpx
 
+from app.core.config import settings
 from app.features.automation_center.providers.base import ProviderError
 
 _MAX_LOG_BYTES = 200_000
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)(token|secret|password|authorization|credential|api[_-]?key|private[_-]?key)\s*[:=]\s*\S+",
 )
+
+
+def private_host_allowlist() -> set[str]:
+    """读取显式私网主机白名单。空名单表示不放行任何内网地址。"""
+    raw = settings.DAGU_PRIVATE_HOST_ALLOWLIST or ""
+    return {item.strip().lower().rstrip(".") for item in raw.split(",") if item.strip()}
+
+
+def _restricted_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """私网、回环、链路本地和保留地址都不能当成公网 Dagu。"""
+    return bool(
+        address.is_private or address.is_loopback or address.is_link_local
+        or address.is_multicast or address.is_reserved or address.is_unspecified
+    )
+
+
+def _restricted_hostname(hostname: str) -> bool:
+    """字面量 IP 和本机/内部域名都视为受控地址，不能凭 URL 形态放行。"""
+    host = hostname.lower().rstrip(".")
+    try:
+        return _restricted_ip(ipaddress.ip_address(host))
+    except ValueError:
+        return host == "localhost" or host.endswith((".localhost", ".internal", ".local"))
+
+
+def assert_dagu_endpoint(value: str, *, allow_insecure_http: bool) -> str:
+    """校验 Dagu 地址。HTTP 和内网 HTTPS 都必须命中显式白名单。"""
+    parsed = urlsplit((value or "").strip().rstrip("/"))
+    if (
+        parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password
+        or parsed.query or parsed.fragment
+    ):
+        raise ProviderError("Dagu API 地址必须使用 HTTP/HTTPS，且不能包含账号、密码、查询参数或片段")
+    if parsed.path not in {"", "/", "/api/v1"}:
+        raise ProviderError("Dagu API 地址路径只允许为空或 /api/v1")
+    host = parsed.hostname.lower().rstrip(".")
+    allowlisted = host in private_host_allowlist()
+    restricted = _restricted_hostname(host)
+    if parsed.scheme == "http" and not (allow_insecure_http and allowlisted and restricted):
+        raise ProviderError("Dagu API Key 禁止通过公网 HTTP 传输；请配置 HTTPS 或受控私网地址")
+    if parsed.scheme == "https" and restricted and not allowlisted:
+        raise ProviderError("Dagu API 地址指向未授权的内网或保留地址")
+    origin = f"{parsed.scheme.lower()}://{parsed.netloc}"
+    return origin + "/api/v1"
 
 
 class DaguClient:
@@ -28,12 +75,16 @@ class DaguClient:
         timeout: httpx.Timeout | float = httpx.Timeout(connect=5, read=20, write=10, pool=5),
         transport: httpx.BaseTransport | None = None,
         allow_insecure_http: bool = False,
+        resolver: Callable[..., list] | None = None,
     ) -> None:
         """创建禁用重定向与环境代理的客户端，并把 API Key 仅放入认证头。"""
         self.base_url = self.normalize_base_url(base_url, allow_insecure_http=allow_insecure_http)
         self._api_key = api_key.strip()
         if len(self._api_key) < 8:
             raise ProviderError("Dagu API Key 未配置或格式无效")
+        # 真实连接必须解析 DNS；测试传输层不会出网，避免把样例域名解析失败当成产品缺陷。
+        self._resolver = resolver
+        self._resolve_dns = resolver is not None or transport is None
         self._client = httpx.Client(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"},
@@ -46,31 +97,13 @@ class DaguClient:
 
     @staticmethod
     def normalize_base_url(value: str, *, allow_insecure_http: bool = False) -> str:
-        """保留部署的 HTTP/HTTPS 协议，并限制地址路径及 URL 凭证字段。"""
-        parsed = urlsplit((value or "").strip().rstrip("/"))
-        if (
-            parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password
-            or parsed.query or parsed.fragment
-        ):
-            raise ProviderError("Dagu API 地址必须使用 HTTP/HTTPS，且不能包含账号、密码、查询参数或片段")
-        if parsed.path not in {"", "/", "/api/v1"}:
-            raise ProviderError("Dagu API 地址路径只允许为空或 /api/v1")
-        if parsed.scheme == "http" and not (
-            allow_insecure_http and DaguClient._is_controlled_private_http_host(parsed.hostname)
-        ):
-            raise ProviderError("Dagu API Key 禁止通过公网 HTTP 传输；请配置 HTTPS 或受控私网地址")
-        origin = f"{parsed.scheme.lower()}://{parsed.netloc}"
-        return origin + "/api/v1"
+        """保留部署的 HTTP/HTTPS 协议，并限制地址路径、URL 凭证和未授权内网。"""
+        return assert_dagu_endpoint(value, allow_insecure_http=allow_insecure_http)
 
     @staticmethod
     def _is_controlled_private_http_host(hostname: str) -> bool:
         """仅把本机、私有 IP 和明确的内部 DNS 后缀视为受控 HTTP 地址。"""
-        host = hostname.lower().rstrip(".")
-        try:
-            address = ipaddress.ip_address(host)
-            return address.is_private or address.is_loopback or address.is_link_local
-        except ValueError:
-            return host == "localhost" or host.endswith((".localhost", ".internal", ".local"))
+        return _restricted_hostname(hostname)
 
     def close(self) -> None:
         """关闭 HTTP 连接池，释放 Provider 生命周期内占用的连接。"""
@@ -196,8 +229,25 @@ class DaguClient:
         """从 Dagu 队列中移除尚未启动的 DAG Run。"""
         self._request("GET", f"/dag-runs/{quote(dag_name, safe='')}/{quote(dag_run_id, safe='')}/dequeue", allow_empty=True)
 
+    def _assert_resolved_addresses(self) -> None:
+        """拒绝解析到未授权内网的公网域名，避免 HTTPS 被用来访问元数据地址。"""
+        if not self._resolve_dns:
+            return
+        hostname = urlsplit(self.base_url).hostname or ""
+        try:
+            if self._resolver is not None:
+                infos = self._resolver(hostname, None)
+            else:
+                infos = socket.getaddrinfo(hostname, None)
+        except OSError as exc:
+            raise ProviderError("无法解析 Dagu API 地址") from exc
+        addresses = [ipaddress.ip_address(item[4][0]) for item in infos]
+        if any(_restricted_ip(address) for address in addresses) and hostname.lower().rstrip(".") not in private_host_allowlist():
+            raise ProviderError("Dagu API 地址解析到未授权的内网或保留地址")
+
     def _request(self, method: str, path: str, *, allow_empty: bool = False, **kwargs):
         """发起 Dagu API 请求，处理网络错误并拒绝重定向和非预期响应。"""
+        self._assert_resolved_addresses()
         try:
             response = self._client.request(method, path, **kwargs)
         except httpx.TimeoutException as exc:

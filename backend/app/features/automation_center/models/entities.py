@@ -162,6 +162,10 @@ class AutomationExecution(Base):
     notify_status = Column(String(20), nullable=False, server_default=text("'WAITING'"))
     notify_attempts = Column(Integer, nullable=False, server_default=text("0"))
     last_sync_at = Column(DateTime, nullable=True)
+    dispatch_state = Column(
+        String(20), nullable=False, server_default=text("'CONFIRMED'"), default="CONFIRMED",
+        comment="PENDING 表示本地记录已提交但远端尚未确认，CONFIRMED 表示运行 ID 已对齐",
+    )
     created_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
@@ -218,6 +222,30 @@ class AutomationArtifact(Base):
     relative_path = Column(String(500), nullable=False)
     sha256 = Column(String(64), nullable=False, server_default=text("''"))
     size_bytes = Column(Integer, nullable=False, server_default=text("0"))
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class AutomationExecutionIdempotency(Base):
+    """手动执行的幂等收据。同一个自动化项目下的幂等键只能对应一次执行。"""
+
+    __tablename__ = "automation_execution_idempotency"
+    __table_args__ = (
+        UniqueConstraint(
+            "automation_project_id", "idempotency_key", name="uq_automation_execution_idempotency",
+        ),
+        {"comment": "自动化执行请求幂等收据"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    automation_project_id = Column(
+        Integer, ForeignKey("automation_project.id", ondelete="CASCADE"), nullable=False,
+    )
+    idempotency_key = Column(String(120), nullable=False)
+    request_fingerprint = Column(String(64), nullable=False, comment="请求参数摘要，防止不同执行被合并")
+    execution_id = Column(
+        Integer, ForeignKey("automation_execution.id", ondelete="CASCADE"), nullable=False,
+    )
+    expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 

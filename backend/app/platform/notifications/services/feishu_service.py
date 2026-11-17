@@ -34,17 +34,27 @@ class FeishuNotificationService:
     def send_card(
         self, db: Session, channel: NotificationChannel, report_id: int | None,
         card: dict[str, Any], *, actor_id: int | None = None,
+        bug_id: int | None = None, share_link_id: int | None = None,
+        event_type: str | None = None, idempotency_key: str | None = None,
+        retry_count: int = 0,
     ) -> NotificationRecord:
         """发送已由业务用例构建的卡片，并记录传输结果。"""
+        status, response, error = self._deliver(channel, card)
+        return self._record(
+            db, channel, report_id, status, card, response, error, actor_id,
+            bug_id=bug_id, share_link_id=share_link_id, event_type=event_type,
+            idempotency_key=idempotency_key, retry_count=retry_count,
+        )
+
+    def _deliver(
+        self, channel: NotificationChannel, card: dict[str, Any],
+    ) -> tuple[str, dict[str, Any] | None, str | None]:
+        """把卡片 POST 到已解密的飞书 Webhook。不写库，供单条和批量共用。"""
         config = self._config(channel)
         webhook_url = decrypt_secret(config.get("webhook_url_encrypted"))
         secret = decrypt_secret(config.get("secret_encrypted"))
-
         if not webhook_url:
-            return self._record(
-                db, channel, report_id, "FAILED", card, None,
-                "webhook 配置无效或解密失败", actor_id,
-            )
+            return "FAILED", None, "webhook 配置无效或解密失败"
 
         timestamp = int(time.time())
         body: dict[str, Any] = {
@@ -54,29 +64,25 @@ class FeishuNotificationService:
         }
         if secret:
             body["sign"] = self._sign(secret, timestamp)
-
         try:
-            # trust_env=False：直连 webhook，不继承环境代理。
+            # trust_env=False：直连 webhook，不继承环境代理，也不把代理账号带进请求。
             resp = httpx.post(
                 webhook_url, json=body,
                 headers={"Content-Type": "application/json"}, timeout=10, trust_env=False,
             )
         except Exception as exc:  # noqa: BLE001 — 网络和依赖异常都只记 FAILED。
-            logger.warning("飞书通知发送网络异常 channel=%s: %s", channel.id, exc)
-            return self._record(db, channel, report_id, "FAILED", card, None, f"网络异常：{exc}", actor_id)
-
+            logger.warning("飞书通知发送网络异常 channel=%s: %s", channel.id, type(exc).__name__)
+            return "FAILED", None, f"网络异常：{type(exc).__name__}"
         try:
             resp_data = resp.json()
         except ValueError:
             resp_data = {"status_code": resp.status_code, "text": resp.text[:300]}
-
         # 飞书成功响应：{"code":0,"msg":"success",...}；code 缺省兼容旧版成功。
         if resp.status_code < 400 and resp_data.get("code") in (0, None):
-            return self._record(db, channel, report_id, "SUCCESS", card, resp_data, None, actor_id)
+            return "SUCCESS", resp_data, None
         err = resp_data.get("msg") or resp_data.get("text") or f"HTTP {resp.status_code}"
-        return self._record(
-            db, channel, report_id, "FAILED", card, resp_data, f"飞书返回失败：{err}", actor_id,
-        )
+        return "FAILED", resp_data, f"飞书返回失败：{err}"
+
     def send_test_card(
         self, db: Session, channel: NotificationChannel, *, actor_id: int | None = None,
     ) -> NotificationRecord:
@@ -130,14 +136,23 @@ class FeishuNotificationService:
     def _record(
         db: Session, channel: NotificationChannel, report_id: int | None,
         status: str, card: dict[str, Any] | None, response: dict[str, Any] | None,
-        error: str | None, actor_id: int | None,
+        error: str | None, actor_id: int | None, *,
+        bug_id: int | None = None, share_link_id: int | None = None,
+        event_type: str | None = None, idempotency_key: str | None = None,
+        retry_count: int = 0,
     ) -> NotificationRecord:
         """落库发送审计记录；webhook URL 绝不入 request_snapshot。"""
         rec = NotificationRecord(
             project_id=channel.project_id,
             channel_id=channel.id,
             report_id=report_id,
+            bug_id=bug_id,
+            share_link_id=share_link_id,
+            event_type=event_type,
+            idempotency_key=idempotency_key,
+            retry_count=retry_count,
             status=status,
+            # 快照会掩掉卡片里的分享凭证；真正发给飞书的卡片仍保留按钮链接。
             request_snapshot=sanitize_context(card) if card else None,
             response_snapshot=sanitize_context(response) if response else None,
             error_message=error,

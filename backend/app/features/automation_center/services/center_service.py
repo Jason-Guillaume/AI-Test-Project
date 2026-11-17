@@ -30,6 +30,7 @@ from app.features.automation_center.models.entities import (
     AutomationArtifact,
     AutomationCallbackReceipt,
     AutomationExecution,
+    AutomationExecutionIdempotency,
     AutomationIntegrationConfig,
     AutomationPipeline,
     AutomationProject,
@@ -73,6 +74,8 @@ from app.platform.projects.services.access_service import get_project_or_404, re
 from app.core.security.roles import PROJECT_ROLE_EDITOR, has_project_role, project_role_for
 
 logger = logging.getLogger(__name__)
+APPROVED_DAGU_DAGS = frozenset({"automation-pytest-allure"})
+_IDEMPOTENCY_TTL = timedelta(hours=24)
 _ENV_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
 _SECRET_KEY = re.compile(r"(?i)(secret|token|password|webhook|credential|api[_-]?key|private[_-]?key)")
 _SECRET_VALUE = re.compile(
@@ -258,7 +261,7 @@ class AutomationCenterService:
                 item.get("fileName") or item.get("file_name") or item.get("name")
                 or item.get("dagName") or item.get("dag_name") or dag.get("name") or ""
             ).strip()
-            if name:
+            if name and name in APPROVED_DAGU_DAGS:
                 description = item.get("description") or dag.get("description") or ""
                 normalized.append({"name": name, "description": str(description)[:500]})
         return DaguDagListResponse(items=normalized)
@@ -414,17 +417,26 @@ class AutomationCenterService:
     def trigger(
         self, db: Session, automation_project_id: int, body: ExecutionTrigger, actor: User,
     ) -> ExecutionResponse:
-        """创建独立执行记录并调用绑定的 CI Provider。"""
+        """创建执行记录。Dagu 先提交本地记录和稳定运行 ID，再入队。"""
         project = self._automation_for(db, automation_project_id, actor, write=True)
         if not project.enabled:
             raise bad_request("自动化项目已停用")
         config = db.get(AutomationIntegrationConfig, project.integration_config_id)
         if config is None:
             raise not_found("接入配置不存在")
+        if config.provider_type == "LEGACY":
+            raise bad_request("历史执行平台已停用，不能发起新的执行")
         if not config.enabled:
             raise bad_request("CI 接入配置已停用")
         pipeline = self._pipeline_for_trigger(db, project, body.pipeline_id)
         self._validate_resource_id(config.provider_type, pipeline.pipeline_id)
+        if body.idempotency_key and not re.fullmatch(r"[A-Za-z0-9_.:-]{8,120}", body.idempotency_key):
+            raise bad_request("幂等键不合法")
+        fingerprint = self._request_fingerprint(body, project, pipeline.pipeline_id)
+        existing = self._existing_idempotent_execution(db, project.id, body.idempotency_key, fingerprint)
+        if existing is not None:
+            return self._execution_response(db, existing)
+        self._purge_expired_idempotency(db)
         execution = AutomationExecution(
             project_id=project.project_id,
             automation_project_id=project.id,
@@ -434,6 +446,7 @@ class AutomationCenterService:
             external_pipeline_id=pipeline.pipeline_id,
             trigger_source="MANUAL",
             status="PENDING",
+            dispatch_state="PENDING" if config.provider_type == "DAGU" else "CONFIRMED",
             branch=(body.branch if body.branch is not None else project.default_branch).strip(),
             environment_name=(body.environment_name if body.environment_name is not None else project.default_environment).strip(),
             pytest_args=(body.pytest_args if body.pytest_args is not None else project.pytest_args).strip(),
@@ -446,6 +459,22 @@ class AutomationCenterService:
         db.flush()
         params = self._execution_params(config, project, pipeline, execution)
         execution.run_params = params
+        execution.timeout_at = datetime.now() + timedelta(seconds=project.timeout_seconds)
+        if config.provider_type == "DAGU":
+            # 稳定 ID 在调用 Dagu 之前写入并提交，超时或进程重启后仍能找回同一次运行。
+            execution.pipeline_run_id = f"automation-{execution.id}"
+            self._remember_idempotency(db, project.id, body.idempotency_key, fingerprint, execution.id)
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                raced = self._existing_idempotent_execution(db, project.id, body.idempotency_key, fingerprint)
+                if raced is not None:
+                    return self._execution_response(db, raced)
+                raise
+            self._dispatch_dagu(db, execution.id)
+            db.refresh(execution)
+            return self._execution_response(db, execution)
         try:
             with self._provider_session(config) as provider:
                 result = provider.trigger_run(pipeline.pipeline_id, params)
@@ -453,12 +482,15 @@ class AutomationCenterService:
                 raise ProviderError("CI 平台未返回运行实例 ID")
         except ProviderError as exc:
             execution.status = "FAILED"
+            execution.dispatch_state = "FAILED"
             execution.error_message = str(exc)[:500]
             execution.finished_at = datetime.now()
             execution.notify_status = "SKIPPED"
+            self._remember_idempotency(db, project.id, body.idempotency_key, fingerprint, execution.id)
             db.commit()
             raise bad_request(str(exc)) from exc
         execution.pipeline_run_id = result.external_run_id
+        execution.dispatch_state = "CONFIRMED"
         execution.external_run_url = result.run_url or ""
         execution.status = result.status
         execution.external_status = result.external_status or result.status
@@ -467,11 +499,14 @@ class AutomationCenterService:
         )
         execution.finished_at = result.finished_at
         execution.duration_ms = result.duration_ms
-        execution.timeout_at = datetime.now() + timedelta(seconds=project.timeout_seconds)
+        self._remember_idempotency(db, project.id, body.idempotency_key, fingerprint, execution.id)
         try:
             db.commit()
         except IntegrityError:
             db.rollback()
+            existing = self._existing_idempotent_execution(db, project.id, body.idempotency_key, fingerprint)
+            if existing is not None:
+                return self._execution_response(db, existing)
             existing = db.query(AutomationExecution).filter_by(
                 integration_config_id=config.id,
                 automation_project_id=project.id,
@@ -482,6 +517,111 @@ class AutomationCenterService:
             raise
         db.refresh(execution)
         return self._execution_response(db, execution)
+
+    def _request_fingerprint(self, body: ExecutionTrigger, project: AutomationProject, pipeline_id: str) -> str:
+        """用实际会执行的参数计算摘要，相同幂等键配不同参数时拒绝合并。"""
+        payload = {
+            "pipeline_id": pipeline_id,
+            "branch": (body.branch if body.branch is not None else project.default_branch).strip(),
+            "environment_name": (body.environment_name if body.environment_name is not None else project.default_environment).strip(),
+            "pytest_args": (body.pytest_args if body.pytest_args is not None else project.pytest_args).strip(),
+            "test_tags": (body.test_tags if body.test_tags is not None else project.test_tags).strip(),
+            "test_scope": (body.test_scope if body.test_scope is not None else project.test_scope).strip(),
+        }
+        return _sha(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8"))
+
+    def _existing_idempotent_execution(
+        self, db: Session, automation_project_id: int, idempotency_key: str | None, fingerprint: str,
+    ) -> AutomationExecution | None:
+        """相同请求返回已有执行；参数不一致时拒绝，避免重试打到另一次运行。"""
+        if not idempotency_key:
+            return None
+        receipt = db.query(AutomationExecutionIdempotency).filter_by(
+            automation_project_id=automation_project_id, idempotency_key=idempotency_key,
+        ).first()
+        if receipt is None:
+            return None
+        execution = db.get(AutomationExecution, receipt.execution_id)
+        if execution is None:
+            return None
+        if receipt.expires_at < datetime.now() and execution.status in TERMINAL_STATUSES:
+            db.delete(receipt)
+            db.flush()
+            return None
+        if receipt.request_fingerprint != fingerprint:
+            raise conflict("相同幂等键对应的执行参数不一致")
+        return execution
+
+    def _remember_idempotency(
+        self, db: Session, automation_project_id: int, idempotency_key: str | None,
+        fingerprint: str, execution_id: int,
+    ) -> None:
+        """把幂等键和执行记录放进当前事务，由唯一约束处理并发重复提交。"""
+        if not idempotency_key:
+            return
+        db.add(AutomationExecutionIdempotency(
+            automation_project_id=automation_project_id,
+            idempotency_key=idempotency_key,
+            request_fingerprint=fingerprint,
+            execution_id=execution_id,
+            expires_at=datetime.now() + _IDEMPOTENCY_TTL,
+        ))
+
+    def _purge_expired_idempotency(self, db: Session) -> None:
+        """只清理已经结束的过期幂等记录，进行中的执行仍要挡住重复触发。"""
+        stale = (
+            db.query(AutomationExecutionIdempotency.id)
+            .join(AutomationExecution, AutomationExecution.id == AutomationExecutionIdempotency.execution_id)
+            .filter(AutomationExecutionIdempotency.expires_at < datetime.now())
+            .filter(AutomationExecution.status.in_(list(TERMINAL_STATUSES)))
+            .limit(100)
+            .all()
+        )
+        if not stale:
+            return
+        db.query(AutomationExecutionIdempotency).filter(
+            AutomationExecutionIdempotency.id.in_([row.id for row in stale]),
+        ).delete(synchronize_session=False)
+
+    def _dispatch_dagu(self, db: Session, execution_id: int) -> None:
+        """按已提交的稳定运行 ID 入队。不确定是否成功时保留记录，交给 Poller 查询。"""
+        execution = db.get(AutomationExecution, execution_id)
+        if execution is None or execution.dispatch_state == "CONFIRMED":
+            return
+        config, resource_id = self._execution_provider_args(db, execution)
+        params = dict(execution.run_params or {})
+        try:
+            with self._provider_session(config) as provider:
+                result = provider.trigger_run(resource_id, params)
+            if not result.external_run_id:
+                raise ProviderError("CI 平台未返回运行实例 ID")
+        except ProviderError as exc:
+            execution = db.get(AutomationExecution, execution_id)
+            if execution is None:
+                raise bad_request(str(exc)) from exc
+            uncertain = exc.status_code in {None, 408, 409, 429, 500, 502, 503, 504} or "超时" in str(exc) or "无法连接" in str(exc) or "不确定" in str(exc)
+            execution.error_message = str(exc)[:500]
+            if uncertain:
+                execution.dispatch_state = "PENDING"
+                execution.status = "PENDING"
+                db.commit()
+                return
+            execution.status = "FAILED"
+            execution.dispatch_state = "FAILED"
+            execution.finished_at = datetime.now()
+            execution.notify_status = "SKIPPED"
+            db.commit()
+            raise bad_request(str(exc)) from exc
+        execution = db.get(AutomationExecution, execution_id)
+        if execution is None:
+            return
+        execution.pipeline_run_id = result.external_run_id
+        execution.dispatch_state = "CONFIRMED"
+        execution.external_run_url = result.run_url or ""
+        execution.status = result.status or "PENDING"
+        execution.external_status = result.external_status or result.status or "queued"
+        execution.error_message = ""
+        db.commit()
 
     def list_executions(
         self, db: Session, project_id: int, actor: User, *, page: int, page_size: int,
@@ -544,38 +684,70 @@ class AutomationCenterService:
         )
 
     def cancel(self, db: Session, execution_id: int, actor: User) -> ExecutionResponse:
-        """Request an idempotent stop and keep polling until the provider reports a terminal state."""
+        """云效在停止接口确认后立即结束；Dagu 只记录停止请求，等 Poller 看到终态。"""
         row = self._execution_for(db, execution_id, actor, write=True)
+        if row.provider_type == "LEGACY":
+            raise bad_request("历史执行记录只读，不能取消")
         if row.status in TERMINAL_STATUSES:
             return self._execution_response(db, row)
         if row.status not in {"PENDING", "RUNNING"}:
             raise bad_request("当前状态不能取消")
-        if row.stop_requested_at is not None:
-            return self._execution_response(db, row)
-        if not row.pipeline_run_id:
-            self._transition(row, "CANCELLED")
-            row.external_status = "NO_EXTERNAL_RUN"
+        if row.provider_type == "DAGU":
+            if row.stop_requested_at is not None:
+                return self._execution_response(db, row)
+            if not row.pipeline_run_id:
+                self._transition(row, "CANCELLED")
+                row.dispatch_state = "FAILED"
+                row.external_status = "NO_EXTERNAL_RUN"
+                row.stop_requested_at = None
+                db.commit()
+                self._notify(db, row.id)
+                db.refresh(row)
+                return self._execution_response(db, row)
+            row.stop_reason = "CANCELLED"
+            row.stop_requested_at = datetime.now()
+            row.external_status = "STOP_REQUESTED"
             db.commit()
-            self._notify(db, row.id)
+            try:
+                config, resource_id = self._execution_provider_args(db, row)
+                with self._provider_session(config) as provider:
+                    provider.stop_run(resource_id, row.pipeline_run_id)
+            except ProviderError as exc:
+                row = db.get(AutomationExecution, execution_id)
+                if row is not None:
+                    row.error_message = str(exc)[:500]
+                    db.commit()
             db.refresh(row)
             return self._execution_response(db, row)
-        row.stop_reason = "CANCELLED"
-        row.stop_requested_at = datetime.now()
-        row.external_status = "STOP_REQUESTED"
-        db.commit()
-        try:
+        if row.pipeline_run_id:
             config, resource_id = self._execution_provider_args(db, row)
-            with self._provider_session(config) as provider:
-                provider.stop_run(resource_id, row.pipeline_run_id)
-        except ProviderError as exc:
-            row.error_message = str(exc)[:500]
-            db.commit()
+            try:
+                with self._provider_session(config) as provider:
+                    stopped = provider.stop_run(resource_id, row.pipeline_run_id)
+            except ProviderError as exc:
+                raise bad_request(str(exc)) from exc
+            if not stopped:
+                raise bad_request("CI 平台未确认终止运行")
+        self._transition(row, "CANCELLED")
+        row.external_status = "CANCELLED"
+        row.stop_reason = "CANCELLED"
+        # 云效取消已经得到接口确认，不能再留下 stop_requested，否则后续轮询会把终态打回去。
+        row.stop_requested_at = None
+        db.commit()
+        self._notify(db, row.id)
         db.refresh(row)
         return self._execution_response(db, row)
 
     def sync_execution(self, db: Session, execution_id: int, actor: User) -> ExecutionResponse:
-        """立即向 Provider 查询一次运行状态。"""
+        """立即向 Provider 查询一次运行状态。历史记录不再访问已下线的执行平台。"""
         row = self._execution_for(db, execution_id, actor, write=True)
+        if row.provider_type == "LEGACY":
+            raise bad_request("历史执行记录只读，不能同步")
+        if row.provider_type == "DAGU" and row.dispatch_state == "PENDING" and row.status in {"PENDING", "RUNNING"}:
+            self._dispatch_dagu(db, row.id)
+            db.refresh(row)
+            if row.dispatch_state != "CONFIRMED":
+                return self._execution_response(db, row)
         self._sync_one(db, row.id, force=True)
         db.refresh(row)
         return self._execution_response(db, row)
@@ -698,6 +870,8 @@ class AutomationCenterService:
             raise not_found("回调配置不存在")
         secret = decrypt_secret(config.callback_secret_encrypted)
         self._verify_signature(secret, callback_key, headers, report_bytes, metadata_text)
+        if not config.enabled or config.provider_type == "LEGACY":
+            raise bad_request("回调接入配置未启用")
         idempotency_key = headers.get("x-idempotency-key", "").strip()
         existing = db.query(AutomationCallbackReceipt).filter_by(
             integration_config_id=config.id, idempotency_key=idempotency_key,
@@ -802,10 +976,30 @@ class AutomationCenterService:
             AutomationExecution.status.in_(list(TERMINAL_STATUSES)),
             AutomationExecution.stop_requested_at.isnot(None),
         )
+        pending_dispatch = (
+            db.query(AutomationExecution.id)
+            .filter(AutomationExecution.provider_type == "DAGU")
+            .filter(AutomationExecution.dispatch_state == "PENDING")
+            .filter(AutomationExecution.status.in_(["PENDING", "RUNNING"]))
+            .order_by(AutomationExecution.id.asc())
+            .limit(20)
+            .all()
+        )
+        for (execution_id,) in pending_dispatch:
+            try:
+                self._dispatch_dagu(db, execution_id)
+            except Exception:  # noqa: BLE001 — 单条补投失败不能拦住其余执行。
+                logger.warning("补投 Dagu 执行失败 execution=%s", execution_id)
+                db.rollback()
         active = (
             db.query(AutomationExecution.id)
+            .filter(AutomationExecution.provider_type.in_(["DAGU", "YUNXIAO"]))
             .filter(or_(active_status, stopping_terminal))
             .filter(AutomationExecution.pipeline_run_id.isnot(None))
+            .filter(or_(
+                AutomationExecution.provider_type != "DAGU",
+                AutomationExecution.dispatch_state == "CONFIRMED",
+            ))
             .filter(or_(
                 AutomationExecution.last_sync_at.is_(None),
                 AutomationExecution.last_sync_at <= datetime.now() - timedelta(seconds=15),
@@ -838,6 +1032,13 @@ class AutomationCenterService:
             .with_for_update(skip_locked=True).one_or_none()
         )
         if execution is None:
+            return
+        if execution.provider_type not in {"DAGU", "YUNXIAO"}:
+            # 已归档的 Jenkins 记录不再进入 Provider 同步。
+            db.rollback()
+            return
+        if execution.provider_type == "DAGU" and execution.dispatch_state != "CONFIRMED":
+            db.rollback()
             return
         if execution.status in TERMINAL_STATUSES and execution.stop_requested_at is None:
             return
@@ -918,29 +1119,47 @@ class AutomationCenterService:
             execution.finished_at = execution.finished_at or datetime.now()
         self._transition(execution, mapped)
         db.commit()
+        if (
+            execution.status in {"PENDING", "RUNNING"}
+            and execution.created_at
+            and execution.created_at <= datetime.now() - timedelta(minutes=30)
+        ):
+            logger.warning(
+                "自动化执行长时间未结束 execution=%s provider=%s status=%s",
+                execution.id, execution.provider_type, execution.status,
+            )
         if execution.status in TERMINAL_STATUSES and execution.stop_requested_at is None:
             self._notify(db, execution.id)
 
     def _mark_timeout(self, db: Session, execution: AutomationExecution) -> None:
-        """Mark a timeout and keep polling the provider until it reports a terminal state."""
-        execution.stop_reason = "TIMEOUT"
-        execution.stop_requested_at = execution.stop_requested_at or datetime.now()
-        execution.external_status = "STOP_REQUESTED"
-        execution.error_message = "执行超时，正在请求执行平台停止任务"
+        """云效超时后直接终态；Dagu 先请求停止，等远端确认后再清除停止标记。"""
         self._transition(execution, "TIMEOUT")
+        execution.stop_reason = "TIMEOUT"
         execution.last_sync_at = datetime.now()
-        db.commit()
-        if execution.pipeline_run_id:
+        if execution.provider_type == "DAGU" and execution.pipeline_run_id and execution.dispatch_state == "CONFIRMED":
+            execution.stop_requested_at = execution.stop_requested_at or datetime.now()
+            execution.external_status = "STOP_REQUESTED"
+            execution.error_message = "执行超时，正在请求 Dagu 停止任务"
+            db.commit()
             try:
                 config, resource_id = self._execution_provider_args(db, execution)
                 with self._provider_session(config) as provider:
                     provider.stop_run(resource_id, execution.pipeline_run_id)
             except ProviderError:
-                logger.warning("超时后请求执行平台停止任务失败 execution=%s", execution.id)
-        else:
-            execution.stop_requested_at = None
-            db.commit()
-            self._notify(db, execution.id)
+                logger.warning("超时后请求 Dagu 停止任务失败 execution=%s", execution.id)
+            return
+        execution.stop_requested_at = None
+        execution.external_status = "TIMEOUT"
+        execution.error_message = "执行超时"
+        db.commit()
+        if execution.pipeline_run_id and execution.provider_type == "YUNXIAO":
+            try:
+                config, resource_id = self._execution_provider_args(db, execution)
+                with self._provider_session(config) as provider:
+                    provider.stop_run(resource_id, execution.pipeline_run_id)
+            except ProviderError:
+                logger.warning("超时后请求云效停止任务失败 execution=%s", execution.id)
+        self._notify(db, execution.id)
 
     def _discover(self, db: Session) -> None:
         """把 Provider 上新出现、且不是本平台触发的运行登记为执行记录。"""
@@ -1149,8 +1368,9 @@ class AutomationCenterService:
         incoming = map_pipeline_status(requested_status or "SUCCESS")
         if requested_status == "ABORTED":
             incoming = execution.stop_reason if execution.stop_reason in {"CANCELLED", "TIMEOUT"} else "FAILED"
-        failed = report.failed_cases if report else int((metadata.get("stats") or {}).get("failed") or 0)
-        broken = report.broken_cases if report else int((metadata.get("stats") or {}).get("broken") or 0)
+        # 客户端可以声明成功，但已经解析出的 Allure 结果才能把成功改成失败。
+        failed = report.failed_cases if report is not None else 0
+        broken = report.broken_cases if report is not None else 0
         self._transition(execution, apply_test_outcome(incoming, failed=failed, broken=broken))
         execution.external_status = requested_status[:40] or incoming
         if execution.started_at is None:
@@ -1183,21 +1403,29 @@ class AutomationCenterService:
             ))
 
     def _resolve_callback_execution(self, db, config, metadata: dict) -> AutomationExecution:
-        """找到平台已创建的执行；代码提交触发且本地没有记录时新建。"""
+        """确认回调、接入配置、项目和运行 ID 属于同一次执行，不匹配则不创建报告。"""
         project = self._callback_project(db, config, metadata)
         execution_id = metadata.get("execution_id")
-        run_id = metadata.get("pipeline_run_id")
+        run_id = metadata.get("dag_run_id") or metadata.get("pipeline_run_id")
         execution = None
         if execution_id is not None:
-            execution = db.get(AutomationExecution, int(execution_id))
-            if execution is None or execution.automation_project_id != project.id:
+            try:
+                parsed_id = int(execution_id)
+            except (TypeError, ValueError) as exc:
+                raise bad_request("回调执行记录不存在") from exc
+            execution = db.get(AutomationExecution, parsed_id)
+            if execution is None:
                 raise not_found("执行记录不存在")
         elif run_id is not None:
             execution = db.query(AutomationExecution).filter_by(
                 automation_project_id=project.id, pipeline_run_id=str(run_id),
             ).first()
         if execution is None:
+            if config.provider_type == "DAGU" and not run_id:
+                raise bad_request("回调 Dagu Run ID 与平台执行记录不匹配")
             pipeline = self._default_pipeline(db, project)
+            if config.provider_type == "DAGU":
+                self._validate_resource_id(config.provider_type, str(metadata.get("pipeline_id") or pipeline.pipeline_id))
             execution = AutomationExecution(
                 project_id=project.project_id,
                 automation_project_id=project.id,
@@ -1206,6 +1434,7 @@ class AutomationCenterService:
                 provider_type=config.provider_type,
                 external_pipeline_id=str(metadata.get("pipeline_id") or pipeline.pipeline_id),
                 pipeline_run_id=str(run_id) if run_id is not None else None,
+                dispatch_state="CONFIRMED",
                 trigger_source=str(metadata.get("trigger_source") or "CODE_PUSH")[:20],
                 status="RUNNING",
                 branch=str(metadata.get("branch") or project.default_branch)[:200],
@@ -1218,7 +1447,22 @@ class AutomationCenterService:
             )
             db.add(execution)
             db.flush()
+        self._assert_callback_ownership(execution, config, project, metadata)
         return execution
+
+    def _assert_callback_ownership(self, execution, config, project, metadata: dict) -> None:
+        """回调只能更新自己的接入配置、项目和运行 ID，不能靠元数据改写别的执行。"""
+        if execution.integration_config_id != config.id or execution.provider_type != config.provider_type:
+            raise bad_request("回调执行记录不属于当前接入配置")
+        if execution.automation_project_id != project.id or execution.project_id != project.project_id:
+            raise not_found("执行记录不存在")
+        if execution.provider_type == "DAGU":
+            callback_run_id = metadata.get("dag_run_id") or metadata.get("pipeline_run_id")
+            if not callback_run_id or str(callback_run_id) != str(execution.pipeline_run_id):
+                raise bad_request("回调 Dagu Run ID 与平台执行记录不匹配")
+        stated_execution_id = metadata.get("execution_id")
+        if stated_execution_id is not None and str(stated_execution_id) != str(execution.id):
+            raise bad_request("回调执行记录不存在")
 
     def _callback_project(self, db, config, metadata: dict) -> AutomationProject:
         """确认回调指向的自动化项目属于这套接入配置。"""
@@ -1431,6 +1675,8 @@ class AutomationCenterService:
                 or any(part in {".", ".."} for part in resource_id.split("/"))
             ):
                 raise bad_request("Dagu DAG Name 不合法")
+            if resource_id not in APPROVED_DAGU_DAGS:
+                raise bad_request("Dagu DAG 不在平台允许的自动化测试白名单中")
         elif provider_type == "YUNXIAO" and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", resource_id):
             raise bad_request("云效流水线 ID 不合法")
         elif provider_type not in {"YUNXIAO", "DAGU"}:
@@ -1606,12 +1852,9 @@ class AutomationCenterService:
 
     @staticmethod
     def _merge_stats(parsed: dict[str, int], raw: Any) -> dict[str, int]:
-        """回传统计优先，缺失字段用 Allure widgets 补齐。"""
+        """只采用 Allure 实际统计。回调里自报的数字不能覆盖报告文件。"""
+        del raw
         stats = dict(parsed)
-        if isinstance(raw, dict):
-            for key in stats:
-                if key in raw:
-                    stats[key] = int(raw.get(key) or 0)
         if not stats["total"]:
             stats["total"] = stats["passed"] + stats["failed"] + stats["broken"] + stats["skipped"] + stats["unknown"]
         return stats

@@ -81,6 +81,7 @@ class BugResponse(BaseModel):
     assignee_username: str | None = None
     created_at: datetime
     updated_at: datetime
+    active_share_count: int = 0
 
     # 允许从 ORM 模型实例直接实例化响应模型（虽然 service 层主要手动构造）。
     model_config = ConfigDict(from_attributes=True)

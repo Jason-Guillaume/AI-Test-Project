@@ -206,8 +206,9 @@ class Settings(BaseSettings):
     AUTOMATION_REPORT_MAX_BYTES: int = 200_000_000
     AUTOMATION_POLL_ENABLED: bool = True
     AUTOMATION_POLL_SECONDS: float = 15.0
-    # 仅在受控私网地址上启用 HTTP Dagu；公网域名仍要求 HTTPS。
+    # 仅当目标同时出现在下面的白名单时，才允许用 HTTP 访问受控私网 Dagu。
     DAGU_ALLOW_INSECURE_HTTP: bool = False
+    DAGU_PRIVATE_HOST_ALLOWLIST: str = ""
     # 飞书卡片里的报告入口。留空时卡片只提示登录平台查看，不生成可猜测的外链。
     PUBLIC_APP_BASE_URL: str = ""
 

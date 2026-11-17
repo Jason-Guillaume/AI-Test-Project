@@ -25,6 +25,7 @@ from app.features.defects.schemas import (
     DefectSourceResponse,
 )
 from app.features.defects.services.defect_service import DefectService
+from app.features.defects.services.share_service import DefectShareService
 from app.features.defects.services.source_service import DefectSourceService
 from app.core.models.identity import User
 from app.core.models.project import Project
@@ -36,9 +37,10 @@ router = APIRouter(prefix="/bugs", tags=["缺陷管理"])
 # 服务实例无状态，路由层复用一个单例即可。
 SERVICE = DefectService()
 SOURCE_SERVICE = DefectSourceService()
+SHARE_SERVICE = DefectShareService()
 
 
-def _response(db: Session, bug: Bug) -> BugResponse:
+def _response(db: Session, bug: Bug, active_share_count: int | None = None) -> BugResponse:
     """构造单个缺陷响应，联表补上项目名与用户名字段。
 
     负责人/组织/用户可能被删除，此时对应字段回退为 None 而非报错。
@@ -62,6 +64,11 @@ def _response(db: Session, bug: Bug) -> BugResponse:
         assignee_username=assignee.username if assignee else None,
         created_at=bug.created_at,
         updated_at=bug.updated_at,
+        active_share_count=(
+            active_share_count
+            if active_share_count is not None
+            else SHARE_SERVICE.active_counts(db, [bug.id]).get(bug.id, 0)
+        ),
     )
 
 
@@ -92,8 +99,9 @@ def list_bugs(
         assignee_id=assignee_id,
         keyword=keyword,
     )
+    counts = SHARE_SERVICE.active_counts(db, [item.id for item in items])
     return BugListResponse(
-        items=[_response(db, item) for item in items],
+        items=[_response(db, item, counts.get(item.id, 0)) for item in items],
         total=total,
         page=page,
         page_size=page_size,

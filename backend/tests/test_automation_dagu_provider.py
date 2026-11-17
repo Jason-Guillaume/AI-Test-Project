@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.features.automation_center.providers.base import ProviderError
 from app.features.automation_center.providers.dagu_provider import DaguProvider
 
@@ -109,6 +111,33 @@ def test_dagu_lifecycle_maps_status_logs_stop_and_queue_removal():
     for raw, expected in (("succeeded", "SUCCESS"), ("failed", "FAILED"), ("aborted", "FAILED"), ("partially_succeeded", "FAILED")):
         assert DaguProvider._from_payload({"statusLabel": raw}).status == expected
     assert provider.list_runs("automation-pytest-allure")[0].status == "SUCCESS"
+
+
+def test_dagu_enqueue_server_error_does_not_create_a_second_run():
+    """A lost 500 response must be resolved by the stable run ID before another enqueue."""
+
+    class LostResponse(FakeDaguClient):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def enqueue(self, name, params, run_id, queue):
+            self.calls += 1
+            raise ProviderError("Dagu API 请求失败（HTTP 500）", 500)
+
+        def get_run(self, name, run_id):
+            if self.calls == 1:
+                raise ProviderError("Dagu DAG 或运行实例不存在", 404)
+            return {"dagRunId": run_id, "statusLabel": "queued"}
+
+    client = LostResponse()
+    provider = DaguProvider(client)
+    with pytest.raises(ProviderError, match="500"):
+        provider.trigger_run("automation-pytest-allure", {"execution_id": 17})
+    client.calls = 2
+    recovered = provider.trigger_run("automation-pytest-allure", {"execution_id": 17})
+    assert recovered.external_run_id == "automation-17"
+    assert client.calls == 3
 
 
 def test_dagu_enqueue_conflict_recovers_the_existing_stable_run():

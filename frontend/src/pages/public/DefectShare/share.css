@@ -1,0 +1,45 @@
+.public-defect {
+  min-height: 100vh;
+  background: #f5f7fb;
+  color: #1f1f1f;
+}
+
+.public-defect-main {
+  width: min(880px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+
+.public-defect-card,
+.public-defect-panel {
+  background: #fff;
+  border: 1px solid #e6e8ee;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.public-defect-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.public-defect-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px 12px;
+}
+
+.public-defect-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .public-defect-main { width: calc(100% - 24px); padding-top: 16px; }
+  .public-defect-grid { grid-template-columns: 1fr; }
+  .public-defect-actions button { width: 100%; }
+}

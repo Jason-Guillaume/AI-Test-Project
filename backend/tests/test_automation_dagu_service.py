@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import time
+
 from app.core.config import settings
 from app.core.models.project import ProjectMember
 from app.core.security.crypto import decrypt_secret
-from app.features.automation_center.models.entities import AutomationIntegrationConfig
+from app.features.automation_center.models.entities import AutomationExecution, AutomationIntegrationConfig, AutomationReport
+from app.features.automation_center.services.center_service import sign_callback
 from app.features.automation_center.providers.dagu_provider import DaguProvider
 from app.features.automation_center.providers.factory import provider_factory
 from tests.conftest import unique
@@ -164,3 +169,91 @@ def test_dagu_project_trigger_list_cancel_and_manual_sync(api, db, admin, monkey
     assert synced.status_code == 200, synced.text
     assert synced.json()["status"] == "CANCELLED"
     assert synced.json()["stop_requested"] is False
+
+
+def _signed_callback(api, key: str, secret: str, metadata: dict, idempotency: str):
+    """按平台 HMAC 契约回传一份不带报告的元数据。"""
+    metadata_text = json.dumps(metadata, ensure_ascii=False)
+    stamp = str(int(time.time()))
+    headers = {
+        "X-Automation-Timestamp": stamp,
+        "X-Idempotency-Key": idempotency,
+        "X-Automation-Signature": sign_callback(
+            secret, stamp, key, idempotency,
+            hashlib.sha256(b"").hexdigest(),
+            hashlib.sha256(metadata_text.encode("utf-8")).hexdigest(),
+        ),
+        "Content-Type": "application/json",
+    }
+    return api.client.post(f"{API}/automation-callbacks/{key}", headers=headers, content=metadata_text)
+
+
+def test_dagu_idempotency_whitelist_and_callback_ownership(api, db, admin, monkeypatch):
+    """相同幂等键不重复入队，非白名单 DAG 和跨执行回调都被拒绝。"""
+    monkeypatch.setattr(settings, "PUBLIC_APP_BASE_URL", "https://platform.example.com")
+    owner = admin
+    project = api.post("/projects", username=owner, json={"name": unique("dagu-guard")})
+    assert project.status_code == 201, project.text
+    project_id = project.json()["id"]
+    client = FakeDaguClient()
+    monkeypatch.setitem(provider_factory._builders, "DAGU", lambda _config: DaguProvider(client))
+    integration = api.post(f"/projects/{project_id}/automation-integrations", username=owner, json={
+        "provider_type": "DAGU", "name": unique("Dagu-guard"),
+        "dagu_base_url": "https://dagu.example.com", "dagu_api_key": DAGU_API_KEY,
+        "callback_secret": CALLBACK_SECRET,
+    })
+    assert integration.status_code == 201, integration.text
+    config = integration.json()
+    blocked = api.post(f"/projects/{project_id}/automation-projects", username=owner, json={
+        "integration_config_id": config["id"], "name": unique("other-dag"),
+        "repository_url": "https://codeup.aliyun.com/org/demo.git",
+        "pipeline_id": "deploy-production", "default_branch": "main",
+    })
+    assert blocked.status_code == 400, blocked.text
+    automation = api.post(f"/projects/{project_id}/automation-projects", username=owner, json={
+        "integration_config_id": config["id"], "name": unique("allowed-dag"),
+        "repository_url": "https://codeup.aliyun.com/org/demo.git",
+        "pipeline_id": "automation-pytest-allure", "default_branch": "main",
+    })
+    assert automation.status_code == 201, automation.text
+    automation_id = automation.json()["id"]
+    first = api.post(
+        f"/automation-projects/{automation_id}/executions", username=owner,
+        json={"idempotency_key": "run-key-001"},
+    )
+    assert first.status_code == 201, first.text
+    second = api.post(
+        f"/automation-projects/{automation_id}/executions", username=owner,
+        json={"idempotency_key": "run-key-001"},
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+    assert len(client.enqueued) == 1
+    conflict = api.post(
+        f"/automation-projects/{automation_id}/executions", username=owner,
+        json={"idempotency_key": "run-key-001", "branch": "other"},
+    )
+    assert conflict.status_code == 409, conflict.text
+
+    execution = first.json()
+    forged = _signed_callback(api, config["callback_key"], CALLBACK_SECRET, {
+        "execution_id": execution["id"], "automation_project_id": automation_id,
+        "dag_run_id": "automation-forged", "status": "SUCCESS",
+        "stats": {"failed": 9, "broken": 0},
+    }, "callback-forged")
+    assert forged.status_code == 400, forged.text
+    db.expire_all()
+    stored = db.get(AutomationExecution, execution["id"])
+    assert stored.status == "PENDING"
+    assert db.query(AutomationReport).filter_by(execution_id=execution["id"]).count() == 0
+    accepted = _signed_callback(api, config["callback_key"], CALLBACK_SECRET, {
+        "execution_id": execution["id"], "automation_project_id": automation_id,
+        "dag_run_id": execution["pipeline_run_id"], "status": "SUCCESS",
+    }, "callback-ok")
+    assert accepted.status_code == 200, accepted.text
+    duplicate = _signed_callback(api, config["callback_key"], CALLBACK_SECRET, {
+        "execution_id": execution["id"], "automation_project_id": automation_id,
+        "dag_run_id": execution["pipeline_run_id"], "status": "FAILED",
+    }, "callback-ok")
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["duplicate"] is True

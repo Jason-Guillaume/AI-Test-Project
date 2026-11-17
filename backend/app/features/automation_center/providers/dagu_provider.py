@@ -16,6 +16,16 @@ from app.features.automation_center.providers.base import (
 from app.features.automation_center.providers.dagu_client import DaguClient
 from app.features.automation_center.providers.status import map_external_status
 
+_UNCERTAIN_STATUS = {None, 408, 409, 429, 500, 502, 503, 504}
+
+
+def _uncertain_dispatch(exc: ProviderError) -> bool:
+    """连接失败、超时和可重试的 HTTP 状态都不能直接再入队一次。"""
+    if exc.status_code in _UNCERTAIN_STATUS:
+        return True
+    message = str(exc)
+    return "超时" in message or "无法连接" in message
+
 
 class DaguProvider:
     """Translate Dagu DAG runs into platform execution records."""
@@ -79,10 +89,15 @@ class DaguProvider:
         try:
             response = self._client.enqueue(resource_id, dag_params, dag_run_id, queue)
         except ProviderError as exc:
-            if exc.status_code != 409:
+            if not _uncertain_dispatch(exc):
                 raise
-            # A retry after a lost enqueue response reuses the stable ID and returns that run.
-            response = self._client.get_run(resource_id, dag_run_id)
+            # 超时、409 或 5xx 时先按稳定 ID 查询，避免再创建第二条任务。
+            try:
+                response = self._client.get_run(resource_id, dag_run_id)
+            except ProviderError as lookup_error:
+                if lookup_error.status_code == 404:
+                    raise exc
+                raise ProviderError("Dagu 入队结果不确定，已保留稳定运行 ID", exc.status_code) from lookup_error
             response["dagRunId"] = response.get("dagRunId") or dag_run_id
         actual_run_id = str(response.get("dagRunId") or response.get("dag_run_id") or dag_run_id)
         return ProviderExecution(

@@ -68,22 +68,29 @@ test('Dagu trigger, run identity and asynchronous cancellation are rendered', as
   });
 
   await loginThroughUi(page);
-  const user = await page.evaluate(() => JSON.parse(localStorage.getItem('user') ?? '{}')) as { id: number };
-  await page.evaluate(({ currentProjectId, userId }) => {
+  const me = await authenticatedApi.get(`${API}/me`);
+  expect(me.ok()).toBeTruthy();
+  const userId = (await me.json()).id as number;
+  await page.evaluate(({ currentProjectId, ownerId }) => {
     localStorage.setItem('console.current_project_id', String(currentProjectId));
-    localStorage.setItem('console.scope_user_id', String(userId));
-  }, { currentProjectId: projectId, userId: user.id });
+    localStorage.setItem('console.scope_user_id', String(ownerId));
+  }, { currentProjectId: projectId, ownerId: userId });
   await page.goto('/console/automation-runs');
-  await page.getByLabel('自动化项目').click();
-  await page.getByText(`Dagu pytest ${suffix} / automation-pytest-allure`).click();
-  await page.getByRole('button', { name: '执行' }).click();
+  const projectSelect = page.getByRole('combobox', { name: '自动化项目' });
+  await expect(projectSelect).toBeVisible();
+  await projectSelect.click();
+  await page.getByText(`Dagu pytest ${suffix} / automation-pytest-allure`, { exact: true }).click();
+  const runButton = page.getByRole('button', { name: '执行自动化测试', exact: true });
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
   await expect(page.getByText('Dagu', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('automation-990001', { exact: true })).toBeVisible();
   expect(triggerCount).toBe(1);
 
-  await page.getByRole('button', { name: '取消' }).click();
+  const cancelButton = page.getByRole('button', { name: '取消执行', exact: true });
+  await cancelButton.click();
   await expect(page.getByText('已请求取消')).toBeVisible();
-  await expect(page.getByRole('button', { name: '取消' })).toBeDisabled();
+  await expect(cancelButton).toBeDisabled();
   await authenticatedApi.dispose();
   await api.dispose();
 });

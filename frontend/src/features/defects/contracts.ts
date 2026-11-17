@@ -64,6 +64,99 @@ export interface Bug {
   assignee_username: string | null; // 处理人用户名
   created_at: string; // 创建时间
   updated_at: string; // 最后更新时间
+  active_share_count?: number; // 仍有效的分享数量
+}
+
+/** 推送时可选的展示字段。未勾选的字段不会进入公开页面。 */
+export type DefectShareField =
+  | 'bug_no' | 'title' | 'severity' | 'status' | 'project_name' | 'description'
+  | 'steps_to_reproduce' | 'environment' | 'expected_result' | 'actual_result'
+  | 'created_at' | 'source_summary' | 'reporter' | 'assignee'
+  | 'api_execution' | 'agent_execution' | 'security_record' | 'request_response'
+  | 'error_stack' | 'screenshots' | 'allure';
+
+/** 创建或批量推送的选项。 */
+export interface DefectShareOptions {
+  channel_id: number;
+  visible_fields?: DefectShareField[];
+  expires_in_days?: 7 | 30 | 90 | null;
+  permanent?: boolean;
+  allow_view?: boolean;
+  allow_resolve?: boolean;
+}
+
+/** 推送结果。share_url 只在这次响应里出现。 */
+export interface DefectSharePushResult {
+  share_id: string;
+  share_url: string;
+  url_is_absolute: boolean;
+  bug_id: number;
+  bug_no: string;
+  channel_id: number | null;
+  channel_name: string;
+  allow_view: boolean;
+  allow_resolve: boolean;
+  expires_at: string | null;
+  visible_fields: string[];
+  notification_status: string;
+  error_message: string | null;
+  retry_count: number;
+}
+
+/** 推送前预览。 */
+export interface DefectSharePreview {
+  defect_count: number;
+  channel_name: string;
+  channel_enabled: boolean;
+  webhook_configured: boolean;
+  expires_label: string;
+  allow_resolve: boolean;
+  visible_fields: string[];
+  message_preview: string;
+}
+
+/** 分享历史中的一条记录，不含可再次打开页面的凭证。 */
+export interface DefectShareSummary {
+  share_id: string;
+  bug_id: number;
+  channel_id: number | null;
+  channel_name: string;
+  pushed_by_username: string | null;
+  pushed_at: string;
+  expires_at: string | null;
+  expires_label: string;
+  share_status: string;
+  allow_view: boolean;
+  allow_resolve: boolean;
+  view_count: number;
+  last_viewed_at: string | null;
+  resolution_status: string;
+  latest_resolution: DefectExternalAction | null;
+  notification_status: string | null;
+  error_message: string | null;
+  retry_count: number;
+}
+
+/** 外部修复记录。姓名是自报信息。 */
+export interface DefectExternalAction {
+  action_type: string;
+  old_status: string;
+  new_status: string;
+  actor_type: string;
+  actor_display_name: string | null;
+  repair_description: string;
+  fix_version: string | null;
+  commit_sha: string | null;
+  created_at: string;
+  identity_note: string;
+}
+
+/** 单条分享详情。 */
+export interface DefectShareDetail extends DefectShareSummary {
+  visible_fields: string[];
+  content_snapshot: Record<string, unknown>;
+  external_actions: DefectExternalAction[];
+  notifications: Array<{ id: number; status: string; error_message: string | null; retry_count: number; sent_at: string | null; created_at: string }>;
 }
 
 // 缺陷列表查询参数。

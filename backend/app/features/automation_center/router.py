@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
@@ -177,8 +177,11 @@ def verify_project(
 def trigger_execution(
     automation_project_id: int, body: ExecutionTrigger,
     db: Session = Depends(get_db), user: User = Depends(get_current_user),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    """触发绑定的 CI 流水线或 DAG。"""
+    """触发绑定的 CI 流水线或 DAG。重复的幂等键返回同一次执行。"""
+    if idempotency_key and not body.idempotency_key:
+        body = body.model_copy(update={"idempotency_key": idempotency_key})
     return _SERVICE.trigger(db, automation_project_id, body, user)
 
 

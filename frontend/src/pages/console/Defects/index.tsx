@@ -14,7 +14,7 @@ import { collectPages } from '@/shared/api/pagination';
 //   - 跨项目越权按 404 返回，前端不会展示；
 //   - 处理人必须是项目成员。
 //
-// 未接入（明确标记，不虚报）：回归关联、趋势看板、修复时长统计。
+// 飞书推送和免登录分享已接入。回归关联、趋势看板、修复时长统计仍未接入。
 import {
   App,
   Alert,
@@ -32,7 +32,10 @@ import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/app/providers/AuthProvider';
 import { bugsApi } from '@/features/defects/api/defects';
+import { DefectShareHistory } from '@/features/defects/components/DefectShareHistory';
+import { DefectShareModal } from '@/features/defects/components/DefectShareModal';
 import type { BugCreate, BugUpdate } from '@/features/defects/contracts';
 import { projectsApi } from '@/features/projects/api/projects';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
@@ -92,6 +95,8 @@ interface BugFormValues {
  */
 export function ConsoleDefectsPage() {
   const { message, modal } = App.useApp();
+  const { isPlatformAdmin } = useAuth();
+  const [shareBugs, setShareBugs] = useState<Bug[] | null>(null);
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedBugId = Number(searchParams.get('bugId'));
@@ -175,6 +180,7 @@ export function ConsoleDefectsPage() {
     onSuccess: () => {
       message.success('缺陷已更新');
       queryClient.invalidateQueries({ queryKey: ['bugs'] });
+      queryClient.invalidateQueries({ queryKey: ['bug-detail'] });
       setModalState(null);
     },
     onError: (e) => message.error(getErrorMessage(e, '更新失败')),
@@ -243,6 +249,10 @@ export function ConsoleDefectsPage() {
     const item = m as { user_id: number; username?: string };
     return { label: item.username ?? `用户 ${item.user_id}`, value: item.user_id };
   });
+  const projectRole = (id: number) => (projectsQuery.data?.items ?? []).find((item) => item.id === id)?.my_role;
+  /** 推送按钮只给项目成员及以上；服务端仍会再次校验。 */
+  const canManage = (id: number) => isPlatformAdmin || ['member', 'editor', 'owner'].includes(projectRole(id) || '');
+  const canPermanent = (id: number) => isPlatformAdmin || ['editor', 'owner'].includes(projectRole(id) || '');
 
   // 加载中 / 失败：整页占位，不渲染空表格
   if (listQuery.isPending) return <LoadingState />;
@@ -328,6 +338,19 @@ export function ConsoleDefectsPage() {
           })}>
           批量删除（{selectedBugIds.length}）
         </Button>
+        <Button
+          disabled={selectedBugIds.length === 0 || !data.items.some((bug) => selectedBugIds.includes(bug.id) && canManage(bug.project_id))}
+          onClick={() => {
+            const selected = data.items.filter((bug) => selectedBugIds.includes(bug.id));
+            if (selected.length === 0 || new Set(selected.map((bug) => bug.project_id)).size !== 1) {
+              message.warning('请在同一项目下选择要推送的缺陷');
+              return;
+            }
+            setShareBugs(selected);
+          }}
+        >
+          批量推送到飞书（{selectedBugIds.length}）
+        </Button>
         {projectId == null && <Typography.Text type="secondary">请先选择项目，再批量删除缺陷。</Typography.Text>}
       </div>
 
@@ -359,6 +382,12 @@ export function ConsoleDefectsPage() {
             ),
           },
           {
+            title: '推送',
+            dataIndex: 'active_share_count',
+            width: 90,
+            render: (value: number | undefined) => (value && value > 0 ? <Tag color="green">已推送</Tag> : <Tag>未推送</Tag>),
+          },
+          {
             title: '报告人',
             dataIndex: 'reporter_username',
             width: 120,
@@ -384,6 +413,7 @@ export function ConsoleDefectsPage() {
             render: (_: unknown, row: Bug) => (
               <Space size={4} wrap={false}>
                 <Button size="small" onClick={() => setSearchParams({ bugId: String(row.id) })}>详情</Button>
+                {canManage(row.project_id) && <Button size="small" onClick={() => setShareBugs([row])}>推送到飞书</Button>}
                 <Button size="small" onClick={() => openEdit(row)}>
                   编辑
                 </Button>
@@ -418,8 +448,17 @@ export function ConsoleDefectsPage() {
           <Typography.Text strong>关联来源</Typography.Text>
           <DefectOrigins bugId={bugDetail.data.id} />
           <BugVerificationPanel bug={bugDetail.data} />
+          <DefectShareHistory bug={bugDetail.data} canManage={canManage(bugDetail.data.project_id)} />
+          {bugDetail.data.status === '已修复' && canManage(bugDetail.data.project_id) && <Space wrap>
+            <Button type="primary" onClick={() => updateMutation.mutate({ id: bugDetail.data!.id, body: { status: '已关闭' } })}>验证通过，关闭缺陷</Button>
+            <Button onClick={() => updateMutation.mutate({ id: bugDetail.data!.id, body: { status: '处理中' } })}>验证失败，重新处理</Button>
+          </Space>}
+          {canManage(bugDetail.data.project_id) && <Button onClick={() => setShareBugs([bugDetail.data!])}>推送到飞书</Button>}
         </Space>}
       </Modal>
+      {shareBugs && shareBugs.length > 0 && (
+        <DefectShareModal bugs={shareBugs} canPermanent={canPermanent(shareBugs[0].project_id)} onClose={() => { setShareBugs(null); queryClient.invalidateQueries({ queryKey: ['bugs'] }); queryClient.invalidateQueries({ queryKey: ['bug-shares'] }); }} />
+      )}
 
       {/* 新建 / 编辑弹窗 */}
       <Modal

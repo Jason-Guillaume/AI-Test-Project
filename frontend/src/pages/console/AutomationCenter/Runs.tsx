@@ -1,7 +1,7 @@
 // 选择分支和环境后触发 CI 运行，并展示本次执行状态。
 import { App, Button, Card, Descriptions, Form, Input, Modal, Select, Space, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { automationApi } from '@/features/automation/api/automation';
 import type { AutomationExecution } from '@/features/automation/contracts';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
@@ -17,6 +17,7 @@ export function ConsoleAutomationRunsPage() {
   const [form] = Form.useForm();
   const [current, setCurrent] = useState<AutomationExecution | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
+  const submitting = useRef(false);
   const projects = useQuery({
     queryKey: ['automation-projects', currentProjectId],
     queryFn: () => automationApi.listProjects(currentProjectId!),
@@ -44,7 +45,10 @@ export function ConsoleAutomationRunsPage() {
   const trigger = useMutation({
     mutationFn: (values: { automation_project_id: number; branch?: string; environment_name?: string; pytest_args?: string; test_tags?: string; test_scope?: string }) => {
       const { automation_project_id, ...body } = values;
-      return automationApi.trigger(automation_project_id, body);
+      return automationApi.trigger(automation_project_id, {
+        ...body,
+        idempotency_key: crypto.randomUUID(),
+      });
     },
     onSuccess: (row) => {
       setCurrent(row);
@@ -91,9 +95,16 @@ export function ConsoleAutomationRunsPage() {
     <PageContainer>
       <ProjectRequired projectId={currentProjectId} />
       <Card title="触发 CI 执行">
-        <Form form={form} layout="vertical" onFinish={(values) => trigger.mutate(values)}>
+        <Form form={form} layout="vertical" onFinish={(values) => {
+          if (submitting.current || trigger.isPending) return;
+          submitting.current = true;
+          trigger.mutate(values, { onSettled: () => { submitting.current = false; } });
+        }}>
           <Form.Item name="automation_project_id" label="自动化项目" rules={[{ required: true, message: '请选择项目' }]}>
-            <Select options={(projects.data?.items || []).map((item) => ({ value: item.id, disabled: item.provider_type === 'LEGACY', label: `${item.name} / ${item.pipeline_id}${item.provider_type === 'LEGACY' ? '（已停用）' : ''}` }))} />
+            <Select
+              aria-label="自动化项目"
+              options={(projects.data?.items || []).map((item) => ({ value: item.id, disabled: item.provider_type === 'LEGACY', label: `${item.name} / ${item.pipeline_id}${item.provider_type === 'LEGACY' ? '（已停用）' : ''}` }))}
+            />
           </Form.Item>
           {selectedProject && <Typography.Paragraph type="secondary">
             {selectedProject.provider_type === 'DAGU' ? 'Dagu DAG' : selectedProject.provider_type === 'LEGACY' ? '已停用历史配置' : '云效流水线'}：{selectedProject.pipeline_id}
@@ -103,7 +114,13 @@ export function ConsoleAutomationRunsPage() {
           <Form.Item name="pytest_args" label="pytest 参数"><Input /></Form.Item>
           <Form.Item name="test_tags" label="测试标签"><Input /></Form.Item>
           <Form.Item name="test_scope" label="测试范围"><Input /></Form.Item>
-          <Button type="primary" htmlType="submit" loading={trigger.isPending} disabled={currentProjectId == null}>执行</Button>
+          <Button
+            type="primary"
+            htmlType="submit"
+            aria-label="执行自动化测试"
+            loading={trigger.isPending}
+            disabled={currentProjectId == null || selectedProject?.provider_type === 'LEGACY'}
+          >执行</Button>
         </Form>
       </Card>
       {execution && (
@@ -124,7 +141,12 @@ export function ConsoleAutomationRunsPage() {
           {execution.error_message && <Typography.Paragraph type="danger">{execution.error_message}</Typography.Paragraph>}
           <Space>
             <Button
-              disabled={execution.stop_requested || (execution.status !== 'PENDING' && execution.status !== 'RUNNING')}
+              aria-label="取消执行"
+              disabled={
+                execution.provider_type === 'LEGACY'
+                || execution.stop_requested
+                || (execution.status !== 'PENDING' && execution.status !== 'RUNNING')
+              }
               loading={cancel.isPending}
               onClick={() => cancel.mutate(execution.id)}
             >取消</Button>
@@ -149,7 +171,12 @@ export function ConsoleAutomationRunsPage() {
       )}
       <Modal title="执行 Console 日志" open={consoleOpen} onCancel={() => setConsoleOpen(false)} footer={null} width={900} destroyOnClose>
         {consoleQuery.data?.truncated && <Typography.Text type="secondary">仅显示最近 200 KB</Typography.Text>}
-        {consoleQuery.isError && <Typography.Paragraph type="danger">{getErrorMessage(consoleQuery.error, '读取日志失败')}</Typography.Paragraph>}
+        {consoleQuery.isError && (
+          <Space>
+            <Typography.Paragraph type="danger">{getErrorMessage(consoleQuery.error, '读取日志失败')}</Typography.Paragraph>
+            <Button onClick={() => consoleQuery.refetch()}>重试读取日志</Button>
+          </Space>
+        )}
         <pre style={{ maxHeight: '65vh', overflow: 'auto', background: '#101820', color: '#e6edf3', padding: 16, whiteSpace: 'pre-wrap' }}>
           {consoleQuery.isFetching ? '正在读取日志…' : consoleQuery.data?.content || '暂无日志'}
         </pre>

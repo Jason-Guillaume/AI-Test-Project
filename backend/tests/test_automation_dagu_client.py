@@ -76,15 +76,23 @@ def test_public_http_dagu_endpoint_is_rejected(address: str):
         DaguClient(address, "dagu_test_private_api_key")
 
 
-def test_private_http_requires_explicit_opt_in_and_safe_url():
-    """Permit controlled private HTTP only after explicit service configuration."""
+def test_private_http_requires_explicit_opt_in_and_safe_url(monkeypatch):
+    """Permit controlled private HTTP only after explicit service configuration and host allowlisting."""
+    monkeypatch.setattr(settings, "DAGU_PRIVATE_HOST_ALLOWLIST", "")
     with pytest.raises(ProviderError, match="公网 HTTP"):
-        DaguClient("http://127.0.0.1:45394", "dagu_test_private_api_key")
+        DaguClient("http://127.0.0.1:45394", "dagu_test_private_api_key", allow_insecure_http=True)
+    monkeypatch.setattr(settings, "DAGU_PRIVATE_HOST_ALLOWLIST", "127.0.0.1")
     client = DaguClient(
         "http://127.0.0.1:45394", "dagu_test_private_api_key",
         allow_insecure_http=True, transport=httpx.MockTransport(lambda request: httpx.Response(200, json={}, request=request)),
     )
     client.close()
+    monkeypatch.setattr(settings, "DAGU_PRIVATE_HOST_ALLOWLIST", "10.0.0.8")
+    with pytest.raises(ProviderError, match="未授权的内网"):
+        DaguClient(
+            "https://10.1.1.1", "dagu_test_private_api_key",
+            resolver=lambda *_args, **_kwargs: [(None, None, None, None, ("169.254.169.254", 0))],
+        )
     with pytest.raises(ProviderError, match="路径"):
         DaguClient("https://dagu.example.com/another-path", "dagu_test_private_api_key")
 
@@ -99,7 +107,10 @@ def test_integration_schema_requires_https_or_admin_enabled_private_http(monkeyp
     with pytest.raises(ValidationError, match="公网 HTTP"):
         IntegrationCreate(**{**payload, "dagu_base_url": "http://10.0.0.8:45394"})
     monkeypatch.setattr(settings, "DAGU_ALLOW_INSECURE_HTTP", True)
+    monkeypatch.setattr(settings, "DAGU_PRIVATE_HOST_ALLOWLIST", "10.0.0.8")
     IntegrationCreate(**{**payload, "dagu_base_url": "http://10.0.0.8:45394"})
+    with pytest.raises(ValidationError, match="公网 HTTP"):
+        IntegrationCreate(**{**payload, "dagu_base_url": "http://10.1.1.1:45394"})
     with pytest.raises(ValidationError, match="公网 HTTP"):
         IntegrationCreate(**{**payload, "dagu_base_url": "http://gold1.mczbc.cn:45394"})
 

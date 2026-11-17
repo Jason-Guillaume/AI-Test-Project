@@ -276,28 +276,31 @@ class TestMigration:
         for table in SECURITY_TABLES:
             assert table not in core_exports
 
-    def test_downgrade_removes_only_security_tables(self, db, test_database_head):
-        """downgrade 到 0010 删除后续 feature 表，Mock 保留；再升级至当前 head。"""
+    def test_downgrade_removes_only_security_tables(self, isolated_migration_database, test_database_head):
+        """在干净库降级到 0010。共享测试库里的回收站记录不能阻断这条迁移链。"""
         from alembic import command
 
-        config = _alembic()
+        config, engine = isolated_migration_database
         try:
             command.downgrade(config, "0010")
-            tables = _tables(db)
-            assert not (SECURITY_TABLES & tables), tables
-            # 0014 的 Web 智能体表同样在 0010 之下，必须被 0011→0014 的降级链一并删掉。
-            assert not (WEB_AGENT_TABLES & tables), tables
-            assert not (TASK_TABLES & tables), tables
-            assert MOCK_TABLES.issubset(tables), tables
-            head = db.execute(text("select version_num from alembic_version")).scalar()
-            assert head == "0010"
+            with engine.connect() as connection:
+                tables = _tables(connection)
+                assert not (SECURITY_TABLES & tables), tables
+                # 0014 的 Web 智能体表同样在 0010 之下，必须被 0011→0014 的降级链一并删掉。
+                assert not (WEB_AGENT_TABLES & tables), tables
+                assert not (TASK_TABLES & tables), tables
+                assert MOCK_TABLES.issubset(tables), tables
+                head = connection.execute(text("select version_num from alembic_version")).scalar()
+                assert head == "0010"
         finally:
             command.upgrade(config, test_database_head)
 
-        assert _tables(db) >= SECURITY_TABLES
-        assert WEB_AGENT_TABLES.issubset(_tables(db)), _tables(db)
-        assert TASK_TABLES.issubset(_tables(db)), _tables(db)
-        assert db.execute(text("select version_num from alembic_version")).scalar() == test_database_head
+        with engine.connect() as connection:
+            tables = _tables(connection)
+            assert tables >= SECURITY_TABLES
+            assert WEB_AGENT_TABLES.issubset(tables), tables
+            assert TASK_TABLES.issubset(tables), tables
+            assert connection.execute(text("select version_num from alembic_version")).scalar() == test_database_head
 
 
 class TestBuiltinStrategies:

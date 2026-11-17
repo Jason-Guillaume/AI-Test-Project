@@ -84,6 +84,7 @@ const ConsoleNotificationsPage = lazyNamedPage(() => import('@/pages/console/Not
 const ConsoleProfilePage = lazyNamedPage(() => import('@/pages/console/Profile'), 'ConsoleProfilePage');
 const ConsoleRecycleBinPage = lazyNamedPage(() => import('@/pages/shared/RecycleBinPage'), 'ConsoleRecycleBinPage');
 const ConsoleDefectsPage = lazyNamedPage(() => import('@/pages/console/Defects'), 'ConsoleDefectsPage');
+const PublicDefectSharePage = lazyNamedPage(() => import('@/pages/public/DefectShare'), 'PublicDefectSharePage');
 const ConsoleApiCatalogPage = lazyNamedPage(() => import('@/pages/console/ApiCatalog'), 'ConsoleApiCatalogPage');
 const ConsoleBusinessManagementPage = lazyNamedPage(() => import('@/pages/console/BusinessManagement'), 'ConsoleBusinessManagementPage');
 const ConsoleTestAssetPage = lazyNamedPage(() => import('@/pages/console/TestManagement/TestAsset'), 'ConsoleTestAssetPage');
@@ -133,6 +134,8 @@ function AuthShell() {
   const navigate = useNavigate();
   // 令牌失效或账户被禁用时统一回到登录页。
   const onAuthExpired = useCallback(() => {
+    // 公开缺陷页允许未登录访问，不能因为恢复登录态失败而跳走。
+    if (window.location.pathname.startsWith('/public/')) return;
     // replace 避免留下登录页的历史记录，用户点“后退”不会回到受保护页面。
     navigate('/login', { replace: true });
   }, [navigate]);
@@ -191,6 +194,7 @@ function AppRoutes() {
     >
       <Routes>
         <Route path="/" element={<HomeRedirect />} />
+        <Route path="/public/defects/share/:shareId" element={<PublicDefectSharePage />} />
 
         <Route
           path="/login"

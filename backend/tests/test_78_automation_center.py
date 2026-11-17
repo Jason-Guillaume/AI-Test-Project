@@ -264,6 +264,13 @@ def test_yunxiao_trigger_report_permission_and_idempotency(api, db, monkeypatch,
     )
     assert cancelled.status_code == 200, cancelled.text
     assert cancelled.json()["status"] == "CANCELLED"
+    assert cancelled.json()["stop_requested"] is False
+    again = api.post(f"/automation-executions/{second.json()['id']}/cancel", username=owner)
+    assert again.status_code == 200, again.text
+    assert again.json()["status"] == "CANCELLED"
+    synced_after_cancel = api.post(f"/automation-executions/{second.json()['id']}/sync", username=owner)
+    assert synced_after_cancel.status_code == 200, synced_after_cancel.text
+    assert synced_after_cancel.json()["status"] == "CANCELLED"
     AutomationCenterService().poll(db)
     discovered = db.query(AutomationExecution).filter_by(
         automation_project_id=automation_id, pipeline_run_id="3",

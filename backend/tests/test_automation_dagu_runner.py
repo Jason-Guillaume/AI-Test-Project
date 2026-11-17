@@ -42,13 +42,19 @@ def test_dependency_environment_is_cached_across_runs(tmp_path, monkeypatch):
         return 0
 
     monkeypatch.setattr(runner, "_run_command", fake_run)
-    first, first_lock = runner._cached_python(repo, "git@codeup.aliyun.com:team/repo.git", "abc123", log_path, {})
+    first, first_lock = runner._cached_python(repo, log_path, {})
     first_lock.close()
-    second, second_lock = runner._cached_python(repo, "git@codeup.aliyun.com:team/repo.git", "abc123", log_path, {})
+    second, second_lock = runner._cached_python(repo, log_path, {})
     second_lock.close()
     assert first == second
     assert len(calls) == 2
+    (repo / "requirements.txt").write_text("httpx==0.27.0\n", encoding="utf-8")
+    third, third_lock = runner._cached_python(repo, log_path, {})
+    third_lock.close()
+    assert third != first
+    assert len(calls) == 4
     assert all("PIP_CACHE_DIR" in environment for environment in environments)
+    assert runner._repository_ssh_url("https://github.com/org/repo.git") == "git@github.com:org/repo.git"
 
 
 def test_cleanup_removes_only_expired_successful_workspaces(tmp_path):

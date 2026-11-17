@@ -57,4 +57,18 @@ class NotificationRecord(Base):
     response_snapshot = Column(JSON, nullable=True, comment="飞书响应快照")
     error_message = Column(Text, nullable=True, comment="失败原因")
     sent_at = Column(DateTime, nullable=True, comment="发送时间")
+    # 缺陷分享复用同一条发送审计，报告通知这些列保持为空。
+    bug_id = Column(
+        Integer, ForeignKey("bug.id", ondelete="SET NULL"), nullable=True, index=True,
+        comment="关联缺陷ID",
+    )
+    share_link_id = Column(
+        Integer, ForeignKey("defect_share_link.id", ondelete="SET NULL"), nullable=True, index=True,
+        comment="关联缺陷分享ID",
+    )
+    event_type = Column(String(40), nullable=True, comment="业务事件：defect.share 等")
+    idempotency_key = Column(String(120), nullable=True, unique=True, comment="同一次投递的幂等键")
+    retry_count = Column(
+        Integer, nullable=False, default=0, server_default=text("0"), comment="同一分享的重试次数",
+    )
     created_at = Column(DateTime, nullable=False, server_default=func.now(), comment="创建时间")
