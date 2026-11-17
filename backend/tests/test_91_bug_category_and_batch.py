@@ -238,18 +238,19 @@ def test_batch_create_bugs_permissions(api, admin):
     assert ok.json()["created_count"] == 1
 
 
-def test_migration_0090_downgrade_and_upgrade_idempotent(isolated_migration_database):
-    """验证 0090 迁移可安全降级到 0089 再重新升级并保留索引。"""
+def test_migration_0091_downgrade_and_upgrade_idempotent(isolated_migration_database):
+    """验证 0091 迁移可安全降级到 0090 再重新升级并保留索引。"""
     config, engine = isolated_migration_database
 
-    command.downgrade(config, "0089")
+    command.downgrade(config, "0090")
     with engine.connect() as connection:
         inspector = inspect(connection)
         cols = {col["name"] for col in inspector.get_columns("bug")}
         assert "category" not in cols
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0089"
+        assert "bug_attachment" in set(inspector.get_table_names())
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0090"
 
-    command.upgrade(config, "0090")
+    command.upgrade(config, "0091")
     # 重复执行 upgrade head 保持幂等
     command.upgrade(config, "head")
     with engine.connect() as connection:
@@ -258,4 +259,4 @@ def test_migration_0090_downgrade_and_upgrade_idempotent(isolated_migration_data
         indexes = {idx["name"] for idx in inspector.get_indexes("bug")}
         assert "category" in cols
         assert {"ix_bug_category", "ix_bug_project_category"} <= indexes
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0090"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0091"

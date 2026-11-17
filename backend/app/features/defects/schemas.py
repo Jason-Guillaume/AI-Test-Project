@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # 缺陷状态集合，与旧项目保持一致；数据库层不做枚举约束，服务层校验。
 BUG_STATUSES = ("待确认", "处理中", "已修复", "已关闭", "已拒绝")
@@ -55,6 +55,15 @@ class BugCreate(BugBase):
     project_id: int = Field(..., gt=0, description="所属项目ID")
     # assignee_id 可选：新建时可以不分配处理人，稍后由他人修改。
     assignee_id: int | None = Field(None, gt=0, description="处理人ID")
+
+    @field_validator("title")
+    @classmethod
+    def valid_title(cls, value: str) -> str:
+        """单条创建时剔除纯空白标题，直接返回 422 校验错误。"""
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("标题不能为空")
+        return cleaned
 
 
 class BugBatchItem(BugBase):

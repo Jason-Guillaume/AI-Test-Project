@@ -1,7 +1,7 @@
 """缺陷表新增前后端划分字段 category。
 
-Revision ID: 0090
-Revises: 0089
+Revision ID: 0091
+Revises: 0090
 Create Date: 2026-11-17
 
 为 ``bug`` 表补充可空列 ``category``（前端/后端）及对应查询索引，
@@ -14,8 +14,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision = "0090"
-down_revision = "0089"
+revision = "0091"
+down_revision = "0090"
 branch_labels = None
 depends_on = None
 

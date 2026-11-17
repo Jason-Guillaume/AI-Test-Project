@@ -1,6 +1,6 @@
 // 缺陷管理相关接口。字段命名与后端 BugCreate/BugUpdate/BugResponse 严格对齐（snake_case）。
 // 权限：读 = 项目可见（viewer+）；写（建/改/删）= 项目 member+。
-import { api } from '@/shared/api/client';
+import { api, client } from '@/shared/api/client';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { Bug, BugListQuery } from '@/features/defects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
@@ -16,7 +16,13 @@ import type { BugBatchCreate, BugBatchCreateResponse, BugCreate, BugUpdate, Defe
  * 缺陷管理接口集合，由缺陷列表页调用。
  * 覆盖端点：GET /bugs、POST /bugs、POST /bugs/batch、GET/PUT/DELETE /bugs/{id}。
  */
+export interface BugAttachment { id: number; filename: string; size: number; created_at: string }
 export const bugsApi = {
+  attachments: (id: number) => api.get<BugAttachment[]>(`/bugs/${id}/attachments`),
+  uploadAttachment: (id: number, file: File) => { const data = new FormData(); data.append('file', file); return api.post<BugAttachment>(`/bugs/${id}/attachments`, data); },
+  downloadAttachment: async (id: number, attachment: BugAttachment) => { const response = await client.get(`/bugs/${id}/attachments/${attachment.id}`, { responseType: 'blob' }); const url = URL.createObjectURL(response.data); const link = document.createElement('a'); link.href = url; link.download = attachment.filename; link.click(); URL.revokeObjectURL(url); },
+  deleteAttachment: (id: number, attachmentId: number) => api.delete<void>(`/bugs/${id}/attachments/${attachmentId}`),
+
   /** 读取授权后的来源定位信息与关联，不复制证据。 */
   sourceContext: (source_type: DefectSourceType, source_id: number) => api.get<DefectSourceContext>('/bugs/sources/context', { params: { source_type, source_id } }),
   sources: (source_type: DefectSourceType, source_id: number) => api.get<DefectSourceLink[]>('/bugs/sources', { params: { source_type, source_id } }),
