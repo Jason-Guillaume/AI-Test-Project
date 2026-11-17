@@ -245,7 +245,7 @@ export function StepsTab({ caseId, items }: { caseId: number; items: TestStep[] 
     <>
       <Space style={{ marginBottom: 8 }}><Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增步骤</Button></Space>
       <Table rowKey="id" size="small" columns={columns} dataSource={items} pagination={false} />
-      <Modal title={editing ? '编辑步骤' : '新增步骤'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnClose width={480}>
+      <Modal title={editing ? '编辑步骤' : '新增步骤'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnHidden width={480}>
         <Form<StepFormValues> form={form} layout="vertical" initialValues={{ step_type: 'ACTION', sort: 0 }}>
           <Form.Item name="name" label="步骤名" rules={[{ required: true, message: '请输入步骤名' }]}><Input maxLength={200} /></Form.Item>
           <Form.Item name="step_type" label="步骤类型"><Select options={TEST_STEP_TYPE_OPTIONS} /></Form.Item>
@@ -333,7 +333,7 @@ export function AssertionsTab({ caseId, items }: { caseId: number; items: TestAs
     <>
       <Space style={{ marginBottom: 8 }}><Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreate}>新増断言</Button></Space>
       <Table rowKey="id" size="small" columns={columns} dataSource={items} pagination={false} />
-      <Modal title={editing ? '编辑断言' : '新增断言'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnClose width={520}>
+      <Modal title={editing ? '编辑断言' : '新增断言'} open={open} onCancel={() => setOpen(false)} onOk={submit} confirmLoading={createMut.isPending || updateMut.isPending} okText="保存" cancelText="取消" destroyOnHidden width={520}>
         <Form<AssertionFormValues> form={form} layout="vertical" initialValues={{ assertion_type: 'STATUS_CODE', operator: 'EQ', required: true, sort: 0 }}>
           <Form.Item name="assertion_type" label="断言类型"><Select options={TEST_ASSERTION_TYPE_OPTIONS} /></Form.Item>
           <Form.Item name="source" label="来源（HEADER 名 / CONTEXT 作用域）"><Input maxLength={100} /></Form.Item>

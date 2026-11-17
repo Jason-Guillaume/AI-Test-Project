@@ -268,7 +268,7 @@ export function FixtureTab({
         confirmLoading={createMutation.isPending}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form<CreateValues> form={form} layout="vertical" initialValues={{ scope: 'PROJECT', status: 'DRAFT' }}>

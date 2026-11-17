@@ -7,9 +7,11 @@ import ipaddress
 import re
 import socket
 from collections.abc import Callable
+from typing import Any
 from urllib.parse import quote, urlsplit
 
 import httpx
+import httpcore
 
 from app.core.config import settings
 from app.features.automation_center.providers.base import ProviderError
@@ -64,6 +66,50 @@ def assert_dagu_endpoint(value: str, *, allow_insecure_http: bool) -> str:
     return origin + "/api/v1"
 
 
+class _BlockedDaguAddressError(httpcore.ConnectError):
+    """Raised when resolved Dagu TCP endpoint violates IP allowlist policy."""
+
+
+class _PinnedSyncBackend(httpcore.SyncBackend):
+    """Resolve DNS once, verify all IPs, and connect directly to the validated IP (anti-rebinding)."""
+
+    def __init__(self, *, expected_host: str, resolver: Callable[..., list] | None) -> None:
+        super().__init__()
+        self._expected_host = expected_host.lower().rstrip(".")
+        self._resolver = resolver
+
+    def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options=None,
+    ):
+        try:
+            infos = (
+                self._resolver(host, port)
+                if self._resolver is not None
+                else socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            )
+            addresses = [ipaddress.ip_address(item[4][0].split("%", 1)[0]) for item in infos]
+        except OSError as exc:
+            raise httpcore.ConnectError("无法解析 Dagu API 地址") from exc
+
+        lookup_host = (self._expected_host or host).lower().rstrip(".")
+        allowlisted = lookup_host in private_host_allowlist()
+        if not addresses or (any(_restricted_ip(addr) for addr in addresses) and not allowlisted):
+            raise _BlockedDaguAddressError("Dagu API 地址解析到未授权的内网或保留地址")
+
+        return super().connect_tcp(
+            addresses[0].compressed,
+            port,
+            timeout=timeout,
+            local_address=local_address,
+            socket_options=socket_options,
+        )
+
+
 class DaguClient:
     """Dagu REST client. Redirects, ambient proxies, and TLS verification bypasses are disabled."""
 
@@ -82,9 +128,18 @@ class DaguClient:
         self._api_key = api_key.strip()
         if len(self._api_key) < 8:
             raise ProviderError("Dagu API Key 未配置或格式无效")
-        # 真实连接必须解析 DNS；测试传输层不会出网，避免把样例域名解析失败当成产品缺陷。
+        # 真实连接必须解析并固定 DNS IP；测试传入 custom MockTransport 时跳过真实 TCP 建连。
         self._resolver = resolver
         self._resolve_dns = resolver is not None or transport is None
+        effective_transport = transport
+        if effective_transport is None:
+            expected_host = urlsplit(self.base_url).hostname or ""
+            http_transport = httpx.HTTPTransport(verify=True, trust_env=False)
+            http_transport._pool._network_backend = _PinnedSyncBackend(
+                expected_host=expected_host,
+                resolver=resolver,
+            )
+            effective_transport = http_transport
         self._client = httpx.Client(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"},
@@ -92,7 +147,7 @@ class DaguClient:
             verify=True,
             follow_redirects=False,
             trust_env=False,
-            transport=transport,
+            transport=effective_transport,
         )
 
     @staticmethod
@@ -129,7 +184,8 @@ class DaguClient:
             result.extend(item for item in items if isinstance(item, dict))
             pagination = payload.get("pagination")
             total_pages = pagination.get("totalPages") if isinstance(pagination, dict) else None
-            if not isinstance(total_pages, int) or page >= total_pages or len(items) < 1000:
+            has_next = pagination.get("hasNextPage") if isinstance(pagination, dict) else None
+            if has_next is False or (isinstance(total_pages, int) and page >= total_pages) or len(items) < 1000:
                 break
             page += 1
         if valid_response:
@@ -182,16 +238,30 @@ class DaguClient:
         return payload
 
     def list_runs(self, dag_name: str, *, limit: int = 10) -> list[dict]:
-        """读取指定 DAG 的运行历史，并将返回数限制在调用方要求的数量内。"""
-        payload = self._request("GET", f"/dags/{quote(dag_name, safe='')}/dag-runs")
-        if isinstance(payload, list):
-            return [item for item in payload if isinstance(item, dict)][:max(1, min(limit, 1000))]
-        if isinstance(payload, dict):
-            for key in ("dagRuns", "runs", "items", "data"):
-                value = payload.get(key)
-                if isinstance(value, list):
-                    return [item for item in value if isinstance(item, dict)][:max(1, min(limit, 1000))]
-        raise ProviderError("Dagu DAG Run 列表响应格式无效")
+        """按 Dagu OpenAPI 契约（limit<=100 + cursor）分页读取指定 DAG 的运行历史。"""
+        target = max(1, min(int(limit), 1000))
+        runs: list[dict] = []
+        cursor: str | None = None
+        while len(runs) < target:
+            page_limit = min(100, target - len(runs))
+            params: dict[str, Any] = {"limit": page_limit}
+            if cursor:
+                params["cursor"] = cursor
+            payload = self._request("GET", f"/dags/{quote(dag_name, safe='')}/dag-runs", params=params)
+            if isinstance(payload, list):
+                runs.extend(item for item in payload if isinstance(item, dict))
+                break
+            if not isinstance(payload, dict):
+                raise ProviderError("Dagu DAG Run 列表响应格式无效")
+            items = next((payload.get(key) for key in ("dagRuns", "runs", "items", "data") if isinstance(payload.get(key), list)), None)
+            if items is None:
+                raise ProviderError("Dagu DAG Run 列表响应格式无效")
+            runs.extend(item for item in items if isinstance(item, dict))
+            next_cursor = payload.get("nextCursor")
+            if not isinstance(next_cursor, str) or not next_cursor or not items:
+                break
+            cursor = next_cursor
+        return runs[:target]
 
     def get_log(
         self,
@@ -253,6 +323,8 @@ class DaguClient:
         except httpx.TimeoutException as exc:
             raise ProviderError("Dagu API 请求超时") from exc
         except httpx.RequestError as exc:
+            if isinstance(getattr(exc, "__cause__", None), _BlockedDaguAddressError) or "未授权的内网或保留地址" in str(exc):
+                raise ProviderError("Dagu API 地址解析到未授权的内网或保留地址") from exc
             raise ProviderError("无法连接 Dagu API") from exc
         if 300 <= response.status_code < 400:
             raise ProviderError("Dagu API 返回重定向，已拒绝访问", response.status_code)

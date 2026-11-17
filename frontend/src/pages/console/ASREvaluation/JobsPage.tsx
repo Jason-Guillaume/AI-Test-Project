@@ -153,6 +153,8 @@ export function JobsPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm<JobFormValues>();
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const [jobsPage, setJobsPage] = useState(1);
   const [audioPickerPage, setAudioPickerPage] = useState(1);
   const [audioKeyword, setAudioKeyword] = useState('');
@@ -162,7 +164,7 @@ export function JobsPage() {
     setJobsPage(1);
     setAudioPickerPage(1);
     setAudioKeyword('');
-    form.setFieldValue('audio_ids', []);
+    if (openRef.current) form.setFieldValue('audio_ids', []);
     setWizardStep(0);
   }, [currentProjectId, form]);
   useEffect(() => {

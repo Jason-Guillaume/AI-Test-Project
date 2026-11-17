@@ -116,9 +116,9 @@ export function McpPane() {
         </Col>;
       })}
     </Row> : <EmptyState description={normalizedSearch ? '没有匹配的 MCP 服务' : '还没有登记 MCP 服务'} />}
-    <McpFormModal key={editing?.id ?? (creating ? 'new' : 'closed')} open={creating || Boolean(editing)} initial={editing ?? undefined} loading={createMutation.isPending || updateMutation.isPending} onCancel={() => { setCreating(false); setEditing(null); }} onSubmit={onSubmit} />
+    <McpFormModal key={editing ? `mcp-${editing.id}` : (creating ? 'mcp-new' : 'mcp-closed')} open={creating || Boolean(editing)} initial={editing ?? undefined} loading={createMutation.isPending || updateMutation.isPending} onCancel={() => { setCreating(false); setEditing(null); }} onSubmit={onSubmit} />
     <McpToolsModal
-      key={inspecting ? `${inspecting.id}-${inspecting.last_checked_at ?? 'initial'}` : 'closed'}
+      key={inspecting ? `inspect-${inspecting.id}-${inspecting.last_checked_at ?? 'initial'}` : 'inspect-closed'}
       server={inspecting}
       agents={agentRows}
       loading={approveMutation.isPending}

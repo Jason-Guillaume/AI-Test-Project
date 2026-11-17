@@ -209,8 +209,21 @@ class Settings(BaseSettings):
     # 仅当目标同时出现在下面的白名单时，才允许用 HTTP 访问受控私网 Dagu。
     DAGU_ALLOW_INSECURE_HTTP: bool = False
     DAGU_PRIVATE_HOST_ALLOWLIST: str = ""
-    # 飞书卡片里的报告入口。留空时卡片只提示登录平台查看，不生成可猜测的外链。
+    # 飞书卡片里的报告入口。生产环境必须配置完整 HTTPS 域名。
     PUBLIC_APP_BASE_URL: str = ""
+    # 运行环境标识：development / test / staging / production
+    APP_ENV: str = "development"
+    # Redis 连接串；多实例部署用于公开限流等分布式状态，未配置时退化为有界进程内滑窗。
+    REDIS_URL: str = ""
+    # 允许解析 X-Forwarded-For / X-Real-IP 的可信反代 CIDR（逗号分隔，兼容 IPv4/IPv6）。
+    TRUSTED_PROXY_CIDRS: str = ""
+    # Redis 不可用时公开限流策略：False 降级进程内滑窗，True 直接返回 503。
+    PUBLIC_SHARE_RATE_LIMIT_FAIL_CLOSED: bool = False
+    # 公开限流键摘要盐；留空时回退 SECRET_KEY。
+    PUBLIC_SHARE_RATE_LIMIT_SALT: str = ""
+    # 过期分享自动归档定时任务配置（默认每天扫描一次）。
+    DEFECT_SHARE_ARCHIVE_ENABLED: bool = True
+    DEFECT_SHARE_ARCHIVE_INTERVAL_SECONDS: int = Field(default=86400, ge=60, le=604800)
 
     # 大小写敏感：环境变量名必须与字段名完全一致，避免 DATABASE_URL / database_url 双写歧义；
     # extra="ignore" 让 .env 里的历史遗留变量不报错，便于从旧项目平滑迁移。

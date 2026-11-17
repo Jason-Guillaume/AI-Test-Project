@@ -13,6 +13,8 @@
   .page-container { padding: 18px 16px 28px; }
   .admin-list-toolbar { align-items: stretch; }
   .admin-list-toolbar .ant-input-search { width: 100% !important; }
+  .resource-list-toolbar > .ant-space-item { max-width: 100%; }
+  .resource-list-toolbar .ant-select { max-width: 100%; }
   .admin-users-toolbar { align-items: stretch; flex-direction: column; }
   .admin-users-search { width: 100%; }
   .admin-users-filters { justify-content: space-between; }

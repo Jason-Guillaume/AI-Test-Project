@@ -481,9 +481,9 @@ export function AdminKnowledgePage() {
         <Card title="当前项目检索">
           <Space wrap className="knowledge-search-controls">
             <Input placeholder="试查项目资料" value={query} onChange={(event) => setQuery(event.target.value)} />
-            <InputNumber min={1} max={50} value={topK} onChange={(value) => setTopK(value ?? 8)} addonBefore="Top‑K" />
-            <InputNumber min={0} max={100} step={0.1} value={minimumScore} onChange={(value) => setMinimumScore(value ?? 0)} addonBefore="最低分" />
-            <InputNumber min={50} max={2000} step={50} value={candidateK} onChange={(value) => setCandidateK(value ?? 320)} addonBefore="候选数" />
+            <Space.Compact><Space.Addon>Top‑K</Space.Addon><InputNumber min={1} max={50} value={topK} onChange={(value) => setTopK(value ?? 8)} /></Space.Compact>
+            <Space.Compact><Space.Addon>最低分</Space.Addon><InputNumber min={0} max={100} step={0.1} value={minimumScore} onChange={(value) => setMinimumScore(value ?? 0)} /></Space.Compact>
+            <Space.Compact><Space.Addon>候选数</Space.Addon><InputNumber min={50} max={2000} step={50} value={candidateK} onChange={(value) => setCandidateK(value ?? 320)} /></Space.Compact>
             <Button
               disabled={project == null}
               onClick={() => execute(async () => {

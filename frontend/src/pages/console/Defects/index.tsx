@@ -442,7 +442,7 @@ export function ConsoleDefectsPage() {
         }}
       />
 
-      <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnClose>
+      <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnHidden>
         {bugDetail.isLoading ? <LoadingState /> : bugDetail.isError || !bugDetail.data ? <ErrorState error={bugDetail.error} onRetry={bugDetail.refetch} /> : <Space direction="vertical" style={{ width: '100%' }}>
           <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
           <Typography.Text strong>关联来源</Typography.Text>
@@ -493,7 +493,7 @@ export function ConsoleDefectsPage() {
         confirmLoading={createMutation.isPending || updateMutation.isPending}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={620}
       >
         <Form<BugFormValues>

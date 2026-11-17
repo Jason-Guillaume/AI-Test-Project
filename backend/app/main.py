@@ -114,8 +114,14 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         finally:
             session.close()
     from app.execution.browser.session_manager import configure_stale_session_callback
+    from app.features.defects.services.share_archive_worker import defect_share_archive_worker
+    from app.features.defects.services.share_service import validate_public_share_base_url
     from app.features.web_testing.services.runtime_lifecycle_service import mark_session_closed_by_runtime
     configure_stale_session_callback(mark_session_closed_by_runtime)
+    if (settings.APP_ENV or "").strip().lower() in {"prod", "production"}:
+        url_ok, url_err = validate_public_share_base_url()
+        if not url_ok:
+            logger.error("生产环境缺陷公开分享配置异常：%s", url_err)
     started_workers = []
     try:
         # 先登记启动责任，确保 start() 部分启动后抛错时 finally 仍会释放 Worker。
@@ -130,6 +136,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             scan_worker.start()
         started_workers.append(automation_poller)
         automation_poller.start()
+        if settings.DEFECT_SHARE_ARCHIVE_ENABLED:
+            started_workers.append(defect_share_archive_worker)
+            defect_share_archive_worker.start()
         from app.knowledge.worker import start as start_knowledge_worker
         knowledge_stop = start_knowledge_worker()
         try:

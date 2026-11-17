@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import re
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
+from urllib.parse import urlsplit
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,6 +24,7 @@ from app.core.config import settings
 from app.core.http.errors import bad_request, conflict, forbidden, not_found
 from app.core.models.identity import User
 from app.core.models.project import Project
+from app.core.security.crypto import decrypt_secret
 from app.core.security.roles import (
     PROJECT_ROLE_EDITOR,
     has_project_role,
@@ -160,9 +163,96 @@ def _new_share_id() -> str:
     return secrets.token_urlsafe(12)
 
 
+_LOCAL_HOSTNAMES = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+_LOCAL_SUFFIXES = (".local", ".localhost", ".internal")
+_FEISHU_WEBHOOK_SUFFIXES = (
+    "open.feishu.cn",
+    ".feishu.cn",
+    ".larksuite.com",
+    ".feishu.net",
+)
+
+
+def _is_dev_or_local_host(hostname: str) -> bool:
+    host = hostname.strip().lower().rstrip(".")
+    if not host or host in _LOCAL_HOSTNAMES or host.endswith(_LOCAL_SUFFIXES):
+        return True
+    try:
+        ip_obj = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip_obj.is_loopback or ip_obj.is_private or ip_obj.is_link_local or ip_obj.is_unspecified
+
+
+def _is_external_feishu_webhook(webhook_url: str | None) -> bool:
+    if not webhook_url:
+        return False
+    host = (urlsplit(webhook_url).hostname or "").strip().lower().rstrip(".")
+    return host in {"feishu.cn", "larksuite.com", "feishu.net"} or host.endswith(_FEISHU_WEBHOOK_SUFFIXES)
+
+
+def validate_public_share_base_url(webhook_url: str | None = None) -> tuple[bool, str | None]:
+    """校验 PUBLIC_APP_BASE_URL 是否允许用于生成飞书卡片中的免登录链接。"""
+    base = (settings.PUBLIC_APP_BASE_URL or "").strip().rstrip("/")
+    if not base:
+        return False, "未配置 PUBLIC_APP_BASE_URL，无法生成可从飞书访问的绝对分享链接；不能推送相对路径。"
+
+    parsed = urlsplit(base)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        return False, "PUBLIC_APP_BASE_URL 配置格式无效，须为不含凭据或查询串的完整 URL。"
+
+    is_prod = (settings.APP_ENV or "").strip().lower() in {"prod", "production"}
+    is_local = _is_dev_or_local_host(parsed.hostname)
+
+    if is_prod:
+        if parsed.scheme != "https":
+            return False, "生产环境必须为 PUBLIC_APP_BASE_URL 配置完整的 HTTPS 域名。"
+        if is_local:
+            return False, "生产环境不允许将 localhost 或私网开发地址作为 PUBLIC_APP_BASE_URL 推送到飞书群。"
+
+    if _is_external_feishu_webhook(webhook_url) and (parsed.scheme != "https" or is_local):
+        return False, "不允许把开发环境或非 HTTPS 地址推送到飞书群，请配置公网可访问的 HTTPS 域名。"
+
+    return True, None
+
+
+def _channel_webhook_url(channel: NotificationChannel) -> str:
+    return decrypt_secret((channel.config_json or {}).get("webhook_url_encrypted")) or ""
+
+
+def archive_expired_shares(db: Session, *, batch_size: int = 500) -> int:
+    """幂等批量归档已过期的缺陷分享链接。归档仅标记 archived_at，保留全部审计与通知记录。"""
+    now = datetime.now()
+    rows = (
+        db.query(DefectShareLink)
+        .filter(
+            DefectShareLink.archived_at.is_(None),
+            DefectShareLink.expires_at.is_not(None),
+            DefectShareLink.expires_at <= now,
+        )
+        .order_by(DefectShareLink.id.asc())
+        .limit(batch_size)
+        .all()
+    )
+    if not rows:
+        return 0
+    for row in rows:
+        row.archived_at = now
+    db.commit()
+    return len(rows)
+
+
 def build_share_url(share_id: str, token: str) -> str:
     """拼免登录地址。凭证放在 Fragment，避免进入访问日志和 Referer。"""
-    base = (settings.PUBLIC_APP_BASE_URL or "").rstrip("/")
+    base = (settings.PUBLIC_APP_BASE_URL or "").strip().rstrip("/")
     path = f"/public/defects/share/{share_id}#token={token}"
     return f"{base}{path}" if base else path
 
@@ -182,6 +272,7 @@ class DefectShareService:
         channel = self._channel(db, bugs[0], body.channel_id, actor)
         fields = self._fields(body.visible_fields)
         self._expiry(db, bugs[0].project_id, actor, body)
+        url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
         names = "、".join(bug.title for bug in bugs[:8])
         return SharePreviewResponse(
             defect_count=len(bugs),
@@ -191,6 +282,8 @@ class DefectShareService:
             expires_label=self._expires_label(body),
             allow_resolve=body.allow_resolve,
             visible_fields=fields,
+            public_url_valid=url_ok,
+            public_url_error=url_err,
             message_preview=(
                 f"将向「{channel.name}」推送 {len(bugs)} 条缺陷。\n"
                 f"有效期：{self._expires_label(body)}。\n"
@@ -209,6 +302,9 @@ class DefectShareService:
         """批量创建分享。每条缺陷一张独立凭证，飞书侧按数量合并卡片。"""
         bugs = self._bugs(db, body.bug_ids, actor)
         channel = self._channel(db, bugs[0], body.channel_id, actor)
+        url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
+        if not url_ok:
+            raise bad_request(url_err or "PUBLIC_APP_BASE_URL 配置无效")
         fields = self._fields(body.visible_fields)
         expires_at = self._expiry(db, bugs[0].project_id, actor, body)
         created: list[tuple[DefectShareLink, str, Bug]] = []
@@ -251,9 +347,16 @@ class DefectShareService:
         share = self._managed_share(db, bug_id, share_id, actor)
         if share.revoked_at is not None:
             raise conflict("分享链接已撤销，不能重新推送")
+        if share.archived_at is not None:
+            raise conflict("分享链接已归档，请重新创建分享")
+        if share.expires_at is not None and share.expires_at <= datetime.now():
+            raise conflict("分享链接已过期，请重新创建分享")
         if share.channel_id is None:
             raise bad_request("原飞书渠道已删除，请重新创建分享")
         channel = self._channel(db, self._bug_of(db, share), share.channel_id, actor)
+        url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
+        if not url_ok:
+            raise bad_request(url_err or "PUBLIC_APP_BASE_URL 配置无效")
         if body.access_token:
             # 客户端还持有创建时返回的凭证时，核对后原样重发，避免无意义轮换。
             if not hmac.compare_digest(_hash_token(body.access_token), share.token_hash):
@@ -331,20 +434,13 @@ class DefectShareService:
         """把已经过期的分享标记为归档。不删除审计，也不影响未过期链接。"""
         if not is_platform_admin(actor):
             raise forbidden("只有平台管理员可以归档过期分享")
-        now = datetime.now()
-        rows = (
-            db.query(DefectShareLink)
-            .filter(
-                DefectShareLink.archived_at.is_(None),
-                DefectShareLink.expires_at.is_not(None),
-                DefectShareLink.expires_at < now,
-            )
-            .all()
-        )
-        for row in rows:
-            row.archived_at = now
-        db.commit()
-        return len(rows)
+        archived = 0
+        while True:
+            batch = archive_expired_shares(db, batch_size=500)
+            archived += batch
+            if batch < 500:
+                break
+        return archived
 
     def active_counts(self, db: Session, bug_ids: list[int]) -> dict[int, int]:
         """统计仍可访问的分享数量，供缺陷列表显示已推送。"""
@@ -353,8 +449,10 @@ class DefectShareService:
         now = datetime.now()
         rows = (
             db.query(DefectShareLink.bug_id, DefectShareLink.id)
+            .join(Bug, Bug.id == DefectShareLink.bug_id)
             .filter(
                 DefectShareLink.bug_id.in_(bug_ids),
+                Bug.deleted_at.is_(None),
                 DefectShareLink.revoked_at.is_(None),
                 DefectShareLink.archived_at.is_(None),
                 or_(DefectShareLink.expires_at.is_(None), DefectShareLink.expires_at > now),
@@ -374,12 +472,18 @@ class DefectShareService:
         return self._public_response(db, share, bug)
 
     def record_view(self, db: Session, share_id: str, token: str) -> None:
-        """记录一次公开页访问。必须由 POST 调用，避免 GET 产生写入。"""
+        """记录一次公开页访问。必须由 POST 调用，避免 GET 产生写入，且原子递增计数。"""
         share = self._authenticated_share(db, share_id, token)
         self._ensure_readable(share)
         self._public_bug(db, share)
-        share.view_count = int(share.view_count or 0) + 1
-        share.last_viewed_at = datetime.now()
+        now = datetime.now()
+        db.query(DefectShareLink).filter(DefectShareLink.id == share.id).update(
+            {
+                DefectShareLink.view_count: func.coalesce(DefectShareLink.view_count, 0) + 1,
+                DefectShareLink.last_viewed_at: now,
+            },
+            synchronize_session=False,
+        )
         db.commit()
 
     def resolve_public(
@@ -743,7 +847,7 @@ class DefectShareService:
     def _public_bug(self, db: Session, share: DefectShareLink) -> Bug:
         """软删除后的缺陷对公开页显示为已删除，不返回快照。"""
         bug = db.get(Bug, share.bug_id)
-        if bug is None:
+        if bug is None or getattr(bug, "deleted_at", None) is not None:
             raise not_found("缺陷已删除")
         return bug
 
@@ -771,7 +875,7 @@ class DefectShareService:
     def _bug_of(self, db: Session, share: DefectShareLink) -> Bug:
         """重试时取回缺陷，确认它仍然可见。"""
         bug = db.get(Bug, share.bug_id)
-        if bug is None:
+        if bug is None or getattr(bug, "deleted_at", None) is not None:
             raise not_found("缺陷已删除")
         return bug
 

@@ -1,10 +1,23 @@
 // 缺陷详情里的分享历史。
-// 平台不保存访问凭证明文，所以这里的复制会重新签发链接，旧链接立即失效。
-import { App, Button, Space, Table, Tag, Typography } from 'antd';
+// 平台不保存访问凭证明文，所以这里的重推会重新签发链接，旧链接立即失效。
+import { Alert, App, Button, Input, Modal, Space, Table, Tag, Typography } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { bugsApi } from '@/features/defects/api/defects';
-import type { Bug, DefectShareSummary } from '@/features/defects/contracts';
+import type { Bug, DefectSharePushResult, DefectShareSummary } from '@/features/defects/contracts';
 import { getErrorMessage } from '@/shared/api/client';
+
+async function tryWriteClipboard(text: string): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+    return false;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * 展示一个缺陷的推送记录，并提供撤销、重推和查看外部处理。
@@ -13,6 +26,10 @@ import { getErrorMessage } from '@/shared/api/client';
 export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: boolean }) {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
+  const [retryingShareId, setRetryingShareId] = useState<string | null>(null);
+  const [reissuedResult, setReissuedResult] = useState<DefectSharePushResult | null>(null);
+  const [copiedReissued, setCopiedReissued] = useState(false);
+
   const shares = useQuery({
     queryKey: ['bug-shares', bug.id],
     queryFn: () => bugsApi.listShares(bug.id),
@@ -23,13 +40,23 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
     queryClient.invalidateQueries({ queryKey: ['bug-detail', bug.id] });
   };
   const retry = useMutation({
-    mutationFn: (row: DefectShareSummary) => bugsApi.retryShare(bug.id, row.share_id),
+    mutationFn: (row: DefectShareSummary) => {
+      setRetryingShareId(row.share_id);
+      return bugsApi.retryShare(bug.id, row.share_id);
+    },
     onSuccess: async (result) => {
-      await navigator.clipboard.writeText(result.share_url);
-      message.success(result.notification_status === 'SUCCESS' ? '已重新推送，新链接已复制' : `已重新签发链接，飞书推送失败：${result.error_message || '未知原因'}`);
+      setReissuedResult(result);
+      const copied = await tryWriteClipboard(result.share_url);
+      setCopiedReissued(copied);
+      if (result.notification_status === 'SUCCESS') {
+        message.success(copied ? '已重新推送飞书，新链接已复制到剪贴板' : '已重新推送飞书，请在弹窗中复制新链接');
+      } else {
+        message.warning(`已生成新链接（旧链接已失效），飞书推送失败：${result.error_message || '未知原因'}`);
+      }
       refresh();
     },
     onError: (error) => message.error(getErrorMessage(error, '重新推送失败')),
+    onSettled: () => setRetryingShareId(null),
   });
   const revoke = useMutation({
     mutationFn: (row: DefectShareSummary) => bugsApi.revokeShare(bug.id, row.share_id),
@@ -95,11 +122,22 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
             title: '操作',
             render: (_value, row) => <Space wrap>
               <Button size="small" onClick={() => detail.mutate(row)}>查看详情</Button>
-              {canManage && <Button size="small" onClick={() => modal.confirm({
-                title: '重新签发并推送？',
-                content: '平台不保存访问凭证。继续会签发新链接，旧链接立即失效。',
-                okText: '重新推送', cancelText: '取消', onOk: () => retry.mutateAsync(row),
-              })}>重新推送</Button>}
+              {canManage && row.share_status === '有效' && (
+                <Button
+                  size="small"
+                  loading={retry.isPending && retryingShareId === row.share_id}
+                  disabled={retry.isPending}
+                  onClick={() => modal.confirm({
+                    title: '重新签发并推送？',
+                    content: '平台不保存访问凭证。继续会签发新链接，旧链接立即失效。',
+                    okText: '重新推送',
+                    cancelText: '取消',
+                    onOk: () => retry.mutateAsync(row),
+                  })}
+                >
+                  重新推送
+                </Button>
+              )}
               {canManage && row.share_status === '有效' && <Button size="small" danger onClick={() => modal.confirm({
                 title: '撤销这条分享链接？',
                 content: '只撤销当前渠道的链接，不影响同一缺陷推送到其他群的链接。',
@@ -109,6 +147,66 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
           },
         ]}
       />
+      <Modal
+        open={reissuedResult !== null}
+        title="已重新签发分享链接"
+        onCancel={() => { setReissuedResult(null); setCopiedReissued(false); }}
+        footer={[
+          <Button
+            key="copy"
+            type="primary"
+            onClick={async () => {
+              if (!reissuedResult) return;
+              const ok = await tryWriteClipboard(reissuedResult.share_url);
+              setCopiedReissued(ok);
+              if (ok) {
+                message.success('新链接已复制到剪贴板');
+              } else {
+                message.warning('自动复制失败，请在下方输入框手动全选复制');
+              }
+            }}
+          >
+            {copiedReissued ? '已复制新链接' : '复制新链接'}
+          </Button>,
+          <Button
+            key="close"
+            onClick={() => { setReissuedResult(null); setCopiedReissued(false); }}
+          >
+            关闭
+          </Button>,
+        ]}
+      >
+        {reissuedResult && (
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Alert
+              type={reissuedResult.notification_status === 'SUCCESS' ? 'success' : 'warning'}
+              showIcon
+              message={
+                reissuedResult.notification_status === 'SUCCESS'
+                  ? `飞书推送成功（${reissuedResult.channel_name}）`
+                  : `飞书推送失败（${reissuedResult.channel_name}）`
+              }
+              description={
+                reissuedResult.notification_status === 'SUCCESS'
+                  ? '旧分享链接已立即失效；平台不保存访问凭证明文，请妥善保存本次生成的新链接。'
+                  : `旧分享链接已立即失效。失败原因：${reissuedResult.error_message || '飞书服务响应异常'}。本次重试已记录，可复制新链接或稍后重试。`
+              }
+            />
+            {!reissuedResult.url_is_absolute && (
+              <Typography.Text type="danger">
+                PUBLIC_APP_BASE_URL 配置异常，当前生成的不是完整绝对 URL。
+              </Typography.Text>
+            )}
+            <Typography.Text type="secondary">新分享链接（点击输入框可全选手动复制）：</Typography.Text>
+            <Input
+              readOnly
+              value={reissuedResult.share_url}
+              onFocus={(event) => event.target.select()}
+              aria-label="新分享链接"
+            />
+          </Space>
+        )}
+      </Modal>
     </Space>
   );
 }

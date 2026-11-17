@@ -240,7 +240,7 @@ export function ScanWizardModal({
       width={880}
       onCancel={onCancel}
       footer={footer}
-      destroyOnClose
+      destroyOnHidden
     >
       <Steps
         size="small"

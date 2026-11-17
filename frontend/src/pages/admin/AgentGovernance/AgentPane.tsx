@@ -133,9 +133,9 @@ export function AgentPane() {
     <>
       <Space wrap className="resource-list-toolbar">
         <Input.Search allowClear value={agentSearch} onChange={(event) => { setAgentSearch(event.target.value); setAgentPage(1); }} placeholder="搜索 Agent 名称、说明或工作流" aria-label="搜索 Agent" />
-        <Select allowClear placeholder="测试类型" aria-label="测试类型" value={moduleFilter} onChange={(value) => { setModuleFilter(value); setAgentPage(1); }} style={{ width: 180 }} options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
-        <Select allowClear showSearch optionFilterProp="label" placeholder="按绑定模型筛选" aria-label="按绑定模型筛选" value={modelFilter} onChange={(value) => { setModelFilter(value); setAgentPage(1); }} style={{ width: 260 }} options={[{ value: 'inherit', label: '继承 / 本次选择 / 全局默认' }, ...(models.data?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.label} (${item.model_name})` }))]} />
-        <Select value={view} onChange={setView} options={[{ value: 'tree', label: '主子关系' }, { value: 'cards', label: '全部卡片' }, { value: 'table', label: '表格与批量删除' }]} />
+        <Select allowClear placeholder="测试类型" aria-label="测试类型" value={moduleFilter} onChange={(value) => { setModuleFilter(value); setAgentPage(1); }} style={{ width: 180, maxWidth: '100%' }} options={Object.entries(TEST_TYPE_LABELS).map(([value, label]) => ({ value, label }))} />
+        <Select allowClear showSearch optionFilterProp="label" placeholder="按绑定模型筛选" aria-label="按绑定模型筛选" value={modelFilter} onChange={(value) => { setModelFilter(value); setAgentPage(1); }} style={{ width: 260, maxWidth: '100%' }} options={[{ value: 'inherit', label: '继承 / 本次选择 / 全局默认' }, ...(models.data?.items ?? []).map((item) => ({ value: String(item.id), label: `${item.label} (${item.model_name})` }))]} />
+        <Select aria-label="Agent 视图" value={view} onChange={setView} style={{ minWidth: 140, maxWidth: '100%' }} options={[{ value: 'tree', label: '主子关系' }, { value: 'cards', label: '全部卡片' }, { value: 'table', label: '表格与批量删除' }]} />
         <Button danger disabled={!selectedAgentIds.length} onClick={deleteSelected}>批量删除（{selectedAgentIds.length}）</Button>
         <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
         <Button type="primary" onClick={() => setCreating(true)}>新增 Agent</Button>
@@ -188,10 +188,10 @@ export function AgentPane() {
         </Row>
         {agentRows.length > agentPageSize && <Pagination current={agentPage} pageSize={agentPageSize} total={agentRows.length} showSizeChanger={false} onChange={setAgentPage} style={{ marginTop: 16, textAlign: 'right' }} />}
       </> : <EmptyState description="没有匹配的 Agent" />)}
-      <CaseGenerationModal key={generating?.id ?? 'closed'} agent={generating} agents={allAgents} models={(models.data?.items ?? []).map((item) => ({ value: item.id, label: `${item.label} (${item.model_name})` }))} onClose={() => setGenerating(null)} />
-      <EvaluationToolModal agent={evaluating} onClose={() => setEvaluating(null)} />
-      <AgentFormModal
-        key={editing ? `${editing.id}-${editing.version}` : (creating ? 'new' : 'closed')}
+      <CaseGenerationModal key={generating ? `gen-${generating.id}` : 'gen-closed'} agent={generating} agents={allAgents} models={(models.data?.items ?? []).map((item) => ({ value: item.id, label: `${item.label} (${item.model_name})` }))} onClose={() => setGenerating(null)} />
+      {evaluating && <EvaluationToolModal key={`eval-${evaluating.id}`} agent={evaluating} onClose={() => setEvaluating(null)} />}
+      {(creating || Boolean(editing)) && <AgentFormModal
+        key={editing ? `agent-${editing.id}-${editing.version}` : 'agent-new'}
         open={creating || Boolean(editing)}
         initial={editing ?? undefined}
         workflows={workflows.data ?? []}
@@ -221,9 +221,9 @@ export function AgentPane() {
         loading={createMutation.isPending || updateMutation.isPending}
         onCancel={() => { setCreating(false); setEditing(null); }}
         onSubmit={submit}
-      />
+      />}
       <DefinitionHistoryModal
-        key={history ? `${history.kind}-${history.id}` : 'closed'}
+        key={history ? `history-${history.kind}-${history.id}` : 'history-closed'}
         target={history}
         onClose={() => setHistory(null)}
         onRestored={(definition) => { if ('instruction' in definition) setEditing(definition); }}
@@ -301,7 +301,7 @@ function AgentFormModal({ open, initial, workflows, skillOptions, toolOptions, c
       open={open}
       onClose={requestClose}
       width={720}
-      destroyOnClose
+      destroyOnHidden
       dirty={false}
       footer={<div className="editor-drawer-footer">
         <Space wrap>

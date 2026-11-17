@@ -412,7 +412,7 @@ function MemberDrawer({
       open={open}
       onClose={onCancel}
       width={420}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Button
           type="primary"

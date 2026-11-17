@@ -272,7 +272,7 @@ function ProfileDrawer({
       open
       onClose={onCancel}
       width={620}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space>
           <Button onClick={onCancel}>关闭</Button>

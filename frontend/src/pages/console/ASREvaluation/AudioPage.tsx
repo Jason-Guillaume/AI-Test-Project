@@ -136,6 +136,8 @@ export function AudioPage() {
   const queryClient = useQueryClient();
   const [form] = Form.useForm<AudioFormValues>();
   const [open, setOpen] = useState(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const listParams = new URLSearchParams(location.search);
   const page = Math.max(1, Number(listParams.get('page')) || 1);
   const requestedPageSize = Number(listParams.get('page_size')) || 20;
@@ -241,7 +243,7 @@ export function AudioPage() {
     setGroundTruthReading(false);
     setAudioCheckId(null);
     setMediaError(false);
-    form.resetFields();
+    if (openRef.current) form.resetFields();
   }, [currentProjectId, form]);
 
   const audioKey = currentProjectId
@@ -876,7 +878,7 @@ export function AudioPage() {
           setGroundTruthReadError('');
           setGroundTruthReading(false);
         }}
-        destroyOnClose
+        destroyOnHidden
         maskClosable={!uploadGroundTruthMutation.isPending}
         closable={!uploadGroundTruthMutation.isPending}
         width={760}
@@ -960,7 +962,7 @@ export function AudioPage() {
         open={Boolean(selectedAudio)}
         onClose={() => { setSelectedAudio(null); setMediaError(false); setMediaWaiting(false); }}
         width={520}
-        destroyOnClose
+        destroyOnHidden
       >
         {selectedAudio && (
           <Space direction="vertical" size="middle" style={{ display: 'flex' }}>

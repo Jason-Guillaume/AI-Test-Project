@@ -102,7 +102,7 @@ export function CaseExcelImportModal({
       open={open}
       onCancel={onCancel}
       width={820}
-      destroyOnClose
+      destroyOnHidden
       footer={null}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>

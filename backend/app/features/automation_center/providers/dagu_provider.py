@@ -53,7 +53,12 @@ class DaguProvider:
 
     def test_connection(self, resource_id: str | None = None) -> ProviderConnectionResult:
         """校验 OpenAPI、健康状态、版本和 DAG 读取权限。"""
-        openapi = self._client.get_openapi()
+        try:
+            openapi = self._client.get_openapi()
+        except ProviderError as exc:
+            if exc.status_code not in {403, 404}:
+                raise
+            openapi = {}
         health = self._client.get_health()
         dags = self._client.list_dags()
         if resource_id:
@@ -124,9 +129,9 @@ class DaguProvider:
             return False
         run = self._client.get_run(resource_id, external_run_id)
         label = str(run.get("statusLabel") or "").lower()
-        if label == "queued":
+        if label in {"queued", "not_started"}:
             self._client.dequeue(resource_id, external_run_id)
-        elif label == "running":
+        elif label in {"running", "waiting"}:
             self._client.stop(resource_id, external_run_id)
         elif label not in {"succeeded", "failed", "partially_succeeded", "rejected", "aborted"}:
             return False

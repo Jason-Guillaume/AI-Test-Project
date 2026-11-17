@@ -439,7 +439,7 @@ def main() -> int:
     try:
         clone_env = {**env, "GIT_CONFIG_NOSYSTEM": "1"}
         clone_code = _run_command(
-            ["git", "clone", "--depth=1", "--single-branch", "--branch", branch, repository_url, str(repo_dir)],
+            ["git", "clone", "--depth=1", "--single-branch", "--branch", branch, "--", repository_url, str(repo_dir)],
             cwd=work_dir, env=clone_env, log_path=log_path, timeout_seconds=900, label="检出 Codeup 仓库",
         )
         if clone_code != 0:
@@ -475,8 +475,6 @@ def main() -> int:
             command, cwd=repo_dir, env=test_env, log_path=log_path,
             timeout_seconds=timeout_seconds, label="运行 pytest",
         )
-        cache_lock.close()
-        cache_lock = None
         if STOP_SIGNAL is not None:
             status = "CANCELLED"
             result_code = pytest_code
@@ -490,92 +488,92 @@ def main() -> int:
             status = "SUCCESS"
             result_code = 0
     except _RunFailed:
-        if cache_lock:
-            cache_lock.close()
         status = "FAILED"
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
-        if cache_lock:
-            cache_lock.close()
         _append_log(log_path, f"Runner 阶段失败：{type(exc).__name__}: {exc}\n".encode("utf-8", errors="replace"))
         status = "FAILED"
         result_code = result_code or 1
-
-    if STOP_SIGNAL is not None and status not in {"TIMEOUT", "CANCELLED"}:
-        status = "CANCELLED"
-    _set_status(status)
-    allure_results = repo_dir / "allure-results"
-    allure_report = repo_dir / "allure-report"
-    if allure_results.is_dir() and any(allure_results.iterdir()):
-        allure_bin = shutil.which("allure")
-        if allure_bin:
-            allure_code = _run_command(
-                [allure_bin, "generate", str(allure_results), "--clean", "-o", str(allure_report)],
-                cwd=repo_dir, env=child_env if "child_env" in locals() else env,
-                log_path=log_path, timeout_seconds=900, label="生成 Allure HTML 报告",
-            )
-            if allure_code != 0:
+    finally:
+        if cache_lock is not None:
+            cache_lock.close()
+            cache_lock = None
+        try:
+            if STOP_SIGNAL is not None and status not in {"TIMEOUT", "CANCELLED"}:
+                status = "CANCELLED"
+            _set_status(status)
+            allure_results = repo_dir / "allure-results"
+            allure_report = repo_dir / "allure-report"
+            if allure_results.is_dir() and any(allure_results.iterdir()):
+                allure_bin = shutil.which("allure")
+                if allure_bin:
+                    allure_code = _run_command(
+                        [allure_bin, "generate", str(allure_results), "--clean", "-o", str(allure_report)],
+                        cwd=repo_dir, env=child_env if "child_env" in locals() else env,
+                        log_path=log_path, timeout_seconds=900, label="生成 Allure HTML 报告",
+                    )
+                    if allure_code != 0 and status not in {"CANCELLED", "TIMEOUT"}:
+                        status = "FAILED"
+                        result_code = result_code or allure_code
+                else:
+                    _append_log(log_path, "未安装 Allure CLI，不能伪造 HTML 报告。\n".encode("utf-8"))
+                    if status not in {"CANCELLED", "TIMEOUT"}:
+                        status = "FAILED"
+                        result_code = result_code or 1
+            else:
+                _append_log(log_path, "pytest 未生成 Allure 结果，不能创建报告。\n".encode("utf-8"))
                 if status not in {"CANCELLED", "TIMEOUT"}:
                     status = "FAILED"
-                    result_code = result_code or allure_code
-        else:
-            _append_log(log_path, "未安装 Allure CLI，不能伪造 HTML 报告。\n".encode("utf-8"))
-            if status not in {"CANCELLED", "TIMEOUT"}:
+                    result_code = result_code or 1
+            _set_status(status)
+
+            if allure_results.is_dir() and any(allure_results.iterdir()):
+                if not _make_archive(allure_results, work_dir / "allure-results.zip"):
+                    _append_log(log_path, "Allure results 压缩包校验失败。\n".encode("utf-8"))
+                    if status not in {"CANCELLED", "TIMEOUT"}:
+                        status = "FAILED"
+                    result_code = result_code or 1
+            report_available = allure_report.is_dir() and (allure_report / "index.html").is_file()
+            if report_available:
+                if not _make_archive(allure_report, work_dir / "allure-report.zip", flatten=True):
+                    _append_log(log_path, "Allure HTML 压缩包校验失败。\n".encode("utf-8"))
+                    if status not in {"CANCELLED", "TIMEOUT"}:
+                        status = "FAILED"
+                    _set_status(status)
+                    result_code = result_code or 1
+            elif status not in {"CANCELLED", "TIMEOUT"}:
+                _append_log(log_path, "Allure HTML 报告缺少有效的 index.html。\n".encode("utf-8"))
                 status = "FAILED"
                 result_code = result_code or 1
-    else:
-        _append_log(log_path, "pytest 未生成 Allure 结果，不能创建报告。\n".encode("utf-8"))
-        if status not in {"CANCELLED", "TIMEOUT"}:
-            status = "FAILED"
-            result_code = result_code or 1
-    _set_status(status)
 
-    if allure_results.is_dir() and any(allure_results.iterdir()):
-        if not _make_archive(allure_results, work_dir / "allure-results.zip"):
-            _append_log(log_path, "Allure results 压缩包校验失败。\n".encode("utf-8"))
-            if status not in {"CANCELLED", "TIMEOUT"}:
-                status = "FAILED"
-            result_code = result_code or 1
-    report_available = allure_report.is_dir() and (allure_report / "index.html").is_file()
-    if report_available:
-        if not _make_archive(allure_report, work_dir / "allure-report.zip", flatten=True):
-            _append_log(log_path, "Allure HTML 压缩包校验失败。\n".encode("utf-8"))
-            if status not in {"CANCELLED", "TIMEOUT"}:
-                status = "FAILED"
-            _set_status(status)
-            result_code = result_code or 1
-    elif status not in {"CANCELLED", "TIMEOUT"}:
-        _append_log(log_path, "Allure HTML 报告缺少有效的 index.html。\n".encode("utf-8"))
-        status = "FAILED"
-        result_code = result_code or 1
-
-    upload_env = {**env, **callback_env}
-    upload_env.update({
-        "AUTOMATION_STATUS": status,
-        "AUTOMATION_LOG_FILE": str(log_path),
-        "AUTOMATION_REPORT_ARCHIVE": str(work_dir / "allure-report.zip"),
-        "AUTOMATION_RESULTS_ARCHIVE": str(work_dir / "allure-results.zip"),
-        "AUTOMATION_REPORT_DIR": str(allure_report),
-        "AUTOMATION_START_MS": callback_env["AUTOMATION_START_MS"],
-        "AUTOMATION_EXECUTION_ID": execution_id,
-        "AUTOMATION_PROJECT_ID": project_id,
-        "AUTOMATION_PROVIDER_TYPE": "DAGU",
-        "AUTOMATION_PIPELINE_ID": callback_env["AUTOMATION_PIPELINE_ID"],
-        "DAG_RUN_ID": dag_run_id,
-        "BRANCH_NAME": branch,
-        "TEST_ENV": callback_env["TEST_ENV"],
-        "GIT_COMMIT": callback_env.get("GIT_COMMIT", ""),
-    })
-    upload_code = _run_command(
-        [sys.executable, str(callback_script), "upload"], cwd=work_dir, env=upload_env,
-        log_path=log_path, timeout_seconds=120, label="签名上传 Allure 与运行状态",
-    )
-    if upload_code == 0:
-        (work_dir / ".callback-ok").write_text(str(int(time.time())), encoding="utf-8")
-    else:
-        _append_log(log_path, "回调未成功确认；保留工作目录供重试和排查。\n".encode("utf-8"))
-        result_code = result_code or 1
-    print(f"自动化状态：{status}；工作目录：{work_dir}")
-    run_slot.close()
+            upload_env = {**env, **callback_env}
+            upload_env.update({
+                "AUTOMATION_STATUS": status,
+                "AUTOMATION_LOG_FILE": str(log_path),
+                "AUTOMATION_REPORT_ARCHIVE": str(work_dir / "allure-report.zip"),
+                "AUTOMATION_RESULTS_ARCHIVE": str(work_dir / "allure-results.zip"),
+                "AUTOMATION_REPORT_DIR": str(allure_report),
+                "AUTOMATION_START_MS": callback_env["AUTOMATION_START_MS"],
+                "AUTOMATION_EXECUTION_ID": execution_id,
+                "AUTOMATION_PROJECT_ID": project_id,
+                "AUTOMATION_PROVIDER_TYPE": "DAGU",
+                "AUTOMATION_PIPELINE_ID": callback_env["AUTOMATION_PIPELINE_ID"],
+                "DAG_RUN_ID": dag_run_id,
+                "BRANCH_NAME": branch,
+                "TEST_ENV": callback_env["TEST_ENV"],
+                "GIT_COMMIT": callback_env.get("GIT_COMMIT", ""),
+            })
+            upload_code = _run_command(
+                [sys.executable, str(callback_script), "upload"], cwd=work_dir, env=upload_env,
+                log_path=log_path, timeout_seconds=120, label="签名上传 Allure 与运行状态",
+            )
+            if upload_code == 0:
+                (work_dir / ".callback-ok").write_text(str(int(time.time())), encoding="utf-8")
+            else:
+                _append_log(log_path, "回调未成功确认；保留工作目录供重试和排查。\n".encode("utf-8"))
+                result_code = result_code or 1
+            print(f"自动化状态：{status}；工作目录：{work_dir}")
+        finally:
+            run_slot.close()
     return result_code
 
 

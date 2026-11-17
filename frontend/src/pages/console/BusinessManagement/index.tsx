@@ -179,7 +179,7 @@ function BusinessWorkspace() {
         confirmLoading={createDomainMutation.isPending}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={480}
       >
         <Form<DomainFormValues>
@@ -221,7 +221,7 @@ function BusinessWorkspace() {
         confirmLoading={createFlowMutation.isPending}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={480}
       >
         <Form<FlowFormValues>

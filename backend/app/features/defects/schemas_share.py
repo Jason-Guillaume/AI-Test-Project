@@ -91,6 +91,8 @@ class SharePreviewResponse(BaseModel):
     allow_resolve: bool
     visible_fields: list[str]
     message_preview: str
+    public_url_valid: bool = True
+    public_url_error: str | None = None
 
 
 class ExternalActionResponse(BaseModel):

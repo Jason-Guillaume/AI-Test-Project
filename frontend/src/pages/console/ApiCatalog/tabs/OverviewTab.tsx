@@ -109,7 +109,7 @@ export function OverviewTab({
         open={open}
         onClose={() => setOpen(false)}
         width={480}
-        destroyOnClose
+        destroyOnHidden
         extra={
           <Space>
             <Button onClick={() => setOpen(false)}>取消</Button>

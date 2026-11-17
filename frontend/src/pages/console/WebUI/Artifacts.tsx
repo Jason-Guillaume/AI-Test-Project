@@ -47,7 +47,7 @@ export function WebArtifacts({ snapshot }: { snapshot: unknown }) {
         { title: '操作', dataIndex: 'operation' }, { title: '状态', dataIndex: 'status' },
         { title: '耗时(ms)', dataIndex: 'duration_ms' }, { title: '事件', dataIndex: 'event' }]} />
     <Modal title={selected?.kind === 'TRACE' ? 'Trace 动作时序（已移除 DOM、网络正文与敏感值）' : '执行截图'} open={!!selected}
-      onCancel={() => setSelected(null)} footer={null} width={1000} destroyOnClose>
+      onCancel={() => setSelected(null)} footer={null} width={1000} destroyOnHidden>
       {selected?.kind === 'TRACE' ? <>
         {trace.isError && <Typography.Text type="danger">{getErrorMessage(trace.error)}</Typography.Text>}
         <Table rowKey={(_, i) => String(i)} loading={trace.isPending} size="small" scroll={{ x: 800 }}

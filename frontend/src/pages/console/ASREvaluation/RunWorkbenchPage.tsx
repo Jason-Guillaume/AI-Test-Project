@@ -1005,7 +1005,7 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
         onClose={() => setAudioInfoOpen(false)}
         placement="right"
         width="min(680px, 92vw)"
-        destroyOnClose={false}
+        destroyOnHidden={false}
         extra={<Button onClick={() => { void metadataQuery.refetch(); void peaksQuery.refetch(); }}>刷新</Button>}
       >
         <Paragraph type="secondary">原文件、后台分析与当前播放状态分别展示。打开此抽屉不会重置播放器。</Paragraph>
@@ -1047,7 +1047,7 @@ function RunWorkbench({ listenMode }: { listenMode: boolean }) {
         onClose={() => setRequestOpen(false)}
         placement="right"
         width="min(640px, 92vw)"
-        destroyOnClose={false}
+        destroyOnHidden={false}
       >
         <Alert type="info" showIcon message="这是本次转写提交的脱敏请求快照；音频文件采样率与请求中的模型参数是不同信息。" />
         <pre className="asr-json-snapshot">{JSON.stringify(redactSnapshot(run.request_snapshot), null, 2)}</pre>

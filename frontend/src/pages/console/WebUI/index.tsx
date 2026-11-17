@@ -211,11 +211,11 @@ function Workspace({ projectId }: { projectId: number }) {
     {pageModal && <PageEditor key={pageModal.row?.id ?? 'new'} initial={pageModal.row} busy={write.isPending} onClose={() => setPageModal(null)} onSave={body => write.mutate(async () => { await webUIApi.savePage(projectId, body, pageModal.row?.id); setPageModal(null); })} />}
     {caseModal && <CaseEditor key={caseModal.row?.id ?? 'new'} initial={caseModal.row} pages={pageRows} auth={authRows} busy={write.isPending} onClose={() => setCaseModal(null)} onSave={body => write.mutate(async () => { await webUIApi.saveCase(projectId, body, caseModal.row?.id); await cases.refetch(); setCaseModal(null); })} />}
     {authModal && <AuthEditor key={authModal.row?.id ?? 'new'} initial={authModal.row} environments={environmentRows} busy={write.isPending} onClose={() => setAuthModal(null)} onSave={body => write.mutate(async () => { await webUIApi.saveAuth(projectId, body, authModal.row?.id); setAuthModal(null); })} />}
-    <Modal title="执行详情" open={!!selectedExecution} onCancel={() => setSelectedExecution(null)} footer={null} width={1000} destroyOnClose>
+    <Modal title="执行详情" open={!!selectedExecution} onCancel={() => setSelectedExecution(null)} footer={null} width={1000} destroyOnHidden>
       {selectedExecution?.error_message && <Alert type="error" message={selectedExecution.error_message} />}
       <WebArtifacts snapshot={selectedExecution?.response_snapshot} />
     </Modal>
-    <Modal title="Agent 生成 UI 步骤草稿" open={agentOpen} destroyOnClose onCancel={() => setAgentOpen(false)} confirmLoading={write.isPending} onOk={() => agentForm.submit()}>
+    <Modal title="Agent 生成 UI 步骤草稿" open={agentOpen} destroyOnHidden onCancel={() => setAgentOpen(false)} confirmLoading={write.isPending} onOk={() => agentForm.submit()}>
       <Alert type="info" message="只生成未确认草稿；人工审核、选择账号并确认后才能执行。" />
       <Form form={agentForm} layout="vertical" onFinish={body => write.mutate(async () => {
         const draft = await webUIApi.generate(projectId, body);
@@ -226,7 +226,7 @@ function Workspace({ projectId }: { projectId: number }) {
         <Form.Item name="page_object_ids" label="页面上下文（空表示全部）"><Select mode="multiple" options={pageRows.map(p => ({ value: p.id, label: p.name }))} /></Form.Item>
       </Form>
     </Modal>
-    <Modal title={`绑定业务动作：${bindCase?.name ?? ''}`} open={!!bindCase} destroyOnClose onCancel={() => setBindCase(null)} confirmLoading={write.isPending}
+    <Modal title={`绑定业务动作：${bindCase?.name ?? ''}`} open={!!bindCase} destroyOnHidden onCancel={() => setBindCase(null)} confirmLoading={write.isPending}
       onOk={() => { if (bindCase && actionId) write.mutate(async () => { await webUIApi.bind(actionId, bindCase.id); setBindCase(null); }); }}>
       <Space direction="vertical" style={{ width: '100%' }}>
         <Alert type="info" message="选择 WEB 作为此动作默认通道，流程内其他 API 动作保持原有配置。" />

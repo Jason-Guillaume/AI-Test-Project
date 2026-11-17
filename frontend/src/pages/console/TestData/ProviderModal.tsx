@@ -158,7 +158,7 @@ export function ProviderModal({
       confirmLoading={pending}
       okText="保存"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
       width={640}
     >
       <Form layout="vertical">

@@ -26,6 +26,7 @@ import {
   type RecycleBinItem,
 } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
+import { PageHeader } from '@/shared/ui/PageHeader';
 import { PageContainer } from '@/shared/ui/PageState';
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -230,11 +231,11 @@ function RecycleBinContent({ adminMode, projectId }: { adminMode: boolean; proje
   const rows = listQuery.data?.items ?? [];
   return (
     <PageContainer>
+      <PageHeader
+        title="回收站"
+        subtitle="已删除的业务资源保留原始 ID 和关联关系；恢复时会检查项目权限、依赖及唯一键冲突。"
+      />
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <div>
-          <Typography.Title level={2} style={{ marginBottom: 4 }}>回收站</Typography.Title>
-          <Typography.Text type="secondary">已删除的业务资源保留原始 ID 和关联关系；恢复时会检查项目权限、依赖及唯一键冲突。</Typography.Text>
-        </div>
         {!adminMode && projectId == null && (
           <Alert type="info" showIcon message="显示有权访问的项目回收站记录" description="项目记录按你的项目成员和组织权限过滤；无权项目不会出现在结果中。" />
         )}

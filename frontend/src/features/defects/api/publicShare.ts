@@ -60,15 +60,6 @@ export interface PublicResolveResult {
   actor_display_name: string | null;
 }
 
-/**
- * 从地址 Fragment 读取分享凭证。
- * 浏览器不会把 Fragment 发给服务器，因此这里是凭证进入前端的唯一入口。
- */
-export function readShareToken(): string {
-  const raw = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
-  return new URLSearchParams(raw).get('token')?.trim() ?? '';
-}
-
 function authHeader(token: string) {
   return { headers: { Authorization: `Bearer ${token}` } };
 }

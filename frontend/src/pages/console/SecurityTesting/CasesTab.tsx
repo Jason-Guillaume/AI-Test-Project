@@ -355,7 +355,7 @@ function MutationDetailDrawer({
       open={execution != null}
       onClose={onClose}
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       {execution && (
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>

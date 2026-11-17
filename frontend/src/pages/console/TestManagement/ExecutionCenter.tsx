@@ -156,7 +156,7 @@ export function ConsoleExecutionCenterPage() {
         confirmLoading={runMutation.isPending}
         okText="执行"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={460}
       >
         <Form<RunFormValues> form={form} layout="vertical">

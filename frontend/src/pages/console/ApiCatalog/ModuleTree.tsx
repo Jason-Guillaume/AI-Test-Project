@@ -293,7 +293,7 @@ export function ModuleTree({
         confirmLoading={createMutation.isPending}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={createForm} layout="vertical">
           <Form.Item
@@ -327,7 +327,7 @@ export function ModuleTree({
         confirmLoading={renameMutation.isPending}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={renameForm} layout="vertical">
           <Form.Item

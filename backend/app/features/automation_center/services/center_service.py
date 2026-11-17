@@ -586,7 +586,17 @@ class AutomationCenterService:
     def _dispatch_dagu(self, db: Session, execution_id: int) -> None:
         """按已提交的稳定运行 ID 入队。不确定是否成功时保留记录，交给 Poller 查询。"""
         execution = db.get(AutomationExecution, execution_id)
-        if execution is None or execution.dispatch_state == "CONFIRMED":
+        if execution is None or execution.dispatch_state == "CONFIRMED" or execution.status in TERMINAL_STATUSES:
+            return
+        if execution.timeout_at and execution.timeout_at <= datetime.now():
+            execution.dispatch_state = "FAILED"
+            execution.stop_requested_at = None
+            execution.stop_reason = "TIMEOUT"
+            execution.external_status = "DISPATCH_TIMEOUT"
+            execution.error_message = "Dagu 入队超时未确认"
+            self._transition(execution, "TIMEOUT")
+            db.commit()
+            self._notify(db, execution.id)
             return
         config, resource_id = self._execution_provider_args(db, execution)
         params = dict(execution.run_params or {})
@@ -1048,7 +1058,12 @@ class AutomationCenterService:
             return
         if not execution.pipeline_run_id:
             return
-        if execution.status in {"PENDING", "RUNNING"} and execution.timeout_at and execution.timeout_at <= now:
+        if (
+            execution.status in {"PENDING", "RUNNING"}
+            and execution.stop_requested_at is None
+            and execution.timeout_at
+            and execution.timeout_at <= now
+        ):
             self._mark_timeout(db, execution)
             return
 
@@ -1075,11 +1090,10 @@ class AutomationCenterService:
                     # Dagu removes dequeued runs from its run endpoint. A 404 after an
                     # accepted stop is therefore the terminal confirmation for that run.
                     execution.external_status = "NOT_FOUND_AFTER_STOP"
-                    execution.status = execution.stop_reason or "CANCELLED"
                     execution.stop_requested_at = None
-                    execution.finished_at = execution.finished_at or datetime.now()
                     execution.error_message = "Dagu 已从队列移除本次运行"
                     execution.last_sync_at = datetime.now()
+                    self._transition(execution, execution.stop_reason or "CANCELLED")
                     db.commit()
                     self._notify(db, execution.id)
                     return

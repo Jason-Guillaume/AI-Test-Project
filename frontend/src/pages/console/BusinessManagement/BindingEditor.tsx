@@ -183,7 +183,7 @@ export function BindingEditor({
         confirmLoading={createMutation.isPending}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form<BusinessBindingCreate & { api_keyword?: string }> form={createForm} layout="vertical">
@@ -219,7 +219,7 @@ export function BindingEditor({
         confirmLoading={updateMutation.isPending}
         okText="更新"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form<BusinessBindingUpdate & { api_keyword?: string }> form={editForm} layout="vertical">
@@ -464,7 +464,7 @@ function MappingFormModal({
 }) {
   const locationOptions = direction === 'INPUT' ? API_LOCATION_INPUT_OPTIONS : API_LOCATION_OUTPUT_OPTIONS;
   return (
-    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnClose width={520}>
+    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnHidden width={520}>
       <Form<BusinessApiMappingCreate> form={form} layout="vertical">
         <Form.Item name="business_variable" label="业务变量" rules={[{ required: true, message: '请选择业务变量' }]}>
           <Select

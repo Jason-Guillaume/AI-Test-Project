@@ -462,7 +462,7 @@ function CreateUserModal({
       open={open}
       confirmLoading={loading}
       onCancel={onCancel}
-      destroyOnClose
+      destroyOnHidden
       onOk={() =>
         form.validateFields().then((v) => onSubmit(v))
       }
