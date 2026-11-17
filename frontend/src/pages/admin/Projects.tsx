@@ -280,7 +280,7 @@ function CreateProjectModal({
       open={open}
       confirmLoading={loading}
       onCancel={onCancel}
-      destroyOnClose
+      destroyOnHidden
       maskClosable={false}
       keyboard={false}
       closable={false}
@@ -340,7 +340,7 @@ function EditProjectModal({
       open
       confirmLoading={loading}
       onCancel={onCancel}
-      destroyOnClose
+      destroyOnHidden
       onOk={() => form.validateFields().then((values) => onSubmit({
         ...values,
         description: values.description ?? null,
@@ -440,7 +440,7 @@ function ProjectDetailDrawer({
       open
       onClose={onClose}
       width={640}
-      destroyOnClose
+      destroyOnHidden
     >
       {detailQuery.isPending ? (
         <LoadingState />
@@ -564,7 +564,7 @@ function AddMemberModal({
       open
       confirmLoading={loading}
       onCancel={onCancel}
-      destroyOnClose
+      destroyOnHidden
       onOk={() => form.validateFields().then((v) => onOk(v))}
     >
       <Form layout="vertical" form={form} initialValues={{ role: 'member' }}>

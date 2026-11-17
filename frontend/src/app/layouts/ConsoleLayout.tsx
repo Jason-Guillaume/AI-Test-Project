@@ -47,6 +47,7 @@ import { useAuth } from '@/app/providers/AuthProvider';
 import { platformRoleLabel } from '@/features/identity/components/RoleTag';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
+import { isNarrowViewport } from '@/shared/lib/viewport';
 import { projectsApi } from '@/features/projects/api/projects';
 import { organizationsApi } from '@/features/organizations/api/organizations';
 import { collectPages } from '@/shared/api/pagination';
@@ -174,7 +175,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/asr/runs/:runId/listen': '单模型音频工作台',
   '/console/asr/comparisons': '识别结果对比',
   '/console/asr/comparisons/:comparisonId': '识别结果对比',
-  '/console/asr/experiments': '参数对比',
+  '/console/asr/experiments': '参数实验',
   '/console/asr/funasr': 'AI 分析与调优',
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI 助手',
@@ -232,8 +233,9 @@ export function ConsoleLayout() {
   );
   const menuStorageKey = user?.id == null ? null : `console.menu-open-sections:${user.id}`;
   const [openMenuKeys, setOpenMenuKeys] = useState<string[]>([]);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [narrowViewport, setNarrowViewport] = useState(false);
+  const [collapsedOpenKeys, setCollapsedOpenKeys] = useState<string[]>([]);
+  const [narrowViewport, setNarrowViewport] = useState(isNarrowViewport);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(isNarrowViewport);
   const initializedMenuForRef = useRef<string | null>(null);
 
   // 分页读取当前用户可见项目并限制收集规模；超限或请求失败时显示重试入口。
@@ -278,7 +280,15 @@ export function ConsoleLayout() {
     }
   }, [activeSectionKey, menuItems, menuStorageKey]);
 
+  useEffect(() => {
+    setCollapsedOpenKeys([]);
+  }, [location.pathname, sidebarCollapsed]);
+
   const handleMenuOpenChange = (keys: string[]) => {
+    if (sidebarCollapsed) {
+      setCollapsedOpenKeys(keys);
+      return;
+    }
     const valid = keys.filter((key) => menuItems.some((section) => section.key === key));
     setOpenMenuKeys(valid);
     if (!menuStorageKey) return;
@@ -383,7 +393,7 @@ export function ConsoleLayout() {
           className="app-sidebar-menu"
           theme="light"
           mode="inline"
-          openKeys={openMenuKeys}
+          openKeys={sidebarCollapsed ? collapsedOpenKeys : openMenuKeys}
           onOpenChange={handleMenuOpenChange}
           onClick={() => { if (narrowViewport) setSidebarCollapsed(true); }}
           selectedKeys={[selectedMenuKey]}

@@ -214,7 +214,7 @@ export function RelationTab({
         confirmLoading={createMutation.isPending}
         okText="添加"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form<FormValues> form={form} layout="vertical">
           <Form.Item

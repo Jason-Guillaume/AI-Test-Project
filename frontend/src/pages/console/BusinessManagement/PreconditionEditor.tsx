@@ -166,7 +166,7 @@ function PreconditionFormModal({
   submitting: boolean;
 }) {
   return (
-    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnClose width={540}>
+    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnHidden width={540}>
       <Form<BusinessPreconditionCreate> form={form} layout="vertical" initialValues={{ type: 'VARIABLE', operator: 'EQ' }}>
         <div className="form-field-row">
           <Form.Item name="type" label="类型" style={{ flex: 1, margin: 0 }}>

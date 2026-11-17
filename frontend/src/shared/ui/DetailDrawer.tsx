@@ -24,7 +24,7 @@ export function DetailDrawer({
   error,
   empty,
   footer,
-  destroyOnClose = true,
+  destroyOnHidden = true,
   dirty = false,
   dirtyMessage = '关闭会丢弃尚未保存的修改。',
   children,
@@ -38,7 +38,7 @@ export function DetailDrawer({
   error?: unknown;
   empty?: string | null;
   footer?: ReactNode;
-  destroyOnClose?: boolean;
+  destroyOnHidden?: boolean;
   dirty?: boolean;
   dirtyMessage?: ReactNode;
   children?: ReactNode;
@@ -69,7 +69,7 @@ export function DetailDrawer({
       extra={extra}
       width={width}
       footer={footer}
-      destroyOnClose={destroyOnClose}
+      destroyOnHidden={destroyOnHidden}
     >
       {body}
     </Drawer>

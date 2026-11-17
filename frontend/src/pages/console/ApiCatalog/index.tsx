@@ -201,7 +201,7 @@ function ApiCatalogWorkspace() {
         confirmLoading={createMutation.isPending}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={560}
       >
         <Form<CreateFormValues> form={createForm} layout="vertical" initialValues={{ method: 'GET', status: 'DRAFT' }}>
@@ -294,7 +294,7 @@ function ImportRecordsModal({
       onCancel={onClose}
       footer={<Button onClick={onClose}>关闭</Button>}
       width={860}
-      destroyOnClose
+      destroyOnHidden
     >
       {query.isPending ? (
         <LoadingState />

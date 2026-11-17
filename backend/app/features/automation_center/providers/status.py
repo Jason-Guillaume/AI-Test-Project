@@ -12,6 +12,7 @@ _STATUS_MAP = {
     "ERROR": "FAILED",
     "FAILURE": "FAILED",
     "RUNNING": "RUNNING",
+    "NOT_STARTED": "PENDING",
     "PENDING": "PENDING",
     "WAITING": "PENDING",
     "QUEUED": "PENDING",

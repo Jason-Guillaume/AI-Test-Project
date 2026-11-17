@@ -104,14 +104,16 @@ const ROUTES_TO_CHECK = process.env.E2E_ROUTE_ONLY
 const VIEWPORTS_TO_CHECK = process.env.E2E_VIEWPORT_ONLY
   ? [{ width: 390, height: 844, label: '390×844' }]
   : [
+    { width: 1920, height: 1080, label: '1920×1080' },
     { width: 1440, height: 900, label: '1440×900' },
+    { width: 1366, height: 768, label: '1366×768' },
     { width: 1024, height: 768, label: '1024×768' },
     { width: 768, height: 1024, label: '768×1024' },
     { width: 390, height: 844, label: '390×844' },
   ];
 
 test('all registered business routes render without page-level horizontal overflow', async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(480_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginThroughUi(page);
   for (const viewport of VIEWPORTS_TO_CHECK) {
@@ -124,7 +126,18 @@ test('all registered business routes render without page-level horizontal overfl
       const expectedBusinessErrors: string[] = [];
       const onPageError = (error: Error) => pageErrors.push(`${error.name}: ${error.message}`);
       const onConsole = (message: import('@playwright/test').ConsoleMessage) => {
-        if (message.type() === 'error') consoleErrors.push(message.text());
+        if (message.type() !== 'error') return;
+        const text = message.text();
+        const locationUrl = message.location()?.url || '';
+        const isExpectedApiHttpLog = /^Failed to load resource: the server responded with a status of (403|404)\b/.test(text)
+          && (() => {
+            try {
+              return new URL(locationUrl).pathname.includes('/api/v1/');
+            } catch {
+              return false;
+            }
+          })();
+        if (!isExpectedApiHttpLog) consoleErrors.push(text);
       };
       const onResponse = (response: import('@playwright/test').Response) => {
         if (!new URL(response.url()).pathname.includes('/api/v1/')) return;
@@ -144,8 +157,7 @@ test('all registered business routes render without page-level horizontal overfl
       page.on('response', onResponse);
       page.on('requestfailed', onRequestFailed);
       await test.step(`${route} · ${viewport.label}`, async () => {
-        if (new URL(page.url()).pathname === route) await page.reload();
-        else await page.evaluate(`window.history.pushState({}, '', ${JSON.stringify(route)}); window.dispatchEvent(new PopStateEvent('popstate'))`);
+        await page.goto(route, { waitUntil: 'domcontentloaded' });
         await assertRouteContract(page, route);
         const dimensions = await page.evaluate('({ documentWidth: document.documentElement.scrollWidth, viewportWidth: window.innerWidth })') as { documentWidth: number; viewportWidth: number };
         expect(dimensions.documentWidth, `${route} 在 ${viewport.label} 出现横向溢出`).toBeLessThanOrEqual(dimensions.viewportWidth + 1);

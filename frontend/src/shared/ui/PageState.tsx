@@ -1,5 +1,5 @@
 // 统一的状态占位：加载中、空数据、接口失败。
-import { Alert, Empty, Spin } from 'antd';
+import { Alert, Empty, Spin, Typography } from 'antd';
 import { type ReactNode } from 'react';
 import { getErrorMessage } from '@/shared/api/client';
 
@@ -11,8 +11,9 @@ import { getErrorMessage } from '@/shared/api/client';
  */
 export function LoadingState({ tip = '加载中…' }: { tip?: string }) {
   return (
-    <div style={{ padding: 48, textAlign: 'center' }}>
-      <Spin tip={tip} size="large" />
+    <div style={{ padding: 48, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+      <Spin size="large" />
+      {tip && <Typography.Text type="secondary">{tip}</Typography.Text>}
     </div>
   );
 }

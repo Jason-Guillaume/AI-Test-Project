@@ -135,7 +135,7 @@ body {
 .app-breadcrumb-wrap { padding: 18px 32px 0; }
 .app-breadcrumb .ant-breadcrumb-link { color: #7c899c; }
 .app-layout-dark .app-breadcrumb .ant-breadcrumb-link { color: #9aa5b3; }
-.app-admin-context { color: #35435a; font-size: 13px; font-weight: 650; white-space: nowrap; }
+.app-admin-context { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #35435a; font-size: 13px; font-weight: 650; white-space: nowrap; }
 .app-admin-context span { margin-left: 10px; color: #8995a7; font-weight: 400; }
 .app-layout-dark .app-admin-context { color: #d9e0ea; }
 

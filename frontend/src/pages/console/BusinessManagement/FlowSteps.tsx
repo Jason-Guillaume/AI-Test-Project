@@ -128,7 +128,7 @@ export function FlowSteps({ projectId, actions, onReorder, onDelete, deleting, o
             key={a.id}
             size="small"
             style={{ marginBottom: 4 }}
-            bodyStyle={{ padding: '8px 12px' }}
+            styles={{ body: { padding: '8px 12px' } }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Space size={2}>

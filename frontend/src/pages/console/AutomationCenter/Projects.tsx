@@ -35,6 +35,7 @@ export function ConsoleAutomationProjectsPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationProject | null>(null);
   const [form] = Form.useForm<ProjectForm>();
+  const [selectedConfigId, setSelectedConfigId] = useState<number | undefined>();
   const projectId = currentProjectId;
 
   const listQuery = useQuery({
@@ -47,7 +48,6 @@ export function ConsoleAutomationProjectsPage() {
     queryFn: () => automationApi.listIntegrations(projectId!),
     enabled: projectId != null && open,
   });
-  const selectedConfigId = Form.useWatch('integration_config_id', form);
   const selectedIntegration = integrations.data?.items.find((item) => item.id === selectedConfigId);
   const isDagu = selectedIntegration?.provider_type === 'DAGU';
   const dags = useQuery({
@@ -88,6 +88,7 @@ export function ConsoleAutomationProjectsPage() {
   /** 初始化新自动化项目，默认绑定 Codeup 主分支和平台限时。 */
   const openCreate = () => {
     setEditing(null);
+    setSelectedConfigId(undefined);
     form.resetFields();
     form.setFieldsValue({ default_branch: 'master', timeout_seconds: 3600, notify_condition: 'ALWAYS' });
     setOpen(true);
@@ -97,6 +98,7 @@ export function ConsoleAutomationProjectsPage() {
   const openEdit = (row: AutomationProject) => {
     if (row.provider_type === 'LEGACY') return;
     setEditing(row);
+    setSelectedConfigId(row.integration_config_id);
     form.setFieldsValue({
       integration_config_id: row.integration_config_id,
       name: row.name,
@@ -162,9 +164,18 @@ export function ConsoleAutomationProjectsPage() {
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={saveMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={(values) => saveMutation.mutate(values)}>
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(changed: Partial<ProjectForm>) => {
+            if (Object.prototype.hasOwnProperty.call(changed, 'integration_config_id')) {
+              setSelectedConfigId(changed.integration_config_id);
+            }
+          }}
+          onFinish={(values) => saveMutation.mutate(values)}
+        >
           <Form.Item name="integration_config_id" label="CI 接入" rules={[{ required: true, message: '请选择接入配置' }]}>
             <Select
               options={(integrations.data?.items || []).filter((item) => item.enabled && item.provider_type !== 'LEGACY').map((item) => ({ value: item.id, label: `${item.name} · ${providerLabel(item.provider_type)}` }))}

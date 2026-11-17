@@ -1,7 +1,7 @@
 // 缺陷推送到飞书的配置弹窗。
 // 渠道来自已接入的通知渠道，不要求用户再次填写 Webhook。
 // 分享凭证只在本次成功或失败响应中展示，关闭弹窗后不能再从历史接口取回。
-import { Alert, Button, Checkbox, Form, Modal, Radio, Space, Switch, Typography } from 'antd';
+import { Alert, App, Button, Checkbox, Form, Input, Modal, Radio, Space, Switch, Typography } from 'antd';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { bugsApi } from '@/features/defects/api/defects';
@@ -48,6 +48,7 @@ export function DefectShareModal({
   canPermanent: boolean;
   onClose: () => void;
 }) {
+  const { message } = App.useApp();
   const [form] = Form.useForm<ShareForm>();
   const [results, setResults] = useState<DefectSharePushResult[] | null>(null);
   const projectId = bugs[0]?.project_id;
@@ -96,10 +97,19 @@ export function DefectShareModal({
   }, [form]);
 
   /**
-   * 复制本次返回的链接。历史接口不再保存明文，所以只能复制当前响应。
+   * 复制本次返回的链接。剪贴板受限时提示从只读输入框手动复制，不抛出未捕获异常。
    */
   async function copy(url: string) {
-    await navigator.clipboard.writeText(url);
+    try {
+      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+        message.warning('当前浏览器不支持一键复制，请在下方输入框全选复制');
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      message.success('分享链接已复制');
+    } catch {
+      message.warning('剪贴板写入受限，请在下方输入框手动全选复制');
+    }
   }
 
   return (
@@ -108,10 +118,10 @@ export function DefectShareModal({
       width={760}
       title={bugs.length > 1 ? `批量推送 ${bugs.length} 条缺陷` : '推送到飞书'}
       onCancel={onClose}
-      destroyOnClose
+      destroyOnHidden
       footer={results ? [<Button key="close" type="primary" onClick={onClose}>完成</Button>] : [
         <Button key="cancel" onClick={onClose}>取消</Button>,
-        <Button key="ok" type="primary" loading={push.isPending} onClick={() => push.mutate()}>确认推送</Button>,
+        <Button key="ok" type="primary" loading={push.isPending} disabled={preview.data?.public_url_valid === false} onClick={() => push.mutate()}>确认推送</Button>,
       ]}
     >
       {results ? (
@@ -122,10 +132,16 @@ export function DefectShareModal({
               type={item.notification_status === 'SUCCESS' ? 'success' : 'warning'}
               showIcon
               message={`${item.bug_no} ${item.notification_status === 'SUCCESS' ? '已推送到' : '推送失败'} ${item.channel_name}`}
-              description={<Space direction="vertical">
+              description={<Space direction="vertical" style={{ width: '100%' }}>
                 <Typography.Text>{item.error_message || '分享链接只显示这一次。飞书发送失败时链接仍然有效，可以复制后重试。'}</Typography.Text>
-                {!item.url_is_absolute && <Typography.Text type="warning">未配置 PUBLIC_APP_BASE_URL，飞书按钮里的地址不是绝对链接。</Typography.Text>}
-                <Typography.Paragraph copyable={{ text: item.share_url }} style={{ marginBottom: 0 }}>{item.share_url}</Typography.Paragraph>
+                {!item.url_is_absolute && <Typography.Text type="danger">PUBLIC_APP_BASE_URL 配置异常，当前链接不是可访问的绝对域名地址。</Typography.Text>}
+                <Typography.Paragraph style={{ marginBottom: 0 }}>{item.share_url}</Typography.Paragraph>
+                <Input
+                  readOnly
+                  value={item.share_url}
+                  onFocus={(event) => event.target.select()}
+                  aria-label={`分享链接 ${item.bug_no}`}
+                />
                 <Button size="small" onClick={() => copy(item.share_url)}>复制链接</Button>
               </Space>}
             />
@@ -162,6 +178,15 @@ export function DefectShareModal({
           <Form.Item name="allow_resolve" label="允许开发人员提交已解决" valuePropName="checked">
             <Switch />
           </Form.Item>
+          {preview.data?.public_url_valid === false && preview.data.public_url_error && (
+            <Alert
+              style={{ marginBottom: 12 }}
+              type="error"
+              showIcon
+              message="平台外链配置校验未通过"
+              description={preview.data.public_url_error}
+            />
+          )}
           <Alert
             type={preview.isError ? 'error' : 'info'}
             showIcon

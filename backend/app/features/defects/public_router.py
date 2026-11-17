@@ -52,14 +52,14 @@ def _limit_body(request: Request) -> None:
         raise bad_request("请求体过大")
 
 
-def _guard(request: Request, bucket: str, action):
+def _guard(request: Request, bucket: str, action, *, share_id: str | None = None):
     """先限流，再把错误凭证计入失败桶。"""
-    enforce_public_share_limit(request, bucket)
+    enforce_public_share_limit(request, bucket, share_id=share_id)
     try:
         return action()
     except HTTPException as exc:
         if exc.status_code == 404:
-            enforce_public_share_limit(request, "failure")
+            enforce_public_share_limit(request, "failure", share_id=share_id)
         raise
 
 
@@ -71,7 +71,7 @@ def view_public_defect(share_id: str, request: Request, db: Session = Depends(ge
     def action():
         return SERVICE.view_public(db, share_id, token)
 
-    return _guard(request, "view", action)
+    return _guard(request, "view", action, share_id=share_id)
 
 
 @router.post("/{share_id}/views", status_code=204)
@@ -83,7 +83,7 @@ def record_public_view(share_id: str, request: Request, db: Session = Depends(ge
         SERVICE.record_view(db, share_id, token)
         return None
 
-    _guard(request, "view", action)
+    _guard(request, "view", action, share_id=share_id)
     return None
 
 
@@ -101,4 +101,4 @@ def resolve_public_defect(
     def action():
         return SERVICE.resolve_public(db, share_id, token, body)
 
-    return _guard(request, "resolve", action)
+    return _guard(request, "resolve", action, share_id=share_id)

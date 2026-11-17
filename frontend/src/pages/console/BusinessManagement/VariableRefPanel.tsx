@@ -119,17 +119,19 @@ export function VariableRefPanel({
         <Empty description="暂无变量引用" />
       )}
 
-      <AddRefModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSubmit={async () => {
-          const values = await form.validateFields();
-          await createMutation.mutateAsync(values);
-        }}
-        form={form}
-        actions={actions}
-        submitting={createMutation.isPending}
-      />
+      {addOpen && (
+        <AddRefModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onSubmit={async () => {
+            const values = await form.validateFields();
+            await createMutation.mutateAsync(values);
+          }}
+          form={form}
+          actions={actions}
+          submitting={createMutation.isPending}
+        />
+      )}
     </div>
   );
 }
@@ -165,7 +167,7 @@ function AddRefModal({
       confirmLoading={submitting}
       okText="添加"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
       width={560}
     >
       <Form<BusinessVariableRefCreate> form={form} layout="vertical">

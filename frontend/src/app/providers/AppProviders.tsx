@@ -27,7 +27,7 @@ function makeClient() {
 export function AppProviders({ children }: { children: ReactNode }) {
   const [client] = useState(makeClient);
   return (
-    <ConfigProvider locale={zhCN} theme={buildTheme()}>
+    <ConfigProvider locale={zhCN} theme={buildTheme()} button={{ autoInsertSpace: false }}>
       <AntdApp>
         <QueryClientProvider client={client}>{children}</QueryClientProvider>
       </AntdApp>

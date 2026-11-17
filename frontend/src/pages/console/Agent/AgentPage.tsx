@@ -42,7 +42,7 @@ import { projectsApi } from '@/features/projects/api/projects';
 import { notificationChannelsApi } from '@/features/notifications/api/notificationChannels';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
-import { EmptyState, ErrorState } from '@/shared/ui/PageState';
+import { EmptyState, ErrorState, PageContainer } from '@/shared/ui/PageState';
 import type { AgentAction, AgentWorkspace } from '@/features/agent/contracts';
 import { MessageBubble, STAGE_LABELS } from './AgentPanels';
 import { AgentWorkspacePanel } from './AgentWorkspacePanel';
@@ -53,7 +53,7 @@ import { explicitSelection } from './agentSelection.mjs';
 export function AgentPage() {
   const { currentProjectId } = useConsoleScope();
   if (currentProjectId == null) {
-    return <div style={{ padding: 24 }}><EmptyState description="请先在顶部选择一个项目" /></div>;
+    return <PageContainer><EmptyState description="请先在顶部选择一个项目" /></PageContainer>;
   }
   return <AgentProjectPage key={currentProjectId} projectId={currentProjectId} />;
 }
@@ -414,7 +414,7 @@ function AgentProjectPage({ projectId: currentProjectId }: AgentProjectPageProps
 
   // ---- 渲染 ----
   return (
-    <div className="agent-workspace-shell" ref={workspaceShellRef}>
+    <div className="agent-workspace-shell page-container" ref={workspaceShellRef}>
       <div className="agent-workspace-toolbar" aria-label="工作区布局">
         <Button aria-controls="agent-workspace-sessions" aria-expanded={!sessionsCollapsed} onClick={() => setSessionsCollapsed((value) => !value)}>
           {sessionsCollapsed ? '显示会话' : '隐藏会话'}

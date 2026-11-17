@@ -176,7 +176,7 @@ export function ExecutionDetailDrawer({
       open={open}
       onClose={onClose}
       width="72%"
-      destroyOnClose
+      destroyOnHidden
     >
       {!open ? null : (
         <Spin spinning={query.isFetching && !detail}>

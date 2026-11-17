@@ -263,7 +263,7 @@ export function ConsoleTestPlansPage() {
         confirmLoading={createMutation.isPending || updateMutation.isPending}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form<PlanFormValues> form={form} layout="vertical" initialValues={{ status: 'DRAFT', execution_mode: 'MANUAL' }}>
@@ -377,7 +377,7 @@ function PlanSuitesDrawer({
   ];
 
   return (
-    <Drawer title="管理计划套件" width={640} open={planId != null} onClose={onClose} destroyOnClose>
+    <Drawer title="管理计划套件" width={640} open={planId != null} onClose={onClose} destroyOnHidden>
       <div className="member-add-row">
         <Select
           className="member-add-row__select"

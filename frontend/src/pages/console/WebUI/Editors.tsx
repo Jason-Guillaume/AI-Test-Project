@@ -9,7 +9,7 @@ export function PageEditor({ initial, busy, onSave, onClose }: {
   initial: WebPage | null; busy: boolean; onSave: (body: WebPageInput) => void; onClose: () => void;
 }) {
   const [form] = Form.useForm<WebPageInput>();
-  return <Modal open title={initial ? '编辑页面对象' : '新增页面对象'} width={850} onCancel={onClose} confirmLoading={busy} onOk={() => form.submit()} destroyOnClose>
+  return <Modal open title={initial ? '编辑页面对象' : '新增页面对象'} width={850} onCancel={onClose} confirmLoading={busy} onOk={() => form.submit()} destroyOnHidden>
     <Form form={form} layout="vertical" initialValues={initial ?? { path: '/', elements: [] }} onFinish={body => onSave({ ...body, revision: initial?.revision })}>
       <Form.Item name="name" label="页面名称" rules={[{ required: true }]}><Input /></Form.Item>
       <Form.Item name="path" label="页面路径" rules={[{ required: true }]}><Input placeholder="/login" /></Form.Item>
@@ -33,7 +33,7 @@ export function CaseEditor({ initial, pages, auth, busy, onSave, onClose }: {
   onSave: (body: WebCaseInput) => void; onClose: () => void;
 }) {
   const [form] = Form.useForm<WebCaseInput>();
-  return <Modal open title={initial ? `编辑 Web 用例 #${initial.id}` : '新增 Web 用例'} width={1100} onCancel={onClose} confirmLoading={busy} onOk={() => form.submit()} destroyOnClose>
+  return <Modal open title={initial ? `编辑 Web 用例 #${initial.id}` : '新增 Web 用例'} width={1100} onCancel={onClose} confirmLoading={busy} onOk={() => form.submit()} destroyOnHidden>
     <Alert type="info" showIcon message="保存会使旧确认失效。先审核全部步骤，再人工确认并调试；敏感值引用 ${data.auth_password} 等变量。" style={{ marginBottom: 16 }} />
     <Form form={form} layout="vertical" initialValues={initial ?? { timeout_ms: 30000, total_timeout_ms: 120000, steps: [{ name: '打开页面', operation: 'NAVIGATE', value: '/' }] }}
       onFinish={body => onSave({ ...body, revision: initial?.revision, auth_profile_id: body.auth_profile_id ?? null,
@@ -56,7 +56,7 @@ export function AuthEditor({ initial, environments, busy, onSave, onClose }: {
   onSave: (body: unknown) => void; onClose: () => void;
 }) {
   const [form] = Form.useForm();
-  return <Modal open title={initial ? '替换认证配置（完整填写）' : '新增认证配置'} width={760} onCancel={onClose} confirmLoading={busy} onOk={() => form.submit()} destroyOnClose>
+  return <Modal open title={initial ? '替换认证配置（完整填写）' : '新增认证配置'} width={760} onCancel={onClose} confirmLoading={busy} onOk={() => form.submit()} destroyOnHidden>
     <Space direction="vertical" style={{ width: '100%' }}>
       <Alert type="info" showIcon message="支持测试账号、Cookie、Local Storage、JWT。飞书扫码请在人工浏览器完成登录，再导入该测试环境的 Playwright storage_state。凭据加密保存，历史值不回显。" />
       <Form form={form} layout="vertical" style={{ width: '100%' }} initialValues={{ name: initial?.name, environment_id: initial?.environment_id, storage_json: '{"cookies":[],"origins":[]}', jwt_storage_key: 'access_token', ttl_hours: 24 }}

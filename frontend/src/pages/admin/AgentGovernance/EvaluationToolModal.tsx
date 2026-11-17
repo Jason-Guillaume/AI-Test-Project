@@ -36,7 +36,7 @@ export function EvaluationToolModal({ agent, onClose }: { agent: AgentDefinition
     } catch (err) { setError(getErrorMessage(err)); }
     finally { setBusy(false); }
   };
-  return <Modal title={`${agent?.name ?? ''} · 评测工具`} open={Boolean(agent)} onCancel={onClose} width={760} footer={<Button type="primary" loading={busy} disabled={!agent?.is_enabled} onClick={invoke}>运行评测</Button>} destroyOnClose>
+  return <Modal title={`${agent?.name ?? ''} · 评测工具`} open={Boolean(agent)} onCancel={onClose} width={760} footer={<Button type="primary" loading={busy} disabled={!agent?.is_enabled} onClick={invoke}>运行评测</Button>} destroyOnHidden>
     <Alert type="info" showIcon message="只读评测，不启动外部推理。项目与资产 ID 请替换为实际值；参数样例仅用于说明输入格式。" style={{ marginBottom: 16 }} />
     <Form form={form} layout="vertical">
       <Form.Item name="project_id" label="项目 ID" rules={[{ required: true }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item>

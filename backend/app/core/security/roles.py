@@ -5,9 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.models.identity import Organization, OrganizationMember, User
@@ -96,14 +94,21 @@ def organization_role(db: Session, org_id: int, user: User) -> str | None:
     """返回用户在组织内的有效角色，非成员返回 None。"""
     if is_platform_admin(user):
         return ORG_ROLE_PLATFORM_ADMIN
-    organization = db.get(Organization, org_id)
+    organization = db.query(Organization).filter(
+        Organization.id == org_id,
+        Organization.deleted_at.is_(None),
+    ).first()
     if organization is None:
         return None
     if organization.owner_id == user.id:
         return ORG_ROLE_OWNER
     row = (
         db.query(OrganizationMember.role)
-        .filter(OrganizationMember.organization_id == org_id, OrganizationMember.user_id == user.id)
+        .filter(
+            OrganizationMember.organization_id == org_id,
+            OrganizationMember.user_id == user.id,
+            OrganizationMember.deleted_at.is_(None),
+        )
         .first()
     )
     return row[0] if row else None
@@ -151,7 +156,11 @@ def project_role_for(db: Session, project: Project, user: User) -> str | None:
             return PROJECT_ROLE_OWNER
     row = (
         db.query(ProjectMember.role)
-        .filter(ProjectMember.project_id == project.id, ProjectMember.user_id == user.id)
+        .filter(
+            ProjectMember.project_id == project.id,
+            ProjectMember.user_id == user.id,
+            ProjectMember.deleted_at.is_(None),
+        )
         .first()
     )
     if row is None:
@@ -199,10 +208,16 @@ def accessible_organization_ids(db: Session, user: User) -> list[int] | None:
     """返回用户可见的组织 ID 列表；平台管理员返回 None 表示不过滤。"""
     if is_platform_admin(user):
         return None
+    member_orgs = db.query(OrganizationMember.organization_id).filter(
+        OrganizationMember.user_id == user.id,
+        OrganizationMember.deleted_at.is_(None),
+    )
     rows = (
         db.query(Organization.id)
-        .outerjoin(OrganizationMember, OrganizationMember.organization_id == Organization.id)
-        .filter(or_(Organization.owner_id == user.id, OrganizationMember.user_id == user.id))
+        .filter(
+            Organization.deleted_at.is_(None),
+            or_(Organization.owner_id == user.id, Organization.id.in_(member_orgs)),
+        )
         .distinct()
         .all()
     )
@@ -218,7 +233,8 @@ def accessible_project_ids(db: Session, user: User, *, include_deleted: bool = F
 
     也就是说组织里的普通成员只能看到自己被分配（或自己负责）的项目，
     不会因为「在同一个组织」就自动看到组织内全部项目；而组织 owner/admin
-    可以看到本组织的全部项目。历史残留的跨组织项目成员行不会生效。
+    可以看到本组织的全部项目。历史残留的跨组织项目成员行不会生效，用户退出组织
+    后即使曾留有项目成员行也立刻失去可见性。
     """
     if is_platform_admin(user):
         return None
@@ -226,31 +242,33 @@ def accessible_project_ids(db: Session, user: User, *, include_deleted: bool = F
     query = db.query(Project.id)
     if include_deleted:
         query = query.execution_options(include_deleted=True)
+    member_project_ids = db.query(ProjectMember.project_id).filter(
+        ProjectMember.user_id == user.id,
+        ProjectMember.deleted_at.is_(None),
+    )
+    admin_org_ids = db.query(OrganizationMember.organization_id).filter(
+        OrganizationMember.user_id == user.id,
+        OrganizationMember.deleted_at.is_(None),
+        OrganizationMember.role.in_([ORG_ROLE_OWNER, ORG_ROLE_ADMIN]),
+    )
+    owner_org_ids = db.query(Organization.id).filter(
+        Organization.owner_id == user.id,
+        Organization.deleted_at.is_(None),
+    )
     rows = (
         query
-        .outerjoin(
-            ProjectMember,
-            and_(
-                ProjectMember.project_id == Project.id,
-                ProjectMember.user_id == user.id,
-            ),
-        )
         .filter(
             or_(
                 Project.organization_id.is_(None),
-                Project.organization_id.in_(org_ids),
+                Project.organization_id.in_(org_ids or [-1]),
             )
         )
         .filter(
             or_(
                 Project.owner_id == user.id,
-                ProjectMember.id.isnot(None),
-                Project.organization_id.in_(
-                    db.query(OrganizationMember.organization_id).filter(
-                        OrganizationMember.user_id == user.id,
-                        OrganizationMember.role.in_([ORG_ROLE_OWNER, ORG_ROLE_ADMIN]),
-                    )
-                ),
+                Project.id.in_(member_project_ids),
+                Project.organization_id.in_(admin_org_ids),
+                Project.organization_id.in_(owner_org_ids),
             )
         )
         .distinct()

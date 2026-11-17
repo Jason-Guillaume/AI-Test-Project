@@ -46,12 +46,15 @@ import { PageHeader } from '@/shared/ui/PageHeader';
  */
 export function AdminEnvironmentsPage() {
   return (
-    <Tabs
-      items={[
-        { key: 'project', label: '项目环境', children: <ProjectEnvironmentsTab /> },
-        { key: 'catalog', label: '平台环境类型', children: <EnvironmentCatalogTab /> },
-      ]}
-    />
+    <PageContainer>
+      <PageHeader title="环境配置" subtitle="按项目隔离执行环境与目标服务" />
+      <Tabs
+        items={[
+          { key: 'project', label: '项目环境', children: <ProjectEnvironmentsTab /> },
+          { key: 'catalog', label: '平台环境类型', children: <EnvironmentCatalogTab /> },
+        ]}
+      />
+    </PageContainer>
   );
 }
 
@@ -176,36 +179,24 @@ function ProjectEnvironmentsTab() {
     },
   ];
 
-  // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试
+  // 加载中：Empty/Loading/Error 直接渲染在 PageContainer 内部，避免遮蔽 PageHeader 与嵌套内边距
   if (projectsQuery.isPending) return <LoadingState />;
-  if (projectsQuery.isError)
-    return (
-      <PageContainer>
-        <ErrorState error={projectsQuery.error} onRetry={projectsQuery.refetch} />
-      </PageContainer>
-    );
+  if (projectsQuery.isError) return <ErrorState error={projectsQuery.error} onRetry={projectsQuery.refetch} />;
   const projects = projectsQuery.data.items;
-  if (projects.length === 0)
-    return <PageContainer><EmptyState description="暂无项目，请先创建项目后再配置环境" /></PageContainer>;
+  if (projects.length === 0) return <EmptyState description="暂无项目，请先创建项目后再配置环境" />;
   if (listQuery.isPending) return <LoadingState />;
-  if (listQuery.isError)
-    return (
-      <PageContainer>
-        <ErrorState error={listQuery.error} onRetry={listQuery.refetch} />
-      </PageContainer>
-    );
+  if (listQuery.isError) return <ErrorState error={listQuery.error} onRetry={listQuery.refetch} />;
 
   const data: Paginated<Environment> = listQuery.data;
 
   return (
-    <PageContainer>
-      <PageHeader title="环境配置" subtitle="按项目隔离执行环境与目标服务" />
+    <>
       <Space wrap className="ui-list-toolbar"
         style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}
       >
         <Select
           value={projectId}
-          style={{ width: 320 }}
+          style={{ width: 320, maxWidth: '100%' }}
           placeholder="选择项目"
           onChange={(value) => {
             setSelectedProjectId(value);
@@ -252,7 +243,7 @@ function ProjectEnvironmentsTab() {
           }}
         />
       )}
-    </PageContainer>
+    </>
   );
 }
 
@@ -327,10 +318,10 @@ function EnvironmentCatalogTab() {
       ),
     },
   ];
-  if (listQuery.isPending) return <PageContainer><LoadingState /></PageContainer>;
-  if (listQuery.isError) return <PageContainer><ErrorState error={listQuery.error} onRetry={listQuery.refetch} /></PageContainer>;
+  if (listQuery.isPending) return <LoadingState />;
+  if (listQuery.isError) return <ErrorState error={listQuery.error} onRetry={listQuery.refetch} />;
   return (
-    <PageContainer>
+    <>
       <PageHeader title="平台环境类型" subtitle="环境类型目录与项目环境绑定分开管理；停用不会删除历史配置。" />
       <Space wrap className="ui-list-toolbar" style={{ marginBottom: 12 }}>
         <Button type="primary" onClick={() => setCreating(true)}>新增环境类型</Button>
@@ -349,7 +340,7 @@ function EnvironmentCatalogTab() {
       />
       {creating && <EnvironmentFormModal title="新增平台环境类型" catalogMode loading={createMutation.isPending} onCancel={() => setCreating(false)} onSubmit={(body) => createMutation.mutate(body as EnvironmentCreate)} />}
       {editing && <EnvironmentFormModal title={`编辑平台环境类型：${editing.name}`} editing={editing} catalogMode loading={updateMutation.isPending} onCancel={() => setEditing(null)} onSubmit={(body) => updateMutation.mutate({ name: editing.name, body: body as EnvironmentUpdate })} />}
-    </PageContainer>
+    </>
   );
 }
 
@@ -384,7 +375,7 @@ function EnvironmentFormModal({
       width={560}
       confirmLoading={loading}
       onCancel={onCancel}
-      destroyOnClose
+      destroyOnHidden
       onOk={() => form.validateFields().then((values) => {
         let default_headers: Record<string, string>;
         try {

@@ -152,7 +152,7 @@ function ToolDetailModal({ tool, agents, loading, restoring, onClose, onRestore,
     open={Boolean(tool)}
     onClose={requestClose}
     width={800}
-    destroyOnClose
+    destroyOnHidden
     dirty={false}
     extra={tool ? <Space><Tag color={tool.risk === '高风险' ? 'red' : tool.risk === '执行' ? 'orange' : tool.risk === '写入' ? 'blue' : 'default'}>{tool.risk}</Tag><Tag color={runtime?.status === 'active' ? 'green' : 'orange'}>{runtime?.status_label}</Tag></Space> : null}
     footer={<div className="editor-drawer-footer"><Button onClick={onRestore} loading={restoring}>恢复默认</Button><Space wrap><Button onClick={requestClose}>关闭</Button><Button type="primary" loading={loading} onClick={() => form.submit()}>保存配置</Button></Space></div>}

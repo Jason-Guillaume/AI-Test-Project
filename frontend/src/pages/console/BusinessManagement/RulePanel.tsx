@@ -209,7 +209,7 @@ function RuleFormModal({
   submitting: boolean;
 }) {
   return (
-    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnClose width={560}>
+    <Modal title={title} open={open} onCancel={onClose} onOk={onSubmit} confirmLoading={submitting} okText="保存" cancelText="取消" destroyOnHidden width={560}>
       <Form<BusinessRuleCreate> form={form} layout="vertical" initialValues={{ rule_type: 'GENERAL', enabled: true }}>
         <Form.Item name="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]}>
           <Input maxLength={200} />

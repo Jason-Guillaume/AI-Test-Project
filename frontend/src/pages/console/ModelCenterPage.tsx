@@ -43,6 +43,12 @@ const CAPABILITY_LABELS: Record<string, string> = {
   overlap_intervals: '重叠发言区间',
 };
 
+const DIAGNOSTIC_ROLES = new Set(['admin', 'owner', 'editor']);
+
+function canDiagnoseProject(role?: string | null): boolean {
+  return Boolean(role && DIAGNOSTIC_ROLES.has(role.toLocaleLowerCase()));
+}
+
 const SILICONFLOW_CONFIG = {
   timeout_seconds: 180, max_response_bytes: 8000000,
   max_audio_bytes: 52428800, audio_download_timeout_seconds: 60,
@@ -222,13 +228,13 @@ export function ModelCenterPage() {
     enabled: true,
     queryFn: ({ signal }) => modelCenterApi.list(resourceProjectId, category, signal),
   });
-  const diagnosticProjectId = Form.useWatch('project_id', diagnosticForm);
+  const [diagnosticProjectId, setDiagnosticProjectId] = useState<number | undefined>();
   const diagnosticProjectsQuery = useQuery({
     queryKey: ['model-center', 'diagnostic-projects', user?.id],
     enabled: Boolean(diagnosticTarget),
     queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 100 })),
   });
-  const audioProjectId = Number.isInteger(diagnosticProjectId) && diagnosticProjectId > 0 ? diagnosticProjectId : null;
+  const audioProjectId = diagnosticProjectId != null && Number.isInteger(diagnosticProjectId) && diagnosticProjectId > 0 ? diagnosticProjectId : null;
   const audioQuery = useQuery({
     queryKey: ['project', audioProjectId, 'asr', 'audio', 1, 200],
     enabled: Boolean(audioProjectId && diagnosticTarget && diagnosticTarget.category !== 'TEXT_GENERATION'),
@@ -261,8 +267,9 @@ export function ModelCenterPage() {
   useEffect(() => {
     if (!diagnosticTarget || !diagnosticProjectsQuery.isSuccess || !diagnosticProjectId) return;
     const canEditProject = diagnosticProjectsQuery.data.items.some((project) => project.id === diagnosticProjectId
-      && ['owner', 'editor'].includes((project.my_role || '').toLocaleLowerCase()));
+      && canDiagnoseProject(project.my_role));
     if (!canEditProject) {
+      setDiagnosticProjectId(undefined);
       diagnosticForm.setFieldValue('project_id', undefined);
       diagnosticForm.setFieldValue('audio_id', undefined);
       lastDiagnosticProjectIdRef.current = undefined;
@@ -368,6 +375,7 @@ export function ModelCenterPage() {
   const openDiagnostic = (resource: ModelResource) => {
     diagnosticSubmissionRef.current = false;
     lastDiagnosticProjectIdRef.current = currentProjectId ?? undefined;
+    setDiagnosticProjectId(currentProjectId ?? undefined);
     setDiagnosticRunId(null);
     setDiagnosticTarget(resource);
     diagnosticForm.resetFields();
@@ -509,7 +517,7 @@ export function ModelCenterPage() {
   return <PageContainer>
     <PageHeader title="统一模型中心" subtitle="全平台统一维护模型连接、参数方案和默认策略；启用后各项目可用" />
     {!isPlatformAdmin && !currentProjectId && <Alert type="info" showIcon message="模型由平台管理员统一维护，启用后即可使用。" />}
-    <Card bordered={false}>
+    <Card variant="borderless">
       <Tabs activeKey={category} onChange={(key) => setCategory(key as ModelCategory)} items={[
         { key: 'TEXT_GENERATION', label: '文本推理' }, { key: 'ASR', label: 'ASR 转写' }, { key: 'DIARIZATION', label: '说话人分段' },
       ]} />
@@ -581,7 +589,7 @@ export function ModelCenterPage() {
           <Descriptions.Item label="Model ID">{selectedResource.current_revision?.model_name ?? '—'}</Descriptions.Item>
           <Descriptions.Item label="协议 / 适配器">{selectedResource.current_revision?.adapter_key ?? '—'}</Descriptions.Item>
           <Descriptions.Item label="可见范围">{selectedResource.visibility === 'PLATFORM' ? '平台共享' : `项目私有 · #${selectedResource.project_id}`}</Descriptions.Item>
-          <Descriptions.Item label="当前修订">{selectedResource.current_revision ? `v${selectedResource.current_revision.version}` : '—'}</Descriptions.Item>
+          <Descriptions.Item label="当前修订">{selectedResource.current_revision ? `修订 v${selectedResource.current_revision.version}` : '—'}</Descriptions.Item>
           <Descriptions.Item label="能力">{selectedResource.current_revision?.capabilities.map((item) => CAPABILITY_LABELS[item] ?? item).join('、') || '未声明'}</Descriptions.Item>
         </Descriptions> },
         { key: 'connection', label: '连接配置', children: <>
@@ -641,9 +649,13 @@ export function ModelCenterPage() {
           <Input.TextArea rows={8} spellCheck={false} />
         </Form.Item>
         <Space style={{ display: 'flex' }} align="start">
-          <Form.Item name="capabilities" label="适配器可处理的能力声明" style={{ flex: 1 }}>
-            <Checkbox.Group options={(adapters.find((item) => item.value === resourceForm.getFieldValue('adapter_key'))?.capabilities || [])
-              .map((item) => ({ value: item, label: CAPABILITY_LABELS[item] || item }))} />
+          <Form.Item noStyle shouldUpdate={(previous, next) => previous.adapter_key !== next.adapter_key}>
+            {({ getFieldValue }) => (
+              <Form.Item name="capabilities" label="适配器可处理的能力声明" style={{ flex: 1 }}>
+                <Checkbox.Group options={(adapters.find((item) => item.value === getFieldValue('adapter_key'))?.capabilities || [])
+                  .map((item) => ({ value: item, label: CAPABILITY_LABELS[item] || item }))} />
+              </Form.Item>
+            )}
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked"><Switch /></Form.Item>
         </Space>
@@ -744,12 +756,13 @@ export function ModelCenterPage() {
     </Modal>
 
     <Modal title={`诊断「${diagnosticTarget?.display_name || ''}」`} open={Boolean(diagnosticTarget)} onCancel={() => {
-      if (!diagnosticMutation.isPending) setDiagnosticTarget(null);
+      if (!diagnosticMutation.isPending) { setDiagnosticTarget(null); setDiagnosticProjectId(undefined); }
     }} footer={null} destroyOnHidden>
       <Alert type="warning" showIcon style={{ marginBottom: 16 }} message="诊断会真实调用所选模型，可能产生费用。页面打开和保存配置不会调用模型。" />
       <Form form={diagnosticForm} layout="vertical" onValuesChange={(changedValues) => {
         if (!Object.prototype.hasOwnProperty.call(changedValues, 'project_id')) return;
         const nextProjectId = changedValues.project_id as number | undefined;
+        setDiagnosticProjectId(nextProjectId);
         const previousProjectId = lastDiagnosticProjectIdRef.current;
         if (previousProjectId && previousProjectId !== nextProjectId) {
           queryClient.removeQueries({ queryKey: ['project', previousProjectId, 'asr', 'audio'] });
@@ -760,7 +773,7 @@ export function ModelCenterPage() {
         if (!values.confirm_model_call) { message.warning('请先确认模型调用'); return; }
         const projectId = Number(values.project_id);
         const editorProject = diagnosticProjectsQuery.data?.items.some((project) => project.id === projectId
-          && ['owner', 'editor'].includes((project.my_role || '').toLocaleLowerCase()));
+          && canDiagnoseProject(project.my_role));
         if (!Number.isInteger(projectId) || projectId <= 0 || !editorProject) {
           message.warning('请选择一个你有编辑权限的项目');
           return;
@@ -773,7 +786,7 @@ export function ModelCenterPage() {
           <Select showSearch optionFilterProp="label" loading={diagnosticProjectsQuery.isPending}
             disabled={diagnosticProjectsQuery.isPending || diagnosticProjectsQuery.isError}
             options={(diagnosticProjectsQuery.data?.items || [])
-              .filter((project) => ['owner', 'editor'].includes((project.my_role || '').toLocaleLowerCase()))
+              .filter((project) => canDiagnoseProject(project.my_role))
               .map((project) => ({ value: project.id, label: `${project.name} · ${project.my_role}` }))}
             placeholder="选择你有编辑权限的项目" />
         </Form.Item>

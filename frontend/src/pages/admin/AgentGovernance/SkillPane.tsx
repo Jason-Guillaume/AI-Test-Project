@@ -416,9 +416,9 @@ export function SkillPane() {
         </>}
       </main>
     </div>
-    <SkillFormModal key={creating ? 'new' : 'closed'} open={creating} loading={createMutation.isPending} agents={agentRows} mcpOptions={mcpOptions} onOpenHistory={() => {}} onDirtyChange={setCreatingDirty} onCancel={() => { setCreating(false); setCreatingDirty(false); }} onSubmit={(body) => createMutation.mutate(body)} />
+    <SkillFormModal key={creating ? 'skill-new' : 'skill-closed'} open={creating} loading={createMutation.isPending} agents={agentRows} mcpOptions={mcpOptions} onOpenHistory={() => {}} onDirtyChange={setCreatingDirty} onCancel={() => { setCreating(false); setCreatingDirty(false); }} onSubmit={(body) => createMutation.mutate(body)} />
     <DefinitionHistoryModal
-      key={history ? `${history.kind}-${history.id}` : 'closed'}
+      key={history ? `history-${history.kind}-${history.id}` : 'history-closed'}
       target={history}
       onClose={() => setHistory(null)}
       onRestored={(definition) => {
@@ -558,7 +558,7 @@ function SkillFormModal({ open, initial, loading, agents, mcpOptions, onOpenHist
     open={open}
     onClose={requestClose}
     width={760}
-    destroyOnClose
+    destroyOnHidden
     extra={initial ? <Space><Tag color={initial.is_enabled ? 'green' : 'default'}>{initial.is_enabled ? '启用' : '停用'}</Tag><Tag>v{initial.version}</Tag></Space> : null}
     footer={<div className="editor-drawer-footer">
       <Space wrap>{initial && <Button onClick={onOpenHistory}>版本历史</Button>}{initial && <Button onClick={() => { setFiles(defaultFiles); form.setFieldsValue({ name: initial.name, description: initial.description, is_enabled: initial.is_enabled, mcp_tool_keys_json: initial.mcp_tool_keys_json }); }}>放弃未保存修改</Button>}</Space>

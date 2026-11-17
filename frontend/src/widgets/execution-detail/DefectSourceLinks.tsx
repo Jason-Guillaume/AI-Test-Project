@@ -38,7 +38,7 @@ export function DefectSourceLinks({ sourceType, sourceId }: { sourceType: Defect
       {(links.data?.length ?? 0) === 0 && <Typography.Text type="secondary">暂无</Typography.Text>}
       <Button size="small" onClick={() => { form.resetFields(); setRequestKey(crypto.randomUUID()); setOpen(true); }}>创建或关联缺陷</Button>
     </Space>
-    <Modal title="确认缺陷关联" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={mutation.isPending} destroyOnClose>
+    <Modal title="确认缺陷关联" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} confirmLoading={mutation.isPending} destroyOnHidden>
       <Alert type="info" showIcon message={sourceType === 'SECURITY_FINDING' ? '来源为安全疑似问题，关联缺陷不会自动确认漏洞。' : '来源为失败的用例执行。'} description="不会自动复制请求、凭据或证据；请人工填写可安全展示的信息。" />
       <Form form={form} layout="vertical" initialValues={{ mode: 'create' }} onFinish={values => mutation.mutate(values)}>
         <Form.Item name="mode" label="操作"><Select options={[{ value: 'create', label: '新建缺陷' }, { value: 'link', label: '关联已有缺陷' }]} /></Form.Item>

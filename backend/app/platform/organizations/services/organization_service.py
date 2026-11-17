@@ -217,7 +217,6 @@ def upsert_member(
     )
     if row is not None and row.deleted_at is not None:
         from app.lifecycle.service import clear_soft_delete
-        from app.core.models.identity import User
         actor = db.get(User, organization.owner_id)
         if actor is not None:
             clear_soft_delete(db, "organization_member", row, actor)

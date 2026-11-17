@@ -5,7 +5,8 @@ import { App, Button, Input, Tag, Typography } from 'antd';
 import { isAxiosError } from 'axios';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { publicDefectApi, readShareToken, type PublicDefect } from '@/features/defects/api/publicShare';
+import { publicDefectApi, type PublicDefect } from '@/features/defects/api/publicShare';
+import { captureShareToken, forgetShareToken } from '@/features/defects/api/shareToken';
 import { getErrorMessage } from '@/shared/api/client';
 import './share.css';
 
@@ -22,6 +23,11 @@ function friendlyError(error: unknown): string {
   return getErrorMessage(error, '分享链接暂时无法打开');
 }
 
+function isTokenRejected(error: unknown): boolean {
+  if (!isAxiosError(error) || !error.response) return false;
+  return [401, 403, 404, 410].includes(error.response.status);
+}
+
 function textOf(value: unknown): string {
   if (value == null || value === '') return '未记录';
   if (typeof value === 'string') return value;
@@ -29,12 +35,17 @@ function textOf(value: unknown): string {
 }
 
 /**
- * 公开缺陷页。加载时读取 Fragment 凭证；没有凭证时不请求接口。
+ * 公开缺陷页。按 shareId 隔离视图；加载时采集并立即清理 Fragment 凭证，不写入持久化存储。
  */
 export function PublicDefectSharePage() {
-  const { message, modal } = App.useApp();
   const { shareId = '' } = useParams();
-  const [token] = useState(readShareToken);
+  return <PublicDefectShareView key={shareId} shareId={shareId} />;
+}
+
+function PublicDefectShareView({ shareId }: { shareId: string }) {
+  const { message, modal } = App.useApp();
+  const [tokenState] = useState(() => captureShareToken(shareId));
+  const token = tokenState.status === 'present' ? tokenState.token : '';
   const [data, setData] = useState<PublicDefect | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,9 +71,9 @@ export function PublicDefectSharePage() {
   }, []);
 
   useEffect(() => {
-    if (!shareId || !token) {
+    if (!shareId || tokenState.status !== 'present') {
       setLoading(false);
-      setError('分享链接无效或无权访问');
+      setError('未检测到访问凭证，请重新使用飞书分享链接进入；为保障安全，页面刷新不会保留凭证。');
       return;
     }
     let cancelled = false;
@@ -74,6 +85,7 @@ export function PublicDefectSharePage() {
         publicDefectApi.recordView(shareId, token).catch(() => undefined);
       })
       .catch((reason) => {
+        if (isTokenRejected(reason)) forgetShareToken(shareId);
         if (!cancelled) setError(friendlyError(reason));
       })
       .finally(() => {
@@ -82,13 +94,13 @@ export function PublicDefectSharePage() {
     return () => {
       cancelled = true;
     };
-  }, [shareId, token]);
+  }, [shareId, token, tokenState.status]);
 
   /**
    * 二次确认后提交已解决。提交期间按钮保持 loading，避免重复点击。
    */
   function submit() {
-    if (!data?.can_submit) return;
+    if (!data?.can_submit || !token) return;
     const repair = description.trim();
     if (!repair) {
       message.warning('请填写修复说明');
@@ -112,6 +124,7 @@ export function PublicDefectSharePage() {
           setData(latest);
           message.success(result.message);
         } catch (reason) {
+          if (isTokenRejected(reason)) forgetShareToken(shareId);
           message.error(friendlyError(reason));
         } finally {
           setSubmitting(false);
@@ -127,7 +140,12 @@ export function PublicDefectSharePage() {
         <header className="public-defect-card">
           <Typography.Text type="secondary">测试开发平台 · 免登录缺陷详情</Typography.Text>
           {loading && <Typography.Title level={3}>正在读取缺陷</Typography.Title>}
-          {!loading && error && <Typography.Title level={3}>{error}</Typography.Title>}
+          {!loading && error && (
+            <>
+              <Typography.Title level={3} style={{ marginBottom: 8 }}>无法打开分享链接</Typography.Title>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{error}</Typography.Paragraph>
+            </>
+          )}
           {data && content && <>
             <Typography.Title level={3} style={{ marginBottom: 8 }}>{content.bug_no || '缺陷'} {content.title || ''}</Typography.Title>
             <div className="public-defect-meta">

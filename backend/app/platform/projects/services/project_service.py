@@ -19,21 +19,17 @@ from app.platform.projects.schemas import (
     ProjectMemberCreate,
     ProjectUpdate,
 )
-from app.core.models.identity import Organization, User
+from app.core.models.identity import User
 from app.core.models.project import Project, ProjectMember, ProjectOutboundTarget
 from app.core.http.errors import bad_request, conflict, forbidden, not_found
 from app.core.security.roles import (
-    ORG_ADMIN_ROLES,
-    PROJECT_ROLE_ADMIN,
     PROJECT_ROLE_EDITOR,
-    PROJECT_ROLE_MEMBER,
-    PROJECT_ROLE_VIEWER,
     accessible_project_ids,
     has_project_role,
-    is_org_admin,
     organization_role,
     project_role_for,
 )
+from app.platform.organizations.services.organization_service import require_organization_admin
 
 
 class ProjectAdminService:
@@ -103,15 +99,8 @@ class ProjectAdminService:
 
         organization_id = body.organization_id
         if organization_id is not None:
-            organization = db.get(Organization, organization_id)
-            if organization is None:
-                raise not_found("组织不存在")
-            # 非平台管理员只能把项目放到自己所在的组织中。
-            if organization.owner_id != actor.id:
-                role = organization_role(db, organization_id, actor)
-                # 组织边界：跨组织挂载项目需要组织管理员身份，否则任何人都能往任意组织塞项目。
-                if role not in ORG_ADMIN_ROLES:
-                    raise forbidden("只能把项目创建到自己管理的组织中")
+            # 非成员返回 404 隐藏组织存在性，非组织管理员返回 403。
+            require_organization_admin(db, organization_id, actor)
 
         project = Project(
             name=name,
@@ -157,15 +146,8 @@ class ProjectAdminService:
             data["description"] = data["description"].strip() or None
 
         if "organization_id" in data and data["organization_id"] is not None:
-            organization = db.get(Organization, data["organization_id"])
-            if organization is None:
-                raise not_found("组织不存在")
-            if organization.owner_id != actor.id:
-                org_role = organization_role(db, organization.id, actor)
-                # 跨组织转移同样受组织边界约束，防止把项目挪到自己无权管理的组织。
-                if org_role not in ORG_ADMIN_ROLES:
-                    raise forbidden("只能把项目转移到自己管理的组织")
-            data["organization_id"] = organization.id
+            require_organization_admin(db, data["organization_id"], actor)
+            data["organization_id"] = int(data["organization_id"])
         elif "organization_id" in data:
             data["organization_id"] = None
 

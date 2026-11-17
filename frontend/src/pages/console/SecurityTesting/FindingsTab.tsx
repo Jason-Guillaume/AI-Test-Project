@@ -169,7 +169,7 @@ export function FindingsTab({ projectId }: { projectId: number }) {
         open={drawer != null}
         onClose={() => { setDrawer(null); if (requestedFindingId > 0) { const next = new URLSearchParams(searchParams); next.delete('findingId'); setSearchParams(next, { replace: true }); } }}
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         {drawer && (
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>

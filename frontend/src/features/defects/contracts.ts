@@ -113,6 +113,8 @@ export interface DefectSharePreview {
   allow_resolve: boolean;
   visible_fields: string[];
   message_preview: string;
+  public_url_valid?: boolean;
+  public_url_error?: string | null;
 }
 
 /** 分享历史中的一条记录，不含可再次打开页面的凭证。 */

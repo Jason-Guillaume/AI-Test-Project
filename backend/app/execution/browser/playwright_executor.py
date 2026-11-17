@@ -7,6 +7,8 @@ from __future__ import annotations
 import base64
 import io
 import json
+import os
+import sys
 import tempfile
 import threading
 import time
@@ -20,6 +22,43 @@ from app.execution.browser.contracts import WebStep
 
 # 独立于 Security/ZAP 的资源池，进程内最多两个浏览器；每次执行仍创建全新进程和上下文。
 _SLOTS = threading.BoundedSemaphore(2)
+
+
+def chromium_launch_args(policy) -> list[str]:
+    """Build deterministic, container-safe Chromium launch flags."""
+    args = [
+        "--no-proxy-server",
+        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        "--disable-dev-shm-usage",
+    ]
+    no_sandbox_env = os.environ.get("PLAYWRIGHT_NO_SANDBOX", "").strip().lower()
+    if no_sandbox_env not in {"0", "false", "no"} and sys.platform.startswith("linux"):
+        if no_sandbox_env in {"1", "true", "yes"} or os.path.exists("/.dockerenv") or getattr(os, "geteuid", lambda: 1)() == 0:
+            args.extend(["--no-sandbox", "--disable-setuid-sandbox"])
+    if policy is not None and getattr(policy, "resolver_rules", None):
+        args.append("--host-resolver-rules=" + ", ".join(policy.resolver_rules))
+    return args
+
+
+def classify_browser_error(exc: BaseException) -> tuple[str, str]:
+    """Map browser runtime failures to actionable codes without leaking host paths or secrets."""
+    if isinstance(exc, TimeoutError) or "Timeout" in type(exc).__name__:
+        return "WEB_TIMEOUT", f"浏览器操作超时（{type(exc).__name__}）"
+    detail = str(exc)
+    if any(
+        marker in detail
+        for marker in (
+            "Executable doesn't exist",
+            "Host system is missing dependencies",
+            "error while loading shared libraries",
+            "playwright install",
+        )
+    ):
+        return (
+            "WEB_BROWSER_ERROR",
+            "Chromium 浏览器未安装或缺少系统依赖，请执行 python -m playwright install --with-deps chromium",
+        )
+    return "WEB_BROWSER_ERROR", f"浏览器执行失败（{type(exc).__name__}），请检查 Chromium 安装和授权目标"
 
 
 @dataclass
@@ -94,9 +133,7 @@ class PlaywrightExecutor:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as playwright, tempfile.TemporaryDirectory(prefix="web-ui-") as temp:
                 try:
-                    args = ["--no-proxy-server", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
-                    if policy.resolver_rules:
-                        args.append("--host-resolver-rules=" + ", ".join(policy.resolver_rules))
+                    args = chromium_launch_args(policy)
                     browser = playwright.chromium.launch(headless=True, timeout=min(30000, total_timeout_ms), args=args)
                     context = browser.new_context(
                         storage_state=storage_state or {"cookies": [], "origins": []},
@@ -160,8 +197,8 @@ class PlaywrightExecutor:
                     elif browser:
                         browser.close()
         except Exception as exc:
-            result.status, result.error_code = "ERROR", "WEB_BROWSER_ERROR"
-            result.error_message = f"浏览器执行失败（{type(exc).__name__}），请检查 Chromium 安装和授权目标"
+            code, message = classify_browser_error(exc)
+            result.status, result.error_code, result.error_message = "ERROR", code, message
         finally:
             _SLOTS.release()
         result.logs = scrub(result.logs, secrets)

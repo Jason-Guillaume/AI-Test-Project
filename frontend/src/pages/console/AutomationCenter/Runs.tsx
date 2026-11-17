@@ -169,7 +169,7 @@ export function ConsoleAutomationRunsPage() {
           )}
         </Card>
       )}
-      <Modal title="执行 Console 日志" open={consoleOpen} onCancel={() => setConsoleOpen(false)} footer={null} width={900} destroyOnClose>
+      <Modal title="执行 Console 日志" open={consoleOpen} onCancel={() => setConsoleOpen(false)} footer={null} width={900} destroyOnHidden>
         {consoleQuery.data?.truncated && <Typography.Text type="secondary">仅显示最近 200 KB</Typography.Text>}
         {consoleQuery.isError && (
           <Space>

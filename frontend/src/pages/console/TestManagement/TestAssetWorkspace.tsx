@@ -300,7 +300,7 @@ export function TestAssetWorkspace() {
           },
         ]}
       />
-      <Modal title={strategyEditing ? '编辑测试策略' : '新建测试策略'} open={strategyOpen} onCancel={() => setStrategyOpen(false)} onOk={() => strategyForm.submit()} confirmLoading={saveStrategy.isPending} destroyOnClose>
+      <Modal title={strategyEditing ? '编辑测试策略' : '新建测试策略'} open={strategyOpen} onCancel={() => setStrategyOpen(false)} onOk={() => strategyForm.submit()} confirmLoading={saveStrategy.isPending} destroyOnHidden>
         <Form form={strategyForm} layout="vertical" onFinish={(values) => saveStrategy.mutate(values)}>
           <Form.Item name="name" label="策略名称" rules={[{ required: true, message: '请输入策略名称' }]}><Input maxLength={200} /></Form.Item>
           <Form.Item name="category" label="类别"><Select options={TEST_STRATEGY_CATEGORY_OPTIONS} /></Form.Item>
@@ -308,7 +308,7 @@ export function TestAssetWorkspace() {
           <Form.Item name="description" label="描述"><Input.TextArea rows={3} maxLength={1000} /></Form.Item>
         </Form>
       </Modal>
-      <Modal title={pointEditing ? '编辑测试点' : '新建测试点'} open={pointOpen} onCancel={() => setPointOpen(false)} onOk={() => pointForm.submit()} confirmLoading={savePoint.isPending} destroyOnClose>
+      <Modal title={pointEditing ? '编辑测试点' : '新建测试点'} open={pointOpen} onCancel={() => setPointOpen(false)} onOk={() => pointForm.submit()} confirmLoading={savePoint.isPending} destroyOnHidden>
         <Form form={pointForm} layout="vertical" onFinish={(values) => savePoint.mutate(values)}>
           <Form.Item name="name" label="测试点名称" rules={[{ required: true, message: '请输入测试点名称' }]}><Input maxLength={200} /></Form.Item>
           <Form.Item name="strategy_id" label="所属策略"><Select allowClear options={strategies.map((item) => ({ value: item.id, label: item.name }))} /></Form.Item>

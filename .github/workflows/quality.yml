@@ -14,34 +14,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  frontend:
-    name: Frontend checks
+  code-quality:
+    name: Stage 1 - Code quality & static checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - name: Install dependencies
+      - name: Install Python linters
+        run: python -m pip install --disable-pip-version-check ruff==0.9.9
+      - name: Backend syntax compile & Ruff lint (remediated modules)
+        working-directory: backend
+        run: |
+          python -m compileall -q app tests ../deploy
+          ruff check \
+            app/core/config.py \
+            app/core/security/roles.py \
+            app/execution/browser/playwright_executor.py \
+            app/execution/browser/session_manager.py \
+            app/features/api_catalog/services/module_service.py \
+            app/features/automation_center/providers/dagu_client.py \
+            app/features/automation_center/providers/dagu_provider.py \
+            app/features/automation_center/providers/status.py \
+            app/features/automation_center/services/center_service.py \
+            app/features/defects/public_router.py \
+            app/features/defects/schemas_share.py \
+            app/features/defects/services/public_rate_limit.py \
+            app/features/defects/services/share_archive_worker.py \
+            app/features/defects/services/share_service.py \
+            app/platform/organizations/services/management_service.py \
+            app/platform/organizations/services/organization_service.py \
+            app/platform/projects/services/project_service.py \
+            app/platform/users/services/user_service.py \
+            ../deploy/dagu/runner.py \
+            tests/test_browser_lifecycle.py \
+            tests/test_79_auth_isolation_lifecycle.py \
+            tests/test_89b_defect_share_security.py \
+            tests/test_89c_feishu_card_reliability.py \
+            tests/test_automation_dagu_remediation.py \
+            tests/test_migration_audit_0089.py
+      - name: Frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: TypeScript
+      - name: TypeScript typecheck
         working-directory: frontend
         run: npm run typecheck
-      - name: ESLint
+      - name: ESLint zero warnings
         working-directory: frontend
         run: npm run lint
-      - name: Node tests
+      - name: Frontend Node unit tests
         working-directory: frontend
         run: npm test
-      - name: Vite build
-        working-directory: frontend
-        run: npm run build
 
-  backend:
-    name: Backend and migrations
+  backend-and-migrations:
+    name: Stage 2 & 3 - Backend unit, integration & DB migrations
+    needs: code-quality
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -57,30 +90,55 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
       TEST_POSTGRES_HOST: 127.0.0.1
       TEST_POSTGRES_PORT: 5432
       TEST_POSTGRES_USER: testplatform
       TEST_POSTGRES_PASSWORD: testplatform-ci-only
+      TEST_REDIS_URL: redis://127.0.0.1:6379/0
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install dependencies
+      - name: Install backend dependencies
         working-directory: backend
         run: |
           python -m venv .venv
           .venv/bin/pip install --disable-pip-version-check -r requirements.txt
-      - name: PostgreSQL migration compatibility
+      - name: Install Playwright Chromium and Linux system dependencies
         working-directory: backend
-        run: .venv/bin/python -m pytest -q tests/test_57_organization_recycle_bin_migration.py
-      - name: Full backend tests
+        run: |
+          .venv/bin/python -m playwright install --with-deps chromium
+          .venv/bin/python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); b=p.chromium.launch(args=['--no-sandbox','--disable-dev-shm-usage']); b.close(); p.stop()"
+      - name: Verify single Alembic head and migration compatibility
         working-directory: backend
-        run: .venv/bin/python -m pytest -q
+        run: |
+          heads="$(.venv/bin/python -m alembic heads | wc -l)"
+          test "$heads" -eq 1
+          .venv/bin/python -m pytest -q tests/test_57_organization_recycle_bin_migration.py tests/test_automation_dagu_migrations.py tests/test_migration_audit_0089.py
+      - name: Run full backend test suite & module tests
+        working-directory: backend
+        run: |
+          .venv/bin/python -m pytest -q tests \
+            app/platform/organizations/tests \
+            app/features/api_catalog/tests \
+            app/features/asr_evaluation/tests \
+            app/features/test_management/tests
 
-  playwright:
-    name: Browser E2E and responsive routes
+  playwright-e2e:
+    name: Stage 4 - Playwright E2E & responsive routes
+    needs: code-quality
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -97,6 +155,18 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      REDIS_URL: redis://127.0.0.1:6379/0
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -112,7 +182,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --disable-pip-version-check -r requirements.txt
-      - name: Install frontend dependencies and browser
+      - name: Install frontend dependencies and Playwright Chromium
         working-directory: frontend
         run: |
           npm ci
@@ -121,7 +191,7 @@ jobs:
         run: printf '%s\n' 'DATABASE_URL=postgresql+psycopg://testplatform:testplatform-ci-only@127.0.0.1:5432/postgres' > backend/.env
       - name: Run full isolated E2E suite
         run: bash scripts/e2e_case_generation.sh
-      - name: Upload browser reports and screenshots
+      - name: Upload Playwright reports and traces
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -130,4 +200,44 @@ jobs:
           path: |
             frontend/e2e/artifacts/
             frontend/e2e/report/
+            frontend/test-results/
             docs/second-round-quality-fix/screenshots/
+
+  build-and-containers:
+    name: Stage 5 - Vite build & Docker image checks
+    needs: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Vite production build
+        working-directory: frontend
+        run: npm ci && npm run build
+      - name: Build frontend Nginx image
+        run: docker build -f frontend/Dockerfile -t testplatform-frontend:ci .
+      - name: Build backend Playwright image
+        run: docker build -f backend/Dockerfile -t testplatform-backend:ci ./backend
+
+  security-audit:
+    name: Stage 6 - Dependency & repository security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Verify no environment or private secret files tracked
+        run: |
+          ! git ls-files | grep -E '(^|/)\.env($|\.)' | grep -vE '\.(example|development)$'
+      - name: Frontend dependency audit
+        working-directory: frontend
+        run: npm ci && npm audit --audit-level=high
+      - name: Frontend public share & route security tests
+        working-directory: frontend
+        run: node --test tests/defectShareToken.test.mjs tests/frontendRoutes.test.mjs tests/safeRedirect.test.mjs

@@ -218,7 +218,7 @@ export function FlowDetail({ flowId, projectId }: { flowId: number; projectId: n
         confirmLoading={editMutation.isPending}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form<BusinessFlowUpdate> form={editForm} layout="vertical">
@@ -252,7 +252,7 @@ export function FlowDetail({ flowId, projectId }: { flowId: number; projectId: n
         confirmLoading={createActionMutation.isPending}
         okText="添加"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form<BusinessActionCreate>
@@ -312,7 +312,7 @@ export function FlowDetail({ flowId, projectId }: { flowId: number; projectId: n
         confirmLoading={executeMutation.isPending}
         okText="开始执行"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
         width={520}
       >
         <Form

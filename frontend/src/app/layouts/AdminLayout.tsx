@@ -24,6 +24,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { PlatformRoleTag } from '@/features/identity/components/RoleTag';
 import { RouteErrorBoundary } from '@/app/router/AppErrorBoundary';
+import { isNarrowViewport } from '@/shared/lib/viewport';
 
 // antd Layout 的子部件解构，用于组合侧边栏/头部/内容区。
 const { Header, Sider, Content } = Layout;
@@ -60,8 +61,8 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth(); // 当前用户与登出操作
   const { token: themeToken } = theme.useToken(); // antd 设计令牌，用于边框等主题色
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [narrowViewport, setNarrowViewport] = useState(false);
+  const [narrowViewport, setNarrowViewport] = useState(isNarrowViewport);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(isNarrowViewport);
 
   // 高亮当前菜单：用前缀匹配，这样 /admin/users/123 也会高亮“用户管理”。
   const selectedKey = useMemo(() => {

@@ -15,17 +15,28 @@ from queue import Queue
 from urllib.parse import urljoin, urlsplit
 
 from app.execution.browser.observer import _clean_url, observe as observe_page
-from app.execution.browser.playwright_executor import BrowserResult, PlaywrightExecutor, scrub
+from app.execution.browser.playwright_executor import (
+    BrowserResult,
+    PlaywrightExecutor,
+    chromium_launch_args,
+    classify_browser_error,
+    scrub,
+)
 from app.execution.browser.policy import TargetPolicy
 from app.execution.browser.contracts import WebStep
 from app.core.http.errors import conflict
 
 # 进程内浏览器并发上限（独立于 Web 执行器）
 _SLOTS = threading.BoundedSemaphore(2)
-# 会话注册表锁
+# 会话注册表锁与按 session_id 的打开串行锁
 _LOCK = threading.Lock()
+_OPEN_LOCKS: dict[int, threading.Lock] = {}
 # 活动会话表：session_id -> BrowserSession
 _SESSIONS: dict[int, "BrowserSession"] = {}
+# 单次浏览器命令等待上限（秒），防止 Playwright 卡死导致槽位永久占用
+_COMMAND_WAIT_SLACK_SECONDS = 10.0
+_DEFAULT_COMMAND_TIMEOUT_SECONDS = 45.0
+_CLOSE_WAIT_SECONDS = 5.0
 # 空闲超时（秒）
 _IDLE_TIMEOUT = 600
 # 回收间隔（秒）
@@ -92,6 +103,7 @@ class BrowserSession:
                 storage_state,
                 timeout_ms,
                 target_page_path,
+                wait_timeout=max(_DEFAULT_COMMAND_TIMEOUT_SECONDS, timeout_ms / 1000 + _COMMAND_WAIT_SLACK_SECONDS),
             )
             return session
         except Exception:
@@ -113,7 +125,7 @@ class BrowserSession:
             finally:
                 completed.set()
 
-    def _call(self, callback, *args):
+    def _call(self, callback, *args, wait_timeout: float = _DEFAULT_COMMAND_TIMEOUT_SECONDS):
         """同步调用 owner 线程上的函数；来自多个 API worker 的请求在队列中串行化。"""
         if threading.get_ident() == self._owner_id:
             return callback(*args)
@@ -124,7 +136,9 @@ class BrowserSession:
             if self._closed or self._owner is None or not self._owner.is_alive():
                 raise RuntimeError("浏览器会话已关闭")
             self._commands.put((callback, args, completed, outcome))
-        completed.wait()
+        if not completed.wait(timeout=max(1.0, float(wait_timeout))):
+            self.close()
+            raise TimeoutError("浏览器会话操作超时")
         if "error" in outcome:
             raise outcome["error"]
         return outcome.get("result")
@@ -134,12 +148,14 @@ class BrowserSession:
         from playwright.sync_api import sync_playwright
 
         self._playwright = sync_playwright().start()
-        args = ["--no-proxy-server", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"]
-        if self._policy.resolver_rules:
-            args.append("--host-resolver-rules=" + ", ".join(self._policy.resolver_rules))
-        self._browser = self._playwright.chromium.launch(
-            headless=True, timeout=min(30000, timeout_ms), args=args
-        )
+        args = chromium_launch_args(self._policy)
+        try:
+            self._browser = self._playwright.chromium.launch(
+                headless=True, timeout=min(30000, timeout_ms), args=args
+            )
+        except Exception as exc:
+            _code, message = classify_browser_error(exc)
+            raise RuntimeError(message) from exc
         self._context = self._browser.new_context(
             storage_state=storage_state or {"cookies": [], "origins": []},
             service_workers="block", accept_downloads=False,
@@ -216,7 +232,11 @@ class BrowserSession:
 
     def observe(self, timeout_ms=5000):
         """观察当前页面，返回脱敏语义树与遮罩截图。"""
-        return self._call(self._observe, timeout_ms)
+        return self._call(
+            self._observe,
+            timeout_ms,
+            wait_timeout=max(_DEFAULT_COMMAND_TIMEOUT_SECONDS, timeout_ms / 1000 + _COMMAND_WAIT_SLACK_SECONDS),
+        )
 
     def security_snapshot(self):
         """被动检查当前已打开页面的响应头和有限 DOM 信号；不导航、不点击、不读取表单值。"""
@@ -327,7 +347,13 @@ class BrowserSession:
 
     def execute_step(self, step_dict):
         """执行单步操作。不过 confirmed_digest 门禁，TargetPolicy 在会话打开时已生效。"""
-        return self._call(self._execute_step, step_dict)
+        step_timeout_ms = step_dict.get("timeout_ms") if isinstance(step_dict, dict) else None
+        wait_timeout = (
+            max(_DEFAULT_COMMAND_TIMEOUT_SECONDS, float(step_timeout_ms) / 1000 + _COMMAND_WAIT_SLACK_SECONDS)
+            if isinstance(step_timeout_ms, (int, float))
+            else _DEFAULT_COMMAND_TIMEOUT_SECONDS
+        )
+        return self._call(self._execute_step, step_dict, wait_timeout=wait_timeout)
 
     def _execute_step(self, step_dict):
         """执行`step`。"""
@@ -375,10 +401,10 @@ class BrowserSession:
                 self._commands.put((self._close_browser, (), completed, outcome))
         try:
             if completed is not None:
-                completed.wait()
+                completed.wait(timeout=_CLOSE_WAIT_SECONDS)
                 self._commands.put(None)
                 if threading.current_thread() is not self._owner:
-                    self._owner.join()
+                    self._owner.join(timeout=_CLOSE_WAIT_SECONDS)
         finally:
             if self._slot_acquired:
                 _SLOTS.release()
@@ -391,16 +417,23 @@ class BrowserSession:
                 self._context.close()
         except Exception:
             pass
+        finally:
+            self._context = None
+            self._page = None
         try:
             if self._browser:
                 self._browser.close()
         except Exception:
             pass
+        finally:
+            self._browser = None
         try:
             if self._playwright:
                 self._playwright.stop()
         except Exception:
             pass
+        finally:
+            self._playwright = None
 
 
 class SessionRegistry:
@@ -412,18 +445,24 @@ class SessionRegistry:
             existing = _SESSIONS.get(session_id)
             if existing and not existing._closed:
                 return existing
-        session = BrowserSession.open(
-            base_url=base_url, storage_state=storage_state, headers=headers,
-            policy=policy, target_page_path=target_page_path, step_budget=step_budget,
-            initial_secrets=initial_secrets
-        )
-        with _LOCK:
-            old = _SESSIONS.pop(session_id, None)
-            if old:
-                old.close()
-            _SESSIONS[session_id] = session
-        _ensure_reaper()
-        return session
+            open_lock = _OPEN_LOCKS.setdefault(session_id, threading.Lock())
+        with open_lock:
+            with _LOCK:
+                existing = _SESSIONS.get(session_id)
+                if existing and not existing._closed:
+                    return existing
+            session = BrowserSession.open(
+                base_url=base_url, storage_state=storage_state, headers=headers,
+                policy=policy, target_page_path=target_page_path, step_budget=step_budget,
+                initial_secrets=initial_secrets
+            )
+            with _LOCK:
+                old = _SESSIONS.pop(session_id, None)
+                if old:
+                    old.close()
+                _SESSIONS[session_id] = session
+            _ensure_reaper()
+            return session
 
     def get_session(self, session_id):
         """获取现有会话，不存在或已关闭返回 None。"""

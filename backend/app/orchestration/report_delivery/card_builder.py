@@ -82,6 +82,17 @@ def build_report_card(report: "TestReport") -> dict[str, Any]:
     return sanitize_context(card)
 
 
+def _safe_md_text(value: Any, *, max_len: int = 500) -> str:
+    """脱敏后转义 HTML 尖括号并限长，避免超长文本或标签注入污染飞书卡片。"""
+    cleaned = sanitize_text(value) if value is not None else ""
+    if not cleaned:
+        return ""
+    escaped = cleaned.replace("<", "&lt;").replace(">", "&gt;")
+    if len(escaped) > max_len:
+        return escaped[: max_len - 1] + "…"
+    return escaped
+
+
 def build_defect_share_card(
     items: list[dict[str, Any]],
     *,
@@ -118,20 +129,20 @@ def build_defect_share_card(
         },
     }]
     for item in items:
-        summary = sanitize_text(item.get("summary")) or "无摘要"
-        steps = sanitize_text(item.get("steps_summary")) or "无"
+        summary = _safe_md_text(item.get("summary"), max_len=500) or "无摘要"
+        steps = _safe_md_text(item.get("steps_summary"), max_len=240) or "无"
         elements.append({"tag": "hr"})
         elements.append({
             "tag": "div",
             "text": {
                 "tag": "lark_md",
                 "content": (
-                    f"**{sanitize_text(item.get('bug_no')) or '-'}** "
-                    f"{sanitize_text(item.get('title')) or '-'}\n"
-                    f"严重度：{sanitize_text(item.get('severity_label')) or '-'}　"
-                    f"状态：{sanitize_text(item.get('status')) or '-'}\n"
+                    f"**{_safe_md_text(item.get('bug_no'), max_len=40) or '-'}** "
+                    f"{_safe_md_text(item.get('title'), max_len=180) or '-'}\n"
+                    f"严重度：{_safe_md_text(item.get('severity_label'), max_len=30) or '-'}　"
+                    f"状态：{_safe_md_text(item.get('status'), max_len=30) or '-'}\n"
                     f"摘要：{summary}\n复现步骤：{steps}\n"
-                    f"创建时间：{sanitize_text(item.get('created_at')) or '-'}"
+                    f"创建时间：{_safe_md_text(item.get('created_at'), max_len=40) or '-'}"
                 ),
             },
         })

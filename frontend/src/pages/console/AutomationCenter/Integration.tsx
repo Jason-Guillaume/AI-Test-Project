@@ -42,8 +42,8 @@ export function ConsoleAutomationIntegrationPage() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AutomationIntegration | null>(null);
   const [form] = Form.useForm<IntegrationForm>();
-  const providerType = Form.useWatch('provider_type', form) || 'YUNXIAO';
-  const daguBaseUrl = Form.useWatch('dagu_base_url', form) || '';
+  const [providerType, setProviderType] = useState('YUNXIAO');
+  const [daguBaseUrl, setDaguBaseUrl] = useState('');
   const listQuery = useQuery({
     queryKey: ['automation-integrations', currentProjectId],
     queryFn: () => automationApi.listIntegrations(currentProjectId!),
@@ -80,6 +80,8 @@ export function ConsoleAutomationIntegrationPage() {
   /** 初始化新接入表单，默认使用云效，避免误提交空的 Dagu 凭证。 */
   const openCreate = () => {
     setEditing(null);
+    setProviderType('YUNXIAO');
+    setDaguBaseUrl('');
     form.resetFields();
     form.setFieldsValue({
       provider_type: 'YUNXIAO', deployment: 'central', api_base_url: 'https://openapi-rdc.aliyuncs.com',
@@ -92,6 +94,8 @@ export function ConsoleAutomationIntegrationPage() {
   const openEdit = (row: AutomationIntegration) => {
     if (row.provider_type === 'LEGACY') return;
     setEditing(row);
+    setProviderType(row.provider_type);
+    setDaguBaseUrl(row.dagu_base_url || '');
     form.resetFields();
     form.setFieldsValue({
       provider_type: row.provider_type,
@@ -167,9 +171,17 @@ export function ConsoleAutomationIntegrationPage() {
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={save.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={(values) => save.mutate(values)}>
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(changed: Partial<IntegrationForm>) => {
+            if (changed.provider_type !== undefined) setProviderType(changed.provider_type);
+            if (changed.dagu_base_url !== undefined) setDaguBaseUrl(changed.dagu_base_url || '');
+          }}
+          onFinish={(values) => save.mutate(values)}
+        >
           <Form.Item name="provider_type" label="执行平台" rules={[{ required: true }]}>
             <Select disabled={Boolean(editing)} options={[{ value: 'YUNXIAO', label: '云效 Flow' }, { value: 'DAGU', label: 'Dagu' }]} />
           </Form.Item>
