@@ -28,6 +28,7 @@ from app.core.models.project import Project
 from app.core.security.crypto import decrypt_secret
 from app.core.security.roles import (
     PROJECT_ROLE_EDITOR,
+    accessible_project_ids,
     has_project_role,
     is_platform_admin,
     project_role_for,
