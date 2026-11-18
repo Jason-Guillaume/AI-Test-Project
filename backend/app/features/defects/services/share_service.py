@@ -72,7 +72,7 @@ from app.platform.projects.services.access_service import check_writable
 DEFAULT_VISIBLE_FIELDS = (
     "bug_no", "title", "severity", "status", "project_name", "description",
     "steps_to_reproduce", "environment", "expected_result", "actual_result",
-    "created_at", "source_summary", "reporter", "assignee", "api_method", "api_url",
+    "created_at", "reporter", "assignee", "api_method", "api_url",
     "api_request_headers", "api_request_body", "api_response", "attachments",
 )
 OPTIONAL_VISIBLE_FIELDS = (
@@ -85,6 +85,7 @@ _PATH_PATTERN = re.compile(
     r"|postgres(?:ql)?://\S+|mysql://\S+|mongodb(?:\+srv)?://\S+|redis://\S+)"
 )
 _TAG_PATTERN = re.compile(r"<[^>]*>")
+_SOURCE_RECORD_LINE = re.compile(r"^\s*来源编号\s*(?::|：)?\s*[^\s|｜]+\s*[|｜].*$")
 _COMMIT_PATTERN = re.compile(r"[0-9a-fA-F]{7,64}")
 _IDENTITY_NOTE = "开发人员姓名为自报信息，平台未认证其飞书或内部身份。"
 
@@ -99,6 +100,15 @@ def _clean_text(value: str | None, limit: int = 2000) -> str | None:
     if not text:
         return None
     return text[:limit]
+
+
+def _clean_share_description(value: str | None) -> str | None:
+    """分享内容不展示嵌在描述中的来源记录行。"""
+    text = _clean_text(value, 4000)
+    if text is None:
+        return None
+    lines = [line for line in text.splitlines() if not _SOURCE_RECORD_LINE.match(line)]
+    return "\n".join(lines).strip() or None
 
 
 def _clean_api_value(value: str | None, limit: int) -> Any:
@@ -951,7 +961,7 @@ class DefectShareService:
         if "project_name" in selected:
             content["project_name"] = _clean_text(project.name, 200) if project else None
         if "description" in selected:
-            content["description"] = _clean_text(bug.description)
+            content["description"] = _clean_share_description(bug.description)
         if "steps_to_reproduce" in selected:
             content["steps_to_reproduce"] = _clean_text(bug.steps_to_reproduce, 4000)
         if "environment" in selected:
@@ -1123,7 +1133,7 @@ class DefectShareService:
         """从已授权快照提取卡片摘要，不回读未授权字段。"""
         fields = set(share.visible_fields or [])
         snapshot = share.content_snapshot or {}
-        description = snapshot.get("description") if "description" in fields else None
+        description = _clean_share_description(snapshot.get("description")) if "description" in fields else None
         steps = snapshot.get("steps_to_reproduce") if "steps_to_reproduce" in fields else None
         return {
             "bug_no": snapshot.get("bug_no") if "bug_no" in fields else "缺陷",
@@ -1208,7 +1218,6 @@ class DefectShareService:
             "severity": "severity_label",
             "reporter": "reporter_name",
             "assignee": "assignee_name",
-            "source_summary": "sources",
             "api_execution": "sources",
             "security_record": "sources",
             "request_response": "sources",
@@ -1223,6 +1232,8 @@ class DefectShareService:
         for field in allowed:
             if field in snapshot:
                 content[field] = snapshot[field]
+        if "description" in content:
+            content["description"] = _clean_share_description(content["description"])
         if "attachments" in allowed:
             refs = snapshot.get("attachments") or []
             live_ids = {

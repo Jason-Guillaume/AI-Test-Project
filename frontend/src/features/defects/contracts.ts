@@ -130,7 +130,7 @@ export interface Bug extends BugApiFields {
 export type DefectShareField =
   | 'bug_no' | 'title' | 'severity' | 'status' | 'project_name' | 'description'
   | 'steps_to_reproduce' | 'environment' | 'expected_result' | 'actual_result'
-  | 'created_at' | 'source_summary' | 'reporter' | 'assignee'
+  | 'created_at' | 'reporter' | 'assignee'
   | 'api_execution' | 'agent_execution' | 'security_record' | 'request_response'
   | 'error_stack' | 'screenshots' | 'allure' | 'api_method' | 'api_url'
   | 'api_request_headers' | 'api_request_body' | 'api_response' | 'attachments';

@@ -12,7 +12,7 @@ import { getErrorMessage } from '@/shared/api/client';
 const DEFAULT_FIELDS: DefectShareField[] = [
   'bug_no', 'title', 'severity', 'status', 'project_name', 'description',
   'steps_to_reproduce', 'environment', 'expected_result', 'actual_result',
-  'created_at', 'source_summary', 'reporter', 'assignee',
+  'created_at', 'reporter', 'assignee',
   'api_method', 'api_url', 'api_request_headers', 'api_request_body', 'api_response', 'attachments',
 ];
 const OPTIONAL_FIELDS: Array<{ value: DefectShareField; label: string }> = [
@@ -28,7 +28,7 @@ const FIELD_LABELS: Record<string, string> = {
   bug_no: '缺陷编号', title: '缺陷标题', severity: '严重度', status: '当前状态',
   project_name: '项目名称', description: '缺陷描述', steps_to_reproduce: '复现步骤',
   environment: '发现环境', expected_result: '预期结果', actual_result: '实际结果',
-  created_at: '创建时间', source_summary: '关联测试来源', reporter: '创建人', assignee: '当前处理人',
+  created_at: '创建时间', reporter: '创建人', assignee: '当前处理人',
   api_method: '接口请求方法', api_url: '接口地址', api_request_headers: '接口请求头（脱敏）',
   api_request_body: '接口请求体（脱敏）', api_response: '接口响应正文（脱敏）', attachments: '附件',
 };
