@@ -96,6 +96,8 @@ def _responses(
                 title=bug.title,
                 category=bug.category,
                 description=bug.description,
+                expected_result=bug.expected_result,
+                actual_result=bug.actual_result,
                 api_method=bug.api_method,
                 api_url=bug.api_url,
                 api_request_headers=bug.api_request_headers,

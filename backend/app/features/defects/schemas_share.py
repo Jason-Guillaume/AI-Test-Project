@@ -21,6 +21,7 @@ class ShareOptions(BaseModel):
     permanent: bool = False
     allow_view: bool = True
     allow_resolve: bool = True
+    request_key: str | None = Field(default=None, min_length=8, max_length=100)
 
 
 class SharePreviewRequest(ShareOptions):
@@ -39,6 +40,7 @@ class ShareRetryRequest(BaseModel):
     """重新推送。携带原凭证时不轮换；不携带时签发新凭证并使旧凭证失效。"""
 
     access_token: str | None = Field(default=None, max_length=200)
+    confirm_uncertain: bool = False
 
 
 class RevokeItem(BaseModel):
@@ -58,7 +60,7 @@ class SharePushResponse(BaseModel):
     """创建或重试的结果。share_url 只在这次响应中出现。"""
 
     share_id: str
-    share_url: str
+    share_url: str | None
     url_is_absolute: bool
     bug_id: int
     bug_no: str
@@ -74,10 +76,26 @@ class SharePushResponse(BaseModel):
 
 
 class BatchShareResponse(BaseModel):
-    """批量推送结果。卡片按条数拆分，但每条缺陷都有自己的链接。"""
+    """批量推送结果。页面入口和投递状态按本批次返回。"""
 
-    items: list[SharePushResponse]
-    card_count: int
+    batch_share_id: str | None = None
+    batch_share_url: str | None = None
+    url_is_absolute: bool = True
+    items: list["BatchShareItemResponse"]
+    card_count: int = 1
+    notification_status: str = "PENDING"
+    error_message: str | None = None
+    retry_count: int = 0
+    duplicate_request: bool = False
+
+
+class BatchShareItemResponse(BaseModel):
+    """批次内单条分享历史；公开凭证只在批次入口中使用。"""
+
+    share_id: str
+    bug_id: int
+    bug_no: str
+    notification_status: str
 
 
 class SharePreviewResponse(BaseModel):
@@ -142,6 +160,7 @@ class ShareSummaryResponse(BaseModel):
     notification_status: str | None
     error_message: str | None
     retry_count: int
+    batch_share_id: str | None = None
 
 
 class ShareDetailResponse(ShareSummaryResponse):
@@ -184,6 +203,20 @@ class PublicDefectResponse(BaseModel):
     content: dict[str, Any]
     resolution: PublicResolutionResponse | None = None
     identity_note: str
+
+
+class PublicBatchItemResponse(BaseModel):
+    share_id: str
+    bug_no: str
+    title: str | None
+    severity_label: str | None
+    status: str | None
+
+
+class PublicBatchResponse(BaseModel):
+    batch_state: Literal["active"] = "active"
+    expires_at: datetime | None
+    items: list[PublicBatchItemResponse]
 
 
 class PublicResolveRequest(BaseModel):

@@ -217,6 +217,9 @@ class GenerationService:
         draft = self._writable_draft(db, draft_id, actor)
         if draft.status != "PENDING":
             raise bad_request("只有待审核草稿可以修改")
+        batch = db.get(CaseGenerationBatch, draft.batch_id)
+        if body.steps == [] and (batch is None or batch.direction != "API"):
+            raise bad_request("只有 API 方向草稿可以清空测试步骤")
         data = body.model_dump(exclude_unset=True)
         payload = dict(draft.payload_json or {})
         if "title" in data and data["title"]:
@@ -229,7 +232,6 @@ class GenerationService:
             if key in data and data[key] is not None:
                 payload[key] = data[key]
         draft.payload_json = payload
-        batch = db.get(CaseGenerationBatch, draft.batch_id)
         draft.quality_json = self._quality_for(db, batch, draft)
         self._audit(db, batch, draft, "EDIT", actor, {"fields": sorted(data.keys())})
         db.commit()
@@ -565,7 +567,16 @@ class GenerationService:
 
     def _import_draft(self, db: Session, batch: CaseGenerationBatch, draft: CaseDraft, actor: User) -> TestCase:
         """把一条草稿落成正式用例（DRAFT 态）。项目内重名直接冲突，不自动改名。"""
-        payload = DesignCase.model_validate(draft.payload_json)
+        if batch.direction == "API":
+            # 已持久化的 API 草稿允许空步骤；共享生成工具契约仍要求生成结果带步骤。
+            from pydantic import Field
+
+            class ApiDraftCase(DesignCase):
+                steps: list[str] = Field(default_factory=list, max_length=30)
+
+            payload = ApiDraftCase.model_validate(draft.payload_json)
+        else:
+            payload = DesignCase.model_validate(draft.payload_json)
         name = payload.title.strip()[:200] or "未命名用例"
         if db.query(TestCase.id).filter(TestCase.project_id == batch.project_id, TestCase.name == name).first() is not None:
             raise conflict(f"项目内已存在同名测试用例「{name}」，请修改草稿标题后再入库")
@@ -656,6 +667,7 @@ class GenerationService:
             payload={**dict(draft.payload_json or {}), "title": draft.title},
             sibling_titles=siblings,
             module_has_boundary=has_boundary,
+            allow_empty_steps=batch.direction == "API",
         )
 
     def _refresh_quality(self, db: Session, batch: CaseGenerationBatch, *, preserve_reviewed: bool = False) -> None:
@@ -678,6 +690,7 @@ class GenerationService:
                 payload={**dict(draft.payload_json or {}), "title": draft.title},
                 sibling_titles=siblings,
                 module_has_boundary=module_has_boundary.get(draft.module, False),
+                allow_empty_steps=batch.direction == "API",
             )
 
     @staticmethod

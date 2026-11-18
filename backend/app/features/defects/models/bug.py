@@ -44,6 +44,8 @@ class Bug(SoftDeleteBase):
     )
     # 历史存量缺陷允许为 NULL，界面展示为「未划分」，避免迁移强塞不准确的默认归属。
     description = Column(String(1000), nullable=True, comment="缺陷描述")
+    expected_result = Column(Text, nullable=True, comment="预期结果")
+    actual_result = Column(Text, nullable=True, comment="实际结果")
     # 接口专属字段：仅 category='接口' 时由表单填写，其余类别保持 NULL。
     api_method = Column(
         String(10), nullable=True,

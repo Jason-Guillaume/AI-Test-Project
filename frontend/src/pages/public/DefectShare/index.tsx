@@ -1,11 +1,11 @@
 // 免登录缺陷详情。
 // 本页不使用控制台布局，也不读取平台登录态。
 // 凭证只从 URL Fragment 读取，并通过 Authorization 调用公开接口。
-import { App, Button, Input, Tag, Typography } from 'antd';
+import { App, Button, Input, Spin, Tag, Typography } from 'antd';
 import { isAxiosError } from 'axios';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { publicDefectApi, type PublicDefect } from '@/features/defects/api/publicShare';
+import { publicDefectApi, type PublicBatch, type PublicDefect } from '@/features/defects/api/publicShare';
 import { captureShareToken, forgetShareToken } from '@/features/defects/api/shareToken';
 import { getErrorMessage } from '@/shared/api/client';
 import './share.css';
@@ -34,17 +34,107 @@ function textOf(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
+function PublicAttachment({ shareId, batchId, token, attachment }: {
+  shareId: string;
+  batchId?: string;
+  token: string;
+  attachment: NonNullable<PublicDefect['content']['attachments']>[number];
+}) {
+  const [preview, setPreview] = useState<{ url: string; type: string; text?: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!attachment.available) return;
+    let active = true;
+    let url = '';
+    publicDefectApi.attachment(shareId, token, attachment.id, false, batchId)
+      .then(async (blob) => {
+        if (!active) return;
+        url = URL.createObjectURL(blob);
+        const type = blob.type.split(';')[0];
+        const text = type === 'text/plain' ? await blob.text() : undefined;
+        if (active) setPreview({ url, type, text });
+      })
+      .catch(() => { if (active) setError('附件已删除或暂时无法读取'); });
+    return () => { active = false; if (url) URL.revokeObjectURL(url); };
+  }, [attachment.available, attachment.id, shareId, batchId, token]);
+
+  return (
+    <div className="public-defect-attachment">
+      <div className="public-defect-attachment-head">
+        <Typography.Text strong>{attachment.filename}</Typography.Text>
+        <Typography.Text type="secondary">{(attachment.size / 1024).toFixed(1)} KB</Typography.Text>
+      </div>
+      {!attachment.available ? <Typography.Text type="secondary">附件已删除</Typography.Text> : error ? <Typography.Text type="secondary">{error}</Typography.Text> : !preview ? <Spin size="small" /> : null}
+      {preview?.type.startsWith('image/') && <img className="public-defect-image" src={preview.url} alt={attachment.filename} />}
+      {preview?.type === 'application/pdf' && <iframe className="public-defect-pdf" src={preview.url} title={attachment.filename} sandbox="" />}
+      {preview?.type === 'text/plain' && <pre className="public-defect-log">{preview.text}</pre>}
+      {preview && <a href={preview.url} download={attachment.filename}>下载附件</a>}
+    </div>
+  );
+}
+
 /**
  * 公开缺陷页。按 shareId 隔离视图；加载时采集并立即清理 Fragment 凭证，不写入持久化存储。
  */
 export function PublicDefectSharePage() {
-  const { shareId = '' } = useParams();
+  const { shareId = '', batchId } = useParams();
+  if (batchId) return <PublicDefectBatchView key={batchId} batchId={batchId} />;
   return <PublicDefectShareView key={shareId} shareId={shareId} />;
 }
 
-function PublicDefectShareView({ shareId }: { shareId: string }) {
+function PublicDefectBatchView({ batchId }: { batchId: string }) {
+  const [tokenState] = useState(() => captureShareToken(batchId));
+  const token = tokenState.status === 'present' ? tokenState.token : '';
+  const [batch, setBatch] = useState<PublicBatch | null>(null);
+  const [selectedShareId, setSelectedShareId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (!token) {
+      setError('未检测到访问凭证，请重新使用飞书批次链接进入；为保障安全，页面刷新不会保留凭证。');
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    publicDefectApi.batch(batchId, token)
+      .then((result) => {
+        if (cancelled) return;
+        setBatch(result);
+        setSelectedShareId((current) => current || result.items[0]?.share_id || '');
+        document.title = `缺陷批次 · ${result.items.length} 条`;
+      })
+      .catch((reason) => {
+        if (isTokenRejected(reason)) forgetShareToken(batchId);
+        if (!cancelled) setError(friendlyError(reason));
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [batchId, token]);
+
+  return <main className="public-defect">
+    <div className="public-defect-main">
+      <header className="public-defect-card">
+        <Typography.Text type="secondary">测试开发平台 · 缺陷批次分享</Typography.Text>
+        <Typography.Title level={3}>本次分享的缺陷（{batch?.items.length ?? 0}）</Typography.Title>
+        {loading && <Spin />}
+        {error && <Typography.Paragraph type="secondary">{error}</Typography.Paragraph>}
+        {batch && <div className="public-defect-batch-list">
+          {batch.items.map((item) => <Button
+            key={item.share_id}
+            type={selectedShareId === item.share_id ? 'primary' : 'default'}
+            onClick={() => setSelectedShareId(item.share_id)}
+          >{item.bug_no} {item.title || '缺陷'}{item.severity_label ? ` · ${item.severity_label}` : ''}</Button>)}
+        </div>}
+      </header>
+    </div>
+    {batch && selectedShareId && <PublicDefectShareView key={selectedShareId} shareId={selectedShareId} batchId={batchId} />}
+  </main>;
+}
+
+function PublicDefectShareView({ shareId, batchId }: { shareId: string; batchId?: string }) {
   const { message, modal } = App.useApp();
-  const [tokenState] = useState(() => captureShareToken(shareId));
+  const tokenKey = batchId ?? shareId;
+  const [tokenState] = useState(() => captureShareToken(tokenKey));
   const token = tokenState.status === 'present' ? tokenState.token : '';
   const [data, setData] = useState<PublicDefect | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,15 +167,15 @@ function PublicDefectShareView({ shareId }: { shareId: string }) {
       return;
     }
     let cancelled = false;
-    publicDefectApi.get(shareId, token)
+    (batchId ? publicDefectApi.batchItem(batchId, shareId, token) : publicDefectApi.get(shareId, token))
       .then((detail) => {
         if (cancelled) return;
         setData(detail);
         document.title = detail.content.title ? `${detail.content.bug_no || '缺陷'} ${detail.content.title}` : '缺陷详情';
-        publicDefectApi.recordView(shareId, token).catch(() => undefined);
+        (batchId ? publicDefectApi.recordBatchView(batchId, shareId, token) : publicDefectApi.recordView(shareId, token)).catch(() => undefined);
       })
       .catch((reason) => {
-        if (isTokenRejected(reason)) forgetShareToken(shareId);
+        if (isTokenRejected(reason)) forgetShareToken(tokenKey);
         if (!cancelled) setError(friendlyError(reason));
       })
       .finally(() => {
@@ -94,7 +184,7 @@ function PublicDefectShareView({ shareId }: { shareId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [shareId, token, tokenState.status]);
+  }, [shareId, batchId, token, tokenKey, tokenState.status]);
 
   /**
    * 二次确认后提交已解决。提交期间按钮保持 loading，避免重复点击。
@@ -114,17 +204,22 @@ function PublicDefectShareView({ shareId }: { shareId: string }) {
       onOk: async () => {
         setSubmitting(true);
         try {
-          const result = await publicDefectApi.resolve(shareId, token, {
+          const body = {
             repair_description: repair,
             fix_version: version.trim() || undefined,
             commit_sha: commitSha.trim() || undefined,
             reporter_name: name.trim() || undefined,
-          });
-          const latest = await publicDefectApi.get(shareId, token);
+          };
+          const result = batchId
+            ? await publicDefectApi.resolveBatchItem(batchId, shareId, token, body)
+            : await publicDefectApi.resolve(shareId, token, body);
+          const latest = batchId
+            ? await publicDefectApi.batchItem(batchId, shareId, token)
+            : await publicDefectApi.get(shareId, token);
           setData(latest);
           message.success(result.message);
         } catch (reason) {
-          if (isTokenRejected(reason)) forgetShareToken(shareId);
+          if (isTokenRejected(reason)) forgetShareToken(tokenKey);
           message.error(friendlyError(reason));
         } finally {
           setSubmitting(false);
@@ -134,8 +229,9 @@ function PublicDefectShareView({ shareId }: { shareId: string }) {
   }
 
   const content = data?.content;
+  const Root = batchId ? 'div' : 'main';
   return (
-    <main className="public-defect">
+    <Root className="public-defect">
       <div className="public-defect-main">
         <header className="public-defect-card">
           <Typography.Text type="secondary">测试开发平台 · 免登录缺陷详情</Typography.Text>
@@ -167,13 +263,27 @@ function PublicDefectShareView({ shareId }: { shareId: string }) {
               </div>)}
             </div>
           </section>
+          {(['api_method', 'api_url', 'api_request_headers', 'api_request_body', 'api_response'] as const).some((field) => content[field] !== undefined) && (
+            <section className="public-defect-panel">
+              <Typography.Title level={4}>接口信息</Typography.Title>
+              {content.api_method && <Tag color="geekblue">{content.api_method}</Tag>}
+              {content.api_url !== undefined && <Typography.Paragraph><Typography.Text strong>请求地址</Typography.Text><br />{textOf(content.api_url)}</Typography.Paragraph>}
+              {content.api_request_headers !== undefined && <Typography.Paragraph><Typography.Text strong>请求头</Typography.Text><pre className="public-defect-log">{textOf(content.api_request_headers)}</pre></Typography.Paragraph>}
+              {content.api_request_body !== undefined && <Typography.Paragraph><Typography.Text strong>请求体</Typography.Text><pre className="public-defect-log">{textOf(content.api_request_body)}</pre></Typography.Paragraph>}
+              {content.api_response !== undefined && <Typography.Paragraph><Typography.Text strong>接口响应</Typography.Text><pre className="public-defect-log">{textOf(content.api_response)}</pre></Typography.Paragraph>}
+            </section>
+          )}
+          {content.attachments && <section className="public-defect-panel">
+            <Typography.Title level={4}>附件</Typography.Title>
+            {content.attachments.length ? content.attachments.map((attachment) => <PublicAttachment key={attachment.id} shareId={shareId} batchId={batchId} token={token} attachment={attachment} />) : <Typography.Text type="secondary">本次分享时没有附件</Typography.Text>}
+          </section>}
           <section className="public-defect-panel">
             <Typography.Title level={4}>问题详情</Typography.Title>
             {([
               ['缺陷描述', content.description], ['复现步骤', content.steps_to_reproduce],
               ['预期结果', content.expected_result], ['实际结果', content.actual_result],
             ] as Array<[string, unknown]>).filter(([, value]) => value !== undefined).map(([label, value]) => (
-              <Typography.Paragraph key={label}><Typography.Text strong>{label}</Typography.Text><br />{textOf(value)}</Typography.Paragraph>
+              <Typography.Paragraph key={label} style={{ whiteSpace: 'pre-wrap' }}><Typography.Text strong>{label}</Typography.Text><br />{textOf(value)}</Typography.Paragraph>
             ))}
           </section>
           {(content.sources || content.agent_executions || content.allure !== undefined) && (
@@ -206,6 +316,6 @@ function PublicDefectShareView({ shareId }: { shareId: string }) {
           </section>
         </>}
       </div>
-    </main>
+    </Root>
   );
 }

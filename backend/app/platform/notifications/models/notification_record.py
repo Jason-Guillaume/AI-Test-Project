@@ -4,7 +4,7 @@
 「通知失败不能影响测试执行」）——例如 TestRun SUCCESS、Report COMPLETED、
 Notification FAILED 三者互不影响。
 
-status ∈ {PENDING, SUCCESS, FAILED}（§二十一）。
+status 常用值为 PENDING/SENDING/SUCCESS/FAILED，缺陷分享超时另标记 UNCERTAIN。
 request_snapshot / response_snapshot 均为**脱敏后**的内容（§二十：消息进 Feishu
 Service 前必须经 SensitiveDataMasker；webhook URL 本身绝不入此两字段）。
 
@@ -65,6 +65,10 @@ class NotificationRecord(Base):
     share_link_id = Column(
         Integer, ForeignKey("defect_share_link.id", ondelete="SET NULL"), nullable=True, index=True,
         comment="关联缺陷分享ID",
+    )
+    share_batch_id = Column(
+        Integer, ForeignKey("defect_share_batch.id", ondelete="SET NULL"), nullable=True, index=True,
+        comment="关联多缺陷分享批次",
     )
     event_type = Column(String(40), nullable=True, comment="业务事件：defect.share 等")
     idempotency_key = Column(String(120), nullable=True, unique=True, comment="同一次投递的幂等键")

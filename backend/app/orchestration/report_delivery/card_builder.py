@@ -111,11 +111,7 @@ def build_defect_share_card(
     """
     if not items:
         raise ValueError("缺陷分享卡片至少需要一条缺陷")
-    title = "缺陷分享"
-    if len(items) > 1:
-        title = f"缺陷分享 · {len(items)} 条"
-    if parts > 1:
-        title = f"{title}（{part}/{parts}）"
+    title = f"缺陷分享 · {len(items)} 条"
     elements: list[dict[str, Any]] = [{
         "tag": "div",
         "text": {
@@ -124,13 +120,13 @@ def build_defect_share_card(
                 f"**项目** {sanitize_text(items[0].get('project_name')) or '-'}\n"
                 f"**推送人** {sanitize_text(pusher_name) or '-'}\n"
                 f"**有效期** {sanitize_text(expires_label) or '-'}\n"
+                f"**缺陷数量** {len(items)}\n"
                 f"**开发提交已解决** {'允许' if allow_resolve else '不允许'}"
             ),
         },
     }]
-    for item in items:
+    for item in items[:3]:
         summary = _safe_md_text(item.get("summary"), max_len=500) or "无摘要"
-        steps = _safe_md_text(item.get("steps_summary"), max_len=240) or "无"
         elements.append({"tag": "hr"})
         elements.append({
             "tag": "div",
@@ -141,20 +137,21 @@ def build_defect_share_card(
                     f"{_safe_md_text(item.get('title'), max_len=180) or '-'}\n"
                     f"严重度：{_safe_md_text(item.get('severity_label'), max_len=30) or '-'}　"
                     f"状态：{_safe_md_text(item.get('status'), max_len=30) or '-'}\n"
-                    f"摘要：{summary}\n复现步骤：{steps}\n"
-                    f"创建时间：{_safe_md_text(item.get('created_at'), max_len=40) or '-'}"
+                    f"摘要：{summary}"
                 ),
             },
         })
-        elements.append({
-            "tag": "action",
-            "actions": [{
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": "查看缺陷详情"},
-                "type": "primary",
-                "url": item["share_url"],
-            }],
-        })
+    if len(items) > 3:
+        elements.append({"tag": "div", "text": {"tag": "plain_text", "content": f"另有 {len(items) - 3} 条缺陷，请打开详情页查看。"}})
+    elements.append({
+        "tag": "action",
+        "actions": [{
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "查看缺陷"},
+            "type": "primary",
+            "url": items[0]["share_url"],
+        }],
+    })
     note = f"测试开发平台 · {sanitize_text(channel_name) or '飞书群'} · 卡片不含请求和响应正文"
     elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content": note}]})
     # 关键词机器人要求原文出现；关键词本身是渠道配置，不能先被凭证掩码改写。

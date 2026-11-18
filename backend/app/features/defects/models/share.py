@@ -5,7 +5,7 @@
 本模块不替代缺陷状态服务，状态变更仍由 DefectService 完成。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
@@ -18,6 +18,7 @@ class DefectShareLink(Base):
     __table_args__ = (
         UniqueConstraint("share_id", name="uq_defect_share_link_share_id"),
         UniqueConstraint("token_hash", name="uq_defect_share_link_token_hash"),
+        Index("uq_defect_share_link_request_key", "request_key", unique=True),
         {"comment": "缺陷免登录分享：只保存访问凭证哈希"},
     )
 
@@ -30,6 +31,9 @@ class DefectShareLink(Base):
         comment="推送时选择的飞书渠道；渠道删除后分享仍保留",
     )
     token_hash = Column(String(64), nullable=False, comment="访问凭证的 SHA-256，十六进制")
+    batch_id = Column(Integer, ForeignKey("defect_share_batch.id", ondelete="SET NULL"), nullable=True, index=True)
+    request_key = Column(String(100), nullable=True, comment="创建确认请求幂等键")
+    payload_hash = Column(String(64), nullable=True, comment="幂等请求载荷摘要")
     allow_view = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     allow_resolve = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     visible_fields = Column(JSON, nullable=False, comment="本次允许公开的字段名")
@@ -42,6 +46,37 @@ class DefectShareLink(Base):
     retry_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
     view_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
     last_viewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class DefectShareBatch(Base):
+    """一次多缺陷分享入口与一次飞书投递。"""
+
+    __tablename__ = "defect_share_batch"
+    __table_args__ = (
+        UniqueConstraint("public_id", name="uq_defect_share_batch_public_id"),
+        UniqueConstraint("token_hash", name="uq_defect_share_batch_token_hash"),
+        UniqueConstraint("request_key", name="uq_defect_share_batch_request_key"),
+        {"comment": "多缺陷免登录分享批次"},
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    public_id = Column(String(64), nullable=False)
+    project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel_id = Column(Integer, ForeignKey("notification_channel.id", ondelete="SET NULL"), nullable=True, index=True)
+    token_hash = Column(String(64), nullable=False)
+    request_key = Column(String(100), nullable=False)
+    payload_hash = Column(String(64), nullable=False)
+    allow_view = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    allow_resolve = Column(Boolean, nullable=False, default=True, server_default=text("true"))
+    expires_at = Column(DateTime, nullable=True, index=True)
+    revoked_at = Column(DateTime, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    pushed_by = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    pushed_at = Column(DateTime, nullable=False, server_default=func.now())
+    delivery_status = Column(String(20), nullable=False, default="PENDING", server_default=text("'PENDING'"))
+    retry_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 

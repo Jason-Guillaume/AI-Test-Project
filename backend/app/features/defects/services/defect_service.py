@@ -177,6 +177,8 @@ class DefectService:
             title=item.title.strip(),
             category=item.category,
             description=(item.description or "").strip() or None,
+            expected_result=(item.expected_result or "").strip() or None,
+            actual_result=(item.actual_result or "").strip() or None,
             # 接口专属字段：空白统一裁剪为 NULL，非接口缺陷自然为空。
             api_method=item.api_method,
             api_url=(item.api_url or "").strip() or None,

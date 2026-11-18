@@ -101,6 +101,38 @@ def test_failed_module_keeps_successful_draft_until_review(api, admin, db):
     assert api_stats.json()["case_count"] == 1
 
 
+def test_api_draft_can_have_zero_steps_and_import_without_placeholder(api, admin, db):
+    """接口用例可清空步骤并无步骤入库，UI 方向仍保留必填限制。"""
+    project_id = _project(api, admin)
+    service = GenerationService()
+    api_suite = _suite()
+    api_suite["modules"][0]["cases"][0]["steps"] = ["临时生成步骤"]
+    api_batch = service.persist(
+        db, _actor(db), project_id=project_id, direction="API", scope_node_id=None,
+        requirements="接口响应校验", suite=api_suite,
+    )
+    draft_id = api_batch.drafts[0].id
+    cleared = api.patch(f"/case-drafts/{draft_id}", username=admin, json={"steps": []})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["payload"]["steps"] == []
+    assert "STEPS_EMPTY" not in {issue["rule"] for issue in cleared.json()["quality"]}
+    accepted = api.post(f"/case-drafts/{draft_id}/accept", username=admin)
+    assert accepted.status_code == 200, accepted.text
+    detail = api.get(f"/test-cases/{accepted.json()['test_case_id']}/detail", username=admin)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["steps"] == []
+
+    ui_suite = _suite()
+    ui_batch = service.persist(
+        db, _actor(db), project_id=project_id, direction="UI", scope_node_id=None,
+        requirements="页面操作", suite=ui_suite,
+    )
+    rejected = api.patch(
+        f"/case-drafts/{ui_batch.drafts[0].id}", username=admin, json={"steps": []},
+    )
+    assert rejected.status_code == 400
+
+
 def test_scope_case_page_stays_bounded(api, admin):
     """分页只返回当前页。连续创建多条用例后，总数增加但单页条数不超过 page_size。"""
     project_id = _project(api, admin)

@@ -54,6 +54,24 @@ def test_defect_share_card_sanitizes_chinese_special_chars_and_bounds_long_text(
     assert "https://qa.company.com/public/defects/share/s1#token=tok_hidden" in serialized
 
 
+def test_batch_cards_keep_one_button_for_all_supported_batch_sizes():
+    """1、2、8、30 条缺陷都只展示一个批次入口按钮。"""
+    base = {
+        "bug_no": "BUG-42", "title": "批量缺陷", "severity_label": "高", "status": "待确认",
+        "project_name": "核心交易", "summary": "已脱敏摘要", "steps_summary": "1. 重现",
+        "created_at": "2026-11-18", "share_url": "https://qa.company.com/public/defects/share/batch/b1#token=tok",
+    }
+    for count in (1, 2, 8, 30):
+        card = build_defect_share_card(
+            [base.copy() for _ in range(count)], channel_name="研发群", pusher_name="tester",
+            expires_label="7 天有效", allow_resolve=True,
+        )
+        actions = [item for item in card["elements"] if item.get("tag") == "action"]
+        assert len(actions) == 1
+        assert len(actions[0]["actions"]) == 1
+        assert f"{count} 条" in card["header"]["title"]["content"]
+
+
 def test_feishu_delivery_signature_timeout_and_retry_idempotency(api, db, admin, monkeypatch):
     monkeypatch.setattr(settings, "PUBLIC_APP_BASE_URL", "https://qa.company.com")
     proj = api.post("/projects", username=admin, json={"name": unique("feishu-rel")}).json()
@@ -84,7 +102,7 @@ def test_feishu_delivery_signature_timeout_and_retry_idempotency(api, db, admin,
     first = api.post(f"/bugs/{bug['id']}/shares", username=admin, json={"channel_id": channel["id"]})
     assert first.status_code == 200
     first_body = first.json()
-    assert first_body["notification_status"] == "FAILED"
+    assert first_body["notification_status"] == "UNCERTAIN"
     assert first_body["retry_count"] == 0
     assert len(captured_requests) == 1
 
@@ -94,6 +112,13 @@ def test_feishu_delivery_signature_timeout_and_retry_idempotency(api, db, admin,
         hmac.new(f"{ts}\n{secret}".encode("utf-8"), b"", digestmod=hashlib.sha256).digest()
     ).decode("utf-8")
     assert captured_requests[0]["sign"] == expected_sign
+
+    guarded = api.post(
+        f"/bugs/{bug['id']}/shares/{first_body['share_id']}/retry", username=admin, json={},
+    )
+    assert guarded.status_code == 409
+    assert "结果待确认" in guarded.json()["message"]
+    assert len(captured_requests) == 1
 
     # Next attempt with Feishu code != 0 followed by 200 success creates distinct idempotent records.
     def error_code_post(url, json=None, **kwargs):
@@ -109,7 +134,10 @@ def test_feishu_delivery_signature_timeout_and_retry_idempotency(api, db, admin,
         return Resp()
 
     monkeypatch.setattr("app.platform.notifications.services.feishu_service.httpx.post", error_code_post)
-    retry1 = api.post(f"/bugs/{bug['id']}/shares/{first_body['share_id']}/retry", username=admin, json={})
+    retry1 = api.post(
+        f"/bugs/{bug['id']}/shares/{first_body['share_id']}/retry", username=admin,
+        json={"confirm_uncertain": True},
+    )
     assert retry1.status_code == 200
     assert retry1.json()["notification_status"] == "FAILED"
     assert retry1.json()["retry_count"] == 1
@@ -139,12 +167,12 @@ def test_feishu_delivery_signature_timeout_and_retry_idempotency(api, db, admin,
         .all()
     )
     assert len(records) == 3
-    assert [r.idempotency_key for r in records] == [
-        f"defect-share:{first_body['share_id']}:0",
-        f"defect-share:{first_body['share_id']}:1",
-        f"defect-share:{first_body['share_id']}:2",
+    assert records[0].idempotency_key.startswith("defect-share:")
+    assert [r.idempotency_key for r in records[1:]] == [
+        f"defect-share-retry:{first_body['share_id']}:1",
+        f"defect-share-retry:{first_body['share_id']}:2",
     ]
-    assert [r.status for r in records] == ["FAILED", "FAILED", "SUCCESS"]
+    assert [r.status for r in records] == ["UNCERTAIN", "FAILED", "SUCCESS"]
     # Neither NotificationRecord snapshot nor error fields contain webhook secret.
     for rec in records:
         assert secret not in str(rec.request_snapshot or "")

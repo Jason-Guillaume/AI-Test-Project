@@ -78,6 +78,8 @@ interface BugFormValues {
   title: string;
   category?: BugCategory;
   description?: string;
+  expected_result?: string;
+  actual_result?: string;
   api_method?: ApiMethod;
   api_url?: string;
   api_request_headers?: string;
@@ -104,6 +106,7 @@ export function ConsoleDefectsPage() {
   const { message, modal } = App.useApp();
   const { isPlatformAdmin } = useAuth();
   const [shareBugs, setShareBugs] = useState<Bug[] | null>(null);
+  const [shareSelectionLoading, setShareSelectionLoading] = useState(false);
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedBugId = Number(searchParams.get('bugId'));
@@ -135,6 +138,8 @@ export function ConsoleDefectsPage() {
   // 编辑时把 bug 值回填进 form；用 key 触发 antd Form 的 resetFields
   const [formKey, setFormKey] = useState(0);
   const [files, setFiles] = useState<File[]>([]);
+  const [createdPendingUpload, setCreatedPendingUpload] = useState<Bug | null>(null);
+  const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
 
   // 拼装查询参数
   const query = useMemo(
@@ -180,9 +185,7 @@ export function ConsoleDefectsPage() {
   const createMutation = useMutation({
     mutationFn: (body: BugCreate) => bugsApi.create(body),
     onSuccess: () => {
-      message.success('缺陷已创建');
       queryClient.invalidateQueries({ queryKey: ['bugs'] });
-      setModalState(null);
     },
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
   });
@@ -249,6 +252,7 @@ export function ConsoleDefectsPage() {
   const openCreate = () => {
     setFormKey((k) => k + 1);
     setFiles([]);
+    setCreatedPendingUpload(null);
     setModalState({ mode: 'create' });
   };
   const openEdit = (bug: Bug) => {
@@ -378,14 +382,30 @@ export function ConsoleDefectsPage() {
           批量删除（{selectedBugIds.length}）
         </Button>
         <Button
-          disabled={selectedBugIds.length === 0 || !data.items.some((bug) => selectedBugIds.includes(bug.id) && canManage(bug.project_id))}
-          onClick={() => {
-            const selected = data.items.filter((bug) => selectedBugIds.includes(bug.id));
-            if (selected.length === 0 || new Set(selected.map((bug) => bug.project_id)).size !== 1) {
-              message.warning('请在同一项目下选择要推送的缺陷');
+          disabled={selectedBugIds.length === 0 || projectId == null || !canManage(projectId)}
+          loading={shareSelectionLoading}
+          onClick={async () => {
+            if (selectedBugIds.length > 30) {
+              message.warning('单次最多推送 30 条缺陷，请减少勾选后再确认');
               return;
             }
-            setShareBugs(selected);
+            setShareSelectionLoading(true);
+            try {
+              const selected = await Promise.all([...new Set(selectedBugIds)].map((id) => bugsApi.get(id)));
+              if (selected.some((bug) => bug.project_id !== projectId)) {
+                message.warning('所选缺陷不都属于当前项目，请重新筛选');
+                return;
+              }
+              if (!selected.every((bug) => canManage(bug.project_id))) {
+                message.error('所选缺陷中存在当前无权推送的项目');
+                return;
+              }
+              setShareBugs(selected);
+            } catch (error) {
+              message.error(getErrorMessage(error, '读取跨页所选缺陷失败'));
+            } finally {
+              setShareSelectionLoading(false);
+            }
           }}
         >
           批量推送到飞书（{selectedBugIds.length}）
@@ -501,6 +521,12 @@ export function ConsoleDefectsPage() {
             {bugDetail.data.environment && <Tag>{bugDetail.data.environment}</Tag>}
           </Space>
           <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
+          <Typography.Text strong>复现步骤</Typography.Text>
+          <pre className="bug-api-pre">{bugDetail.data.steps_to_reproduce || '未填写'}</pre>
+          <Typography.Text strong>预期结果</Typography.Text>
+          <pre className="bug-api-pre">{bugDetail.data.expected_result || '未填写'}</pre>
+          <Typography.Text strong>实际结果</Typography.Text>
+          <pre className="bug-api-pre">{bugDetail.data.actual_result || '未填写'}</pre>
           {(bugDetail.data.api_url || bugDetail.data.api_method || bugDetail.data.api_request_headers || bugDetail.data.api_request_body || bugDetail.data.api_response) && (
             <>
               <Typography.Text strong>接口信息</Typography.Text>
@@ -565,7 +591,7 @@ export function ConsoleDefectsPage() {
             : '新建缺陷'
         }
         open={modalState != null}
-        onCancel={() => setModalState(null)}
+        onCancel={() => { if (!attachmentUploadPending) setModalState(null); }}
         onOk={async () => {
           if (modalState == null) return;
           const values = await bugForm.validateFields();
@@ -575,6 +601,8 @@ export function ConsoleDefectsPage() {
             title: values.title,
             category: values.category,
             description: values.description,
+            expected_result: values.expected_result ?? null,
+            actual_result: values.actual_result ?? null,
             api_method: isApiBug ? (values.api_method ?? null) : null,
             api_url: isApiBug ? (values.api_url ?? null) : null,
             api_request_headers: isApiBug ? (values.api_request_headers ?? null) : null,
@@ -593,15 +621,26 @@ export function ConsoleDefectsPage() {
               message.error('请先选择一个项目，或先创建项目');
               return;
             }
-            const created = await createMutation.mutateAsync({
+            const created = createdPendingUpload ?? await createMutation.mutateAsync({
               ...basePayload,
               project_id: projectIdForCreate,
             });
-            if (files.length > 0) {
+            if (!createdPendingUpload) setCreatedPendingUpload(created);
+            if (files.length) {
+              setAttachmentUploadPending(true);
               const results = await Promise.allSettled(files.map((file) => bugsApi.uploadAttachment(created.id, file)));
-              const failed = results.filter((result) => result.status === 'rejected').length;
-              if (failed) message.warning(`缺陷 #${created.id} 已创建，${failed} 个附件上传失败，请在详情中重试`);
+              const failedFiles = files.filter((_file, index) => results[index]?.status === 'rejected');
+              setAttachmentUploadPending(false);
+              setFiles(failedFiles);
+              if (failedFiles.length) {
+                message.warning(`缺陷 #${created.id} 已创建，${failedFiles.length} 个附件未上传；再次保存可重试`);
+                return;
+              }
             }
+            setFiles([]);
+            setCreatedPendingUpload(null);
+            message.success(createdPendingUpload ? '附件已补传' : '缺陷及附件已保存');
+            setModalState(null);
           } else {
             await updateMutation.mutateAsync({
               id: modalState.bug.id,
@@ -609,7 +648,7 @@ export function ConsoleDefectsPage() {
             });
           }
         }}
-        confirmLoading={createMutation.isPending || updateMutation.isPending}
+        confirmLoading={createMutation.isPending || updateMutation.isPending || attachmentUploadPending}
         okText="保存"
         cancelText="取消"
         destroyOnHidden
@@ -625,6 +664,8 @@ export function ConsoleDefectsPage() {
                   title: modalState.bug.title,
                   category: modalState.bug.category ?? undefined,
                   description: modalState.bug.description ?? undefined,
+                  expected_result: modalState.bug.expected_result ?? undefined,
+                  actual_result: modalState.bug.actual_result ?? undefined,
                   api_method: modalState.bug.api_method ?? undefined,
                   api_url: modalState.bug.api_url ?? undefined,
                   api_request_headers: modalState.bug.api_request_headers ?? undefined,
@@ -740,6 +781,12 @@ export function ConsoleDefectsPage() {
           <Form.Item name="description" label="描述">
             <Input.TextArea placeholder="详细描述问题现象" rows={3} maxLength={1000} />
           </Form.Item>
+          <Form.Item name="expected_result" label="预期结果">
+            <Input.TextArea placeholder="填写预期表现" rows={3} maxLength={4000} />
+          </Form.Item>
+          <Form.Item name="actual_result" label="实际结果">
+            <Input.TextArea placeholder="填写实际表现" rows={3} maxLength={4000} />
+          </Form.Item>
           <div className="form-field-row">
             <Form.Item
               name="severity"
@@ -771,8 +818,9 @@ export function ConsoleDefectsPage() {
           >
             <Input.TextArea rows={4} placeholder={'1. 打开登录页\n2. 输入错误密码\n3. 点击登录'} />
           </Form.Item>
-          {modalState?.mode === 'create' && <Form.Item label="附件" extra="每个文件不超过 10 MB；保存后上传">
-            <Upload.Dragger multiple beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } setFiles((previous) => [...previous, file]); return false; }} onRemove={(file) => { setFiles((previous) => previous.filter((item) => item !== file.originFileObj)); }}>
+          {modalState?.mode === 'create' && <Form.Item label="附件" extra="每个文件不超过 10 MB；保存时上传，失败文件可再次保存重试">
+            {createdPendingUpload && files.length > 0 && <Alert style={{ marginBottom: 8 }} type="warning" showIcon message={`缺陷 #${createdPendingUpload.id} 已创建，保存会重试附件上传`} />}
+            <Upload.Dragger disabled={attachmentUploadPending} multiple beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } setFiles((previous) => [...previous, file]); return false; }} onRemove={(file) => { setFiles((previous) => previous.filter((item) => item !== file.originFileObj)); }}>
               <p className="ant-upload-drag-icon"><InboxOutlined /></p>
               <p className="ant-upload-text">点击或拖拽文件到此处</p>
               <p className="ant-upload-hint">支持同时选择多个文件</p>

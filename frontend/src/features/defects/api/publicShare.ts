@@ -26,6 +26,12 @@ export interface PublicDefectContent {
   sources?: Array<Record<string, unknown>>;
   agent_executions?: unknown[];
   allure?: string | null;
+  api_method?: string | null;
+  api_url?: string | null;
+  api_request_headers?: string | Record<string, unknown> | null;
+  api_request_body?: string | null;
+  api_response?: string | null;
+  attachments?: Array<{ id: number; filename: string; size: number; content_type: string; available: boolean }>;
 }
 
 export interface PublicResolution {
@@ -49,6 +55,20 @@ export interface PublicDefect {
   content: PublicDefectContent;
   resolution: PublicResolution | null;
   identity_note: string;
+}
+
+export interface PublicBatchItem {
+  share_id: string;
+  bug_no: string;
+  title: string | null;
+  severity_label: string | null;
+  status: string | null;
+}
+
+export interface PublicBatch {
+  batch_state: 'active';
+  expires_at: string | null;
+  items: PublicBatchItem[];
 }
 
 export interface PublicResolveResult {
@@ -83,6 +103,31 @@ export const publicDefectApi = {
       `/public/defect-shares/${encodeURIComponent(shareId)}/resolve`,
       body,
       authHeader(token),
+    );
+    return response.data;
+  },
+  batch: async (batchId: string, token: string) => {
+    const response = await publicClient.get<PublicBatch>(`/public/defect-shares/batches/${encodeURIComponent(batchId)}`, authHeader(token));
+    return response.data;
+  },
+  batchItem: async (batchId: string, shareId: string, token: string) => {
+    const response = await publicClient.get<PublicDefect>(`/public/defect-shares/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(shareId)}`, authHeader(token));
+    return response.data;
+  },
+  recordBatchView: async (batchId: string, shareId: string, token: string) => {
+    await publicClient.post(`/public/defect-shares/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(shareId)}/views`, null, authHeader(token));
+  },
+  resolveBatchItem: async (batchId: string, shareId: string, token: string, body: { repair_description: string; fix_version?: string; commit_sha?: string; reporter_name?: string }) => {
+    const response = await publicClient.post<PublicResolveResult>(`/public/defect-shares/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(shareId)}/resolve`, body, authHeader(token));
+    return response.data;
+  },
+  attachment: async (shareId: string, token: string, attachmentId: number, download = false, batchId?: string) => {
+    const path = batchId
+      ? `/public/defect-shares/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(shareId)}/attachments/${attachmentId}`
+      : `/public/defect-shares/${encodeURIComponent(shareId)}/attachments/${attachmentId}`;
+    const response = await publicClient.get<Blob>(
+      path,
+      { ...authHeader(token), params: download ? { download: true } : undefined, responseType: 'blob' },
     );
     return response.data;
   },

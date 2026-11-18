@@ -10,13 +10,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import ipaddress
+import json
 import re
 import secrets
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,12 +35,14 @@ from app.core.security.roles import (
 from app.core.security.sanitizer import sanitize_context, sanitize_text
 from app.core.security.sensitive import is_sensitive_key
 from app.features.defects.models.bug import Bug
-from app.features.defects.models.share import DefectExternalAction, DefectShareLink
+from app.features.defects.models.attachment import BugAttachment
+from app.features.defects.models.share import DefectExternalAction, DefectShareBatch, DefectShareLink
 from app.features.defects.models.source_link import DefectSourceLink
 from app.features.defects.schemas import SEVERITY_LABELS
 from app.features.defects.schemas_share import (
     BatchShareRequest,
     BatchShareResponse,
+    BatchShareItemResponse,
     ExternalActionResponse,
     PublicDefectResponse,
     PublicResolutionResponse,
@@ -54,6 +57,8 @@ from app.features.defects.schemas_share import (
     SharePreviewResponse,
     SharePushResponse,
     ShareRetryRequest,
+    PublicBatchItemResponse,
+    PublicBatchResponse,
     ShareSummaryResponse,
 )
 from app.features.defects.services.defect_service import DefectService
@@ -67,14 +72,14 @@ from app.platform.projects.services.access_service import check_writable
 DEFAULT_VISIBLE_FIELDS = (
     "bug_no", "title", "severity", "status", "project_name", "description",
     "steps_to_reproduce", "environment", "expected_result", "actual_result",
-    "created_at", "source_summary", "reporter", "assignee",
+    "created_at", "source_summary", "reporter", "assignee", "api_method", "api_url",
+    "api_request_headers", "api_request_body", "api_response", "attachments",
 )
 OPTIONAL_VISIBLE_FIELDS = (
     "api_execution", "agent_execution", "security_record", "request_response",
     "error_stack", "screenshots", "allure",
 )
 ALL_VISIBLE_FIELDS = set(DEFAULT_VISIBLE_FIELDS) | set(OPTIONAL_VISIBLE_FIELDS)
-_CARD_CHUNK = 8
 _PATH_PATTERN = re.compile(
     r"(?i)(?:[a-z]:\\[^\s\"']+|/(?:users|home|var|etc|opt|tmp|usr|private|app)(?:/[^\s\"']*)?"
     r"|postgres(?:ql)?://\S+|mysql://\S+|mongodb(?:\+srv)?://\S+|redis://\S+)"
@@ -94,6 +99,41 @@ def _clean_text(value: str | None, limit: int = 2000) -> str | None:
     if not text:
         return None
     return text[:limit]
+
+
+def _clean_api_value(value: str | None, limit: int) -> Any:
+    """清理 JSON API 正文时按键名剔除凭据，原始文本仍执行文本脱敏。"""
+    if value is None:
+        return None
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return _clean_text(value, limit)
+    if isinstance(parsed, (dict, list)):
+        cleaned = _clean_json(parsed)
+        encoded = json.dumps(cleaned, ensure_ascii=False, indent=2)
+        return encoded[:limit]
+    return _clean_text(value, limit)
+
+
+def _safe_api_url(value: str | None) -> str | None:
+    """保留接口方法和路径，不把查询参数、凭据或 URL fragment 放进公开快照。"""
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(value.strip())
+    except ValueError:
+        return _clean_text(value, 500)
+    host = parsed.hostname or ""
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+    safe_netloc = f"{host}:{port}" if host and port else host
+    safe = parsed._replace(netloc=safe_netloc, query="", fragment="").geturl()
+    return _clean_text(safe, 500)
 
 
 def _clean_json(value: Any, depth: int = 0) -> Any:
@@ -120,7 +160,7 @@ def _walk_public_json(value: Any, depth: int) -> Any:
     if isinstance(value, list):
         return [_walk_public_json(item, depth + 1) for item in value[:20]]
     if isinstance(value, str):
-        return _clean_text(value, 1000)
+        return _clean_text(value, 5000)
     if isinstance(value, (int, float, bool)) or value is None:
         return value
     return _clean_text(str(value), 200)
@@ -257,6 +297,13 @@ def build_share_url(share_id: str, token: str) -> str:
     return f"{base}{path}" if base else path
 
 
+def build_batch_share_url(batch_id: str, token: str) -> str:
+    """批次凭证放在 Fragment，与单条公开链接保持相同安全边界。"""
+    base = (settings.PUBLIC_APP_BASE_URL or "").strip().rstrip("/")
+    path = f"/public/defects/share/batch/{batch_id}#token={token}"
+    return f"{base}{path}" if base else path
+
+
 class DefectShareService:
     """缺陷分享用例。服务层提交事务，路由层只做认证和响应映射。"""
 
@@ -295,55 +342,131 @@ class DefectShareService:
 
     def create(self, db: Session, bug_id: int, body: ShareOptions, actor: User) -> SharePushResponse:
         """为一条缺陷创建独立分享并推送到已有飞书渠道。"""
-        result = self.create_batch(db, BatchShareRequest(bug_ids=[bug_id], **body.model_dump()), actor)
-        return result.items[0]
+        bug = self._bugs(db, [bug_id], actor)[0]
+        channel = self._channel(db, bug, body.channel_id, actor)
+        url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
+        if not url_ok:
+            raise bad_request(url_err or "PUBLIC_APP_BASE_URL 配置无效")
+        fields = self._fields(body.visible_fields)
+        expires_at = self._expiry(db, bug.project_id, actor, body)
+        request_key = body.request_key or secrets.token_urlsafe(24)
+        payload_hash = self._payload_hash([bug.id], body)
+        existing = db.query(DefectShareLink).filter_by(request_key=request_key).one_or_none()
+        if existing is not None:
+            if existing.pushed_by != actor.id or existing.payload_hash != payload_hash:
+                raise conflict("同一请求键已用于不同的推送内容")
+            record = self._share_notification(db, existing)
+            return self._push_response(existing, None, channel, record)
+
+        token = _new_token()
+        share = DefectShareLink(
+            share_id=self._unique_share_id(db), bug_id=bug.id, project_id=bug.project_id,
+            channel_id=channel.id, token_hash=_hash_token(token), request_key=request_key,
+            payload_hash=payload_hash, allow_view=body.allow_view, allow_resolve=body.allow_resolve,
+            visible_fields=fields, content_snapshot=self._snapshot(db, bug, fields),
+            expires_at=expires_at, pushed_by=actor.id, pushed_at=datetime.now(),
+        )
+        db.add(share)
+        db.flush()
+        url = build_share_url(share.share_id, token)
+        card = build_defect_share_card(
+            [self._card_item(share, token)], channel_name=channel.name, pusher_name=actor.username,
+            expires_label=self._share_expiry_label(share), allow_resolve=bool(share.allow_resolve),
+            keyword=(channel.config_json or {}).get("keyword"),
+        )
+        try:
+            record = self._reserve_notification(
+                db, channel, card, actor, bug_id=bug.id, share_link_id=share.id,
+                idempotency_key=f"defect-share:{request_key}", retry_count=0,
+            )
+        except IntegrityError:
+            db.rollback()
+            existing = db.query(DefectShareLink).filter_by(request_key=request_key).one_or_none()
+            if existing is None or existing.pushed_by != actor.id or existing.payload_hash != payload_hash:
+                raise conflict("同一请求键已用于不同的推送内容")
+            return self._push_response(existing, None, channel, self._share_notification(db, existing))
+        record = self._deliver_reserved(db, record, channel, card)
+        return self._push_response(share, token, channel, record)
 
     def create_batch(self, db: Session, body: BatchShareRequest, actor: User) -> BatchShareResponse:
-        """批量创建分享。每条缺陷一张独立凭证，飞书侧按数量合并卡片。"""
+        """多缺陷推送使用一条批次入口，并只发送一次飞书卡片。"""
         bugs = self._bugs(db, body.bug_ids, actor)
+        if len(bugs) == 1:
+            result = self.create(db, bugs[0].id, ShareOptions(**body.model_dump(exclude={"bug_ids"})), actor)
+            return BatchShareResponse(
+                batch_share_id=result.share_id, batch_share_url=result.share_url,
+                url_is_absolute=result.url_is_absolute,
+                items=[BatchShareItemResponse(share_id=result.share_id, bug_id=result.bug_id, bug_no=result.bug_no, notification_status=result.notification_status)],
+                card_count=1, notification_status=result.notification_status, error_message=result.error_message,
+                retry_count=result.retry_count,
+            )
         channel = self._channel(db, bugs[0], body.channel_id, actor)
         url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
         if not url_ok:
             raise bad_request(url_err or "PUBLIC_APP_BASE_URL 配置无效")
         fields = self._fields(body.visible_fields)
         expires_at = self._expiry(db, bugs[0].project_id, actor, body)
-        created: list[tuple[DefectShareLink, str, Bug]] = []
+        request_key = body.request_key or secrets.token_urlsafe(24)
+        payload_hash = self._payload_hash([bug.id for bug in bugs], body)
+        existing = db.query(DefectShareBatch).filter_by(request_key=request_key).one_or_none()
+        if existing is not None:
+            if existing.pushed_by != actor.id or existing.payload_hash != payload_hash:
+                raise conflict("同一请求键已用于不同的推送内容")
+            return self._batch_result(db, existing, None, duplicate=True)
+
+        token = _new_token()
+        batch = DefectShareBatch(
+            public_id=self._unique_batch_id(db), project_id=bugs[0].project_id,
+            channel_id=channel.id, token_hash=_hash_token(token), request_key=request_key,
+            payload_hash=payload_hash, allow_view=body.allow_view, allow_resolve=body.allow_resolve,
+            expires_at=expires_at, pushed_by=actor.id, pushed_at=datetime.now(),
+        )
+        db.add(batch)
+        db.flush()
+        shares: list[DefectShareLink] = []
         for bug in bugs:
-            token = _new_token()
             share = DefectShareLink(
-                share_id=self._unique_share_id(db),
-                bug_id=bug.id,
-                project_id=bug.project_id,
-                channel_id=channel.id,
-                token_hash=_hash_token(token),
-                allow_view=body.allow_view,
-                allow_resolve=body.allow_resolve,
-                visible_fields=fields,
-                content_snapshot=self._snapshot(db, bug, fields),
-                expires_at=expires_at,
-                pushed_by=actor.id,
-                pushed_at=datetime.now(),
+                share_id=self._unique_share_id(db), bug_id=bug.id, project_id=bug.project_id,
+                channel_id=channel.id, token_hash=_hash_token(_new_token()), batch_id=batch.id,
+                allow_view=body.allow_view, allow_resolve=body.allow_resolve,
+                visible_fields=fields, content_snapshot=self._snapshot(db, bug, fields),
+                expires_at=expires_at, pushed_by=actor.id, pushed_at=datetime.now(),
             )
             db.add(share)
-            created.append((share, token, bug))
+            shares.append(share)
         db.flush()
-        responses: list[SharePushResponse] = []
-        card_count = 0
-        for offset in range(0, len(created), _CARD_CHUNK):
-            chunk = created[offset:offset + _CARD_CHUNK]
-            card_count += 1
-            records = self._dispatch(
-                db, channel, [item[0] for item in chunk], [item[1] for item in chunk], actor,
-                part=card_count, parts=(len(created) + _CARD_CHUNK - 1) // _CARD_CHUNK,
+        batch_url = build_batch_share_url(batch.public_id, token)
+        items = [self._card_item(share, "") for share in shares]
+        items[0]["share_url"] = batch_url
+        card = build_defect_share_card(
+            items, channel_name=channel.name, pusher_name=actor.username,
+            expires_label=self._share_expiry_label(shares[0]), allow_resolve=bool(batch.allow_resolve),
+            keyword=(channel.config_json or {}).get("keyword"),
+        )
+        try:
+            record = self._reserve_notification(
+                db, channel, card, actor, share_batch_id=batch.id,
+                idempotency_key=f"defect-share-batch:{request_key}", retry_count=0,
             )
-            for (share, token, _bug), record in zip(chunk, records):
-                responses.append(self._push_response(share, token, channel, record))
-        return BatchShareResponse(items=responses, card_count=card_count)
+        except IntegrityError:
+            db.rollback()
+            existing = db.query(DefectShareBatch).filter_by(request_key=request_key).one_or_none()
+            if existing is None or existing.pushed_by != actor.id or existing.payload_hash != payload_hash:
+                raise conflict("同一请求键已用于不同的推送内容")
+            return self._batch_result(db, existing, None, duplicate=True)
+        record = self._deliver_reserved(db, record, channel, card)
+        batch.delivery_status = record.status
+        db.commit()
+        return self._batch_result(db, batch, token, notification=record)
 
     def retry(
         self, db: Session, bug_id: int, share_id: str, body: ShareRetryRequest, actor: User,
     ) -> SharePushResponse:
         """重发同一条分享。没有原凭证时轮换哈希，不新增分享行。"""
+        share = self._managed_share(db, bug_id, share_id, actor)
+        # 串行化重试请求。提交 NotificationRecord 前锁保持到 PENDING 状态落库，
+        # 之后到达的重复请求会看到 PENDING/SENDING，不会再占用一次 Webhook。
+        share = db.query(DefectShareLink).filter_by(id=share.id).with_for_update().populate_existing().one()
         share = self._managed_share(db, bug_id, share_id, actor)
         if share.revoked_at is not None:
             raise conflict("分享链接已撤销，不能重新推送")
@@ -353,7 +476,16 @@ class DefectShareService:
             raise conflict("分享链接已过期，请重新创建分享")
         if share.channel_id is None:
             raise bad_request("原飞书渠道已删除，请重新创建分享")
+        if share.batch_id is not None:
+            raise conflict("这是批次分享中的一条缺陷，请从批次历史重试整组推送")
         channel = self._channel(db, self._bug_of(db, share), share.channel_id, actor)
+        latest = self._share_notification(db, share)
+        if latest.status == "UNCERTAIN" and not body.confirm_uncertain:
+            raise conflict("上次投递结果待确认；请确认群消息未收到后再显式重发")
+        if latest.status in {"PENDING", "SENDING"}:
+            raise conflict("投递仍在处理中")
+        if latest.status == "SUCCESS":
+            raise conflict("上次投递已成功，无需重新推送")
         url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
         if not url_ok:
             raise bad_request(url_err or "PUBLIC_APP_BASE_URL 配置无效")
@@ -367,7 +499,19 @@ class DefectShareService:
             share.token_hash = _hash_token(token)
         share.retry_count = int(share.retry_count or 0) + 1
         db.flush()
-        record = self._dispatch(db, channel, [share], [token], actor, part=1, parts=1)[0]
+        token_for_card = token
+        card = build_defect_share_card(
+            [self._card_item(share, token_for_card)], channel_name=channel.name,
+            pusher_name=actor.username, expires_label=self._share_expiry_label(share),
+            allow_resolve=bool(share.allow_resolve),
+            keyword=(channel.config_json or {}).get("keyword"),
+        )
+        record = self._reserve_notification(
+            db, channel, card, actor, bug_id=share.bug_id, share_link_id=share.id,
+            idempotency_key=f"defect-share-retry:{share.share_id}:{share.retry_count}",
+            retry_count=int(share.retry_count or 0),
+        )
+        record = self._deliver_reserved(db, record, channel, card)
         return self._push_response(share, token, channel, record)
 
     def list_shares(self, db: Session, bug_id: int, actor: User) -> ShareListResponse:
@@ -391,12 +535,11 @@ class DefectShareService:
             .order_by(DefectExternalAction.id.desc())
             .all()
         )
-        records = (
-            db.query(NotificationRecord)
-            .filter(NotificationRecord.share_link_id == share.id)
-            .order_by(NotificationRecord.id.desc())
-            .all()
-        )
+        records_query = db.query(NotificationRecord)
+        records_query = records_query.filter(
+            or_(NotificationRecord.share_link_id == share.id, NotificationRecord.share_batch_id == share.batch_id)
+        ) if share.batch_id is not None else records_query.filter(NotificationRecord.share_link_id == share.id)
+        records = records_query.order_by(NotificationRecord.id.desc()).all()
         return ShareDetailResponse(
             **summary.model_dump(),
             visible_fields=list(share.visible_fields or []),
@@ -430,6 +573,77 @@ class DefectShareService:
         db.commit()
         return [self._summary(db, share) for share in shares]
 
+    def retry_batch(self, db: Session, public_id: str, body: ShareRetryRequest, actor: User) -> BatchShareResponse:
+        # 与单条重试相同，锁住批次并确保重复点击只会预留一条新投递记录。
+        batch = db.query(DefectShareBatch).filter_by(public_id=public_id).with_for_update().populate_existing().one_or_none()
+        if batch is None:
+            raise not_found("分享批次不存在")
+        project = db.get(Project, batch.project_id)
+        if project is None:
+            raise not_found("分享批次不存在")
+        check_writable(db, project, actor)
+        if batch.revoked_at is not None or batch.archived_at is not None or (batch.expires_at is not None and batch.expires_at <= datetime.now()):
+            raise conflict("批次分享已撤销或过期，请重新创建")
+        latest = db.query(NotificationRecord).filter_by(share_batch_id=batch.id).order_by(NotificationRecord.id.desc()).first()
+        if latest is not None and latest.status == "UNCERTAIN" and not body.confirm_uncertain:
+            raise conflict("上次投递结果待确认；请确认群消息未收到后再显式重发")
+        if latest is not None and latest.status in {"PENDING", "SENDING"}:
+            raise conflict("投递仍在处理中")
+        if latest is not None and latest.status == "SUCCESS":
+            raise conflict("上次投递已成功，无需重新推送")
+        if batch.channel_id is None:
+            raise bad_request("原飞书渠道已删除，请重新创建分享")
+        now = datetime.now()
+        rows = db.query(DefectShareLink).join(Bug, Bug.id == DefectShareLink.bug_id).filter(
+            DefectShareLink.batch_id == batch.id,
+            DefectShareLink.revoked_at.is_(None),
+            DefectShareLink.archived_at.is_(None),
+            or_(DefectShareLink.expires_at.is_(None), DefectShareLink.expires_at > now),
+            Bug.deleted_at.is_(None),
+        ).order_by(DefectShareLink.id).all()
+        if not rows:
+            raise conflict("批次中已没有有效缺陷")
+        channel = self._channel(db, self._bug_of(db, rows[0]), batch.channel_id, actor)
+        url_ok, url_err = validate_public_share_base_url(_channel_webhook_url(channel))
+        if not url_ok:
+            raise bad_request(url_err or "PUBLIC_APP_BASE_URL 配置无效")
+        token = _new_token()
+        batch.token_hash = _hash_token(token)
+        batch.retry_count = int(batch.retry_count or 0) + 1
+        for share in rows:
+            share.retry_count = batch.retry_count
+        db.flush()
+        batch_url = build_batch_share_url(batch.public_id, token)
+        items = [self._card_item(share, "") for share in rows]
+        items[0]["share_url"] = batch_url
+        card = build_defect_share_card(
+            items, channel_name=channel.name, pusher_name=actor.username,
+            expires_label=self._share_expiry_label(rows[0]), allow_resolve=bool(batch.allow_resolve),
+            keyword=(channel.config_json or {}).get("keyword"),
+        )
+        record = self._reserve_notification(
+            db, channel, card, actor, share_batch_id=batch.id,
+            idempotency_key=f"defect-share-batch-retry:{batch.public_id}:{batch.retry_count}",
+            retry_count=batch.retry_count,
+        )
+        record = self._deliver_reserved(db, record, channel, card)
+        batch.delivery_status = record.status
+        db.commit()
+        return self._batch_result(db, batch, token, notification=record)
+
+    def revoke_batch_link(self, db: Session, public_id: str, actor: User) -> BatchShareResponse:
+        batch = db.query(DefectShareBatch).filter_by(public_id=public_id).one_or_none()
+        if batch is None:
+            raise not_found("分享批次不存在")
+        project = db.get(Project, batch.project_id)
+        if project is None:
+            raise not_found("分享批次不存在")
+        check_writable(db, project, actor)
+        if batch.revoked_at is None:
+            batch.revoked_at = datetime.now()
+            db.commit()
+        return self._batch_result(db, batch, None)
+
     def archive_expired(self, db: Session, actor: User) -> int:
         """把已经过期的分享标记为归档。不删除审计，也不影响未过期链接。"""
         if not is_platform_admin(actor):
@@ -450,12 +664,14 @@ class DefectShareService:
         rows = (
             db.query(DefectShareLink.bug_id, DefectShareLink.id)
             .join(Bug, Bug.id == DefectShareLink.bug_id)
+            .outerjoin(DefectShareBatch, DefectShareBatch.id == DefectShareLink.batch_id)
             .filter(
                 DefectShareLink.bug_id.in_(bug_ids),
                 Bug.deleted_at.is_(None),
                 DefectShareLink.revoked_at.is_(None),
                 DefectShareLink.archived_at.is_(None),
                 or_(DefectShareLink.expires_at.is_(None), DefectShareLink.expires_at > now),
+                or_(DefectShareLink.batch_id.is_(None), and_(DefectShareBatch.revoked_at.is_(None), DefectShareBatch.archived_at.is_(None), or_(DefectShareBatch.expires_at.is_(None), DefectShareBatch.expires_at > now))),
             )
             .all()
         )
@@ -470,6 +686,110 @@ class DefectShareService:
         self._ensure_readable(share)
         bug = self._public_bug(db, share)
         return self._public_response(db, share, bug)
+
+    def view_public_batch(self, db: Session, public_id: str, token: str) -> PublicBatchResponse:
+        batch = self._authenticated_batch(db, public_id, token)
+        self._ensure_batch_readable(batch)
+        rows = db.query(DefectShareLink).filter(
+            DefectShareLink.batch_id == batch.id, DefectShareLink.revoked_at.is_(None),
+        ).order_by(DefectShareLink.id).all()
+        items = []
+        for share in rows:
+            if share.archived_at is not None or (share.expires_at is not None and share.expires_at <= datetime.now()) or not share.allow_view:
+                continue
+            bug = db.get(Bug, share.bug_id)
+            if bug is None or getattr(bug, "deleted_at", None) is not None:
+                continue
+            snapshot = dict(share.content_snapshot or {})
+            items.append(PublicBatchItemResponse(
+                share_id=share.share_id,
+                bug_no=snapshot.get("bug_no") if "bug_no" in set(share.visible_fields or []) else "缺陷",
+                title=snapshot.get("title") if "title" in set(share.visible_fields or []) else None,
+                severity_label=snapshot.get("severity_label") if "severity" in set(share.visible_fields or []) else None,
+                status=snapshot.get("status") if "status" in set(share.visible_fields or []) else None,
+            ))
+        if not items:
+            raise not_found("批次中没有可访问的缺陷")
+        return PublicBatchResponse(expires_at=batch.expires_at, items=items)
+
+    def view_public_batch_item(self, db: Session, public_id: str, token: str, share_id: str) -> PublicDefectResponse:
+        batch = self._authenticated_batch(db, public_id, token)
+        self._ensure_batch_readable(batch)
+        share = self._batch_item(db, batch, share_id)
+        self._ensure_readable(share)
+        return self._public_response(db, share, self._public_bug(db, share))
+
+    def record_batch_view(self, db: Session, public_id: str, token: str, share_id: str) -> None:
+        batch = self._authenticated_batch(db, public_id, token)
+        self._ensure_batch_readable(batch)
+        share = self._batch_item(db, batch, share_id)
+        self._ensure_readable(share)
+        self._public_bug(db, share)
+        now = datetime.now()
+        db.query(DefectShareLink).filter(DefectShareLink.id == share.id).update(
+            {DefectShareLink.view_count: func.coalesce(DefectShareLink.view_count, 0) + 1,
+             DefectShareLink.last_viewed_at: now}, synchronize_session=False,
+        )
+        db.commit()
+
+    def public_batch_attachment(self, db: Session, public_id: str, token: str, share_id: str, attachment_id: int):
+        batch = self._authenticated_batch(db, public_id, token)
+        self._ensure_batch_readable(batch)
+        share = self._batch_item(db, batch, share_id)
+        self._ensure_readable(share)
+        return self._public_attachment_for_share(db, share, attachment_id)
+
+    def resolve_public_batch_item(
+        self, db: Session, public_id: str, token: str, share_id: str, body: PublicResolveRequest,
+    ) -> PublicResolveResponse:
+        batch = self._authenticated_batch(db, public_id, token)
+        self._ensure_batch_readable(batch)
+        share = self._batch_item(db, batch, share_id)
+        return self._resolve_for_share(db, share, body)
+
+    def public_attachment(self, db: Session, share_id: str, token: str, attachment_id: int):
+        """读取快照中已授权的附件，并按实际内容签名选择安全 MIME。"""
+        share = self._authenticated_share(db, share_id, token)
+        self._ensure_readable(share)
+        bug = self._public_bug(db, share)
+        return self._public_attachment_for_share(db, share, attachment_id)
+
+    def _public_attachment_for_share(self, db: Session, share: DefectShareLink, attachment_id: int):
+        self._ensure_readable(share)
+        bug = self._public_bug(db, share)
+        if "attachments" not in set(share.visible_fields or []):
+            raise not_found("附件不存在或未授权")
+        refs = (share.content_snapshot or {}).get("attachments") or []
+        if not any(isinstance(item, dict) and item.get("id") == attachment_id for item in refs):
+            raise not_found("附件不存在或未授权")
+        attachment = db.query(BugAttachment).filter_by(id=attachment_id, bug_id=bug.id).first()
+        if attachment is None:
+            raise not_found("附件已删除")
+        content_type, inline = self._verified_attachment_type(attachment.filename, attachment.content)
+        return attachment, content_type, inline
+
+    @staticmethod
+    def _verified_attachment_type(filename: str, content: bytes) -> tuple[str, bool]:
+        """只以内嵌形式返回常见图片、PDF 与无主动内容的纯文本。"""
+        lowered = (filename or "").lower()
+        if content.startswith(bytes.fromhex("89504e470d0a1a0a")):
+            return "image/png", True
+        if content.startswith(bytes.fromhex("ffd8ff")):
+            return "image/jpeg", True
+        if content.startswith((b"GIF87a", b"GIF89a")):
+            return "image/gif", True
+        if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            return "image/webp", True
+        if content.startswith(b"%PDF-"):
+            return "application/pdf", True
+        if lowered.endswith((".txt", ".log", ".md", ".csv", ".json", ".yaml", ".yml")) and bytes.fromhex("00") not in content:
+            try:
+                decoded = content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                decoded = ""
+            if decoded and not re.search(r"(?is)<\s*(?:html|svg|script|iframe)\b", decoded[:8192]):
+                return "text/plain; charset=utf-8", True
+        return "application/octet-stream", False
 
     def record_view(self, db: Session, share_id: str, token: str) -> None:
         """记录一次公开页访问。必须由 POST 调用，避免 GET 产生写入，且原子递增计数。"""
@@ -491,6 +811,11 @@ class DefectShareService:
     ) -> PublicResolveResponse:
         """提交已解决。重复请求返回已有记录，不新增状态变更。"""
         share = self._authenticated_share(db, share_id, token)
+        return self._resolve_for_share(db, share, body)
+
+    def _resolve_for_share(
+        self, db: Session, share: DefectShareLink, body: PublicResolveRequest,
+    ) -> PublicResolveResponse:
         self._ensure_readable(share)
         if not share.allow_resolve:
             raise forbidden("该分享链接不允许提交修复结果")
@@ -618,11 +943,30 @@ class DefectShareService:
             content["steps_to_reproduce"] = _clean_text(bug.steps_to_reproduce, 4000)
         if "environment" in selected:
             content["environment"] = _clean_text(bug.environment, 200)
-        if "expected_result" in selected:
-            # 当前缺陷模型没有独立的预期结果列，不能从描述里猜测。
-            content["expected_result"] = None
         if "actual_result" in selected:
-            content["actual_result"] = None
+            content["actual_result"] = _clean_text(bug.actual_result, 4000)
+        if "expected_result" in selected:
+            content["expected_result"] = _clean_text(bug.expected_result, 4000)
+        if "api_method" in selected:
+            content["api_method"] = _clean_text(bug.api_method, 10)
+        if "api_url" in selected:
+            content["api_url"] = _safe_api_url(bug.api_url)
+        for key in ("api_request_body", "api_response"):
+            if key in selected:
+                content[key] = _clean_api_value(getattr(bug, key), 5000)
+        if "api_request_headers" in selected:
+            raw_headers = bug.api_request_headers
+            try:
+                parsed_headers = json.loads(raw_headers) if raw_headers else None
+            except (json.JSONDecodeError, TypeError):
+                parsed_headers = raw_headers
+            content["api_request_headers"] = _clean_json(parsed_headers) if isinstance(parsed_headers, (dict, list)) else _clean_text(parsed_headers, 2000)
+        if "attachments" in selected:
+            content["attachments"] = [
+                {"id": row.id, "filename": _clean_text(row.filename, 255) or "attachment", "size": row.size,
+                 "content_type": row.content_type, "available": True}
+                for row in db.query(BugAttachment).filter(BugAttachment.bug_id == bug.id).order_by(BugAttachment.id).all()
+            ]
         if "created_at" in selected and bug.created_at is not None:
             content["created_at"] = bug.created_at.isoformat(sep=" ", timespec="seconds")
         if "reporter" in selected:
@@ -679,29 +1023,88 @@ class DefectShareService:
                 items.append(item)
         return items
 
-    def _dispatch(
-        self, db: Session, channel: NotificationChannel, shares: list[DefectShareLink],
-        tokens: list[str], actor: User, *, part: int, parts: int,
-    ) -> list[NotificationRecord]:
-        """发送一张汇总卡片，并为卡片中的每条分享各写一条投递记录。"""
-        items = [self._card_item(share, token) for share, token in zip(shares, tokens)]
-        keyword = (channel.config_json or {}).get("keyword")
-        card = build_defect_share_card(
-            items, channel_name=channel.name, pusher_name=actor.username,
-            expires_label=self._share_expiry_label(shares[0]),
-            allow_resolve=bool(shares[0].allow_resolve), keyword=str(keyword) if keyword else None,
-            part=part, parts=parts,
+    def _payload_hash(self, bug_ids: list[int], body: ShareOptions) -> str:
+        payload = {
+            "bug_ids": sorted(set(bug_ids)),
+            **body.model_dump(exclude={"request_key", "bug_ids"}),
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    def _reserve_notification(
+        self, db: Session, channel: NotificationChannel, card: dict[str, Any], actor: User, *,
+        idempotency_key: str, retry_count: int, bug_id: int | None = None,
+        share_link_id: int | None = None, share_batch_id: int | None = None,
+    ) -> NotificationRecord:
+        """先持久化待投递记录，再允许发送外部 HTTP 请求。"""
+        record = NotificationRecord(
+            project_id=channel.project_id, channel_id=channel.id, report_id=None,
+            bug_id=bug_id, share_link_id=share_link_id, share_batch_id=share_batch_id,
+            event_type="defect.share", idempotency_key=idempotency_key, retry_count=retry_count,
+            status="PENDING", request_snapshot=sanitize_context(card), response_snapshot=None,
         )
-        status, response, error = self.feishu._deliver(channel, card)
-        records: list[NotificationRecord] = []
-        for share in shares:
-            records.append(self.feishu._record(
-                db, channel, None, status, card, response, error, actor.id,
-                bug_id=share.bug_id, share_link_id=share.id, event_type="defect.share",
-                idempotency_key=f"defect-share:{share.share_id}:{int(share.retry_count or 0)}",
-                retry_count=int(share.retry_count or 0),
-            ))
-        return records
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        return record
+
+    def _deliver_reserved(
+        self, db: Session, record: NotificationRecord, channel: NotificationChannel,
+        card: dict[str, Any],
+    ) -> NotificationRecord:
+        """原子占用 PENDING 记录后再投递；重复请求不会重复调用 Webhook。"""
+        claimed = db.query(NotificationRecord).filter(
+            NotificationRecord.id == record.id, NotificationRecord.status == "PENDING",
+        ).update({NotificationRecord.status: "SENDING"}, synchronize_session=False)
+        db.commit()
+        db.refresh(record)
+        if claimed != 1:
+            return record
+        status_value, response, error = self.feishu._deliver(channel, card)
+        if status_value == "FAILED" and error and "TimeoutException" in error:
+            status_value = "UNCERTAIN"
+            error = "投递结果待确认：请求超时，请先查看群消息后再决定是否重发"
+        record.status = status_value
+        record.response_snapshot = sanitize_context(response) if response else None
+        record.error_message = error
+        record.sent_at = datetime.now()
+        db.commit()
+        db.refresh(record)
+        return record
+
+    def _share_notification(self, db: Session, share: DefectShareLink) -> NotificationRecord:
+        record = db.query(NotificationRecord).filter(
+            NotificationRecord.share_link_id == share.id,
+        ).order_by(NotificationRecord.id.desc()).first()
+        if record is None and share.batch_id is not None:
+            record = db.query(NotificationRecord).filter(
+                NotificationRecord.share_batch_id == share.batch_id,
+            ).order_by(NotificationRecord.id.desc()).first()
+        if record is None:
+            record = NotificationRecord(status="PENDING", error_message=None, retry_count=share.retry_count or 0)
+        return record
+
+    def _batch_result(
+        self, db: Session, batch: DefectShareBatch, token: str | None, *,
+        notification: NotificationRecord | None = None, duplicate: bool = False,
+    ) -> BatchShareResponse:
+        record = notification or db.query(NotificationRecord).filter(
+            NotificationRecord.share_batch_id == batch.id,
+        ).order_by(NotificationRecord.id.desc()).first()
+        rows = db.query(DefectShareLink).filter(DefectShareLink.batch_id == batch.id).order_by(DefectShareLink.id).all()
+        status_value = record.status if record is not None else batch.delivery_status
+        url = build_batch_share_url(batch.public_id, token) if token else None
+        return BatchShareResponse(
+            batch_share_id=batch.public_id, batch_share_url=url,
+            url_is_absolute=bool(url is None or url.startswith("http")),
+            items=[BatchShareItemResponse(
+                share_id=row.share_id, bug_id=row.bug_id, bug_no=f"BUG-{row.bug_id}",
+                notification_status=status_value,
+            ) for row in rows],
+            card_count=1, notification_status=status_value,
+            error_message=record.error_message if record is not None else None,
+            retry_count=int(batch.retry_count or 0), duplicate_request=duplicate,
+        )
 
     def _card_item(self, share: DefectShareLink, token: str) -> dict[str, str | None]:
         """从已授权快照提取卡片摘要，不回读未授权字段。"""
@@ -722,12 +1125,12 @@ class DefectShareService:
         }
 
     def _push_response(
-        self, share: DefectShareLink, token: str, channel: NotificationChannel, record: NotificationRecord,
+        self, share: DefectShareLink, token: str | None, channel: NotificationChannel, record: NotificationRecord,
     ) -> SharePushResponse:
         """组装只返回一次的分享地址和本次投递状态。"""
-        url = build_share_url(share.share_id, token)
+        url = build_share_url(share.share_id, token) if token else None
         return SharePushResponse(
-            share_id=share.share_id, share_url=url, url_is_absolute=url.startswith("http"),
+            share_id=share.share_id, share_url=url, url_is_absolute=bool(url is None or url.startswith("http")),
             bug_id=share.bug_id, bug_no=f"BUG-{share.bug_id}", channel_id=channel.id,
             channel_name=channel.name, allow_view=bool(share.allow_view),
             allow_resolve=bool(share.allow_resolve), expires_at=share.expires_at,
@@ -739,19 +1142,15 @@ class DefectShareService:
         """内部历史项。不包含 share_url。"""
         channel = db.get(NotificationChannel, share.channel_id) if share.channel_id else None
         actor = db.get(User, share.pushed_by) if share.pushed_by else None
-        record = (
-            db.query(NotificationRecord)
-            .filter(NotificationRecord.share_link_id == share.id)
-            .order_by(NotificationRecord.id.desc())
-            .first()
-        )
+        record = self._share_notification(db, share)
+        batch = db.get(DefectShareBatch, share.batch_id) if share.batch_id is not None else None
         resolved = self._resolve_action(db, share.id)
         return ShareSummaryResponse(
             share_id=share.share_id, bug_id=share.bug_id, channel_id=share.channel_id,
             channel_name=channel.name if channel is not None else "渠道已删除",
             pushed_by_username=actor.username if actor is not None else None,
             pushed_at=share.pushed_at, expires_at=share.expires_at,
-            expires_label=self._share_expiry_label(share), share_status=self._share_status(share),
+            expires_label=self._share_expiry_label(share), share_status=self._share_status(share, batch),
             allow_view=bool(share.allow_view), allow_resolve=bool(share.allow_resolve),
             view_count=int(share.view_count or 0), last_viewed_at=share.last_viewed_at,
             resolution_status="已解决" if resolved else "未处理",
@@ -759,13 +1158,18 @@ class DefectShareService:
             notification_status=record.status if record is not None else None,
             error_message=record.error_message if record is not None else None,
             retry_count=int(share.retry_count or 0),
+            batch_share_id=batch.public_id if batch is not None else None,
         )
 
-    def _share_status(self, share: DefectShareLink) -> str:
+    def _share_status(self, share: DefectShareLink, batch: DefectShareBatch | None = None) -> str:
         """计算分享展示状态。撤销优先于过期。"""
         if share.revoked_at is not None:
             return "已撤销"
+        if batch is not None and batch.revoked_at is not None:
+            return "已撤销"
         if share.archived_at is not None or (share.expires_at is not None and share.expires_at <= datetime.now()):
+            return "已过期"
+        if batch is not None and (batch.archived_at is not None or (batch.expires_at is not None and batch.expires_at <= datetime.now())):
             return "已过期"
         return "有效"
 
@@ -787,7 +1191,37 @@ class DefectShareService:
     def _public_response(self, db: Session, share: DefectShareLink, bug: Bug) -> PublicDefectResponse:
         """公开响应以快照为内容边界，状态单独取实时值。"""
         allowed = set(share.visible_fields or [])
-        content = {key: value for key, value in dict(share.content_snapshot or {}).items() if key in allowed}
+        field_keys = {
+            "severity": "severity_label",
+            "reporter": "reporter_name",
+            "assignee": "assignee_name",
+            "source_summary": "sources",
+            "api_execution": "sources",
+            "security_record": "sources",
+            "request_response": "sources",
+            "error_stack": "sources",
+            "screenshots": "sources",
+            "agent_execution": "agent_executions",
+        }
+        snapshot = dict(share.content_snapshot or {})
+        content = {
+            key: snapshot[key] for field, key in field_keys.items() if field in allowed and key in snapshot
+        }
+        for field in allowed:
+            if field in snapshot:
+                content[field] = snapshot[field]
+        if "attachments" in allowed:
+            refs = snapshot.get("attachments") or []
+            live_ids = {
+                row.id for row in db.query(BugAttachment.id).filter(
+                    BugAttachment.bug_id == bug.id,
+                    BugAttachment.id.in_([item.get("id") for item in refs if isinstance(item, dict) and isinstance(item.get("id"), int)] or [-1]),
+                ).all()
+            }
+            content["attachments"] = [
+                {**item, "available": item.get("id") in live_ids}
+                for item in refs if isinstance(item, dict)
+            ]
         action = self._resolve_action(db, share.id)
         resolution = None
         if action is not None:
@@ -833,6 +1267,29 @@ class DefectShareService:
             raise not_found("分享链接无效或无权访问")
         if not hmac.compare_digest(_hash_token(token), share.token_hash):
             raise not_found("分享链接无效或无权访问")
+        return share
+
+    def _authenticated_batch(self, db: Session, public_id: str, token: str) -> DefectShareBatch:
+        batch = db.query(DefectShareBatch).filter_by(public_id=public_id).one_or_none()
+        if batch is None or not token or not hmac.compare_digest(_hash_token(token), batch.token_hash):
+            raise not_found("分享链接无效或无权访问")
+        return batch
+
+    def _ensure_batch_readable(self, batch: DefectShareBatch) -> None:
+        if batch.revoked_at is not None:
+            raise forbidden("分享批次已撤销")
+        if batch.archived_at is not None or (batch.expires_at is not None and batch.expires_at <= datetime.now()):
+            raise forbidden("分享批次已过期")
+        if not batch.allow_view:
+            raise forbidden("分享批次不允许查看")
+
+    def _batch_item(self, db: Session, batch: DefectShareBatch, share_id: str) -> DefectShareLink:
+        share = db.query(DefectShareLink).filter(
+            DefectShareLink.batch_id == batch.id,
+            DefectShareLink.share_id == share_id,
+        ).one_or_none()
+        if share is None or share.revoked_at is not None:
+            raise not_found("批次中的缺陷不存在或已撤销")
         return share
 
     def _ensure_readable(self, share: DefectShareLink) -> None:
@@ -887,3 +1344,11 @@ class DefectShareService:
             if exists is None:
                 return candidate
         raise bad_request("分享标识生成失败，请重试")
+
+    def _unique_batch_id(self, db: Session) -> str:
+        """生成独立批次公开标识。"""
+        for _ in range(5):
+            candidate = _new_share_id()
+            if db.query(DefectShareBatch.id).filter(DefectShareBatch.public_id == candidate).first() is None:
+                return candidate
+        raise bad_request("批次分享标识生成失败，请重试")

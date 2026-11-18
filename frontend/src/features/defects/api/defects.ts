@@ -5,7 +5,7 @@ import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { Bug, BugListQuery } from '@/features/defects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
-import type { BugBatchCreate, BugBatchCreateResponse, BugCreate, BugUpdate, DefectShareDetail, DefectShareOptions, DefectSharePreview, DefectSharePushResult, DefectShareSummary, DefectSourceType, DefectSourceLink, DefectSourceContext } from '../contracts';
+import type { BugBatchCreate, BugBatchCreateResponse, BugCreate, BugUpdate, DefectShareDetail, DefectShareOptions, DefectSharePreview, DefectSharePushResult, DefectShareSummary, DefectShareBatchResult, DefectSourceType, DefectSourceLink, DefectSourceContext } from '../contracts';
 
 
 
@@ -52,7 +52,7 @@ export const bugsApi = {
     api.post<DefectSharePushResult>(`/bugs/${bugId}/shares`, body),
   /** 批量推送同一项目的缺陷。 */
   shareBatch: (body: DefectShareOptions & { bug_ids: number[] }) =>
-    api.post<{ items: DefectSharePushResult[]; card_count: number }>('/bugs/shares/batch', body),
+    api.post<DefectShareBatchResult>('/bugs/shares/batch', body),
   /** 分享历史。 */
   listShares: (bugId: number) => api.get<{ items: DefectShareSummary[] }>(`/bugs/${bugId}/shares`),
   /** 分享详情，含外部修复记录。 */
@@ -62,8 +62,12 @@ export const bugsApi = {
   revokeShare: (bugId: number, shareId: string) =>
     api.post<DefectShareSummary>(`/bugs/${bugId}/shares/${shareId}/revoke`),
   /** 重新推送。传入 access_token 时不轮换凭证。 */
-  retryShare: (bugId: number, shareId: string, accessToken?: string) =>
-    api.post<DefectSharePushResult>(`/bugs/${bugId}/shares/${shareId}/retry`, { access_token: accessToken ?? null }),
+  retryShare: (bugId: number, shareId: string, accessToken?: string, confirmUncertain = false) =>
+    api.post<DefectSharePushResult>(`/bugs/${bugId}/shares/${shareId}/retry`, { access_token: accessToken ?? null, confirm_uncertain: confirmUncertain }),
+  retryShareBatch: (batchId: string, confirmUncertain = false) =>
+    api.post<DefectShareBatchResult>(`/bugs/shares/batches/${encodeURIComponent(batchId)}/retry`, { confirm_uncertain: confirmUncertain }),
+  revokeShareBatch: (batchId: string) =>
+    api.post<DefectShareBatchResult>(`/bugs/shares/batches/${encodeURIComponent(batchId)}/revoke`),
   /** 批量撤销。 */
   revokeShares: (items: Array<{ bug_id: number; share_id: string }>) =>
     api.post<DefectShareSummary[]>('/bugs/shares/revoke-batch', { items }),

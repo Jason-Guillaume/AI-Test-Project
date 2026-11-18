@@ -71,6 +71,23 @@ test('纯标题多行文本与分隔符多字段文本均能正确解析', () =>
   assert.equal(rows[5].environment, 'test');
 });
 
+test('粘贴兼容原六列并解析新增预期与实际结果两列', () => {
+  const defaults = { category: '接口', severity: 2, status: '待确认', environment: '' };
+  const rows = parseBatchDefectLines(
+    '旧格式 | 前端 | 2 | 描述 | 步骤 | test\n新格式 | 接口 | 3 | 描述 | 步骤 | prod | 预期\\n第二行 | 实际返回',
+    defaults,
+    (index) => `row-${index}`,
+  );
+  assert.equal(rows[0].expected_result, '');
+  assert.equal(rows[0].actual_result, '');
+  assert.equal(rows[1].expected_result, '预期\n第二行');
+  assert.equal(rows[1].actual_result, '实际返回');
+  const result = validateBatchDefectRows(rows);
+  assert.equal(result.valid, true);
+  assert.equal(result.items[1].expected_result, '预期\n第二行');
+  assert.equal(result.items[1].actual_result, '实际返回');
+});
+
 test('默认配置支持仅填充空字段与覆盖全部行两种模式', () => {
   const rowA = {
     ...createDraftRow({ severity: 2, status: '待确认' }, 'a'),

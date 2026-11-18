@@ -6,12 +6,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from urllib.parse import quote
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.database.session import get_db
 from app.core.http.errors import bad_request, not_found
-from app.features.defects.schemas_share import PublicDefectResponse, PublicResolveRequest, PublicResolveResponse
+from app.features.defects.schemas_share import PublicBatchResponse, PublicDefectResponse, PublicResolveRequest, PublicResolveResponse
 from app.features.defects.services.public_rate_limit import enforce_public_share_limit
 from app.features.defects.services.share_service import DefectShareService
 
@@ -74,6 +77,46 @@ def view_public_defect(share_id: str, request: Request, db: Session = Depends(ge
     return _guard(request, "view", action, share_id=share_id)
 
 
+@router.get("/batches/{public_id}", response_model=PublicBatchResponse)
+def view_public_batch(public_id: str, request: Request, db: Session = Depends(get_db)):
+    token = _bearer_token(request)
+    return _guard(request, "view", lambda: SERVICE.view_public_batch(db, public_id, token), share_id=public_id)
+
+
+@router.get("/batches/{public_id}/items/{share_id}", response_model=PublicDefectResponse)
+def view_public_batch_item(public_id: str, share_id: str, request: Request, db: Session = Depends(get_db)):
+    token = _bearer_token(request)
+    return _guard(request, "view", lambda: SERVICE.view_public_batch_item(db, public_id, token, share_id), share_id=public_id)
+
+
+@router.post("/batches/{public_id}/items/{share_id}/views", status_code=204)
+def record_public_batch_view(public_id: str, share_id: str, request: Request, db: Session = Depends(get_db)):
+    token = _bearer_token(request)
+    _guard(request, "view", lambda: SERVICE.record_batch_view(db, public_id, token, share_id), share_id=public_id)
+    return None
+
+
+@router.get("/batches/{public_id}/items/{share_id}/attachments/{attachment_id}")
+def read_public_batch_attachment(public_id: str, share_id: str, attachment_id: int, request: Request, download: bool = Query(default=False), db: Session = Depends(get_db)):
+    token = _bearer_token(request)
+
+    def action():
+        row, content_type, inline = SERVICE.public_batch_attachment(db, public_id, token, share_id, attachment_id)
+        disposition = "attachment" if download or not inline else "inline"
+        return Response(content=row.content, media_type=content_type, headers={
+            "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(row.filename, safe='')}",
+            "Content-Length": str(row.size),
+        })
+
+    return _guard(request, "view", action, share_id=public_id)
+
+
+@router.post("/batches/{public_id}/items/{share_id}/resolve", response_model=PublicResolveResponse)
+def resolve_public_batch_item(public_id: str, share_id: str, body: PublicResolveRequest, request: Request, db: Session = Depends(get_db), _body_limit: None = Depends(_limit_body)):
+    token = _bearer_token(request)
+    return _guard(request, "resolve", lambda: SERVICE.resolve_public_batch_item(db, public_id, token, share_id, body), share_id=public_id)
+
+
 @router.post("/{share_id}/views", status_code=204)
 def record_public_view(share_id: str, request: Request, db: Session = Depends(get_db)):
     """记录访问次数。不改变缺陷状态。"""
@@ -85,6 +128,32 @@ def record_public_view(share_id: str, request: Request, db: Session = Depends(ge
 
     _guard(request, "view", action, share_id=share_id)
     return None
+
+
+@router.get("/{share_id}/attachments/{attachment_id}")
+def read_public_attachment(
+    share_id: str,
+    attachment_id: int,
+    request: Request,
+    download: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    """每次读取都验证分享凭证、附件快照授权和缺陷归属。"""
+    token = _bearer_token(request)
+
+    def action():
+        row, content_type, inline = SERVICE.public_attachment(db, share_id, token, attachment_id)
+        disposition = "attachment" if download or not inline else "inline"
+        return Response(
+            content=row.content,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"{disposition}; filename*=UTF-8''{quote(row.filename, safe='')}",
+                "Content-Length": str(row.size),
+            },
+        )
+
+    return _guard(request, "view", action, share_id=share_id)
 
 
 @router.post("/{share_id}/resolve", response_model=PublicResolveResponse)

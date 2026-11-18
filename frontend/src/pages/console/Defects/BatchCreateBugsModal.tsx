@@ -405,6 +405,36 @@ export function BatchCreateBugsModal({
       ),
     },
     {
+      title: '预期结果',
+      key: 'expected_result',
+      width: 210,
+      render: (_value, row, index) => (
+        <Input.TextArea
+          aria-label={`第 ${index + 1} 行预期结果`}
+          autoSize={{ minRows: 1, maxRows: 3 }}
+          maxLength={4000}
+          value={row.expected_result}
+          status={hasFieldError(index + 1, 'expected_result') ? 'error' : undefined}
+          onChange={(event) => updateRow(row.key, index, 'expected_result', event.target.value)}
+        />
+      ),
+    },
+    {
+      title: '实际结果',
+      key: 'actual_result',
+      width: 210,
+      render: (_value, row, index) => (
+        <Input.TextArea
+          aria-label={`第 ${index + 1} 行实际结果`}
+          autoSize={{ minRows: 1, maxRows: 3 }}
+          maxLength={4000}
+          value={row.actual_result}
+          status={hasFieldError(index + 1, 'actual_result') ? 'error' : undefined}
+          onChange={(event) => updateRow(row.key, index, 'actual_result', event.target.value)}
+        />
+      ),
+    },
+    {
       title: '处理人',
       key: 'assignee_id',
       width: 140,
@@ -589,7 +619,7 @@ export function BatchCreateBugsModal({
             {
               key: 'quick-paste',
               label:
-                '粘贴多行文本快速拆分（可选：支持纯标题逐行粘贴，或用「|」/ Tab 分隔：标题 | 前端/前后端/接口 | 严重度 | 描述 | 复现步骤 | 环境）',
+                '粘贴多行文本快速拆分（可选：支持纯标题逐行粘贴，或用「|」/ Tab 分隔：标题 | 前端/前后端/接口 | 严重度 | 描述 | 复现步骤 | 环境 | 预期结果 | 实际结果；旧六列格式仍兼容）',
               children: (
                 <Space direction="vertical" style={{ width: '100%' }}>
                   <Input.TextArea

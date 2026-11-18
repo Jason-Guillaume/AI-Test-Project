@@ -27,6 +27,8 @@ export interface BatchDefectDraftRow {
   description: string;
   steps_to_reproduce: string;
   environment: string;
+  expected_result: string;
+  actual_result: string;
   assignee_id: number | null;
 }
 

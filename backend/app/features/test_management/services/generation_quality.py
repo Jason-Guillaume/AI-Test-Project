@@ -48,6 +48,7 @@ def check_draft(
     payload: dict,
     sibling_titles: list[str],
     module_has_boundary: bool,
+    allow_empty_steps: bool = False,
 ) -> list[dict]:
     """对一条草稿执行规则校验，返回问题列表（可为空）。
 
@@ -89,7 +90,7 @@ def check_draft(
                 "message": "与正式用例重名或高度相似，请确认不是重复用例",
                 "similar_cases": similar,
             })
-    if not steps:
+    if not steps and not allow_empty_steps:
         issues.append({"rule": "STEPS_EMPTY", "level": ERROR, "message": "测试步骤为空"})
     if not expected:
         issues.append({"rule": "EXPECTED_EMPTY", "level": ERROR, "message": "预期结果为空"})

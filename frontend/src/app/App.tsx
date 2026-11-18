@@ -195,6 +195,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/public/defects/share/:shareId" element={<PublicDefectSharePage />} />
+        <Route path="/public/defects/share/batch/:batchId" element={<PublicDefectSharePage />} />
 
         <Route
           path="/login"

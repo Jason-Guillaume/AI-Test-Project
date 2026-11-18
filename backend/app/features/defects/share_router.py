@@ -62,6 +62,18 @@ def revoke_batch(
     return SERVICE.revoke_batch(db, body, user)
 
 
+@router.post("/shares/batches/{public_id}/retry", response_model=BatchShareResponse)
+def retry_share_batch(public_id: str, body: ShareRetryRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """从批次历史重推整组，仍只调用一次飞书 Webhook。"""
+    return SERVICE.retry_batch(db, public_id, body, user)
+
+
+@router.post("/shares/batches/{public_id}/revoke", response_model=BatchShareResponse)
+def revoke_share_batch(public_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """撤销批次入口，不改动逐条分享审计。"""
+    return SERVICE.revoke_batch_link(db, public_id, user)
+
+
 @router.post("/shares/archive-expired", response_model=ArchiveExpiredResponse)
 def archive_expired(
     db: Session = Depends(get_db),

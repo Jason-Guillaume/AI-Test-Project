@@ -45,6 +45,8 @@ const ADDITIVE_ROUTES = [
   '/console/recycle-bin',
   // 缺陷免登录分享页（0089_defect_public_share）。必须位于所有登录守卫之外。
   '/public/defects/share/:shareId',
+  // 多缺陷分享批次入口沿用公开缺陷路由体系。
+  '/public/defects/share/batch/:batchId',
 ];
 
 const PUBLIC_SHARE_ROUTE = '/public/defects/share/:shareId';

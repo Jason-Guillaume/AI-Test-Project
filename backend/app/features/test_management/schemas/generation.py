@@ -33,7 +33,8 @@ class DraftUpdateRequest(BaseModel):
     requirement: str | None = Field(default=None, min_length=1, max_length=2000)
     preconditions: list[str] | None = Field(default=None, max_length=20)
     test_data: list[str] | None = Field(default=None, max_length=20)
-    steps: list[str] | None = Field(default=None, min_length=1, max_length=30)
+    # 空数组用于明确清空步骤；是否允许由持久化批次的 direction 决定。
+    steps: list[str] | None = Field(default=None, max_length=30)
     expected_results: list[str] | None = Field(default=None, min_length=1, max_length=30)
 
 

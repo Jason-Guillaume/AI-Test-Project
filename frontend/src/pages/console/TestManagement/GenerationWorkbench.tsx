@@ -109,7 +109,7 @@ function MetricsLine({ batch }: { batch: GenerationBatch }) {
 }
 
 /** 单条草稿卡片：结构化展示 + 编辑/接受/拒绝/恢复。 */
-function DraftCard({ draft, onChanged }: { draft: CaseDraft; onChanged: () => void }) {
+function DraftCard({ draft, direction, onChanged }: { draft: CaseDraft; direction: string; onChanged: () => void }) {
   const { message, modal } = App.useApp();
   const [editOpen, setEditOpen] = useState(false);
   const [form] = Form.useForm();
@@ -242,7 +242,7 @@ function DraftCard({ draft, onChanged }: { draft: CaseDraft; onChanged: () => vo
           <Form.Item name="requirement" label="测试需求" rules={[{ required: true, whitespace: true, max: 2000 }]}><Input.TextArea rows={2} /></Form.Item>
           <Form.Item name="preconditions" label="前置条件（每行一条）"><Input.TextArea rows={2} /></Form.Item>
           <Form.Item name="test_data" label="测试数据（每行一条）"><Input.TextArea rows={2} /></Form.Item>
-          <Form.Item name="steps" label="测试步骤（每行一条）" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
+          <Form.Item name="steps" label={`测试步骤（每行一条）${direction === 'API' ? '（可选）' : ''}`} rules={direction === 'API' ? [] : [{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
           <Form.Item name="expected_results" label="预期结果（每行一条）" rules={[{ required: true }]}><Input.TextArea rows={4} /></Form.Item>
         </Form>
       </Modal>
@@ -426,7 +426,7 @@ export function BatchDetail({ batch: initialBatch, onChanged }: { batch: Generat
           key: name,
           label: `${name}（${batch.drafts.filter((draft) => draft.module === name).length}）`,
           children: batch.drafts.filter((draft) => draft.module === name).map((draft) => (
-            <DraftCard key={draft.id} draft={draft} onChanged={reload} />
+            <DraftCard key={draft.id} draft={draft} direction={batch.direction} onChanged={reload} />
           )),
         }))}
       />

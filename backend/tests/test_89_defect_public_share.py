@@ -68,10 +68,11 @@ def _channel(api, actor, project_id, name="研发缺陷群"):
     return response.json()["id"]
 
 
-def _bug(api, actor, project_id, title="登录接口 500"):
+def _bug(api, actor, project_id, title="登录接口 500", *, expected_result=None, actual_result=None):
     response = api.post("/bugs", username=actor, json={
         "project_id": project_id, "title": title, "description": _SECRET_TEXT, "severity": 4,
         "status": "待确认", "steps_to_reproduce": "1. 调用登录接口\n2. 观察 500", "environment": "test",
+        "expected_result": expected_result, "actual_result": actual_result,
     })
     assert response.status_code == 201, response.text
     return response.json()
@@ -156,6 +157,133 @@ def test_share_token_is_random_and_only_hash_is_stored(api, admin, db, monkeypat
     assert token not in stored
     assert calls[0]["json"]["card"]["elements"]
     assert token in str(calls[0]["json"]["card"])
+
+
+def test_single_share_request_key_prevents_duplicate_delivery(api, admin, db, monkeypatch):
+    """重复确认复用创建结果，不重复写分享或调用飞书。"""
+    calls = _mock_feishu(monkeypatch)
+    project_id = _create_project(api, admin)
+    channel_id = _channel(api, admin, project_id)
+    bug = _bug(api, admin, project_id)
+    payload = {"channel_id": channel_id, "request_key": "single-request-001"}
+    first = api.post(f"/bugs/{bug['id']}/shares", username=admin, json=payload)
+    duplicate = api.post(f"/bugs/{bug['id']}/shares", username=admin, json=payload)
+    assert first.status_code == 200, first.text
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["share_id"] == first.json()["share_id"]
+    assert duplicate.json()["share_url"] is None
+    assert duplicate.json()["notification_status"] == "SUCCESS"
+    assert len(calls) == 1
+    assert db.query(DefectShareLink).filter_by(bug_id=bug["id"]).count() == 1
+
+    changed = api.post(
+        f"/bugs/{bug['id']}/shares", username=admin,
+        json={**payload, "allow_resolve": False},
+    )
+    assert changed.status_code == 409
+    assert len(calls) == 1
+
+
+def test_batch_share_has_one_entry_and_scoped_public_attachments(api, admin, db, monkeypatch):
+    """批次只投递一次；批次凭证只能访问快照授权且属于该缺陷的附件。"""
+    calls = _mock_feishu(monkeypatch)
+    project_id = _create_project(api, admin)
+    channel_id = _channel(api, admin, project_id)
+    first_bug = _bug(
+        api, admin, project_id, "接口缺陷一",
+        expected_result="应返回 200\n并包含有效数据", actual_result="实际返回 500",
+    )
+    second_bug = _bug(api, admin, project_id, "接口缺陷二")
+    upload = api.post(
+        f"/bugs/{first_bug['id']}/attachments", username=admin,
+        files={"file": ("proof.txt", b"safe note\nsecond line", "text/plain")},
+    )
+    assert upload.status_code == 201, upload.text
+    attachment_id = upload.json()["id"]
+    body = {
+        "bug_ids": [first_bug["id"], second_bug["id"]],
+        "channel_id": channel_id,
+        "request_key": "batch-request-0001",
+    }
+    created = api.post("/bugs/shares/batch", username=admin, json=body)
+    assert created.status_code == 200, created.text
+    result = created.json()
+    assert result["card_count"] == 1
+    assert len(result["items"]) == 2
+    assert result["batch_share_url"].startswith("https://platform.example.com/public/defects/share/batch/")
+    assert len(calls) == 1
+    actions = [item for item in calls[0]["json"]["card"]["elements"] if item.get("tag") == "action"]
+    assert len(actions) == 1
+    assert len(actions[0]["actions"]) == 1
+
+    duplicate = api.post("/bugs/shares/batch", username=admin, json=body)
+    assert duplicate.status_code == 200, duplicate.text
+    assert duplicate.json()["duplicate_request"] is True
+    assert duplicate.json()["batch_share_id"] == result["batch_share_id"]
+    assert duplicate.json()["batch_share_url"] is None
+    assert len(calls) == 1
+    changed = api.post(
+        "/bugs/shares/batch", username=admin,
+        json={**body, "allow_resolve": False},
+    )
+    assert changed.status_code == 409
+    assert len(calls) == 1
+
+    token = _token(result["batch_share_url"])
+    headers = {"Authorization": f"Bearer {token}"}
+    public_base = f"/api/v1/public/defect-shares/batches/{result['batch_share_id']}"
+    overview = api.client.get(public_base, headers=headers)
+    assert overview.status_code == 200, overview.text
+    first_share_id = result["items"][0]["share_id"]
+    first_detail = api.client.get(f"{public_base}/items/{first_share_id}", headers=headers)
+    assert first_detail.status_code == 200, first_detail.text
+    content = first_detail.json()["content"]
+    assert content["expected_result"] == "应返回 200\n并包含有效数据"
+    assert content["actual_result"] == "实际返回 500"
+    assert content["attachments"][0]["id"] == attachment_id
+    attachment = api.client.get(
+        f"{public_base}/items/{first_share_id}/attachments/{attachment_id}", headers=headers,
+    )
+    assert attachment.status_code == 200
+    assert attachment.content == b"safe note\nsecond line"
+    assert attachment.headers["content-type"].startswith("text/plain")
+    assert attachment.headers["content-disposition"].startswith("inline;")
+    assert attachment.headers["x-content-type-options"] == "nosniff"
+    downloaded = api.client.get(
+        f"{public_base}/items/{first_share_id}/attachments/{attachment_id}?download=true", headers=headers,
+    )
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
+    other_share_id = result["items"][1]["share_id"]
+    crossed = api.client.get(
+        f"{public_base}/items/{other_share_id}/attachments/{attachment_id}", headers=headers,
+    )
+    assert crossed.status_code == 404
+    wrong_token = api.client.get(public_base, headers={"Authorization": "Bearer wrong-token"})
+    assert wrong_token.status_code == 404
+
+
+@pytest.mark.parametrize("count", [1, 8, 9, 30])
+def test_batch_delivery_counts_make_one_post_and_one_button(api, admin, monkeypatch, count):
+    """指定批量规模均只调用一次飞书，卡片只提供一个入口。"""
+    calls = _mock_feishu(monkeypatch)
+    project_id = _create_project(api, admin)
+    channel_id = _channel(api, admin, project_id)
+    bugs = [_bug(api, admin, project_id, f"批次缺陷 {count}-{index}") for index in range(count)]
+    response = api.post("/bugs/shares/batch", username=admin, json={
+        "bug_ids": [bug["id"] for bug in bugs],
+        "channel_id": channel_id,
+        "request_key": unique(f"batch-{count}"),
+    })
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert len(result["items"]) == count
+    assert result["card_count"] == 1
+    assert len(calls) == 1
+    elements = calls[0]["json"]["card"]["elements"]
+    actions = [item for item in elements if item.get("tag") == "action"]
+    assert len(actions) == 1
+    assert len(actions[0]["actions"]) == 1
+    assert actions[0]["actions"][0]["url"] in (result.get("batch_share_url"), result.get("share_url"))
 
 
 def test_public_view_filters_fields_and_masks_secrets(api, admin, db, monkeypatch):
@@ -332,7 +460,7 @@ def test_permissions_batch_retry_and_feishu_failures(api, admin, db, monkeypatch
     assert len({item["share_id"] for item in batch.json()["items"]}) == 2
     timeout_calls = _mock_feishu(monkeypatch, error=httpx.TimeoutException("timeout"))
     timed = _share(api, admin, other["id"], channel_id)
-    assert timed["notification_status"] == "FAILED"
+    assert timed["notification_status"] == "UNCERTAIN"
     assert timeout_calls
     listed = api.get(f"/bugs/{bug['id']}", username=admin)
     assert listed.json()["active_share_count"] >= 1

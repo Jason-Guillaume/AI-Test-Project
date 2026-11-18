@@ -67,6 +67,8 @@ export function createDraftRow(defaults, key) {
     description: '',
     steps_to_reproduce: '',
     environment: defaults?.environment ?? '',
+    expected_result: '',
+    actual_result: '',
     assignee_id: defaults?.assignee_id ?? null,
   };
 }
@@ -77,7 +79,9 @@ export function isPristineEmptyRow(row) {
   return (
     !(row.title ?? '').trim() &&
     !(row.description ?? '').trim() &&
-    !(row.steps_to_reproduce ?? '').trim()
+    !(row.steps_to_reproduce ?? '').trim() &&
+    !(row.expected_result ?? '').trim() &&
+    !(row.actual_result ?? '').trim()
   );
 }
 
@@ -110,6 +114,8 @@ export function parseBatchDefectLines(rawText, defaults, createKey) {
     const parsedSeverity = normalizeSeverityToken(cells[2]);
     const rawSteps = (cells[4] ?? '').replace(/\\n/g, '\n');
     const rawEnv = cells[5] ?? '';
+    const expected = (cells[6] ?? '').replace(/\\n/g, '\n');
+    const actual = (cells[7] ?? '').replace(/\\n/g, '\n');
 
     return {
       ...createDraftRow(defaults, key),
@@ -119,6 +125,8 @@ export function parseBatchDefectLines(rawText, defaults, createKey) {
       description: (cells[3] ?? '').slice(0, 1000),
       steps_to_reproduce: rawSteps,
       environment: (rawEnv || defaults?.environment || '').slice(0, 200),
+      expected_result: expected.slice(0, 4000),
+      actual_result: actual.slice(0, 4000),
     };
   });
 }
@@ -175,6 +183,8 @@ export function validateBatchDefectRows(rows) {
     const description = (row?.description ?? '').trim();
     const environment = (row?.environment ?? '').trim();
     const steps = (row?.steps_to_reproduce ?? '').trim();
+    const expected = (row?.expected_result ?? '').trim();
+    const actual = (row?.actual_result ?? '').trim();
 
     if (!title) {
       errors.push({ row: rowNo, field: 'title', message: '缺陷标题不能为空' });
@@ -194,6 +204,13 @@ export function validateBatchDefectRows(rows) {
       errors.push({ row: rowNo, field: 'environment', message: '发现环境不能超过 200 字' });
     }
 
+    for (const [field, value, label] of [
+      ['expected_result', expected, '预期结果'],
+      ['actual_result', actual, '实际结果'],
+    ]) {
+      if (value.length > 4000) errors.push({ row: rowNo, field, message: `${label}不能超过 4000 字` });
+    }
+
     items.push({
       title,
       category: row?.category,
@@ -202,6 +219,8 @@ export function validateBatchDefectRows(rows) {
       status: row?.status ?? '待确认',
       steps_to_reproduce: steps || undefined,
       environment: environment || undefined,
+      expected_result: expected || undefined,
+      actual_result: actual || undefined,
       assignee_id: row?.assignee_id ?? null,
     });
   });

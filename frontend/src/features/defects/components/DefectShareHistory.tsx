@@ -4,7 +4,7 @@ import { Alert, App, Button, Input, Modal, Space, Table, Tag, Typography } from 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { bugsApi } from '@/features/defects/api/defects';
-import type { Bug, DefectSharePushResult, DefectShareSummary } from '@/features/defects/contracts';
+import type { Bug, DefectSharePushResult, DefectShareSummary, DefectShareBatchResult } from '@/features/defects/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 
 async function tryWriteClipboard(text: string): Promise<boolean> {
@@ -28,6 +28,7 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
   const queryClient = useQueryClient();
   const [retryingShareId, setRetryingShareId] = useState<string | null>(null);
   const [reissuedResult, setReissuedResult] = useState<DefectSharePushResult | null>(null);
+  const [reissuedBatch, setReissuedBatch] = useState<DefectShareBatchResult | null>(null);
   const [copiedReissued, setCopiedReissued] = useState(false);
 
   const shares = useQuery({
@@ -39,17 +40,29 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
     queryClient.invalidateQueries({ queryKey: ['bugs'] });
     queryClient.invalidateQueries({ queryKey: ['bug-detail', bug.id] });
   };
-  const retry = useMutation({
-    mutationFn: (row: DefectShareSummary) => {
+  const retry = useMutation<DefectSharePushResult | DefectShareBatchResult, Error, { row: DefectShareSummary; confirmUncertain: boolean }>({
+    mutationFn: ({ row, confirmUncertain }: { row: DefectShareSummary; confirmUncertain: boolean }) => {
       setRetryingShareId(row.share_id);
-      return bugsApi.retryShare(bug.id, row.share_id);
+      return row.batch_share_id
+        ? bugsApi.retryShareBatch(row.batch_share_id, confirmUncertain)
+        : bugsApi.retryShare(bug.id, row.share_id, undefined, confirmUncertain);
     },
     onSuccess: async (result) => {
+      if ('batch_share_url' in result) {
+        setReissuedBatch(result);
+        const copied = result.batch_share_url ? await tryWriteClipboard(result.batch_share_url) : false;
+        setCopiedReissued(copied);
+        message.success(copied ? '批次卡片已重发，新链接已复制' : '批次已重发，请在弹窗中复制新链接');
+        refresh();
+        return;
+      }
       setReissuedResult(result);
-      const copied = await tryWriteClipboard(result.share_url);
+      const copied = result.share_url ? await tryWriteClipboard(result.share_url) : false;
       setCopiedReissued(copied);
       if (result.notification_status === 'SUCCESS') {
         message.success(copied ? '已重新推送飞书，新链接已复制到剪贴板' : '已重新推送飞书，请在弹窗中复制新链接');
+      } else if (result.notification_status === 'UNCERTAIN') {
+        message.warning('投递结果待确认，请先查看群消息');
       } else {
         message.warning(`已生成新链接（旧链接已失效），飞书推送失败：${result.error_message || '未知原因'}`);
       }
@@ -65,6 +78,11 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
       refresh();
     },
     onError: (error) => message.error(getErrorMessage(error, '撤销失败')),
+  });
+  const revokeBatch = useMutation({
+    mutationFn: (row: DefectShareSummary) => bugsApi.revokeShareBatch(row.batch_share_id!),
+    onSuccess: () => { message.success('批次入口已撤销'); refresh(); },
+    onError: (error) => message.error(getErrorMessage(error, '撤销批次失败')),
   });
   const detail = useMutation({
     mutationFn: (row: DefectShareSummary) => bugsApi.getShare(bug.id, row.share_id),
@@ -128,14 +146,16 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
                   loading={retry.isPending && retryingShareId === row.share_id}
                   disabled={retry.isPending}
                   onClick={() => modal.confirm({
-                    title: '重新签发并推送？',
-                    content: '平台不保存访问凭证。继续会签发新链接，旧链接立即失效。',
+                    title: row.batch_share_id ? '重新推送整批缺陷？' : '重新签发并推送？',
+                    content: row.notification_status === 'UNCERTAIN'
+                      ? '上次请求超时，可能已送达。请先查看群消息；确认未收到后再继续，避免重复。'
+                      : row.batch_share_id ? '为原批次签发新入口并只发送一张卡片，旧入口立即失效。' : '平台不保存访问凭证。继续会签发新链接，旧链接立即失效。',
                     okText: '重新推送',
                     cancelText: '取消',
-                    onOk: () => retry.mutateAsync(row),
+                    onOk: () => retry.mutateAsync({ row, confirmUncertain: row.notification_status === 'UNCERTAIN' }),
                   })}
                 >
-                  重新推送
+                  {row.batch_share_id ? '重推整批' : '重新推送'}
                 </Button>
               )}
               {canManage && row.share_status === '有效' && <Button size="small" danger onClick={() => modal.confirm({
@@ -143,6 +163,12 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
                 content: '只撤销当前渠道的链接，不影响同一缺陷推送到其他群的链接。',
                 okText: '撤销', cancelText: '取消', okButtonProps: { danger: true }, onOk: () => revoke.mutateAsync(row),
               })}>撤销链接</Button>}
+              {canManage && row.batch_share_id && row.share_status === '有效' && <Button size="small" danger onClick={() => modal.confirm({
+                title: '撤销整个批次入口？',
+                content: '批次中的所有缺陷都将无法再通过这个入口访问。',
+                okText: '撤销整批', cancelText: '取消', okButtonProps: { danger: true },
+                onOk: () => revokeBatch.mutateAsync(row),
+              })}>撤销整批</Button>}
             </Space>,
           },
         ]}
@@ -156,7 +182,7 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
             key="copy"
             type="primary"
             onClick={async () => {
-              if (!reissuedResult) return;
+              if (!reissuedResult?.share_url) return;
               const ok = await tryWriteClipboard(reissuedResult.share_url);
               setCopiedReissued(ok);
               if (ok) {
@@ -179,17 +205,21 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
         {reissuedResult && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Alert
-              type={reissuedResult.notification_status === 'SUCCESS' ? 'success' : 'warning'}
+              type={reissuedResult.notification_status === 'SUCCESS' ? 'success' : reissuedResult.notification_status === 'UNCERTAIN' ? 'warning' : 'error'}
               showIcon
               message={
                 reissuedResult.notification_status === 'SUCCESS'
                   ? `飞书推送成功（${reissuedResult.channel_name}）`
-                  : `飞书推送失败（${reissuedResult.channel_name}）`
+                  : reissuedResult.notification_status === 'UNCERTAIN'
+                    ? `投递结果待确认（${reissuedResult.channel_name}）`
+                    : `飞书推送失败（${reissuedResult.channel_name}）`
               }
               description={
                 reissuedResult.notification_status === 'SUCCESS'
                   ? '旧分享链接已立即失效；平台不保存访问凭证明文，请妥善保存本次生成的新链接。'
-                  : `旧分享链接已立即失效。失败原因：${reissuedResult.error_message || '飞书服务响应异常'}。本次重试已记录，可复制新链接或稍后重试。`
+                  : reissuedResult.notification_status === 'UNCERTAIN'
+                    ? '请求已超时，群里可能已经收到。请先查看群消息，再决定是否显式重发。旧分享链接已失效。'
+                    : `旧分享链接已立即失效。失败原因：${reissuedResult.error_message || '飞书服务响应异常'}。本次重试已记录，可复制新链接或稍后重试。`
               }
             />
             {!reissuedResult.url_is_absolute && (
@@ -200,12 +230,38 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
             <Typography.Text type="secondary">新分享链接（点击输入框可全选手动复制）：</Typography.Text>
             <Input
               readOnly
-              value={reissuedResult.share_url}
+              value={reissuedResult.share_url ?? ''}
               onFocus={(event) => event.target.select()}
               aria-label="新分享链接"
             />
           </Space>
         )}
+      </Modal>
+      <Modal
+        open={reissuedBatch !== null}
+        title="已重新签发批次分享链接"
+        onCancel={() => { setReissuedBatch(null); setCopiedReissued(false); }}
+        footer={[
+          <Button key="copy" type="primary" disabled={!reissuedBatch?.batch_share_url} onClick={async () => {
+            const url = reissuedBatch?.batch_share_url;
+            if (!url) return;
+            const ok = await tryWriteClipboard(url);
+            setCopiedReissued(ok);
+            if (ok) message.success('批次链接已复制');
+            else message.warning('自动复制失败，请在下方输入框手动复制');
+          }}>{copiedReissued ? '已复制新链接' : '复制批次链接'}</Button>,
+          <Button key="close" onClick={() => { setReissuedBatch(null); setCopiedReissued(false); }}>关闭</Button>,
+        ]}
+      >
+        {reissuedBatch && <Space direction="vertical" style={{ width: '100%' }}>
+          <Alert
+            type={reissuedBatch.notification_status === 'SUCCESS' ? 'success' : reissuedBatch.notification_status === 'UNCERTAIN' ? 'warning' : 'error'}
+            showIcon
+            message={`批次包含 ${reissuedBatch.items.length} 条缺陷 · ${reissuedBatch.notification_status}`}
+            description={reissuedBatch.error_message || '本次飞书重试只发送一张卡片。'}
+          />
+          <Input readOnly value={reissuedBatch.batch_share_url ?? ''} onFocus={(event) => event.target.select()} />
+        </Space>}
       </Modal>
     </Space>
   );

@@ -66,6 +66,8 @@ def test_defect_full_crud_lifecycle(api, admin):
         "severity": 3,
         "status": "待确认",
         "steps_to_reproduce": "1. 打开登录页\n2. 输入错误密码\n3. 点击登录",
+        "expected_result": "提示凭据无效",
+        "actual_result": "返回 500\n服务器错误",
         "environment": "dev",
     }
     r = api.post("/bugs", username=admin, json=create_body)
@@ -76,6 +78,8 @@ def test_defect_full_crud_lifecycle(api, admin):
     assert bug["severity"] == 3
     assert bug["reporter_username"] == admin
     assert bug["project_name"]
+    assert bug["expected_result"] == "提示凭据无效"
+    assert bug["actual_result"] == "返回 500\n服务器错误"
     bug_id = bug["id"]
 
     # 2. 详情
@@ -117,6 +121,10 @@ def test_defect_full_crud_lifecycle(api, admin):
     updated = r.json()
     assert updated["status"] == "处理中"
     assert updated["severity"] == 4
+    assert updated["expected_result"] == "提示凭据无效"
+    r = api.put(f"/bugs/{bug_id}", username=admin, json={"actual_result": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["actual_result"] is None
 
     # 8. 删除
     r = api.delete(f"/bugs/{bug_id}", username=admin)

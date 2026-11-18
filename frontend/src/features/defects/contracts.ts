@@ -24,6 +24,8 @@ export interface BugCreate extends BugApiFields {
   title: string; // 缺陷标题（必填）
   category?: BugCategory; // 前后端划分；缺陷控制台表单必填，历史来源关联允许暂不传
   description?: string; // 描述
+  expected_result?: string | null;
+  actual_result?: string | null;
   severity?: 1 | 2 | 3 | 4; // 严重度 1-4，默认 2
   status?: BugStatus; // 状态，默认 '待确认'
   steps_to_reproduce?: string; // 复现步骤
@@ -36,6 +38,8 @@ export interface BugBatchCreateItem {
   title: string; // 缺陷标题（必填）
   category: BugCategory; // 前后端划分（必填）
   description?: string; // 描述
+  expected_result?: string | null;
+  actual_result?: string | null;
   severity?: BugSeverity; // 严重度 1-4，默认 2
   status?: BugStatus; // 状态，默认 '待确认'
   steps_to_reproduce?: string; // 复现步骤
@@ -67,6 +71,8 @@ export interface BugUpdate extends BugApiFields {
   title?: string;
   category?: BugCategory | null;
   description?: string;
+  expected_result?: string | null;
+  actual_result?: string | null;
   severity?: 1 | 2 | 3 | 4;
   status?: BugStatus;
   steps_to_reproduce?: string;
@@ -105,6 +111,8 @@ export interface Bug extends BugApiFields {
   title: string; // 缺陷标题
   category: BugCategory | null; // 前后端划分；历史存量允许为 null
   description: string | null; // 描述
+  expected_result: string | null;
+  actual_result: string | null;
   severity: BugSeverity; // 严重度 1-4（1=致命，4=轻微）
   status: BugStatus; // 状态
   steps_to_reproduce: string | null; // 复现步骤
@@ -124,7 +132,8 @@ export type DefectShareField =
   | 'steps_to_reproduce' | 'environment' | 'expected_result' | 'actual_result'
   | 'created_at' | 'source_summary' | 'reporter' | 'assignee'
   | 'api_execution' | 'agent_execution' | 'security_record' | 'request_response'
-  | 'error_stack' | 'screenshots' | 'allure';
+  | 'error_stack' | 'screenshots' | 'allure' | 'api_method' | 'api_url'
+  | 'api_request_headers' | 'api_request_body' | 'api_response' | 'attachments';
 
 /** 创建或批量推送的选项。 */
 export interface DefectShareOptions {
@@ -134,12 +143,13 @@ export interface DefectShareOptions {
   permanent?: boolean;
   allow_view?: boolean;
   allow_resolve?: boolean;
+  request_key?: string;
 }
 
 /** 推送结果。share_url 只在这次响应里出现。 */
 export interface DefectSharePushResult {
   share_id: string;
-  share_url: string;
+  share_url: string | null;
   url_is_absolute: boolean;
   bug_id: number;
   bug_no: string;
@@ -188,6 +198,26 @@ export interface DefectShareSummary {
   notification_status: string | null;
   error_message: string | null;
   retry_count: number;
+  batch_share_id?: string | null;
+}
+
+export interface DefectShareBatchItemResult {
+  share_id: string;
+  bug_id: number;
+  bug_no: string;
+  notification_status: string;
+}
+
+export interface DefectShareBatchResult {
+  batch_share_id: string | null;
+  batch_share_url: string | null;
+  url_is_absolute: boolean;
+  items: DefectShareBatchItemResult[];
+  card_count: number;
+  notification_status: string;
+  error_message: string | null;
+  retry_count: number;
+  duplicate_request: boolean;
 }
 
 /** 外部修复记录。姓名是自报信息。 */

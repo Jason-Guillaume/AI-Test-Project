@@ -68,6 +68,8 @@ class BugBase(BugApiFields):
     title: str = Field(..., min_length=1, max_length=200, description="缺陷标题")
     category: BugCategory | None = Field(default=None, description="前后端划分：前端/前后端/接口")
     description: str | None = Field(None, max_length=1000, description="缺陷描述")
+    expected_result: str | None = Field(None, max_length=4000, description="预期结果")
+    actual_result: str | None = Field(None, max_length=4000, description="实际结果")
     severity: BugSeverity = Field(default=2, description="严重度 1-4")
     status: BugStatus = Field(default="待确认", description="状态")
     steps_to_reproduce: str | None = Field(
@@ -123,6 +125,8 @@ class BugUpdate(BugApiFields):
     title: str | None = Field(None, min_length=1, max_length=200)
     category: BugCategory | None = None
     description: str | None = Field(None, max_length=1000)
+    expected_result: str | None = Field(None, max_length=4000)
+    actual_result: str | None = Field(None, max_length=4000)
     severity: BugSeverity | None = None
     status: BugStatus | None = None
     steps_to_reproduce: str | None = None
@@ -146,6 +150,8 @@ class BugResponse(BugApiFields):
     title: str
     category: BugCategory | None = None
     description: str | None = None
+    expected_result: str | None = None
+    actual_result: str | None = None
     severity: int
     status: str
     steps_to_reproduce: str | None = None
