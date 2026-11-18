@@ -47,7 +47,7 @@ interface ShareForm {
 export function DefectShareModal({
   bugs, canPermanent, onClose,
 }: {
-  bugs: Bug[];
+  bugs: Array<Pick<Bug, 'id' | 'project_id'>>;
   canPermanent: boolean;
   onClose: () => void;
 }) {

@@ -92,6 +92,8 @@ interface BugFormValues {
   assignee_id?: number | null;
 }
 
+type ShareTarget = Pick<Bug, 'id' | 'project_id'>;
+
 /**
  * 控制台缺陷列表页。
  *
@@ -105,8 +107,8 @@ interface BugFormValues {
 export function ConsoleDefectsPage() {
   const { message, modal } = App.useApp();
   const { isPlatformAdmin } = useAuth();
-  const [shareBugs, setShareBugs] = useState<Bug[] | null>(null);
-  const [shareSelectionLoading, setShareSelectionLoading] = useState(false);
+  const [shareBugs, setShareBugs] = useState<ShareTarget[] | null>(null);
+  const [selectAllLoading, setSelectAllLoading] = useState(false);
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedBugId = Number(searchParams.get('bugId'));
@@ -159,6 +161,19 @@ export function ConsoleDefectsPage() {
     queryKey: ['bugs', query],
     queryFn: () => bugsApi.list(query),
   });
+
+  async function selectAllFilteredResults() {
+    setSelectAllLoading(true);
+    try {
+      const result = await collectPages((page) => bugsApi.list({ ...query, page, page_size: 200 }));
+      setSelectedBugIds(result.items.map((bug) => bug.id));
+      message.success(`已选中当前筛选结果 ${result.items.length} 条`);
+    } catch (error) {
+      message.error(getErrorMessage(error, '加载全部筛选结果失败'));
+    } finally {
+      setSelectAllLoading(false);
+    }
+  }
 
   // 项目下拉数据源：拉当前用户全部可见项目（page_size=100 兜底）
   const projectsQuery = useQuery({
@@ -367,10 +382,23 @@ export function ConsoleDefectsPage() {
           checked={data.items.length > 0 && data.items.every((bug) => selectedBugIds.includes(bug.id))}
           indeterminate={data.items.some((bug) => selectedBugIds.includes(bug.id)) && !data.items.every((bug) => selectedBugIds.includes(bug.id))}
           disabled={projectId == null}
-          onChange={(event) => setSelectedBugIds(event.target.checked ? data.items.map((bug) => bug.id) : [])}
+          onChange={(event) => {
+            const pageIds = new Set(data.items.map((bug) => bug.id));
+            setSelectedBugIds((current) => event.target.checked
+              ? [...new Set([...current, ...pageIds])]
+              : current.filter((id) => !pageIds.has(id)));
+          }}
         >
           全选当前页（{data.items.length}）
         </Checkbox>
+        <Button
+          loading={selectAllLoading}
+          disabled={projectId == null || data.total === 0 || !canManage(projectId)}
+          onClick={selectAllFilteredResults}
+        >
+          全选全部筛选结果（{data.total}）
+        </Button>
+        {selectedBugIds.length > 0 && <Button onClick={() => setSelectedBugIds([])}>清空选择（{selectedBugIds.length}）</Button>}
         <Button danger disabled={projectId == null || selectedBugIds.length === 0 || batchRemoveMutation.isPending}
           loading={batchRemoveMutation.isPending}
           onClick={() => modal.confirm({
@@ -383,30 +411,7 @@ export function ConsoleDefectsPage() {
         </Button>
         <Button
           disabled={selectedBugIds.length === 0 || projectId == null || !canManage(projectId)}
-          loading={shareSelectionLoading}
-          onClick={async () => {
-            if (selectedBugIds.length > 30) {
-              message.warning('单次最多推送 30 条缺陷，请减少勾选后再确认');
-              return;
-            }
-            setShareSelectionLoading(true);
-            try {
-              const selected = await Promise.all([...new Set(selectedBugIds)].map((id) => bugsApi.get(id)));
-              if (selected.some((bug) => bug.project_id !== projectId)) {
-                message.warning('所选缺陷不都属于当前项目，请重新筛选');
-                return;
-              }
-              if (!selected.every((bug) => canManage(bug.project_id))) {
-                message.error('所选缺陷中存在当前无权推送的项目');
-                return;
-              }
-              setShareBugs(selected);
-            } catch (error) {
-              message.error(getErrorMessage(error, '读取跨页所选缺陷失败'));
-            } finally {
-              setShareSelectionLoading(false);
-            }
-          }}
+          onClick={() => setShareBugs([...new Set(selectedBugIds)].map((id) => ({ id, project_id: projectId! })))}
         >
           批量推送到飞书（{selectedBugIds.length}）
         </Button>

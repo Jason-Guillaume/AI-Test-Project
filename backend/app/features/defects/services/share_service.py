@@ -865,7 +865,20 @@ class DefectShareService:
 
     def _bugs(self, db: Session, bug_ids: list[int], actor: User) -> list[Bug]:
         """读取并校验同一项目内的可写缺陷。"""
-        bugs = [self.defects.get_bug_or_404(db, bug_id, actor) for bug_id in dict.fromkeys(bug_ids)]
+        ordered_ids = list(dict.fromkeys(bug_ids))
+        if not ordered_ids:
+            raise bad_request("请选择要推送的缺陷")
+        by_id = {
+            bug.id: bug
+            for bug in db.query(Bug).filter(Bug.id.in_(ordered_ids)).all()
+        }
+        visible_ids = accessible_project_ids(db, actor)
+        bugs = []
+        for bug_id in ordered_ids:
+            bug = by_id.get(bug_id)
+            if bug is None or (visible_ids is not None and bug.project_id not in visible_ids):
+                raise not_found("缺陷不存在")
+            bugs.append(bug)
         projects = {bug.project_id for bug in bugs}
         if len(projects) != 1:
             raise bad_request("批量推送仅支持同一项目的缺陷")

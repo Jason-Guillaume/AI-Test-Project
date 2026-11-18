@@ -27,13 +27,13 @@ class ShareOptions(BaseModel):
 class SharePreviewRequest(ShareOptions):
     """推送前预览。不创建分享，也不调用飞书。"""
 
-    bug_ids: list[int] = Field(min_length=1, max_length=30)
+    bug_ids: list[int] = Field(min_length=1, max_length=5000)
 
 
 class BatchShareRequest(ShareOptions):
     """同一项目内的批量推送。每条缺陷仍会生成独立凭证。"""
 
-    bug_ids: list[int] = Field(min_length=1, max_length=30)
+    bug_ids: list[int] = Field(min_length=1, max_length=5000)
 
 
 class ShareRetryRequest(BaseModel):
