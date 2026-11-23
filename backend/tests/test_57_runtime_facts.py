@@ -291,3 +291,62 @@ def test_disabled_model_revision_is_not_loaded(db, monkeypatch):
     from app.platform.model_configuration.services.model_config_service import load_model_for_provider
 
     assert load_model_for_provider(db, row.id) is None
+
+
+def test_model_call_fact_is_committed_when_attempt_is_recorded(db, monkeypatch):
+    """模型调用回调必须在独立事务里提交用量事实。回调内部出错会被吞掉，测试要能暴露这种静默丢失。"""
+    from app.orchestration.tasks.runtime import worker as worker_module
+    from app.orchestration.tasks.services import assembly_service, runtime_fact_service, trace_projection_service
+
+    saved: list[RuntimeCallFact] = []
+    captured: dict[str, object] = {}
+
+    class FactSession:
+        def __init__(self):
+            self._pending: list[RuntimeCallFact] = []
+
+        def add(self, obj):
+            self._pending.append(obj)
+
+        def commit(self):
+            saved.extend(self._pending)
+            self._pending = []
+
+        def rollback(self):
+            self._pending = []
+
+        def close(self):
+            pass
+
+    class FakeProvider:
+        def __init__(self, _db, *, model_config_ids, attempt_callback, before_request):
+            captured["callback"] = attempt_callback
+
+    monkeypatch.setattr(worker_module, "ProductionLLMProvider", FakeProvider)
+    monkeypatch.setattr(runtime_fact_service, "model_revision_admitted", lambda _db, _model_id: True)
+    monkeypatch.setattr(assembly_service, "assert_agent_model_access", lambda *_args: None)
+    monkeypatch.setattr(db, "get", lambda _model, ident: SimpleNamespace(id=ident, is_enabled=True))
+    monkeypatch.setattr(trace_projection_service, "enqueue_projection", lambda *_args, **_kwargs: None)
+
+    worker = worker_module.TaskWorker(db_factory=FactSession)
+    task = SimpleNamespace(id=101, project_id=1)
+    run = SimpleNamespace(id=201, execution_root_run_id=None, trace_id="trace-fact")
+    work = SimpleNamespace(id=301)
+    attempt = SimpleNamespace(id=401, checkpoint_json=None)
+    agent = SimpleNamespace(
+        id=501, model_config_id=701, agent_definition_revision_id=801,
+        config_snapshot={"id": 601, "model_config_id": 701},
+    )
+    worker._provider_for_agent(db, task, run, work, attempt, agent, SimpleNamespace(id=901))
+
+    captured["callback"]({
+        "call_id": "call-fact-1", "request_count": 1, "duration_ms": 250, "status": "SUCCEEDED",
+        "model_config_id": 701, "model_name": "fixture-model",
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    })
+
+    assert len(saved) == 1
+    fact = saved[0]
+    assert fact.call_id == "call-fact-1"
+    assert fact.total_tokens == 15 and fact.usage_status == "KNOWN"
+    assert fact.finished_at - fact.started_at == timedelta(milliseconds=250)

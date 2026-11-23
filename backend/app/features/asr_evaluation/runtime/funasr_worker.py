@@ -11,6 +11,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+from fastapi import HTTPException
 from sqlalchemy import func
 
 from sqlalchemy.orm import Session

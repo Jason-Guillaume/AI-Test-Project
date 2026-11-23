@@ -199,3 +199,37 @@ def test_three_audio_serial_batch_keeps_one_parameter_set(monkeypatch):
     assert len(sent) == 6
     db.close()
     engine.dispose()
+
+
+def test_invalid_parameters_mark_item_failed_with_validation_message(monkeypatch):
+    """执行阶段参数校验失败时，工作项应记为 FAILED 并写明校验原因，而不是落入进程中断的兜底分支。"""
+    from types import SimpleNamespace
+
+    from app.features.asr_evaluation.models import AsrAudioVersion
+    from app.features.asr_evaluation.runtime import funasr_worker as worker_module
+
+    item = SimpleNamespace(status="SUBMITTING", audio_version_id=11, ground_truth_version_id=22,
+                           error_message=None, finished_at=None)
+    audio = SimpleNamespace(url_ciphertext="cipher-audio")
+    truth = SimpleNamespace()
+    session_row = SimpleNamespace(config_snapshot={"binding": {}}, execution_ciphertext="cipher-execution")
+
+    class FakeDb:
+        def get(self, model, _ident):
+            return {AsrTuningItem: item, AsrAudioVersion: audio, AsrGroundTruthVersion: truth}[model]
+
+        def commit(self):
+            pass
+
+        def close(self):
+            pass
+
+    worker = FunAsrTuningWorker(db_factory=FakeDb, executor=object(), poll_seconds=0.2)
+    monkeypatch.setattr(worker, "_owned", lambda *_args: session_row)
+    monkeypatch.setattr(worker_module, "_json_from_ciphertext", lambda _value: {"headers": {}})
+    monkeypatch.setattr(worker_module, "decrypt_secret", lambda _value: "https://media.invalid/audio-1")
+
+    worker._execute_item(1, 2, {"not_a_declared_field": 1}, "owner-1", 1)
+
+    assert item.status == "FAILED"
+    assert item.error_message.startswith("请求参数校验失败")
