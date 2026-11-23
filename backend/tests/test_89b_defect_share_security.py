@@ -223,15 +223,16 @@ def test_redis_unavailable_degradation_modes(monkeypatch):
 
 
 def test_reissue_invalidates_old_token_and_retry_failure_is_audited(api, admin, db, monkeypatch):
-    _mock_feishu(monkeypatch)
+    # 只有推送失败的分享可以重推：重推会轮换凭证，并记录这次新的失败。推送成功的分享见下一个用例。
+    _mock_feishu(monkeypatch, payload={"code": 9999, "msg": "rate limit"})
     _proj_id, ch_id, bug_id = _setup_bug_and_channel(api, admin)
 
     created = api.post(f"/bugs/{bug_id}/shares", username=admin, json={"channel_id": ch_id}).json()
+    assert created["notification_status"] == "FAILED"
     old_token = _token(created["share_url"])
     share_id = created["share_id"]
 
-    # Retry without sending old access_token rotates hash AND records failure when Feishu returns error.
-    _mock_feishu(monkeypatch, payload={"code": 9999, "msg": "rate limit"})
+    # Retry without sending the old access_token rotates the hash and records another failure.
     retried = api.post(f"/bugs/{bug_id}/shares/{share_id}/retry", username=admin, json={})
     assert retried.status_code == 200, retried.text
     retry_body = retried.json()
@@ -249,11 +250,25 @@ def test_reissue_invalidates_old_token_and_retry_failure_is_audited(api, admin, 
     assert old_token not in str(detail)
     assert new_token not in str(detail)
     assert len(detail["notifications"]) == 2
-    assert {n["status"] for n in detail["notifications"]} == {"SUCCESS", "FAILED"}
+    assert {n["status"] for n in detail["notifications"]} == {"FAILED"}
 
     # Revoked shares cannot be retried or un-revoked.
     assert api.post(f"/bugs/{bug_id}/shares/{share_id}/revoke", username=admin).status_code == 200
     assert api.post(f"/bugs/{bug_id}/shares/{share_id}/retry", username=admin, json={}).status_code == 409
+
+
+def test_successful_share_is_not_repushed_and_first_link_stays_valid(api, admin, db, monkeypatch):
+    """推送成功后重推会在群里多发一张卡片，并让第一张卡片的链接失效，所以后端必须拒绝。"""
+    _mock_feishu(monkeypatch)
+    _proj_id, ch_id, bug_id = _setup_bug_and_channel(api, admin)
+    created = api.post(f"/bugs/{bug_id}/shares", username=admin, json={"channel_id": ch_id}).json()
+    assert created["notification_status"] == "SUCCESS"
+    share_id = created["share_id"]
+    token = _token(created["share_url"])
+    retried = api.post(f"/bugs/{bug_id}/shares/{share_id}/retry", username=admin, json={})
+    assert retried.status_code == 409
+    assert retried.json()["message"] == "上次投递已成功，无需重新推送"
+    assert api.client.get(f"/api/v1/public/defect-shares/{share_id}", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
 
 def test_archive_worker_idempotent_preserves_audit_and_retries_on_failure(api, admin, db, monkeypatch, caplog):

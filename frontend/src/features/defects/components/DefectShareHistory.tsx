@@ -140,7 +140,8 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
             title: '操作',
             render: (_value, row) => <Space wrap>
               <Button size="small" onClick={() => detail.mutate(row)}>查看详情</Button>
-              {canManage && row.share_status === '有效' && (
+              {/* 上次推送已成功的分享不再提供重推：后端会拒绝，且重推会让群里第一张卡片的链接失效。 */}
+              {canManage && row.share_status === '有效' && row.notification_status !== 'SUCCESS' && (
                 <Button
                   size="small"
                   loading={retry.isPending && retryingShareId === row.share_id}
