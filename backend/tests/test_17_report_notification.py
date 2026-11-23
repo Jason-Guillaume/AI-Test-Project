@@ -706,7 +706,7 @@ class TestSecretBoundary:
 
         # 2) 送给 LLM 的 payload 同样不得含原文，否则凭证会进 Prompt 与 AI 总结（§34）。
         svc = ReportService()
-        rows = [(ce, db.get(TestCase, ce.test_case_id))
+        rows = [(ce, db.get(TestCase, ce.test_case_id) if ce.test_case_id else None)
                 for ce in db.query(CaseExecution).filter_by(test_run_id=run.id).all()]
         payload_blob = json.dumps(
             svc._build_ai_payload(db.get(TestReport, rid), rows), ensure_ascii=False,
@@ -723,7 +723,7 @@ class TestSecretBoundary:
         rid = svc.build_report(db, run.id, actor=actor, generate_ai_summary=False).report_id
 
         report = db.get(TestReport, rid)
-        rows = [(ce, db.get(TestCase, ce.test_case_id))
+        rows = [(ce, db.get(TestCase, ce.test_case_id) if ce.test_case_id else None)
                 for ce in db.query(CaseExecution).filter_by(test_run_id=run.id).all()]
         payload = svc._build_ai_payload(report, rows)
         echoed = {

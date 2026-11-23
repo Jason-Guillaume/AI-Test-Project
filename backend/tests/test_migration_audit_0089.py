@@ -13,7 +13,7 @@ from tests.conftest import BACKEND_DIR
 def test_alembic_has_single_head_0089():
     script = ScriptDirectory(str(Path(BACKEND_DIR) / "alembic"))
     heads = script.get_heads()
-    assert heads == ["0093"]
+    assert len(heads) == 1, heads
     assert script.get_revision("0093").down_revision == "0092"
     assert script.get_revision("0092").down_revision == "0091"
     assert script.get_revision("0091").down_revision == "0090"

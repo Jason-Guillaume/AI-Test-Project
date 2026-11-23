@@ -256,7 +256,7 @@ def test_expired_token_is_rejected(api, db):
     # 用错误密钥签发的令牌无法通过。
     foreign = jwt.encode(
         {"sub": str(uid), "ver": version, "exp": 2 ** 31},
-        "wrong-secret",
+        "wrong-secret-that-is-long-enough-for-hs256",
         algorithm=ALGORITHM,
     )
     assert api.get("/me", token=foreign).status_code == 401
