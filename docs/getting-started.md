@@ -13,7 +13,7 @@
 | 后端 | `http://127.0.0.1:8001` | FastAPI；Swagger 在 `/docs`，健康检查 `/healthz`（**根路径，不带 `/api/v1`**） |
 | 前端 | `http://localhost:5173` | Vite dev server；`/api` 原样代理到 8001（**不 rewrite**） |
 
-环境要求：Python 3.11+、Node 20+、PostgreSQL 16。
+环境要求：Python 3.11+、Node 22.12+（vite 8 的最低要求，与 CI 一致）、PostgreSQL 16。
 
 ## 1. 首次初始化（一次性）
 

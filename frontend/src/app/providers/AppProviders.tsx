@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App as AntdApp, ConfigProvider, message } from 'antd';
-import zhCN from 'antd/locale/zh_CN';
+import zhCN from 'antd/es/locale/zh_CN';
 import { type ReactNode, useState } from 'react';
 import { buildTheme } from '@/shared/theme';
 

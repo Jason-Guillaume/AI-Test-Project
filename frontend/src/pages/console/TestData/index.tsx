@@ -76,7 +76,7 @@ export function ConsoleTestDataPage() {
 
       <Tabs
         defaultActiveKey="assets"
-        destroyInactiveTabPane
+        destroyOnHidden
         items={[
           {
             key: 'assets',
