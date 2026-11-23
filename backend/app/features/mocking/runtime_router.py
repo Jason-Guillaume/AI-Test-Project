@@ -43,7 +43,16 @@ def _parse_body(raw: bytes) -> Any:
 
 
 
-@router.api_route("/{project_id}/{service_key}/{path:path}", methods=_RUNTIME_METHODS)
+def _route_per_method(path: str, methods: list[str]):
+    """每个 HTTP 方法单独注册一条路由。多方法路由会让 FastAPI 给所有方法生成同一个 operationId。"""
+    def decorator(func):
+        for method in methods:
+            router.api_route(path, methods=[method])(func)
+        return func
+    return decorator
+
+
+@_route_per_method("/{project_id}/{service_key}/{path:path}", _RUNTIME_METHODS)
 async def mock_runtime(
     project_id: int,
     service_key: str,

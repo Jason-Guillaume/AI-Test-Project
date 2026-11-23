@@ -19,6 +19,7 @@ from app.core.database.soft_delete import SoftDeleteBase
 class TestStep(SoftDeleteBase):
     """测试步骤。"""
 
+    __test__ = False  # 业务模型，不是 pytest 测试类，测试模块导入时不应被收集。
     __tablename__ = "test_step"
     __table_args__ = ({"comment": "测试步骤"},)
 

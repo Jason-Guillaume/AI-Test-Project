@@ -27,6 +27,7 @@ from app.core.database.soft_delete import SoftDeleteBase
 class TestReport(SoftDeleteBase):
     """正式测试报告：一次 TestRun 的汇总结论 + AI 总结 + 风险等级。"""
 
+    __test__ = False  # 业务模型，不是 pytest 测试类，测试模块导入时不应被收集。
     __tablename__ = "test_report"
     __table_args__ = (
         Index("ix_test_report_project_created", "project_id", "created_at"),

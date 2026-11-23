@@ -22,7 +22,8 @@ from app.platform.model_configuration.models import (
     ModelResource, ModelResourceGrant, ModelRevision, ModelValidationRun,
 )
 from app.platform.model_configuration.center_schemas import (
-    ModelConnectionTestInput, ModelProfileInput, ModelResourceCreate,
+    ModelConnectionTestInput, ModelDefaultInput, ModelProfileCreate, ModelProfileInput, ModelResourceCreate,
+    ModelRevisionInput,
 )
 from app.platform.model_configuration.schemas import normalize_provider
 from app.platform.projects.services.access_service import get_project_or_404

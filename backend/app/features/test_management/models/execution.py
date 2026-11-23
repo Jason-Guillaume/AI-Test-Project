@@ -21,6 +21,7 @@ from app.core.database.base import Base
 class TestRun(Base):
     """测试计划执行记录。"""
 
+    __test__ = False  # 业务模型，不是 pytest 测试类，测试模块导入时不应被收集。
     __tablename__ = "test_run"
     __table_args__ = ({"comment": "测试计划执行记录"},)
 

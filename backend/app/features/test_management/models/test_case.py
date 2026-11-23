@@ -22,6 +22,7 @@ from app.core.database.soft_delete import SoftDeleteBase
 class TestCase(SoftDeleteBase):
     """测试用例：可执行、可断言、可复用的测试资产核心实体。"""
 
+    __test__ = False  # 业务模型，不是 pytest 测试类，测试模块导入时不应被收集。
     __tablename__ = "test_case"
     __table_args__ = (
         Index("uq_test_case_project_name", "project_id", "name", unique=True,
