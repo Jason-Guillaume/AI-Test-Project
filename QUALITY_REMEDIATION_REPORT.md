@@ -1,5 +1,7 @@
 # AI-Test-Project 全量工程质量整改报告
 
+> **复验更新（2026-11-19，未提交的工作区）**：后端全量 1453 通过、0 失败；E2E 37/37 通过；前端类型检查、ESLint、Node 测试 56/56、生产构建通过。已升级 vite 8.3.8、@vitejs/plugin-react 6.3.0、react-router-dom 7.18.6，npm 审计归零；前端镜像基础镜像为 node:22-alpine。下文表格保留 2026-11-17 的历史记录，其中的数字不再代表当前状态。
+
 **工作分支**：`feature/quality-remediation`（基于 `develop@fe13026` 切出）  
 **整改基准提交**：`fe13026`（`feat: integrate defect sharing and Dagu remediation`）  
 **执行原则**：先理解现有实现并重新建立真实基线，不删减业务功能、不降低权限或安全断言、不用 Mock 替代真实浏览器/数据库验证；受外部隔离环境限制无法联网验收的项明确标注 `BLOCKED`。
