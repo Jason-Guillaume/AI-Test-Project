@@ -4,6 +4,7 @@ import threading
 from app.core.database.session import SessionLocal
 from app.knowledge.models import KnowledgeVersion
 from app.knowledge.service import parse_version
+from app.knowledge.indexing import claim_job, run_job
 
 
 def run(stop):
@@ -13,6 +14,10 @@ def run(stop):
                 row = db.query(KnowledgeVersion).filter_by(status='QUEUED').with_for_update(skip_locked=True).first()
                 if row:
                     parse_version(db, row.id)
+                    continue
+                claim = claim_job(db)
+                if claim:
+                    run_job(db, *claim)
                     continue
         except Exception:
             logging.getLogger(__name__).exception('Knowledge parsing worker failed')

@@ -3,7 +3,7 @@ import {
   Alert, App, Button, Card, Checkbox, Col, Descriptions, Form, Input, InputNumber, Modal, Row, Select, Space,
   Statistic, Switch, Table, Tag, Tabs, Typography,
 } from 'antd';
-import { ExperimentOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
+import { DeleteOutlined, ExperimentOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/app/providers/AuthProvider';
@@ -29,15 +29,15 @@ interface ProfileFormValues {
 }
 
 interface DiagnosticFormValues {
-  project_id: number; profile_id?: number; audio_id?: number; confirm_model_call: boolean;
+  project_id: number; profile_id?: number; audio_id?: number; dimension?: number; confirm_model_call: boolean;
 }
 
 const CATEGORY_LABELS: Record<ModelCategory, string> = {
-  TEXT_GENERATION: '文本推理', ASR: 'ASR 转写', DIARIZATION: '说话人分段',
+  TEXT_GENERATION: '文本推理', ASR: 'ASR 转写', DIARIZATION: '说话人分段', EMBEDDING: '向量编码', RERANK: '重排',
 };
 
 const CAPABILITY_LABELS: Record<string, string> = {
-  text_generation: '文本推理', transcription: '转写文本', timestamped_segments: '句级时间戳',
+  text_generation: '文本推理', embedding: '向量编码', rerank: '重排', transcription: '转写文本', timestamped_segments: '句级时间戳',
   word_timestamps: '词级时间戳', native_speaker_labels: '原生说话人标签', channel_metadata: '声道元数据',
   confidence: '置信度', speaker_intervals: '说话人时间区间', speaker_text_segments: '带说话人文本段',
   overlap_intervals: '重叠发言区间',
@@ -61,18 +61,20 @@ const SILICONFLOW_CONFIG = {
 
 const JSON_CONFIG_EXAMPLES: Record<ModelCategory, string> = {
   TEXT_GENERATION: '{\n  "timeout": 60\n}',
+  EMBEDDING: '{\n  "timeout_seconds": 10\n}', RERANK: '{\n  "timeout_seconds": 10\n}',
   ASR: '{\n  "method": "POST",\n  "headers": {},\n  "request_template": {\n    "audio_url": "{{audio.url}}",\n    "parameters": "{{experiment.parameters}}"\n  },\n  "response_mapping": { "text_pointer": "/text" },\n  "timeout_seconds": 180,\n  "max_response_bytes": 8000000\n}',
   DIARIZATION: '{\n  "method": "POST",\n  "headers": {},\n  "request_template": {\n    "audio_url": "{{audio.url}}",\n    "parameters": "{{experiment.parameters}}"\n  },\n  "response_mapping": {\n    "segments_pointer": "/segments", "start_pointer": "/segments/0/start",\n    "end_pointer": "/segments/0/end", "speaker_pointer": "/segments/0/speaker_id",\n    "time_unit": "seconds"\n  },\n  "timeout_seconds": 180,\n  "max_response_bytes": 8000000\n}',
 };
 
 const PROFILE_EXAMPLES: Record<ModelCategory, string> = {
   TEXT_GENERATION: '{\n  "temperature": 0.2,\n  "max_tokens": 4096\n}',
+  EMBEDDING: '{}', RERANK: '{}',
   ASR: '{\n  "language": "",\n  "hotwords": [],\n  "vad": {},\n  "punctuation": false,\n  "timestamps": false\n}',
   DIARIZATION: '{\n  "language": ""\n}',
 };
 
 const PARAMETER_SCHEMA_EXAMPLES: Record<ModelCategory, string> = {
-  TEXT_GENERATION: '[]',
+  TEXT_GENERATION: '[]', EMBEDDING: '[]', RERANK: '[]',
   ASR: '[\n  {"path":"/language","display_name":"识别语言","value_type":"string","description":"按当前供应商 API 文档填写"},\n  {"path":"/hotwords","display_name":"热词","value_type":"array"},\n  {"path":"/vad","display_name":"VAD 参数","value_type":"object"},\n  {"path":"/punctuation","display_name":"标点恢复","value_type":"boolean"},\n  {"path":"/timestamps","display_name":"输出时间戳","value_type":"boolean"}\n]',
   DIARIZATION: '[\n  {"path":"/language","display_name":"语言","value_type":"string"}\n]',
 };
@@ -187,19 +189,20 @@ function containsSensitiveImportField(value: unknown): boolean {
 
 /** 统一模型中心页面。 */
 export function ModelCenterPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { user, isPlatformAdmin } = useAuth();
   const { currentProjectId } = useConsoleScope();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const [category, setCategory] = useState<ModelCategory>(() => {
     const requested = searchParams.get('category');
-    return requested === 'ASR' || requested === 'DIARIZATION' ? requested : 'TEXT_GENERATION';
+    return requested === 'ASR' || requested === 'DIARIZATION' || requested === 'EMBEDDING' || requested === 'RERANK' ? requested : 'TEXT_GENERATION';
   });
   const [resourceOpen, setResourceOpen] = useState(false);
   const [selectedResourceId, setSelectedResourceId] = useState<number | null>(null);
   const [resourceSearch, setResourceSearch] = useState('');
   const [resourceView, setResourceView] = useState<'cards' | 'table'>('cards');
+  const [showArchived, setShowArchived] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState<ModelConnectionTestResult | null>(null);
   const [revisionTarget, setRevisionTarget] = useState<ModelResource | null>(null);
   const [profileTarget, setProfileTarget] = useState<ModelResource | null>(null);
@@ -224,9 +227,9 @@ export function ModelCenterPage() {
   const catalogQuery = useQuery({ queryKey: modelCenterQueryKeys.catalog, queryFn: modelCenterApi.catalog });
   const resourceProjectId = null;
   const resourcesQuery = useQuery({
-    queryKey: modelCenterQueryKeys.resources(resourceProjectId, category),
+    queryKey: modelCenterQueryKeys.resources(resourceProjectId, category, showArchived),
     enabled: true,
-    queryFn: ({ signal }) => modelCenterApi.list(resourceProjectId, category, signal),
+    queryFn: ({ signal }) => modelCenterApi.list(resourceProjectId, category, signal, showArchived),
   });
   const [diagnosticProjectId, setDiagnosticProjectId] = useState<number | undefined>();
   const diagnosticProjectsQuery = useQuery({
@@ -237,7 +240,7 @@ export function ModelCenterPage() {
   const audioProjectId = diagnosticProjectId != null && Number.isInteger(diagnosticProjectId) && diagnosticProjectId > 0 ? diagnosticProjectId : null;
   const audioQuery = useQuery({
     queryKey: ['project', audioProjectId, 'asr', 'audio', 1, 200],
-    enabled: Boolean(audioProjectId && diagnosticTarget && diagnosticTarget.category !== 'TEXT_GENERATION'),
+    enabled: Boolean(audioProjectId && diagnosticTarget && (diagnosticTarget.category === 'ASR' || diagnosticTarget.category === 'DIARIZATION')),
     queryFn: async ({ signal }) => {
       if (!audioProjectId) throw new Error('请选择诊断项目');
       return (await import('@/features/asr-evaluation/api/asrEvaluation')).asrEvaluationApi
@@ -284,6 +287,34 @@ export function ModelCenterPage() {
   }, [rows, resourcesQuery.isFetching, resourcesQuery.isSuccess, selectedResourceId]);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['model-center'] });
+  const deleteResource = (resource: ModelResource) => modal.confirm({
+    title: `删除模型「${resource.display_name}」？`,
+    content: '删除后模型将停用并从可用列表移除，历史修订会保留。可在“已删除”中恢复。',
+    okText: '删除', cancelText: '取消', okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        await modelCenterApi.remove(resource.id);
+        setSelectedResourceId(null);
+        await refresh();
+        message.success('模型已删除');
+      } catch (error) {
+        message.error(getErrorMessage(error, '删除失败'));
+        throw error;
+      }
+    },
+  });
+  const restoreResource = async (resource: ModelResource) => {
+    try {
+      await modelCenterApi.restore(resource.id);
+      setSelectedResourceId(null);
+      await refresh();
+      message.success('模型已恢复为停用状态');
+    } catch (error) { message.error(getErrorMessage(error, '恢复失败')); }
+  };
+  const updateResourceEnabled = async (resource: ModelResource, enabled: boolean) => {
+    try { await modelCenterApi.setEnabled(resource.id, enabled); await refresh(); }
+    catch (error) { message.error(getErrorMessage(error, '模型状态更新失败')); }
+  };
   const createMutation = useMutation({
     mutationFn: (body: ModelResourceWrite) => modelCenterApi.create(body),
     onSuccess: () => { message.success('模型资源已创建'); setResourceOpen(false); resourceForm.resetFields(); refresh(); },
@@ -311,7 +342,7 @@ export function ModelCenterPage() {
   });
   const diagnosticMutation = useMutation({
     mutationFn: ({ resource, values }: { resource: ModelResource; values: DiagnosticFormValues }) => modelCenterApi.createDiagnostic(resource.id, {
-      project_id: values.project_id, profile_id: values.profile_id, audio_id: values.audio_id, confirm_model_call: true,
+      project_id: values.project_id, profile_id: values.profile_id, audio_id: values.audio_id, dimension: values.dimension, confirm_model_call: true,
     }),
     onSuccess: (run) => { setDiagnosticRunId(run.id); message.info('诊断已排队；正在查询后台结果'); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '模型诊断创建失败')),
@@ -343,8 +374,8 @@ export function ModelCenterPage() {
     resourceForm.setFieldsValue({
       visibility: 'PLATFORM', project_id: isPlatformAdmin ? undefined : currentProjectId || undefined,
       provider: category === 'TEXT_GENERATION' ? 'openai-compatible' : 'custom',
-      adapter_key: adapters[0]?.value, config_json: JSON_CONFIG_EXAMPLES[category],
-      capabilities: [], parameter_schema_json: PARAMETER_SCHEMA_EXAMPLES[category], enabled: true,
+      adapter_key: adapters[0]?.value, credential_header: 'Authorization', config_json: JSON_CONFIG_EXAMPLES[category],
+      capabilities: category === 'EMBEDDING' ? ['embedding'] : category === 'RERANK' ? ['rerank'] : [], parameter_schema_json: PARAMETER_SCHEMA_EXAMPLES[category], enabled: true,
       profile_name: '默认参数', profile_values_json: PROFILE_EXAMPLES[category], profile_definitions_json: '[]',
     });
     setResourceOpen(true);
@@ -497,16 +528,16 @@ export function ModelCenterPage() {
       <Typography.Text type="secondary">{row.diagnostic ? `${row.diagnostic.status} · ${row.diagnostic.message || '—'}` : '尚未诊断'}</Typography.Text>
     </Space> },
     { title: '操作', key: 'actions', render: (_: unknown, row: ModelResource) => <Space wrap size={[4, 4]}>
+      {showArchived ? isPlatformAdmin && <Button size="small" onClick={() => restoreResource(row)}>恢复</Button> : <>
       <Button size="small" icon={<ExperimentOutlined />} onClick={() => openDiagnostic(row)}>诊断</Button>
-      <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(row)}>用途默认</Button>
+      {(row.category === 'TEXT_GENERATION' || row.category === 'ASR' || row.category === 'DIARIZATION') && <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(row)}>用途默认</Button>}
       <Button size="small" onClick={() => { setProfileTarget(row); profileForm.setFieldsValue({
         revision_id: row.current_revision?.id, name: '调优参数', values_json: PROFILE_EXAMPLES[row.category], definitions_json: JSON.stringify(row.current_revision?.parameter_schema || [], null, 2),
       }); }}>参数版本</Button>
       {isPlatformAdmin && <Button size="small" onClick={() => openRevision(row)}>连接修订</Button>}
-      {isPlatformAdmin && <Switch checked={row.status === 'ACTIVE'} checkedChildren="启用" unCheckedChildren="停用" onChange={async (enabled) => {
-        try { await modelCenterApi.setEnabled(row.id, enabled); await resourcesQuery.refetch(); }
-        catch { message.error('模型状态更新失败'); }
-      }} />}
+      {isPlatformAdmin && <Switch checked={row.status === 'ACTIVE'} checkedChildren="启用" unCheckedChildren="停用" onChange={(enabled) => updateResourceEnabled(row, enabled)} />}
+      {isPlatformAdmin && <Button danger size="small" icon={<DeleteOutlined />} onClick={() => deleteResource(row)}>删除</Button>}
+      </>}
     </Space> },
   ];
 
@@ -518,25 +549,30 @@ export function ModelCenterPage() {
     <PageHeader title="统一模型中心" subtitle="全平台统一维护模型连接、参数方案和默认策略；启用后各项目可用" />
     {!isPlatformAdmin && !currentProjectId && <Alert type="info" showIcon message="模型由平台管理员统一维护，启用后即可使用。" />}
     <Card variant="borderless">
-      <Tabs activeKey={category} onChange={(key) => setCategory(key as ModelCategory)} items={[
-        { key: 'TEXT_GENERATION', label: '文本推理' }, { key: 'ASR', label: 'ASR 转写' }, { key: 'DIARIZATION', label: '说话人分段' },
+      <Tabs activeKey={category === 'DIARIZATION' ? 'ASR' : category} onChange={(key) => setCategory(key as ModelCategory)} items={[
+        { key: 'TEXT_GENERATION', label: '文本推理' }, { key: 'ASR', label: 'ASR 模型' }, { key: 'EMBEDDING', label: '向量编码' }, { key: 'RERANK', label: '重排' },
       ]} />
+      {(category === 'ASR' || category === 'DIARIZATION') && <Tabs size="small" activeKey={category}
+        onChange={(key) => setCategory(key as ModelCategory)} items={[
+          { key: 'ASR', label: 'ASR 转写' }, { key: 'DIARIZATION', label: '说话人分段' },
+        ]} />}
       <Row gutter={[12, 12]} style={{ marginBottom: 16 }}>
         <Col xs={12} md={6}><Card size="small"><Statistic title={`${CATEGORY_LABELS[category]}资源`} value={rows.length} /></Card></Col>
         <Col xs={12} md={6}><Card size="small"><Statistic title="已启用" value={activeRows.length} valueStyle={{ color: '#389e0d' }} /></Card></Col>
         <Col xs={12} md={6}><Card size="small"><Statistic title="诊断异常" value={diagnosticFailures.length} valueStyle={{ color: diagnosticFailures.length ? '#cf1322' : undefined }} /></Card></Col>
-        <Col xs={12} md={6}><Card size="small"><Statistic title="已停用" value={rows.length - activeRows.length} /></Card></Col>
+        <Col xs={12} md={6}><Card size="small"><Statistic title={showArchived ? '已删除' : '已停用'} value={rows.length - activeRows.length} /></Card></Col>
       </Row>
       <div className="resource-list-toolbar">
         <Input.Search allowClear value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)} placeholder="搜索名称、供应商、模型标识或适配器" aria-label="搜索模型资源" />
         <Select value={resourceView} onChange={setResourceView} options={[{ value: 'cards', label: '卡片视图' }, { value: 'table', label: '表格视图' }]} aria-label="模型资源视图" />
         <Typography.Text type="secondary">类别、供应商、适配器、能力和任务用途分别记录。仅展示已注册适配器。</Typography.Text>
         <Space>
+          {isPlatformAdmin && <Space><span>已删除</span><Switch checked={showArchived} onChange={setShowArchived} /></Space>}
           {isPlatformAdmin && <Button onClick={() => { setImportPreview(null); setImportOpen(true); }}>批量导入预检</Button>}
-          <Button type="primary" icon={<PlusOutlined />} disabled={!isPlatformAdmin} onClick={openCreate}>新增模型资源</Button>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!isPlatformAdmin || showArchived} onClick={openCreate}>新增模型资源</Button>
         </Space>
       </div>
-      {category !== 'TEXT_GENERATION' && <Alert style={{ marginBottom: 16 }} type="info" showIcon
+      {(category === 'ASR' || category === 'DIARIZATION') && <Alert style={{ marginBottom: 16 }} type="info" showIcon
         message="参数控件按连接声明生成。ASR 新配置会提供语言、热词、VAD、标点和时间戳示例；仅保留当前供应商协议确认支持的字段。通用适配器按模板透传，不代表厂商真实联调已验证。无鉴权服务仍需通过项目出站授权。" />}
       {resourceView === 'table' ? <Table<ModelResource> rowKey="id" dataSource={visibleRows} columns={columns} pagination={{ pageSize: 10, showSizeChanger: true }} locale={{ emptyText: resourceSearch ? '没有匹配的模型资源' : `${CATEGORY_LABELS[category]}暂无资源` }} scroll={{ x: 'max-content' }} />
         : visibleRows.length ? <Row gutter={[12, 12]}>
@@ -547,7 +583,7 @@ export function ModelCenterPage() {
                 style={{ height: '100%' }} styles={{ body: { display: 'flex', height: '100%', minHeight: 220, flexDirection: 'column', padding: 14 } }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                   <div style={{ minWidth: 0 }}><Typography.Text strong ellipsis={{ tooltip: resource.display_name }} style={{ display: 'block' }}>{resource.display_name}</Typography.Text><Typography.Text type="secondary">{revision?.provider ?? '未配置供应商'} · {revision?.model_name ?? '无当前修订'}</Typography.Text></div>
-                  <Tag color={resource.status === 'ACTIVE' ? 'green' : resource.status === 'ERROR' ? 'red' : 'default'}>{resource.status === 'ACTIVE' ? '启用' : resource.status === 'ERROR' ? '异常' : '停用'}</Tag>
+                  <Tag color={resource.status === 'ACTIVE' ? 'green' : resource.status === 'ERROR' ? 'red' : 'default'}>{resource.status === 'ACTIVE' ? '启用' : resource.status === 'ERROR' ? '异常' : resource.status === 'ARCHIVED' ? '已删除' : '停用'}</Tag>
                 </div>
                 <Space wrap size={[4, 4]} style={{ marginTop: 10 }}>
                   <Tag>{revision?.adapter_key ?? '未配置适配器'}</Tag>
@@ -557,10 +593,14 @@ export function ModelCenterPage() {
                 <Typography.Paragraph type="secondary" ellipsis={{ rows: 2, tooltip: revision?.capabilities.join('、') || '未声明能力' }} style={{ marginTop: 8, marginBottom: 8 }}>{revision?.capabilities.map((capability) => CAPABILITY_LABELS[capability] ?? capability).join('、') || '未声明能力'}</Typography.Paragraph>
                 <Space wrap size={[4, 4]}>{resource.defaults.map((item) => <Tag key={`${item.purpose}:${item.project_id || 0}`} color="blue">默认 · {item.purpose}</Tag>)}</Space>
                 <div style={{ marginTop: 'auto', paddingTop: 12 }} className="resource-card-actions">
+                  {showArchived ? isPlatformAdmin && <Button size="small" onClick={() => restoreResource(resource)}>恢复</Button> : <>
                   <Button size="small" onClick={() => setSelectedResourceId(resource.id)}>详情</Button>
                   <Button size="small" icon={<ExperimentOutlined />} onClick={() => openDiagnostic(resource)}>诊断</Button>
-                  <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(resource)}>用途默认</Button>
+                  {(resource.category === 'TEXT_GENERATION' || resource.category === 'ASR' || resource.category === 'DIARIZATION') && <Button size="small" icon={<SettingOutlined />} onClick={() => openDefault(resource)}>用途默认</Button>}
                   {isPlatformAdmin && <Button size="small" onClick={() => openRevision(resource)}>新连接修订</Button>}
+                  {isPlatformAdmin && <Switch size="small" checked={resource.status === 'ACTIVE'} checkedChildren="启用" unCheckedChildren="停用" onChange={(enabled) => updateResourceEnabled(resource, enabled)} />}
+                  {isPlatformAdmin && <Button danger size="small" icon={<DeleteOutlined />} onClick={() => deleteResource(resource)}>删除</Button>}
+                  </>}
                 </div>
               </Card>
             </Col>;
@@ -576,7 +616,7 @@ export function ModelCenterPage() {
       extra={selectedResource && <Tag color={selectedResource.status === 'ACTIVE' ? 'green' : selectedResource.status === 'ERROR' ? 'red' : 'default'}>{selectedResource.status === 'ACTIVE' ? '启用' : selectedResource.status === 'ERROR' ? '异常' : '停用'}</Tag>}
       footer={selectedResource && <div className="editor-drawer-footer"><Typography.Text type="secondary">凭据仅显示是否已配置；明文不会从服务端回读。</Typography.Text><Space wrap>
         <Button onClick={() => openDiagnostic(selectedResource)}>连接诊断</Button>
-        <Button onClick={() => openDefault(selectedResource)}>默认策略</Button>
+        {(selectedResource.category === 'TEXT_GENERATION' || selectedResource.category === 'ASR' || selectedResource.category === 'DIARIZATION') && <Button onClick={() => openDefault(selectedResource)}>默认策略</Button>}
         <Button onClick={() => { setProfileTarget(selectedResource); profileForm.setFieldsValue({ revision_id: selectedResource.current_revision?.id, name: '调优参数', values_json: PROFILE_EXAMPLES[selectedResource.category], definitions_json: JSON.stringify(selectedResource.current_revision?.parameter_schema || [], null, 2) }); }}>参数方案</Button>
         {isPlatformAdmin && <Button type="primary" onClick={() => openRevision(selectedResource)}>新增连接修订</Button>}
       </Space></div>}
@@ -633,7 +673,7 @@ export function ModelCenterPage() {
                   capabilities: ['transcription'], parameter_schema_json: '[]',
                   profile_values_json: '{}', profile_definitions_json: '[]',
                 });
-                else resourceForm.setFieldsValue({ config_json: JSON_CONFIG_EXAMPLES[category], capabilities: [] });
+                else resourceForm.setFieldsValue({ config_json: JSON_CONFIG_EXAMPLES[category], capabilities: category === 'EMBEDDING' ? ['embedding'] : category === 'RERANK' ? ['rerank'] : [] });
               }} />
           </Form.Item>
           <Form.Item name="model_name" label="厂商模型 ID" rules={[{ required: true }]} style={{ flex: 1 }}><Input /></Form.Item>
@@ -645,7 +685,7 @@ export function ModelCenterPage() {
         {category !== 'TEXT_GENERATION' && <Form.Item name="credential_header" label="凭据请求头" style={{ width: '100%' }}>
           <Input placeholder="Authorization" style={{ width: '100%' }} />
         </Form.Item>}
-        <Form.Item name="config_json" label="协议连接参数 JSON" rules={[{ required: true }]} extra={category === 'TEXT_GENERATION' ? '仅配置当前适配器支持的接口参数。' : '通用 JSON 适配器需配置请求模板；硅基流动适配器读取音频 URL 后上传文件，响应字段使用 JSON Pointer 映射。'}>
+        <Form.Item name="config_json" label="协议连接参数 JSON" rules={[{ required: true }]} extra={category === 'EMBEDDING' || category === 'RERANK' ? '填写请求超时；服务地址应为该协议的完整端点。' : category === 'TEXT_GENERATION' ? '仅配置当前适配器支持的接口参数。' : '通用 JSON 适配器需配置请求模板；硅基流动适配器读取音频 URL 后上传文件，响应字段使用 JSON Pointer 映射。'}>
           <Input.TextArea rows={8} spellCheck={false} />
         </Form.Item>
         <Space style={{ display: 'flex' }} align="start">
@@ -794,12 +834,13 @@ export function ModelCenterPage() {
         <Form.Item name="profile_id" label="参数方案版本">
           <Select allowClear options={(diagnosticTarget?.current_revision?.profiles || []).map((item) => ({ value: item.id, label: `${item.name} v${item.version}` }))} />
         </Form.Item>
-        {diagnosticTarget && diagnosticTarget.category !== 'TEXT_GENERATION' && <Form.Item name="audio_id" label="诊断音频" rules={[{ required: true }]}>
+        {diagnosticTarget && (diagnosticTarget.category === 'ASR' || diagnosticTarget.category === 'DIARIZATION') && <Form.Item name="audio_id" label="诊断音频" rules={[{ required: true }]}>
           <Select allowClear loading={audioQuery.isPending} disabled={!audioProjectId || audioQuery.isError}
             options={(audioQuery.data?.items || []).map((item: { id: number; name: string }) => ({ value: item.id, label: item.name }))}
             placeholder={audioProjectId ? '选择该项目下的音频' : '请先选择项目'} />
         </Form.Item>}
-        {audioQuery.isError && diagnosticTarget?.category !== 'TEXT_GENERATION' && <Alert type="error" showIcon message={getErrorMessage(audioQuery.error, '项目音频加载失败')} />}
+        {audioQuery.isError && (diagnosticTarget?.category === 'ASR' || diagnosticTarget?.category === 'DIARIZATION') && <Alert type="error" showIcon message={getErrorMessage(audioQuery.error, '项目音频加载失败')} />}
+        {diagnosticTarget?.category === 'EMBEDDING' && <Form.Item name="dimension" label="预期向量维度" rules={[{ required: true }]}><InputNumber min={1} max={16000} /></Form.Item>}
         <Form.Item name="confirm_model_call" valuePropName="checked" rules={[{ validator: (_, value) => value ? Promise.resolve() : Promise.reject(new Error('需要明确确认')) }]}>
           <Checkbox>我确认发起一次真实模型调用，可能产生费用</Checkbox>
         </Form.Item>

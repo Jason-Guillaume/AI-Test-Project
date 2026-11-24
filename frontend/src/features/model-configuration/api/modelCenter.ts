@@ -1,7 +1,7 @@
 // 统一模型中心客户端；所有业务请求继续复用 shared API 错误信封与会话处理。
 import { api } from '@/shared/api/client';
 
-export type ModelCategory = 'TEXT_GENERATION' | 'ASR' | 'DIARIZATION';
+export type ModelCategory = 'TEXT_GENERATION' | 'ASR' | 'DIARIZATION' | 'EMBEDDING' | 'RERANK';
 export type ModelVisibility = 'PLATFORM' | 'PROJECT';
 
 export interface ModelParameterProfile {
@@ -101,7 +101,7 @@ export interface ModelSlotSelection {
 
 export const modelCenterQueryKeys = {
   catalog: ['model-center', 'catalog'] as const,
-  resources: (projectId: number | null, category?: ModelCategory) => ['model-center', 'resources', projectId, category] as const,
+  resources: (projectId: number | null, category?: ModelCategory, archived = false) => ['model-center', 'resources', projectId, category, archived] as const,
   available: (projectId: number, category?: ModelCategory) => ['project', projectId, 'model-center', 'available', category] as const,
   diagnostic: (runId: number) => ['model-center', 'diagnostic', runId] as const,
 };
@@ -109,10 +109,12 @@ export const modelCenterQueryKeys = {
 export const modelCenterApi = {
   setEnabled: (id: number, enabled: boolean) => api.put(`/model-center/resources/${id}/enabled?enabled=${enabled}`),
   catalog: () => api.get<ModelCenterCatalog>('/model-center/catalog'),
-  list: (projectId: number | null, category?: ModelCategory, signal?: AbortSignal) =>
+  list: (projectId: number | null, category?: ModelCategory, signal?: AbortSignal, archived = false) =>
     api.get<{ items: ModelResource[]; total: number }>('/model-center/resources', {
-      signal, params: { project_id: projectId ?? undefined, category },
+      signal, params: { project_id: projectId ?? undefined, category, archived },
     }),
+  remove: (resourceId: number) => api.delete(`/model-center/resources/${resourceId}`),
+  restore: (resourceId: number) => api.post(`/model-center/resources/${resourceId}/restore`),
   available: (projectId: number, category?: ModelCategory, signal?: AbortSignal) =>
     api.get<{ items: ModelAvailableResource[]; total: number }>('/model-center/available', {
       signal, params: { project_id: projectId, category },
@@ -132,7 +134,7 @@ export const modelCenterApi = {
     api.post('/model-center/imports/preview', { items }),
   importResources: (items: Array<Record<string, unknown>>) =>
     api.post<{ items: ModelResource[]; total: number; status: string }>('/model-center/imports', { items }),
-  createDiagnostic: (resourceId: number, body: { project_id: number; profile_id?: number; audio_id?: number; confirm_model_call: true }) =>
+  createDiagnostic: (resourceId: number, body: { project_id: number; profile_id?: number; audio_id?: number; dimension?: number; confirm_model_call: true }) =>
     api.post<{ id: number; status: string }>(`/model-center/resources/${resourceId}/diagnostics`, body),
   testConnection: (body: { visibility: ModelVisibility; project_id?: number; endpoint: string; model_name: string; credential?: string; config: Record<string, unknown>; confirm_model_call: true }) =>
     api.post<ModelConnectionTestResult>('/model-center/connection-tests', body),

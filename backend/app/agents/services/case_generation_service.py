@@ -104,7 +104,9 @@ def generate_case_suite(db: Session, actor, agent_id: int, body: GenerationReque
             receipt = {key: snapshot[key] for key in ('id','name','version','module','tool_key','model_config_id','model_name')}
             started = time.monotonic()
             try:
-                sources = search(db, snapshot['knowledge'], actor, body.requirements)
+                sources = search(db, snapshot['knowledge'], actor, '\n'.join(
+                    part for part in (snapshot.get('module'), body.requirements) if part
+                ))
                 receipt['knowledge_sources'] = [{k: v for k, v in item.items() if k != 'text'} for item in sources]
                 provider = provider_factory(snapshot)
                 result = dispatch_tool(snapshot['tool_key'], channel='fixed',

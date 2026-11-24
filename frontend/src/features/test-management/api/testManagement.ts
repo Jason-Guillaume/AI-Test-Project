@@ -256,10 +256,12 @@ export const testManagementApi = {
   // ---- 测试执行（§32 同步执行，返回完成的 TestRun）----
   createRun: (planId: number, body: TestRunCreateRequest) =>
     api.post<TestRun>(`/test-plans/${planId}/runs`, body),
+  getRunByRequest: (projectId: number, requestKey: string) => api.get<TestRun>(`/projects/${projectId}/test-runs/by-request/${requestKey}`),
   getRun: (runId: number) => api.get<TestRun>(`/test-runs/${runId}`),
   // list_case_executions 返回分页信封（CaseExecutionListResponse）。
-  listCaseExecutions: (runId: number) =>
-    api.get<CaseExecutionListResponse>(`/test-runs/${runId}/cases`),
+  listCaseExecutions: (runId: number, params?: { page: number; page_size: number; failed_only?: boolean }) =>
+    api.get<CaseExecutionListResponse>(`/test-runs/${runId}/cases`, { params }),
+  getCaseExecution: (runId: number, executionId: number) => api.get<import('../contracts').CaseExecution>(`/test-runs/${runId}/cases/${executionId}`),
   // list_runs 返回分页信封（TestRunListResponse）。
   listRuns: (
     projectId: number,

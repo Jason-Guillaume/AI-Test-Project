@@ -320,6 +320,9 @@ def update_configuration(
     """更新模型配置；密钥为空表示保留原值。"""
     _require_admin(actor)
     row = get_or_404(db, config_id)
+    resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).with_for_update().populate_existing().first()
+    if resource is not None and resource.status == 'ARCHIVED':
+        raise bad_request('模型已删除，请先在模型中心恢复')
 
     # exclude_unset：前端「不传」和「传空串」语义不同——只有非空才覆盖密钥。
     data = body.model_dump(exclude_unset=True)
@@ -399,6 +402,9 @@ def set_default(db: Session, config_id: int, *, actor: User) -> ModelConfigurati
     """把指定模型设为默认模型；被设为默认的模型必须处于启用状态。"""
     _require_admin(actor)
     row = get_or_404(db, config_id)
+    resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).with_for_update().populate_existing().first()
+    if resource and resource.status == 'ARCHIVED':
+        raise bad_request('模型已删除，请先在模型中心恢复')
     if not row.is_enabled:
         raise bad_request("停用的模型不能设为默认模型")
     _normalize_defaults(db, row)

@@ -115,6 +115,11 @@ def parse_version(db, version_id):
             doc.current_version_id = row.id
     except Exception as exc:
         row.status, row.error = 'FAILED', ('解析失败：' + type(exc).__name__)[:500]
+    if row.status == 'READY':
+        # Queue vectors in the same transaction as the chunks and version switch.
+        # If this fails, let the caller roll back instead of committing an untracked version.
+        from app.knowledge.indexing import enqueue_version
+        enqueue_version(db, doc.project_id, row.id)
     db.commit()
 
 
@@ -239,13 +244,7 @@ def _candidate_chunks(db, version_ids: list[int], query: str, *, candidate_limit
     return rows[:candidate_limit], truncated, len(terms)
 
 
-def search(
-    db, snapshot, actor, query, limit=8, minimum_score=0.0, *,
-    candidate_limit: int | None = None, return_metadata: bool = False,
-    vector_candidate_ids: list[int] | None = None,
-):
-    """按当前权限执行 SQL 候选 BM25；可安全融合外部授权候选，分数不代表概率。"""
-    retrieval_started = time.monotonic()
+def _authorized_versions(db, snapshot, actor):
     current = freeze(db, snapshot['project_id'], snapshot['agent_id'], actor)
     # 修订号来自已停用的 Agent 绑定，不能再用来拒绝检索；停用文档由下面的来源校验拦截。
     allowed_documents = {
@@ -266,24 +265,56 @@ def search(
         or any(row.status != 'READY' or row.document_id not in allowed_documents for row in version_rows)
     ):
         raise forbidden('知识来源已停用或权限已撤销')
+    return versions_by_id
+
+
+def search(
+    db, snapshot, actor, query, limit=None, minimum_score=0.0, *,
+    candidate_limit: int | None = None, return_metadata: bool = False,
+    vector_candidate_ids: list[int] | None = None,
+):
+    """按当前授权范围执行 BM25、可用向量召回和可选重排。"""
+    retrieval_started = time.monotonic()
+    versions_by_id = _authorized_versions(db, snapshot, actor)
+    settings = None
+    if limit is None or (int(limit) > 0 and _terms(query)):
+        from app.knowledge.models import KnowledgeRetrievalConfig
+        settings = db.get(KnowledgeRetrievalConfig, snapshot['project_id'])
+    if limit is None:
+        limit = settings.default_top_k if settings else 8
     top_k = max(0, min(int(limit), 50))
-    cap = max(1, min(int(candidate_limit if candidate_limit is not None else max(200, top_k * 40)), 5000))
+    default_cap = max(200, top_k * 40, settings.bm25_candidates if settings and settings.enabled else 0)
+    cap = max(1, top_k, min(int(candidate_limit if candidate_limit is not None else default_cap), 5000))
+    bm25_started = time.monotonic()
     rows, candidates_truncated, _ = (
         _candidate_chunks(db, list(versions_by_id), query, candidate_limit=cap)
         if versions_by_id and top_k else ([], False, 0)
     )
     scores = _bm25_scores(rows, query)
     scored = sorted(rows, key=lambda c: (-scores.get(c.id, 0.0), c.version_id, c.position))
+    bm25_duration_ms = int((time.monotonic() - bm25_started) * 1000)
     # 空查询保留旧版来源浏览行为；有查询词但无匹配时不再返回无关片段。
-    hybrid = vector_candidate_ids is not None
-    if _terms(query) and not hybrid:
+    has_query = bool(_terms(query))
+    if has_query:
         scored = [row for row in scored if scores.get(row.id, 0.0) >= minimum_score and scores.get(row.id, 0.0) > 0]
     ranked_score_by_id = {row.id: scores.get(row.id, 0.0) for row in scored}
     score_type = 'BM25'
     candidate_rows_by_id = {row.id: row for row in rows}
     vector_count = 0
     fusion_metadata = None
-    if hybrid:
+    config = None
+    vector_status = 'UNAVAILABLE'
+    vector_duration_ms = rerank_duration_ms = 0
+    reranker_status = 'UNAVAILABLE'
+    if has_query and top_k and versions_by_id and vector_candidate_ids is None:
+        from app.knowledge.hybrid import vector_candidates
+        vector_candidate_ids, config, vector_status, vector_duration_ms = vector_candidates(
+            db, snapshot['project_id'], list(versions_by_id), query, top_k,
+        )
+        # A remote call may have overlapped with revocation or deletion.
+        versions_by_id = _authorized_versions(db, snapshot, actor)
+    authorized_vector_ids = []
+    if has_query and top_k and vector_candidate_ids:
         from app.knowledge.retrieval import reciprocal_rank_fusion
 
         vector_ids = list(dict.fromkeys(
@@ -297,6 +328,10 @@ def search(
         authorized_vector_ids = [ident for ident in vector_ids if ident in vector_by_id]
         vector_count = len(authorized_vector_ids)
         candidate_rows_by_id.update(vector_by_id)
+    hybrid = bool(authorized_vector_ids)
+    if hybrid:
+        if config:
+            scored = scored[:max(top_k, config.bm25_candidates)]
         fused = reciprocal_rank_fusion([
             [row.id for row in scored],
             authorized_vector_ids,
@@ -304,11 +339,25 @@ def search(
         fusion_metadata = 'RRF'
         score_type = 'RRF'
         ranked_score_by_id = {item['chunk_id']: item['score'] for item in fused}
-        selected_ids = [
-            item['chunk_id'] for item in fused
-            if item['score'] >= minimum_score
-        ][:top_k]
-        selected = [candidate_rows_by_id[ident] for ident in selected_ids]
+        # minimum_score is a BM25 threshold; an RRF score has a different scale.
+        window = max(top_k, config.rerank_window) if config and config.rerank_revision_id else top_k
+        selected = [candidate_rows_by_id[item['chunk_id']] for item in fused
+                    if not config or config.fusion_min_score is None or item['score'] >= config.fusion_min_score][:window]
+        if config and config.rerank_revision_id and selected:
+            from app.knowledge.hybrid import rerank_candidates
+            # Only currently authorized text may leave the process.
+            _authorized_versions(db, snapshot, actor)
+            ranking, reranker_status, rerank_duration_ms = rerank_candidates(
+                db, snapshot['project_id'], config.rerank_revision_id, config.timeout_seconds, query, selected,
+            )
+            _authorized_versions(db, snapshot, actor)
+            if ranking is not None:
+                ranked_rows = [(selected[index], score) for index, score in ranking
+                               if config.rerank_min_score is None or score >= config.rerank_min_score]
+                selected = [row for row, _ in ranked_rows]
+                ranked_score_by_id = {row.id: score for row, score in ranked_rows}
+                score_type = 'RERANK'
+        selected = selected[:top_k]
     else:
         selected = scored[:top_k]
     documents_by_id = {doc.id: doc for doc in db.query(KnowledgeDocument).filter(
@@ -329,8 +378,12 @@ def search(
         'duration_ms': elapsed_ms,
         'tokenizer_version': _TOKENIZER_VERSION,
         # 当前仓库无 pgvector 扩展和 Embedding Provider，保留显式降级状态。
-        'vector_status': 'ACTIVE' if hybrid and vector_count else 'UNAVAILABLE',
-        'reranker_status': 'UNAVAILABLE',
+        'vector_status': 'ACTIVE' if hybrid and vector_count else vector_status,
+        'reranker_status': reranker_status,
+        'vector_duration_ms': vector_duration_ms,
+        'rerank_duration_ms': rerank_duration_ms,
+        'bm25_duration_ms': bm25_duration_ms,
+        'generation_id': config.active_generation_id if config else None,
         'fusion': fusion_metadata,
     }
     span_id = None
@@ -369,7 +422,7 @@ def search(
         agent_definition_id=runtime.get('agent_id') or snapshot['agent_id'] or None,
         agent_definition_revision_id=runtime.get('agent_revision_id'),
         trace_id=runtime.get('trace_id'), span_id=span_id,
-        event_type='KNOWLEDGE_RETRIEVAL', event_name='BM25', status='SUCCEEDED',
+        event_type='KNOWLEDGE_RETRIEVAL', event_name=('RERANK' if score_type == 'RERANK' else 'HYBRID_RRF' if hybrid else 'BM25'), status='SUCCEEDED',
         duration_ms=elapsed_ms,
         event_metadata={
             'query_sha256': hashlib.sha256(query.encode('utf-8')).hexdigest(),

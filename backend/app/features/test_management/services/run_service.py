@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.platform.environment_configuration.services.environment_service import resolve_project_environment
 from app.features.business.executors.context import ExecutionContext
@@ -46,6 +47,7 @@ from app.core.http.errors import (
     CODE_SETUP_FAILED,
     AppError,
     bad_request,
+    conflict,
     not_found,
 )
 from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
@@ -73,6 +75,11 @@ class RunService:
             raise not_found("测试计划不存在")
         require_writable_project(db, resolve_plan_project_id(db, plan_id), actor)
 
+        if body.request_key:
+            previous = db.query(TestRun).filter_by(request_key=body.request_key).first()
+            if previous:
+                return self._match_request(previous, plan, body, actor)
+
         # 1. 解析执行环境。
         env_id = body.environment_id if body.environment_id is not None else plan.environment_id
         if env_id is None:
@@ -90,7 +97,14 @@ class RunService:
         ordered_cases = [case_map[cid] for cid in case_ids if cid in case_map]
         project_id = plan.project_id
 
-        return self._execute_cases(db, project_id, ordered_cases, environment, actor, plan_id=plan_id)
+        return self._execute_cases(db, project_id, ordered_cases, environment, actor, plan_id=plan_id, request=body)
+
+    @staticmethod
+    def _match_request(run, plan, body, actor):
+        if (run.created_by != actor.id or run.project_id != plan.project_id or run.plan_id != plan.id
+                or run.request_environment_id != body.environment_id):
+            raise conflict("request_key 已用于不同的执行请求")
+        return _response(run)
 
     def execute_case(self, db: Session, case_id: int, environment_id: int, *, actor: User) -> TestRunResponse:
         """单用例调试复用完整 Fixture/Mock/执行/清理流程，不创建临时计划或第二套执行记录。"""
@@ -103,17 +117,40 @@ class RunService:
         environment = resolve_project_environment(db, case.project_id, environment_id)
         return self._execute_cases(db, case.project_id, [case], environment, actor)
 
-    def _execute_cases(self, db, project_id, ordered_cases, environment, actor, *, plan_id=None):
+    def _execute_cases(self, db, project_id, ordered_cases, environment, actor, *, plan_id=None, request=None):
         """计划执行与单例调试共享原有编排；逐例提交结果，资源清理语义保持一致。"""
         # 3. 创建 TestRun。
         run = TestRun(
             project_id=project_id, plan_id=plan_id, environment_id=environment.id,
             status="RUNNING", total=len(ordered_cases),
             started_at=datetime.now(), created_by=actor.id,
+            request_key=request.request_key if request else None,
+            request_environment_id=request.environment_id if request else None,
         )
         db.add(run)
-        db.flush()
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            if request and request.request_key:
+                previous = db.query(TestRun).filter_by(request_key=request.request_key).first()
+                if previous:
+                    return self._match_request(previous, db.get(TestPlan, plan_id), request, actor)
+            raise
+        db.refresh(run)
 
+        try:
+            return self._execute_existing_run(db, run, project_id, ordered_cases, environment, actor)
+        except Exception:
+            db.rollback()
+            failed_run = db.get(TestRun, run.id)
+            if failed_run is not None:
+                failed_run.status = "FAILED"
+                failed_run.finished_at = datetime.now()
+                db.commit()
+            raise
+
+    def _execute_existing_run(self, db, run, project_id, ordered_cases, environment, actor):
         lifecycle = self._lifecycle
         declared = self._declared_fixtures(db, project_id, [c.id for c in ordered_cases])
 
@@ -265,18 +302,30 @@ class RunService:
         items = q.order_by(TestRun.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
         return TestRunListResponse(items=[_response(r) for r in items], total=total, page=page, page_size=page_size)
 
-    def list_case_executions(self, db: Session, run_id: int, user: User) -> CaseExecutionListResponse:
-        """列出用例`executions`。"""
+    def list_case_executions(self, db: Session, run_id: int, user: User, *, page: int | None = None, page_size: int = 100, failed_only: bool = False) -> CaseExecutionListResponse:
         run = db.get(TestRun, run_id)
         if run is None:
             raise not_found("测试执行记录不存在")
         get_project_or_404(db, run.project_id, user)
-        rows = (
-            db.query(CaseExecution).filter(CaseExecution.test_run_id == run_id)
-            .order_by(CaseExecution.id.asc()).all()
-        )
-        items = [CaseExecutionResponse.model_validate(r) for r in rows]
-        return CaseExecutionListResponse(items=items, total=len(items), page=1, page_size=100)
+        q = db.query(CaseExecution).filter(CaseExecution.test_run_id == run_id)
+        if failed_only:
+            q = q.filter(CaseExecution.status.in_(["FAILED", "ERROR"]))
+        total = q.count()
+        q = q.order_by(CaseExecution.id.asc())
+        if page is not None:
+            q = q.offset((page - 1) * page_size).limit(page_size)
+        rows = q.all()
+        return CaseExecutionListResponse(items=[CaseExecutionResponse.model_validate(r) for r in rows], total=total, page=page or 1, page_size=page_size)
+
+    def get_case_execution(self, db: Session, run_id: int, execution_id: int, user: User) -> CaseExecutionResponse:
+        run = db.get(TestRun, run_id)
+        if run is None:
+            raise not_found("测试执行记录不存在")
+        get_project_or_404(db, run.project_id, user)
+        row = db.query(CaseExecution).filter_by(id=execution_id, test_run_id=run_id).first()
+        if row is None:
+            raise not_found("用例执行记录不存在")
+        return CaseExecutionResponse.model_validate(row)
 
     # ---------------------------------------------------------------- 辅助
 

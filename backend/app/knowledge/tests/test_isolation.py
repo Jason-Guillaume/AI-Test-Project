@@ -8,6 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from app.core.database.base import Base
 import app.core.models
+import app.features.asr_evaluation.models
+import app.platform.model_configuration.models
 from app.agents.models import AgentDefinition
 from app.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeVersion, KnowledgeChunk, KnowledgeBinding
 from app.knowledge import service
@@ -28,11 +30,17 @@ def test_bm25_uses_document_frequency_and_declared_parameters():
 
 @pytest.fixture
 def db(monkeypatch):
+    # These legacy isolation fixtures stub project membership and do not create
+    # real Project rows; indexing transaction behaviour has its own DB tests.
+    from app.knowledge import indexing
+    from app.knowledge import hybrid
+    monkeypatch.setattr(indexing, 'enqueue_version', lambda *args: None)
+    monkeypatch.setattr(hybrid, 'vector_candidates', lambda *args: (None, None, 'UNAVAILABLE', 0))
     engine = create_engine('sqlite://')
     Base.metadata.create_all(engine, tables=[t for t in Base.metadata.tables.values() if t.name in {
         'user', 'organization', 'organization_member', 'project', 'project_member', 'model_configuration',
         'agent_definition', 'knowledge_base', 'knowledge_document', 'knowledge_document_version',
-        'knowledge_chunk', 'project_agent_knowledge_binding', 'runtime_event_fact'}])
+        'knowledge_chunk', 'knowledge_retrieval_config', 'project_agent_knowledge_binding', 'runtime_event_fact'}])
     def access(db, project_id, actor, write=False):
         if project_id not in actor:
             raise HTTPException(404)
@@ -196,6 +204,47 @@ def test_rrf_fusion_filters_vector_candidates_against_authorized_snapshot(db):
     assert metadata['strategy'] == 'HYBRID_RRF'
     assert metadata['fusion'] == 'RRF'
     assert metadata['vector_candidate_count'] == 1
+
+
+def test_empty_or_unauthorized_vector_candidates_fall_back_to_bm25(db):
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    other = service.freeze(db, 2, 1, {2})
+    other_chunk = db.query(KnowledgeChunk).filter(
+        KnowledgeChunk.version_id.in_(other['version_ids']),
+    ).one()
+    expected = service.search(db, snapshot, {1}, '商城订单规范', minimum_score=0.1)
+    for candidates in ([], [other_chunk.id]):
+        actual, metadata = service.search(
+            db, snapshot, {1}, '商城订单规范', minimum_score=0.1,
+            vector_candidate_ids=candidates, return_metadata=True,
+        )
+        assert actual == expected
+        assert metadata['strategy'] == 'BM25_SQL_CANDIDATE'
+        assert metadata['fusion'] is None
+
+
+def test_vector_candidates_do_not_change_browse_or_permission_checks(db):
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    chunk = db.query(KnowledgeChunk).filter(
+        KnowledgeChunk.version_id.in_(snapshot['version_ids']),
+    ).one()
+    browse = service.search(db, snapshot, {1}, '')
+    assert service.search(db, snapshot, {1}, '', vector_candidate_ids=[chunk.id]) == browse
+    assert service.search(db, snapshot, {1}, '商城', limit=0, vector_candidate_ids=[chunk.id]) == []
+
+
+def test_bm25_threshold_is_not_applied_to_rrf_scores(db):
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    chunk = db.query(KnowledgeChunk).filter(
+        KnowledgeChunk.version_id.in_(snapshot['version_ids']),
+    ).one()
+    results = service.search(db, snapshot, {1}, '无词面重合', minimum_score=100,
+                             vector_candidate_ids=[chunk.id])
+    assert [item['chunk_id'] for item in results] == [chunk.id]
+    assert results[0]['score_type'] == 'RRF'
 
 
 def test_reciprocal_rank_fusion_combines_rankings_and_breaks_ties_stably():

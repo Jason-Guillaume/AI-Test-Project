@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.sql import text
 from app.core.database.base import Base
 from app.core.database.soft_delete import SoftDeleteBase
@@ -52,3 +52,61 @@ class KnowledgeBinding(Base):
     access_mode = Column(String(24), nullable=False, default='PROJECT_SHARED', server_default=text("'PROJECT_SHARED'"))
     revision = Column(Integer, nullable=False, default=1)
     scopes = Column(JSON, nullable=False, default=list)
+
+# Index generations are immutable encoding spaces. A project points to one active
+# generation; a second generation can be built without changing query behaviour.
+from sqlalchemy import DateTime
+from sqlalchemy.sql import func
+from pgvector.sqlalchemy import Vector
+
+
+class KnowledgeRetrievalConfig(Base):
+    __tablename__ = 'knowledge_retrieval_config'
+    project_id = Column(Integer, ForeignKey('project.id', ondelete='CASCADE'), primary_key=True)
+    active_generation_id = Column(Integer, ForeignKey('knowledge_index_generation.id', ondelete='SET NULL'))
+    rerank_revision_id = Column(Integer, ForeignKey('model_revision.id', ondelete='RESTRICT'))
+    enabled = Column(Boolean, nullable=False, default=False, server_default=text('false'))
+    bm25_candidates = Column(Integer, nullable=False, default=50, server_default=text('50'))
+    vector_candidates = Column(Integer, nullable=False, default=50, server_default=text('50'))
+    rerank_window = Column(Integer, nullable=False, default=30, server_default=text('30'))
+    default_top_k = Column(Integer, nullable=False, default=8, server_default=text('8'))
+    timeout_seconds = Column(Integer, nullable=False, default=10, server_default=text('10'))
+    fusion_min_score = Column(Float)
+    rerank_min_score = Column(Float)
+
+
+class KnowledgeIndexGeneration(Base):
+    __tablename__ = 'knowledge_index_generation'
+    id = Column(Integer, primary_key=True)
+    project_id = Column(Integer, ForeignKey('project.id', ondelete='CASCADE'), nullable=False, index=True)
+    embedding_revision_id = Column(Integer, ForeignKey('model_revision.id', ondelete='RESTRICT'), nullable=False)
+    dimension = Column(Integer, nullable=False)
+    distance = Column(String(16), nullable=False)
+    encoding_version = Column(String(200), nullable=False)
+    document_input_type = Column(String(100))
+    query_input_type = Column(String(100))
+    state = Column(String(20), nullable=False, default='BUILDING', server_default=text("'BUILDING'"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class KnowledgeVector(Base):
+    __tablename__ = 'knowledge_vector'
+    __table_args__ = (UniqueConstraint('generation_id', 'chunk_id', name='uq_knowledge_vector_generation_chunk'),)
+    id = Column(Integer, primary_key=True)
+    generation_id = Column(Integer, ForeignKey('knowledge_index_generation.id', ondelete='CASCADE'), nullable=False, index=True)
+    chunk_id = Column(Integer, ForeignKey('knowledge_chunk.id', ondelete='CASCADE'), nullable=False, index=True)
+    embedding = Column(Vector().with_variant(JSON(), 'sqlite'), nullable=False)
+
+
+class KnowledgeIndexJob(Base):
+    __tablename__ = 'knowledge_index_job'
+    __table_args__ = (UniqueConstraint('generation_id', 'chunk_id', name='uq_knowledge_index_job_generation_chunk'),)
+    id = Column(Integer, primary_key=True)
+    generation_id = Column(Integer, ForeignKey('knowledge_index_generation.id', ondelete='CASCADE'), nullable=False, index=True)
+    chunk_id = Column(Integer, ForeignKey('knowledge_chunk.id', ondelete='CASCADE'), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default='QUEUED', server_default=text("'QUEUED'"), index=True)
+    attempts = Column(Integer, nullable=False, default=0, server_default=text('0'))
+    next_attempt_at = Column(DateTime(timezone=True))
+    lease_token = Column(String(64))
+    lease_until = Column(DateTime(timezone=True))
+    error = Column(String(200))

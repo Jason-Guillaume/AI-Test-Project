@@ -39,6 +39,7 @@ class TestCaseBase(BaseModel):
 class TestCaseCreate(TestCaseBase):
     """新增测试用例入参（project_id 由路径提供）。"""
 
+    scope_node_id: int | None = Field(None, gt=0, description="目标目录，留空沿用默认归属")
     source_type: TestSourceType = Field(default="MANUAL", description="来源：MANUAL/AI")
     agent_session_id: int | None = Field(None, gt=0, description="生成该用例的 Agent 会话ID（AI 来源追溯，MANUAL 为空）")
     generation_version: int | None = Field(None, ge=1, description="Agent 生成版本号（追溯用）")

@@ -199,6 +199,7 @@ export interface TestCaseCoverage {
 }
 
 export interface TestCaseCreate {
+  scope_node_id?: number | null;
   name: string;
   description?: string | null;
   priority?: TestPriority;
@@ -661,6 +662,7 @@ export interface TestSuiteCaseAdd {
 }
 
 export interface TestSuiteCaseResponse {
+  case_name?: string | null;
   id: number;
   suite_id: number;
   test_case_id: number;
@@ -714,6 +716,7 @@ export interface TestPlanSuiteResponse {
 
 // ---- 测试执行 ----
 export interface TestRunCreateRequest {
+  request_key?: string;
   environment_id?: number | null; // 覆盖计划环境；为空用计划环境
 }
 

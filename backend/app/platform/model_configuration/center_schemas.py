@@ -24,7 +24,7 @@ class ModelProfileInput(ModelCenterInput):
 class ModelResourceCreate(ModelCenterInput):
     """新建平台共享或项目私有模型连接及初始参数方案。"""
 
-    category: Literal["TEXT_GENERATION", "ASR", "DIARIZATION"]
+    category: Literal["TEXT_GENERATION", "ASR", "DIARIZATION", "EMBEDDING", "RERANK"]
     visibility: Literal["PLATFORM", "PROJECT"]
     project_id: int | None = Field(default=None, gt=0)
     display_name: str = Field(min_length=1, max_length=160)
@@ -114,6 +114,7 @@ class ModelDiagnosticInput(ModelCenterInput):
     project_id: int = Field(gt=0)
     profile_id: int | None = Field(default=None, gt=0)
     audio_id: int | None = Field(default=None, gt=0)
+    dimension: int | None = Field(default=None, gt=0, le=16000)
     confirm_model_call: Literal[True]
 
 

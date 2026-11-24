@@ -2,7 +2,7 @@
 # 启动前需在本地环境中显式设置数据库名称、用户和密码；生产环境由部署密钥管理提供。
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     container_name: testplatform-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?请设置 POSTGRES_USER}

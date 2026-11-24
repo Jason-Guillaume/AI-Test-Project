@@ -58,6 +58,7 @@ class TestSuiteCaseResponse(BaseModel):
     id: int
     suite_id: int
     test_case_id: int
+    case_name: str | None = None
     sort: int
     enabled: bool
     created_at: datetime

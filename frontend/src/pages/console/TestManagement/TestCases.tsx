@@ -1,7 +1,7 @@
 // 用例管理中心。
 // 三个测试方向各自一棵无限级范围树。维度只做筛选，不进入目录。
 // 生成结果先进入审核抽屉，接受后才写入正式用例。AI 执行未开放时详情会明确标出。
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiOutlined,
   DesktopOutlined,
@@ -13,8 +13,10 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Col,
   Descriptions,
+  Dropdown,
   Drawer,
   Form,
   Input,
@@ -38,7 +40,7 @@ import { GenerationWorkbench } from '@/pages/console/TestManagement/GenerationWo
 import { CaseExcelImportModal } from '@/pages/console/TestManagement/CaseExcelImportModal';
 import type { GenerationBatch, ScopeNode, TestCaseDetail } from '@/features/test-management/contracts';
 import { getErrorMessage } from '@/shared/api/client';
-import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 
 const DIRECTIONS = [
@@ -117,23 +119,74 @@ function toTreeData(nodes: ScopeNode[]): DataNode[] {
   return build(null);
 }
 
+function QueryError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  return <Alert type="error" showIcon message="加载失败" description={getErrorMessage(error)} action={<Button onClick={onRetry}>重试</Button>} />;
+}
+
 /** 用例管理中心页面。 */
 export function ConsoleTestCasesPage() {
   const navigate = useNavigate();
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
-  const { currentProjectId } = useConsoleScope();
-  const [searchParams] = useSearchParams();
-  const requestedCaseId = Number(searchParams.get('caseId'));
-  const requestedProjectId = Number(searchParams.get('projectId'));
-  const [direction, setDirection] = useState('API');
-  const [dimension, setDimension] = useState('ALL');
-  const [keyword, setKeyword] = useState('');
+  const { currentProjectId: globalProjectId, setProjectId } = useConsoleScope();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const positive = (name: string) => { const value = Number(searchParams.get(name)); return Number.isSafeInteger(value) && value > 0 ? value : undefined; };
+  const requestedCaseId = positive('caseId');
+  const requestedProjectId = positive('projectId');
+  const currentProjectId = requestedProjectId ?? globalProjectId;
+  const direction = ['API', 'UI', 'AI'].includes(searchParams.get('direction') ?? '') ? searchParams.get('direction')! : 'API';
+  const dimension = searchParams.get('dimension') ?? 'ALL';
+  const keyword = searchParams.get('keyword') ?? '';
+  const priority = searchParams.get('priority') ?? undefined;
+  const caseStatus = searchParams.get('status') ?? undefined;
+  const sort = searchParams.get('sort') ?? 'updated_at';
+  const order = searchParams.get('order') ?? 'desc';
+  const page = positive('page') ?? 1;
+  const pageSize = [10, 25, 50].includes(positive('page_size') ?? 0) ? positive('page_size')! : 10;
+  const selectedNodeId = positive('scope');
+  const detailId = requestedCaseId ?? null;
+  const selectionKey = JSON.stringify([currentProjectId, direction, selectedNodeId, keyword, priority, caseStatus, dimension, sort, order]);
+  const [selection, setSelection] = useState<{ key: string; ids: number[] }>({ key: selectionKey, ids: [] });
+  const selectedCaseIds = selection.key === selectionKey ? selection.ids : [];
+  const setSelectedCaseIds = (ids: number[]) => setSelection({ key: selectionKey, ids });
+  useEffect(() => { setSelection({ key: selectionKey, ids: [] }); }, [selectionKey]);
   const [treeKeyword, setTreeKeyword] = useState('');
-  const [page, setPage] = useState(1);
-  const [selectedNodeId, setSelectedNodeId] = useState<number>();
-  const [selectedCaseIds, setSelectedCaseIds] = useState<number[]>([]);
-  const [detailId, setDetailId] = useState<number | null>(null);
+  const [onlyWithCases, setOnlyWithCases] = useState(false);
+  const [targetScopeId, setTargetScopeId] = useState<number>();
+  const [targetAction, setTargetAction] = useState<'create' | 'import' | 'generate'>();
+  const changeParams = (values: Record<string, string | number | undefined>, reset = true) => {
+    const next = new URLSearchParams(searchParams);
+    Object.entries(values).forEach(([key, value]) => value == null || value === '' ? next.delete(key) : next.set(key, String(value)));
+    if (currentProjectId != null && !next.has('projectId')) next.set('projectId', String(currentProjectId));
+    if (reset) { next.delete('page'); setSelectedCaseIds([]); }
+    setSearchParams(next);
+  };
+  const previousGlobalProject = useRef(globalProjectId);
+  const globalChange = useRef(false);
+  useEffect(() => {
+    if (previousGlobalProject.current !== globalProjectId) {
+      previousGlobalProject.current = globalProjectId;
+      globalChange.current = true;
+      const next = new URLSearchParams();
+      if (globalProjectId != null) next.set('projectId', String(globalProjectId));
+      setSelectedCaseIds([]);
+      setSearchParams(next);
+    }
+  }, [globalProjectId, setSearchParams]);
+  useEffect(() => {
+    if (globalChange.current) { globalChange.current = false; return; }
+    if (requestedProjectId && requestedProjectId !== globalProjectId) {
+      previousGlobalProject.current = requestedProjectId;
+      setProjectId(requestedProjectId);
+    }
+  }, [requestedProjectId, globalProjectId, setProjectId]);
+  useEffect(() => {
+    if (requestedProjectId == null && globalProjectId != null) {
+      const next = new URLSearchParams(searchParams);
+      next.set('projectId', String(globalProjectId));
+      setSearchParams(next, { replace: true });
+    }
+  }, [requestedProjectId, globalProjectId, searchParams, setSearchParams]);
   const [nodeModal, setNodeModal] = useState<{ mode: 'create' | 'edit'; parentId?: number | null; node?: ScopeNode } | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -151,24 +204,20 @@ export function ConsoleTestCasesPage() {
     queryFn: () => testManagementApi.scopeStats(currentProjectId!, direction),
     enabled: currentProjectId != null,
   });
-  const nodeQuery = useQuery({
-    queryKey: ['test-scope', selectedNodeId],
-    queryFn: () => testManagementApi.getScope(selectedNodeId!),
-    enabled: selectedNodeId != null,
-  });
   const casesQuery = useQuery({
-    queryKey: ['test-scope-cases', currentProjectId, selectedNodeId, dimension, keyword, page],
+    queryKey: ['test-scope-cases', currentProjectId, direction, selectedNodeId, dimension, keyword, priority, caseStatus, page, pageSize, sort, order],
     queryFn: () => testManagementApi.listScopeCases(currentProjectId!, {
+      direction,
       scope_node_id: selectedNodeId,
       include_descendants: true,
+      priority, status: caseStatus,
       case_type: dimension === 'ALL' ? undefined : dimension,
       keyword: keyword || undefined,
       page,
-      page_size: 10,
-      sort: 'updated_at',
-      order: 'desc',
+      page_size: pageSize,
+      sort, order,
     }),
-    enabled: currentProjectId != null && selectedNodeId != null,
+    enabled: currentProjectId != null,
   });
   const detailQuery = useQuery({
     queryKey: ['test-case-detail', detailId],
@@ -177,8 +226,8 @@ export function ConsoleTestCasesPage() {
   });
   const requestedCaseQuery = useQuery({
     queryKey: ['test-case-brief', requestedCaseId],
-    queryFn: () => testManagementApi.getCase(requestedCaseId),
-    enabled: Number.isSafeInteger(requestedCaseId) && requestedCaseId > 0,
+    queryFn: () => testManagementApi.getCase(requestedCaseId!),
+    enabled: requestedCaseId != null,
   });
   const agentsQuery = useQuery({
     queryKey: ['case-generation-agents', currentProjectId],
@@ -187,27 +236,14 @@ export function ConsoleTestCasesPage() {
   });
 
   const nodes = useMemo(() => treeQuery.data?.items ?? [], [treeQuery.data?.items]);
-  const visible = useMemo(() => filterNodes(nodes, treeKeyword), [nodes, treeKeyword]);
+  const visible = useMemo(() => { const named = filterNodes(nodes, treeKeyword); return onlyWithCases ? named.filter((node) => node.case_count > 0) : named; }, [nodes, treeKeyword, onlyWithCases]);
   const treeData = useMemo(() => toTreeData(visible), [visible]);
 
   useEffect(() => {
-    setSelectedNodeId(undefined);
-    setPage(1);
-    setSelectedCaseIds([]);
-  }, [direction, currentProjectId]);
-
-  useEffect(() => {
-    if (selectedNodeId != null || nodes.length === 0) return;
-    const inbox = nodes.find((node) => node.is_system);
-    if (inbox) setSelectedNodeId(inbox.id);
-  }, [nodes, selectedNodeId]);
-
-  useEffect(() => {
     const brief = requestedCaseQuery.data;
-    if (!brief) return;
-    setDirection(directionOfTarget(brief.target_type));
-    setDetailId(brief.id);
-  }, [requestedCaseQuery.data]);
+    if (!brief || searchParams.has('direction')) return;
+    const next = new URLSearchParams(searchParams); next.set('direction', directionOfTarget(brief.target_type)); setSearchParams(next, { replace: true });
+  }, [requestedCaseQuery.data, searchParams, setSearchParams]);
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['test-scopes'] });
@@ -280,11 +316,7 @@ export function ConsoleTestCasesPage() {
       priority: values.priority,
       case_type: values.case_type as 'FUNCTIONAL',
       target_type: TARGET_BY_DIRECTION[direction],
-    }).then(async (created) => {
-      if (selectedNodeId != null) {
-        await testManagementApi.moveScopeCases(currentProjectId!, { case_ids: [created.id], scope_node_id: selectedNodeId });
-      }
-      return created;
+      scope_node_id: targetScopeId,
     }),
     onSuccess: () => { message.success('用例已创建'); setCreateOpen(false); refresh(); },
     onError: (error) => message.error(getErrorMessage(error, '创建用例失败')),
@@ -309,35 +341,34 @@ export function ConsoleTestCasesPage() {
   if (currentProjectId == null) {
     return <PageContainer><EmptyState description="请先在顶部选择一个项目" /></PageContainer>;
   }
-  if (requestedProjectId > 0 && requestedProjectId !== currentProjectId) {
-    return <PageContainer><EmptyState description={`此链接指向项目 #${requestedProjectId}，请先在顶部切换项目`} /></PageContainer>;
-  }
-
   const stats = statsQuery.data;
-  const selected = nodeQuery.data;
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+  const path: ScopeNode[] = [];
+  let cursor = selectedNode;
+  while (cursor && !path.some((item) => item.id === cursor!.id)) { path.unshift(cursor); cursor = nodes.find((node) => node.id === cursor!.parent_id); }
+  const selected = selectedNode ? { ...selectedNode, path, children: nodes.filter((node) => node.parent_id === selectedNode.id) } : undefined;
+  const launch = (action: 'create' | 'import' | 'generate') => {
+    if (selectedNodeId == null) { setTargetScopeId(undefined); setTargetAction(action); return; }
+    setTargetScopeId(selectedNodeId);
+    if (action === 'create') setCreateOpen(true); else if (action === 'import') setImportExcelOpen(true); else setGenerateOpen(true);
+  };
+  const clearFilters = () => changeParams({ keyword: undefined, priority: undefined, status: undefined, dimension: undefined });
 
   return (
     <PageContainer>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Segmented
           value={direction}
-          onChange={(value) => setDirection(String(value))}
+          onChange={(value) => changeParams({ direction: String(value), projectId: currentProjectId, scope: undefined, caseId: undefined })}
           options={DIRECTIONS.map((item) => ({ value: item.value, label: item.label }))}
         />
         <Space wrap>
-          <Tag>用例 {stats?.case_count ?? 0}</Tag>
-          <Tag>范围 {stats?.scope_count ?? 0}</Tag>
-          <Tag>测试点 {stats?.point_count ?? 0}</Tag>
-          <Tag>P0 {stats?.priority_counts.P0 ?? 0}</Tag>
-          <Tag>P1 {stats?.priority_counts.P1 ?? 0}</Tag>
-          <Tag>P2 {stats?.priority_counts.P2 ?? 0}</Tag>
-          <Tag>P3 {stats?.priority_counts.P3 ?? 0}</Tag>
-          <Select
-            value={dimension}
-            style={{ width: 140 }}
-            options={DIMENSIONS}
-            onChange={(value) => { setDimension(value); setPage(1); }}
-          />
+          {statsQuery.isError ? <Button size="small" onClick={() => statsQuery.refetch()}>统计加载失败，重试</Button> : <><Tag>方向总数 {statsQuery.isPending ? '…' : stats?.case_count}</Tag><Tag>范围 {statsQuery.isPending ? '…' : stats?.scope_count}</Tag>{['P0', 'P1', 'P2', 'P3'].map((p) => <Button size="small" key={p} type={priority === p ? 'primary' : 'default'} onClick={() => changeParams({ priority: priority === p ? undefined : p })}>{p} {statsQuery.isPending ? '…' : stats?.priority_counts[p] ?? 0}</Button>)}</>}
+          <Tag>筛选命中 {casesQuery.isPending ? '…' : casesQuery.isError ? '—' : casesQuery.data?.total}</Tag>
+          <Select value={dimension} aria-label="维度筛选" style={{ width: 140 }} options={DIMENSIONS} onChange={(value) => changeParams({ dimension: value === 'ALL' ? undefined : value })} />
+          <Select allowClear value={priority} aria-label="优先级筛选" placeholder="全部优先级" style={{ width: 130 }} options={['P0','P1','P2','P3'].map((value) => ({value, label: value}))} onChange={(value) => changeParams({priority: value})} />
+          <Select allowClear value={caseStatus} aria-label="状态筛选" placeholder="全部状态" style={{ width: 130 }} options={['DRAFT','ACTIVE','DEPRECATED'].map((value) => ({value, label: value}))} onChange={(value) => changeParams({status: value})} />
+          <Select aria-label="排序" value={`${sort}:${order}`} style={{ width: 170 }} options={[{value:'updated_at:desc',label:'最近更新'}, {value:'name:asc',label:'名称升序'}, {value:'priority:asc',label:'优先级升序'}]} onChange={(value) => { const [nextSort, nextOrder] = value.split(':'); changeParams({ sort: nextSort, order: nextOrder }); }} />
         </Space>
       </Space>
       <Row gutter={[16, 16]} style={{ marginTop: 12 }}>
@@ -347,9 +378,11 @@ export function ConsoleTestCasesPage() {
               <Button size="small" type="primary" onClick={() => setNodeModal({ mode: 'create', parentId: null })}>新建目录</Button>
               <Button size="small" disabled={selectedNodeId == null} onClick={() => setNodeModal({ mode: 'create', parentId: selectedNodeId })}>子目录</Button>
             </Space>
+            <Button type={selectedNodeId == null ? 'primary' : 'default'} onClick={() => changeParams({ scope: undefined })}>全部用例</Button>
+            <Checkbox checked={onlyWithCases} onChange={(event) => setOnlyWithCases(event.target.checked)}>仅看有用例的目录</Checkbox>
             <Input.Search allowClear placeholder="搜索范围" onSearch={setTreeKeyword} style={{ marginBottom: 8 }} />
             <div style={{ overflow: 'auto', flex: 1 }}>
-              {treeQuery.isPending ? <LoadingState /> : treeQuery.isError ? <ErrorState error={treeQuery.error} onRetry={treeQuery.refetch} /> : (
+              {treeQuery.isPending ? <LoadingState /> : treeQuery.isError ? <QueryError error={treeQuery.error} onRetry={treeQuery.refetch} /> : (
                 <Tree
                   className="scope-tree"
                   showIcon
@@ -357,7 +390,7 @@ export function ConsoleTestCasesPage() {
                   draggable
                   selectedKeys={selectedNodeId == null ? [] : [String(selectedNodeId)]}
                   treeData={treeData}
-                  onSelect={(keys) => setSelectedNodeId(keys[0] == null ? undefined : Number(keys[0]))}
+                  onSelect={(keys) => changeParams({ scope: keys[0] == null ? undefined : Number(keys[0]) })}
                   onDrop={onDrop}
                 />
               )}
@@ -366,40 +399,22 @@ export function ConsoleTestCasesPage() {
         </Col>
         <Col xs={24} xl={16} style={{ minWidth: 0 }}>
           <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, height: 'calc(100vh - 250px)', minHeight: 420, overflow: 'auto' }}>
-            {!selected ? <EmptyState description="请选择左侧范围" /> : (
+            {treeQuery.isError && selectedNodeId != null ? <QueryError error={treeQuery.error} onRetry={treeQuery.refetch} /> : (
               <>
                 <div className="scope-detail-head">
-                  <Typography.Title level={4} ellipsis={{ tooltip: selected.name }}>{selected.name}</Typography.Title>
+                  <Typography.Title level={4}>{selected?.name ?? '全部用例'} · {selected ? selected.case_count : stats?.case_count ?? '…'} 条</Typography.Title>
                   <Space wrap size={8}>
-                  <Button size="small" disabled={selected.is_system} onClick={() => setNodeModal({ mode: 'edit', node: selected })}>编辑</Button>
-                  <Button size="small" danger disabled={selected.is_system} onClick={() => modal.confirm({
-                    title: '删除这个范围？',
-                    content: '范围下有子节点或测试用例时需要先移动。删除只会移除当前目录入口，原有数据关联保留在回收站记录中。',
-                    onOk: () => testManagementApi.removeScope(selected.id).then(() => { message.success('已删除'); setSelectedNodeId(undefined); refresh(); }).catch((error) => message.error(getErrorMessage(error, '删除失败'))),
-                  })}>删除</Button>
-                  <Button size="small" onClick={() => setCreateOpen(true)}>手工用例</Button>
-                  <Button size="small" onClick={() => setImportExcelOpen(true)}>导入 Excel</Button>
-                  <Button size="small" type="primary" onClick={() => setGenerateOpen(true)}>生成草稿</Button>
+                  {selected && <Dropdown trigger={['click']} menu={{ items: [{key: 'edit', label: '编辑目录', disabled: selected.is_system}, {key: 'delete', label: '删除目录', danger: true, disabled: selected.is_system}], onClick: ({key}) => { if (key === 'edit') setNodeModal({ mode: 'edit', node: selected }); else modal.confirm({ title: '删除这个范围？', content: '范围下有子节点或测试用例时需要先移动。', onOk: () => testManagementApi.removeScope(selected.id).then(() => { message.success('已删除'); changeParams({ scope: undefined }); refresh(); }).catch((error) => message.error(getErrorMessage(error, '删除失败')))}); } }}><Button size="small">目录管理</Button></Dropdown>}
+                  <Button size="small" onClick={() => launch('create')}>手工用例</Button><Button size="small" onClick={() => launch('import')}>导入 Excel</Button><Button size="small" type="primary" onClick={() => launch('generate')}>生成草稿</Button>
                   </Space>
                 </div>
-                <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-                  {selected.path.map((item) => item.name).join(' / ') || selected.name}
-                </Typography.Paragraph>
-                <Typography.Paragraph>
-                  {selected.description || '没有补充说明'}
-                  {selected.asset_type ? ` · 关联 ${selected.asset_type} #${selected.asset_id}` : ''}
-                </Typography.Paragraph>
-                {selected.children.length > 0 ? (
-                  <Space wrap style={{ marginBottom: 12 }}>
-                    {selected.children.map((child) => (
-                      <Tag key={child.id} title={child.name} style={{ cursor: 'pointer', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis' }} onClick={() => setSelectedNodeId(child.id)}>
-                        {child.name} · {child.case_count}
-                      </Tag>
-                    ))}
-                  </Space>
-                ) : null}
-                <Space style={{ marginBottom: 8 }}>
-                  <Input.Search allowClear placeholder="搜索用例" onSearch={(value) => { setKeyword(value); setPage(1); }} style={{ width: 220 }} />
+                {selected && path.length > 1 && <Typography.Paragraph type="secondary">{path.map((item) => item.name).join(' / ')}</Typography.Paragraph>}
+                {selected?.description && <Typography.Paragraph>{selected.description}</Typography.Paragraph>}
+                {selected?.asset_type && <Typography.Paragraph type="secondary">关联资产：{selected.name}（{selected.asset_type}）</Typography.Paragraph>}
+                {!!selected?.children.length && <Space wrap style={{ marginBottom: 12 }}>{selected.children.map((child) => <Button key={child.id} size="small" onClick={() => changeParams({ scope: child.id })}>{child.name} · {child.case_count}</Button>)}</Space>}
+                <Space wrap style={{ marginBottom: 8 }}>
+                  <Input.Search key={keyword} defaultValue={keyword} allowClear placeholder={selected ? '搜索当前目录及子目录' : `搜索全部 ${direction} 用例`} onSearch={(value) => changeParams({ keyword: value })} style={{ width: 240 }} />
+                  <Typography.Text>已选 {selectedCaseIds.length} 条</Typography.Text>
                   <Button disabled={selectedCaseIds.length === 0} onClick={() => setMoveOpen(true)}>批量移动</Button>
                   <Button disabled={selectedCaseIds.length === 0} onClick={() => archiveCases.mutate()}>批量归档</Button>
                   <Button danger loading={deleteCases.isPending} disabled={selectedCaseIds.length === 0} onClick={() => modal.confirm({
@@ -410,17 +425,18 @@ export function ConsoleTestCasesPage() {
                     onOk: () => deleteCases.mutateAsync(),
                   })}>批量删除</Button>
                 </Space>
-                <Table
+                {casesQuery.isError ? <QueryError error={casesQuery.error} onRetry={casesQuery.refetch} /> : <Table
                   size="small"
+                  scroll={{ x: 1080 }}
                   rowKey="id"
                   loading={casesQuery.isFetching}
                   dataSource={casesQuery.data?.items ?? []}
                   rowSelection={{ selectedRowKeys: selectedCaseIds, preserveSelectedRowKeys: true, onChange: (keys) => setSelectedCaseIds(keys.map(Number)) }}
-                  pagination={{ current: page, pageSize: 10, total: casesQuery.data?.total ?? 0, onChange: setPage, showSizeChanger: false }}
-                  onRow={(row) => ({ onClick: () => setDetailId(row.id) })}
+                  pagination={{ current: page, pageSize, total: casesQuery.data?.total ?? 0, showSizeChanger: true, pageSizeOptions: [10, 25, 50], onChange: (nextPage, size) => changeParams({ page: nextPage, page_size: size, projectId: currentProjectId }, false) }}
+                  locale={{ emptyText: casesQuery.isPending ? '正在加载用例…' : <Space direction="vertical"><span>{keyword || priority || caseStatus || dimension !== 'ALL' ? '当前筛选无结果' : '此范围暂无用例'}</span>{keyword || priority || caseStatus || dimension !== 'ALL' ? <Button onClick={clearFilters}>清除筛选</Button> : <Space><Button onClick={() => changeParams({scope: undefined})}>查看当前方向全部用例</Button><Button onClick={() => launch('create')}>新建用例</Button></Space>}</Space> }}
                   columns={[
                     { title: '编号', dataIndex: 'id', width: 72 },
-                    { title: '用例名称', dataIndex: 'name', ellipsis: true },
+                    { title: '用例名称', dataIndex: 'name', width: 260, ellipsis: true, render: (name: string, row: {id: number}) => <Button type="link" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', textAlign: 'left' }} title={name} onClick={() => changeParams({caseId: row.id, projectId: currentProjectId}, false)}>{name}</Button> },
                     { title: '优先级', dataIndex: 'priority', width: 80 },
                     { title: '维度', dataIndex: 'case_type', width: 100, render: (value: string) => DIMENSIONS.find((item) => item.value === value)?.label ?? value },
                     { title: '状态', dataIndex: 'status', width: 110 },
@@ -428,12 +444,13 @@ export function ConsoleTestCasesPage() {
                     { title: '测试点', dataIndex: 'test_point_name', width: 140, render: (value: string | null) => value || '-' },
                     { title: '更新时间', dataIndex: 'updated_at', width: 170, render: (value: string) => value?.replace('T', ' ').slice(0, 16) },
                   ]}
-                />
+                />}
               </>
             )}
           </div>
         </Col>
       </Row>
+      <Modal title="选择目标目录" open={!!targetAction} onCancel={() => setTargetAction(undefined)} okText="继续" onOk={() => { if (targetScopeId == null) { message.error('请选择目标目录'); return; } const action = targetAction; setTargetAction(undefined); if (action === 'create') setCreateOpen(true); else if (action === 'import') setImportExcelOpen(true); else if (action === 'generate') setGenerateOpen(true); }}><Select aria-label="目标目录" placeholder="选择目标目录" showSearch optionFilterProp="label" style={{width:'100%'}} value={targetScopeId} options={nodes.map((node) => ({value: node.id, label: node.name}))} onChange={setTargetScopeId} /></Modal>
       <NodeModal open={nodeModal != null} initial={nodeModal} onCancel={() => setNodeModal(null)} onSubmit={(values) => createNode.mutate(values)} />
       <Modal title="移动到范围" open={moveOpen} onCancel={() => setMoveOpen(false)} footer={null} destroyOnHidden>
         <Select
@@ -449,8 +466,8 @@ export function ConsoleTestCasesPage() {
         open={importExcelOpen}
         projectId={currentProjectId}
         direction={direction}
-        scopeNodeId={selectedNodeId ?? null}
-        scopeNode={selected ?? null}
+        scopeNodeId={targetScopeId ?? null}
+        scopeNode={nodes.find((node) => node.id === targetScopeId) ?? null}
         onCancel={() => setImportExcelOpen(false)}
         onSuccess={() => { setImportExcelOpen(false); setSelectedCaseIds([]); refresh(); }}
       />
@@ -458,14 +475,14 @@ export function ConsoleTestCasesPage() {
         open={generateOpen}
         projectId={currentProjectId}
         direction={direction}
-        scopeNodeId={selectedNodeId}
+        scopeNodeId={targetScopeId}
         agents={agentsQuery.data ?? []}
         batch={batch}
         onClose={() => setGenerateOpen(false)}
         onBatch={setBatch}
         onChanged={refresh}
       />
-      <CaseDetailDrawer detail={detailQuery.data} loading={detailQuery.isFetching} open={detailId != null} onClose={() => setDetailId(null)} />
+      <CaseDetailDrawer detail={detailQuery.data} loading={detailQuery.isFetching} error={detailQuery.isError} onRetry={() => detailQuery.refetch()} open={detailId != null} onClose={() => changeParams({caseId: undefined}, false)} />
     </PageContainer>
   );
 }
@@ -543,10 +560,10 @@ function GenerationDrawer({ open, projectId, direction, scopeNodeId, agents, bat
 }
 
 /** 用例详情。AI 未接入执行时只展示维护信息和明确的未开放说明。 */
-function CaseDetailDrawer({ detail, loading, open, onClose }: { detail?: TestCaseDetail; loading: boolean; open: boolean; onClose: () => void }) {
+function CaseDetailDrawer({ detail, loading, error, onRetry, open, onClose }: { detail?: TestCaseDetail; loading: boolean; error: boolean; onRetry: () => void; open: boolean; onClose: () => void }) {
   return (
     <Drawer title={detail?.name ?? '用例详情'} open={open} width={760} onClose={onClose}>
-      {loading && !detail ? <LoadingState /> : !detail ? <EmptyState description="没有用例详情" /> : (
+      {loading && !detail ? <LoadingState /> : error ? <Alert type="error" message="详情加载失败" action={<Button onClick={onRetry}>重试</Button>} /> : !detail ? <EmptyState description="没有用例详情" /> : (
         <>
           {detail.executor_ready === false ? <Alert type="warning" showIcon style={{ marginBottom: 12 }} message={detail.executor_note || '执行能力尚未开放'} /> : null}
           <Descriptions bordered size="small" column={2}>

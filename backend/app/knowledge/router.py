@@ -29,7 +29,7 @@ class BindingInput(BaseModel):
 
 class SearchInput(BaseModel):
     query: str = Field(max_length=4000)
-    top_k: int = Field(default=8, ge=1, le=50)
+    top_k: int | None = Field(default=None, ge=1, le=50)
     candidate_k: int = Field(default=320, ge=50, le=2000)
     minimum_score: float = Field(default=0.0, ge=0.0, le=100.0)
 
@@ -100,7 +100,12 @@ def command(project_id: int, version_id: int, body: Command, background: Backgro
     if body.action == 'retry' and row.status in {'FAILED', 'QUEUED'}:
         row.status = 'QUEUED'; db.commit(); background.add_task(parse, row.id)
     elif body.action in {'enable', 'disable'}:
-        doc.enabled = body.action == 'enable'; db.commit()
+        doc.enabled = body.action == 'enable'
+        if doc.enabled:
+            from app.knowledge.indexing import reconcile_project
+            db.flush()
+            reconcile_project(db, project_id)
+        db.commit()
     else:
         raise bad_request('操作无效')
     return dump(row)
@@ -149,6 +154,10 @@ def base_command(project_id: int, base_id: int, body: Command, db: Session = Dep
     if body.action not in {'enable', 'disable'}:
         raise bad_request('操作无效')
     row.enabled = body.action == 'enable'
+    if row.enabled:
+        from app.knowledge.indexing import reconcile_project
+        db.flush()
+        reconcile_project(db, project_id)
     db.commit()
     return dump(row)
 
@@ -166,3 +175,143 @@ def project_generate_cases(project_id: int, agent_id: int, body: GenerationReque
     if body.project_id != project_id:
         raise bad_request('请求项目与路径不一致')
     return generate_case_suite(db, actor, agent_id, body)
+
+
+class GenerationInput(BaseModel):
+    embedding_revision_id: int = Field(gt=0)
+    dimension: int = Field(gt=0, le=16000)
+    distance: str = Field(pattern='^(cosine|l2|inner_product)$')
+    encoding_version: str = Field(min_length=1, max_length=200)
+    document_input_type: str | None = Field(default=None, max_length=100)
+    query_input_type: str | None = Field(default=None, max_length=100)
+
+
+class RetrievalConfigInput(BaseModel):
+    enabled: bool = False
+    rerank_revision_id: int | None = Field(default=None, gt=0)
+    bm25_candidates: int = Field(default=50, ge=1, le=5000)
+    vector_candidates: int = Field(default=50, ge=1, le=5000)
+    rerank_window: int = Field(default=30, ge=1, le=5000)
+    default_top_k: int = Field(default=8, ge=1, le=50)
+    timeout_seconds: int = Field(default=10, ge=1, le=600)
+    fusion_min_score: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    rerank_min_score: float | None = Field(default=None, allow_inf_nan=False)
+
+
+def _available_revision(db, project_id, actor, revision_id, category, *, current=True):
+    from app.platform.model_configuration.models import ModelResource, ModelRevision
+    from app.platform.model_configuration.services.model_center_service import list_available_models
+    revision = db.get(ModelRevision, revision_id)
+    resource = (db.query(ModelResource).filter_by(id=revision.resource_id).with_for_update().populate_existing().first()
+                if revision else None)
+    available = list_available_models(db, project_id=project_id, category=category, actor=actor)['items']
+    if (not resource or not revision.enabled or resource.category != category
+            or category.lower() not in (revision.capabilities or [])
+            or revision.adapter_key != {'EMBEDDING': 'openai-compatible-embeddings', 'RERANK': 'json-rerank'}[category]
+            or (current and resource.current_revision_id != revision_id)
+            or not any(item['id'] == resource.id for item in available)):
+        raise bad_request('模型修订不存在、已停用或当前项目不可使用')
+    return revision
+
+
+@router.get('/knowledge-retrieval-config')
+def retrieval_config(project_id: int, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    from app.knowledge.models import KnowledgeIndexGeneration, KnowledgeIndexJob, KnowledgeRetrievalConfig, KnowledgeVector
+    from app.knowledge.indexing import project_chunks
+    from sqlalchemy import func
+    service.access(db, project_id, actor)
+    config = db.get(KnowledgeRetrievalConfig, project_id)
+    generations = db.query(KnowledgeIndexGeneration).filter_by(project_id=project_id).order_by(KnowledgeIndexGeneration.id.desc()).all()
+    eligible = project_chunks(db, project_id)
+    eligible_count = eligible.count()
+    items = []
+    for generation in generations:
+        counts = dict(db.query(KnowledgeIndexJob.status, func.count(KnowledgeIndexJob.id)).filter_by(
+            generation_id=generation.id).group_by(KnowledgeIndexJob.status).all())
+        vectors = db.query(func.count(KnowledgeVector.id)).filter_by(generation_id=generation.id).scalar()
+        covered = db.query(func.count(KnowledgeVector.id)).filter(
+            KnowledgeVector.generation_id == generation.id, KnowledgeVector.chunk_id.in_(eligible),
+        ).scalar()
+        items.append({**dump(generation), 'jobs': counts, 'vector_count': vectors,
+                      'eligible_count': eligible_count, 'covered_count': covered,
+                      'coverage': covered / eligible_count if eligible_count else 1.0})
+    return {'config': dump(config) if config else None, 'generations': items}
+
+
+@router.put('/knowledge-retrieval-config')
+def put_retrieval_config(project_id: int, body: RetrievalConfigInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    from app.knowledge.indexing import lock_project
+    from app.knowledge.models import KnowledgeRetrievalConfig
+    service.access(db, project_id, actor, True)
+    lock_project(db, project_id)
+    if body.rerank_revision_id:
+        _available_revision(db, project_id, actor, body.rerank_revision_id, 'RERANK')
+    config = db.get(KnowledgeRetrievalConfig, project_id)
+    if config is None:
+        config = KnowledgeRetrievalConfig(project_id=project_id)
+        db.add(config)
+    if body.enabled and not config.active_generation_id:
+        raise bad_request('请先切换到已完成回填的索引代')
+    for key, value in body.model_dump().items():
+        setattr(config, key, value)
+    db.commit()
+    return dump(config)
+
+
+@router.post('/knowledge-index-generations', status_code=201)
+def create_index_generation(project_id: int, body: GenerationInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    from app.knowledge.indexing import backfill_generation, lock_project
+    from app.knowledge.models import KnowledgeIndexGeneration
+    service.access(db, project_id, actor, True)
+    lock_project(db, project_id)
+    _available_revision(db, project_id, actor, body.embedding_revision_id, 'EMBEDDING')
+    generation = KnowledgeIndexGeneration(project_id=project_id, **body.model_dump(), state='BUILDING')
+    db.add(generation)
+    db.flush()
+    queued = backfill_generation(db, generation.id)
+    db.commit()
+    return {**dump(generation), 'queued': queued}
+
+
+@router.post('/knowledge-index-generations/{generation_id}/commands')
+def index_generation_command(project_id: int, generation_id: int, body: Command,
+                             db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    from app.knowledge.indexing import activate_generation, backfill_generation, lock_project
+    from app.knowledge.models import KnowledgeIndexGeneration, KnowledgeIndexJob
+    service.access(db, project_id, actor, True)
+    lock_project(db, project_id)
+    generation = db.query(KnowledgeIndexGeneration).filter_by(id=generation_id, project_id=project_id).first()
+    if generation is None:
+        raise not_found('索引代不存在')
+    if body.action == 'backfill':
+        result = {'queued': backfill_generation(db, generation_id)}
+    elif body.action == 'retry':
+        if generation.state not in {'BUILDING', 'ACTIVE', 'STANDBY'}:
+            raise bad_request('该索引代不可重试')
+        jobs = db.query(KnowledgeIndexJob).filter_by(generation_id=generation_id, status='FAILED').all()
+        for job in jobs:
+            job.status, job.attempts, job.error, job.next_attempt_at = 'QUEUED', 0, None, None
+        result = {'queued': len(jobs)}
+    elif body.action == 'activate':
+        _available_revision(db, project_id, actor, generation.embedding_revision_id, 'EMBEDDING', current=False)
+        activate_generation(db, project_id, generation_id)
+        result = {'active_generation_id': generation_id}
+    elif body.action == 'retire':
+        from app.knowledge.models import KnowledgeRetrievalConfig
+        config = db.get(KnowledgeRetrievalConfig, project_id)
+        if config and config.active_generation_id == generation.id:
+            raise bad_request('当前索引代不能退役，请先切换到其他索引代')
+        if generation.state not in {'BUILDING', 'STANDBY'}:
+            raise bad_request('该索引代不可退役')
+        generation.state = 'RETIRED'
+        for job in db.query(KnowledgeIndexJob).filter(
+            KnowledgeIndexJob.generation_id == generation_id,
+            KnowledgeIndexJob.status.in_(['QUEUED', 'RUNNING']),
+        ).with_for_update().all():
+            job.status, job.error = 'FAILED', 'generation_retired'
+            job.lease_token, job.lease_until, job.next_attempt_at = None, None, None
+        result = {'retired_generation_id': generation_id}
+    else:
+        raise bad_request('操作无效')
+    db.commit()
+    return result

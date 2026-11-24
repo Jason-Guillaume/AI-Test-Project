@@ -13,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.core.models
 import app.features.api_catalog.models
+import app.knowledge.models
 from app.core.database.base import Base
 from app.core.models.identity import User
 from app.core.models.project import Project
@@ -35,6 +36,7 @@ def center_sandbox():
         "user", "organization", "organization_member", "project", "project_member",
         "project_outbound_target", "model_configuration", "environment", "notification",
         "api_module", "api_interface",
+        "knowledge_index_generation", "knowledge_retrieval_config",
     }
     tables = [table for name, table in Base.metadata.tables.items()
               if name in table_names or name.startswith(table_prefixes)]
@@ -259,3 +261,80 @@ def test_import_preview_rejects_nested_secret_fields_without_echoing_values(cent
     assert result["can_apply"] is False
     assert result["items"][0]["errors"] == ["预检文件不能包含凭据，请在模型中心单独录入"]
     assert "private-secret" not in str(result)
+
+
+def test_retrieval_models_use_center_credentials_and_do_not_change_text_default(center_sandbox):
+    db, admin, owner_a, _, project_a, _ = center_sandbox
+    from app.platform.model_configuration.models import ModelRevision
+    for category, adapter, capability in [('EMBEDDING', 'openai-compatible-embeddings', 'embedding'),
+                                           ('RERANK', 'json-rerank', 'rerank')]:
+        body = ModelResourceCreate(category=category, visibility='PLATFORM', display_name=category,
+            provider='test', adapter_key=adapter, model_name='test-model',
+            endpoint='https://models.invalid/invoke', credential='secret', credential_header='Authorization',
+            config={'timeout_seconds': 3}, capabilities=[capability])
+        created = create_resource(db, body, admin)
+        resource = db.get(ModelResource, created['id'])
+        revision = db.get(ModelRevision, resource.current_revision_id)
+        credential = db.query(ModelCredential).filter_by(revision_id=revision.id).one()
+        assert 'secret' not in credential.ciphertext
+        assert resource.legacy_model_id is None
+        available = list_available_models(db, project_id=project_a.id, category=category, actor=owner_a)
+        assert any(item['id'] == resource.id for item in available['items'])
+
+
+def test_archive_and_restore_preserve_history_and_disable_legacy(center_sandbox):
+    from app.core.models.configuration import ModelConfiguration
+    from app.platform.model_configuration.center_router import resource_enabled, resource_restore
+    from app.platform.model_configuration.services.model_center_service import archive_resource, list_resources
+    db, admin, owner, _, project, _ = center_sandbox
+    created = create_resource(db, _text_resource(), admin)
+    resource = db.get(ModelResource, created['id'])
+    legacy_id, revision_id = resource.legacy_model_id, resource.current_revision_id
+    with pytest.raises(HTTPException) as denied:
+        archive_resource(db, resource.id, owner)
+    assert denied.value.status_code == 403
+    archive_resource(db, resource.id, admin)
+    assert resource.status == 'ARCHIVED'
+    assert not db.get(ModelConfiguration, legacy_id).is_enabled
+    assert resource.current_revision_id == revision_id
+    assert not any(item['id'] == resource.id for item in list_resources(db, admin)['items'])
+    assert any(item['id'] == resource.id for item in list_resources(db, admin, archived=True)['items'])
+    assert not list_available_models(db, project_id=project.id, category='TEXT_GENERATION', actor=owner)['items']
+    with pytest.raises(HTTPException):
+        resource_enabled(resource.id, True, db, admin)
+    resource_restore(resource.id, db, admin)
+    assert resource.status == 'DISABLED'
+    resource_enabled(resource.id, True, db, admin)
+    assert db.get(ModelConfiguration, legacy_id).is_enabled
+
+
+def test_archive_rejects_default_and_live_retrieval_references(center_sandbox):
+    from app.core.models.configuration import ModelConfiguration
+    from app.knowledge.models import KnowledgeIndexGeneration, KnowledgeRetrievalConfig
+    from app.platform.model_configuration.services.model_center_service import archive_resource
+    db, admin, _, _, project, _ = center_sandbox
+    text_resource = db.get(ModelResource, create_resource(db, _text_resource(), admin)['id'])
+    legacy = db.get(ModelConfiguration, text_resource.legacy_model_id)
+    legacy.is_default = True; db.commit()
+    with pytest.raises(HTTPException, match='默认'):
+        archive_resource(db, text_resource.id, admin)
+    db.rollback()
+    models = []
+    for category, adapter, capability in [('EMBEDDING', 'openai-compatible-embeddings', 'embedding'),
+                                           ('RERANK', 'json-rerank', 'rerank')]:
+        body = ModelResourceCreate(category=category, visibility='PLATFORM', display_name=category,
+            provider='test', adapter_key=adapter, model_name='test-model', endpoint='https://models.invalid/invoke',
+            config={}, capabilities=[capability])
+        models.append(db.get(ModelResource, create_resource(db, body, admin)['id']))
+    db.add(KnowledgeIndexGeneration(project_id=project.id, embedding_revision_id=models[0].current_revision_id,
+           dimension=2, distance='cosine', encoding_version='v1', state='STANDBY'))
+    db.add(KnowledgeRetrievalConfig(project_id=project.id, rerank_revision_id=models[1].current_revision_id, enabled=False))
+    db.commit()
+    for resource in models:
+        with pytest.raises(HTTPException, match='检索'):
+            archive_resource(db, resource.id, admin)
+        db.rollback()
+    db.query(KnowledgeIndexGeneration).filter_by(project_id=project.id).one().state = 'RETIRED'
+    db.commit()
+    archive_resource(db, models[0].id, admin)
+    assert models[0].status == 'ARCHIVED'

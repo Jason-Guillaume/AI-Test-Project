@@ -32,6 +32,8 @@ interface ReportWorkspaceProps {
   onSelectCase: (row: CaseExecutionSummary) => void;
   isFetching: boolean;
   records: NotificationRecord[];
+  notificationPage: number;
+  onNotificationPageChange: (page: number) => void;
   recordsQuery: { data?: { total?: number }; isError: boolean; error: unknown; isFetching: boolean; refetch: () => unknown };
   channelsQuery: { isError: boolean; error: unknown; isPending: boolean; refetch: () => unknown };
   channels: NotificationChannel[];
@@ -60,6 +62,8 @@ export function ReportWorkspace({
   isFetching,
   records,
   recordsQuery,
+  notificationPage,
+  onNotificationPageChange,
   channelsQuery,
   channels,
   canNotify,
@@ -149,7 +153,7 @@ export function ReportWorkspace({
             },
             {
               key: 'notify',
-              label: `通知记录${records.length > 0 ? `（${recordsQuery.data?.total ?? records.length}）` : ''}`,
+              label: `通知记录${recordsQuery.data ? `（${recordsQuery.data.total ?? 0}）` : ''}`,
               children: (
                 <Flex vertical gap={token.marginSM}>
                   <Flex justify="space-between" align="center" wrap="wrap" gap="small">
@@ -178,7 +182,7 @@ export function ReportWorkspace({
                   ) : null}
                   {recordsQuery.isError ? (
                     <ErrorState error={recordsQuery.error} onRetry={recordsQuery.refetch} />
-                  ) : records.length === 0 ? (
+                  ) : !recordsQuery.isFetching && records.length === 0 ? (
                     <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未发送过飞书通知" />
                   ) : (
                     <Table
@@ -205,7 +209,7 @@ export function ReportWorkspace({
                       ]}
                       dataSource={records}
                       loading={recordsQuery.isFetching}
-                      pagination={{ pageSize: 20, showTotal: (t) => `共 ${t} 条` }}
+                      pagination={{ current: notificationPage, pageSize: 20, total: recordsQuery.data?.total ?? 0, onChange: onNotificationPageChange, showSizeChanger: false, showTotal: (t) => `共 ${t} 条` }}
                     />
                   )}
                 </Flex>

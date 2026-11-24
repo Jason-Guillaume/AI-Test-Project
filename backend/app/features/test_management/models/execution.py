@@ -46,6 +46,8 @@ class TestRun(Base):
         nullable=True,
         comment="执行环境ID",
     )
+    request_key = Column(String(80), nullable=True, unique=True)
+    request_environment_id = Column(Integer, nullable=True)
     status = Column(
         String(20), nullable=False, server_default=text("'PENDING'"), index=True,
         comment="执行状态：PENDING/RUNNING/SUCCESS/FAILED/CANCELLED",

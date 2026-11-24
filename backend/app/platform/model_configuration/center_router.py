@@ -13,7 +13,7 @@ from app.platform.model_configuration.center_schemas import (
     ModelImportPreview, ModelProfileCreate, ModelResourceCreate, ModelRevisionInput,
 )
 from app.platform.model_configuration.services.model_center_service import (
-    adapter_catalog, copy_resource, create_diagnostic, create_profile, create_resource, create_revision,
+    adapter_catalog, archive_resource, copy_resource, create_diagnostic, create_profile, create_resource, create_revision,
     get_diagnostic, import_resources, list_available_models, list_resources, preview_import, run_model_diagnostic,
     set_default_binding, set_resource_grants, test_model_connection,
 )
@@ -29,11 +29,35 @@ def catalog():
 
 @router.get("/resources")
 def resources(
-    category: str | None = None, project_id: int | None = Query(default=None, gt=0),
+    category: str | None = None, project_id: int | None = Query(default=None, gt=0), archived: bool = False,
     db: Session = Depends(get_db), actor: User = Depends(get_current_user),
 ):
     """管理者列出模型资源；项目编辑者只查看该项目私有资源。"""
-    return list_resources(db, actor, category=category, project_id=project_id)
+    return list_resources(db, actor, category=category, project_id=project_id, archived=archived)
+
+
+@router.delete('/resources/{resource_id}', status_code=status.HTTP_204_NO_CONTENT)
+def resource_delete(resource_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    from fastapi import Response
+    archive_resource(db, resource_id, actor)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post('/resources/{resource_id}/restore')
+def resource_restore(resource_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    from app.core.http.errors import bad_request, not_found
+    from app.core.models.configuration import ModelConfiguration
+    from app.platform.model_configuration.models import ModelResource
+    from app.platform.model_configuration.services.model_center_service import _require_platform_admin
+    _require_platform_admin(actor)
+    resource = db.query(ModelResource).filter_by(id=resource_id, status='ARCHIVED', visibility='PLATFORM').with_for_update().first()
+    if resource is None:
+        raise not_found('已删除的模型资源不存在')
+    if resource.category == 'TEXT_GENERATION' and (not resource.legacy_model_id or not db.get(ModelConfiguration, resource.legacy_model_id)):
+        raise bad_request('该历史文本模型需先从回收站恢复')
+    resource.status = 'DISABLED'
+    db.commit()
+    return {'id': resource.id, 'status': resource.status}
 
 
 @router.get("/available")
@@ -145,36 +169,17 @@ __all__ = ["router"]
 
 @router.put("/resources/{resource_id}/enabled")
 def resource_enabled(resource_id: int, enabled: bool, db: Session = Depends(get_db), actor=Depends(get_current_user)):
-    from app.platform.model_configuration.models import ModelResource, ModelRevision
-    from app.platform.model_configuration.services.model_center_service import _require_platform_admin
-    from app.core.models.configuration import ModelConfiguration
+    from app.platform.model_configuration.models import ModelResource
+    from app.platform.model_configuration.services.model_center_service import _require_platform_admin, _set_resource_enabled
     from app.core.http.errors import not_found, bad_request
     _require_platform_admin(actor)
-    resource = db.get(ModelResource, resource_id)
+    resource = db.query(ModelResource).filter_by(id=resource_id).with_for_update().populate_existing().first()
     if resource is None:
         raise not_found("模型不存在")
     if resource.visibility != 'PLATFORM':
         raise bad_request("历史私有模型需明确审核后迁移，不得直接启用共享")
-    resource.status = 'ACTIVE' if enabled else 'DISABLED'
-    revision = db.get(ModelRevision, resource.current_revision_id)
-    if revision:
-        revision.enabled = enabled
-    legacy = db.get(ModelConfiguration, resource.legacy_model_id) if resource.legacy_model_id else None
-    if legacy:
-        legacy.is_enabled = enabled
-    from app.features.asr_evaluation.models import AsrConnection
-    revisions = db.query(ModelRevision).filter_by(resource_id=resource.id).all()
-    connection_ids = [r.legacy_connection_id for r in revisions if r.legacy_connection_id]
-    if connection_ids:
-        db.query(AsrConnection).filter(AsrConnection.id.in_(connection_ids)).update({'enabled': enabled}, synchronize_session=False)
-    # Platform ASR slots create per-project compatibility connections; retire these too.
-    from app.platform.model_configuration.models import ModelTaskSlot
-    slots = db.query(ModelTaskSlot).filter_by(resource_id=resource.id).all()
-    for slot in slots:
-        connection_id = getattr(slot, 'legacy_connection_id', None)
-        if connection_id:
-            connection = db.get(AsrConnection, connection_id)
-            if connection:
-                connection.enabled = enabled
+    if resource.status == 'ARCHIVED':
+        raise bad_request('模型已删除，请先恢复')
+    _set_resource_enabled(db, resource, enabled)
     db.commit()
     return {'enabled': enabled}

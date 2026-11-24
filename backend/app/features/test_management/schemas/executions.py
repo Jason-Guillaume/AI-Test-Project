@@ -11,6 +11,7 @@ class TestRunCreateRequest(BaseModel):
     """触发测试计划执行。"""
 
     environment_id: int | None = Field(None, gt=0, description="执行环境ID（覆盖计划环境；为空用计划环境）")
+    request_key: str | None = Field(None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class TestRunResponse(BaseModel):

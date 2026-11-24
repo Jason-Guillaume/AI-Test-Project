@@ -42,7 +42,13 @@ class FakeProvider:
 
 def invoke(db, main, modules, factory=None, **extra):
     body = GenerationRequest(project_id=1, requirements='合成评测需求', modules=modules, **extra)
-    with patch('app.knowledge.service.access'), patch('app.agents.services.case_generation_service.get_project_or_404'), patch('app.agents.services.case_generation_service.resolve_authorized_model', side_effect=lambda *a, **kw: SimpleNamespace(id=kw.get('requested_model_id') or 10, model_name='synthetic')):
+    def model(*args, **kwargs):
+        return SimpleNamespace(id=kwargs.get('requested_model_id') or 10, model_name='synthetic',
+                               api_base='https://example.invalid', temperature=0.2, max_tokens=100,
+                               timeout=10, api_key_encrypted='', is_enabled=True)
+    # This suite isolates orchestration; knowledge authorization and retrieval
+    # have dedicated database-backed tests.
+    with patch('app.knowledge.service.access'), patch('app.knowledge.service.search', return_value=[]), patch('app.agents.services.case_generation_service.get_project_or_404'), patch('app.agents.services.case_generation_service.resolve_authorized_model', side_effect=model):
         return generate_case_suite(db, SimpleNamespace(id=1), main.id, body, provider_factory=factory or (lambda snapshot: FakeProvider()))
 
 

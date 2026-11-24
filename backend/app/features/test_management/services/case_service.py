@@ -116,7 +116,7 @@ class CaseService:
             q = q.filter(TestCase.status == status)
         kw = (keyword or "").strip()
         if kw:
-            q = q.filter(or_(TestCase.name.ilike(f"%{kw}%"), TestCase.description.ilike(f"%{kw}%")))
+            q = q.filter(or_(TestCase.name.ilike(f"%{kw}%"), TestCase.description.ilike(f"%{kw}%"), TestCase.id == int(kw) if kw.isdigit() else False))
         total = int(q.count())
         items = q.order_by(TestCase.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
         return TestCaseListResponse(items=[_response(c) for c in items], total=total, page=page, page_size=page_size)
@@ -187,7 +187,17 @@ class CaseService:
         db.flush()
         # 新用例立刻有目录归属。挂接失败会连同用例一起回滚，避免出现没有范围的正式用例。
         from app.features.test_management.services.scope_service import ScopeService
-        ScopeService().attach_new_case(db, case)
+        scopes = ScopeService()
+        if body.scope_node_id is not None:
+            from app.features.test_management.scope_placement import direction_of_target
+            node = scopes._node_in_project(db, body.scope_node_id, project_id)
+            if node.direction != direction_of_target(body.target_type):
+                raise bad_request("目标目录不属于所选测试方向")
+        scopes.attach_new_case(db, case)
+        if body.scope_node_id is not None:
+            from app.features.test_management.models.test_scope import TestCaseScope
+            db.query(TestCaseScope).filter(TestCaseScope.test_case_id == case.id).delete()
+            scopes._add_scope(db, case.id, body.scope_node_id)
         notify(db, user_id=actor.id, event_type="test.case.created",
                title=f"你已创建测试用例「{case.name}」", project_id=project_id,
                actor_id=actor.id, actor_username=actor.username,

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import case as sql_case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -101,7 +100,7 @@ class ScopeService:
             rows = (
                 db.query(TestCase.id, TestCase.priority, TestCase.test_point_id)
                 .join(TestCaseScope, TestCaseScope.test_case_id == TestCase.id)
-                .filter(TestCaseScope.scope_node_id.in_(node_ids), TestCase.project_id == project_id)
+                .filter(TestCaseScope.scope_node_id.in_(node_ids), TestCase.project_id == project_id, TestCase.deleted_at.is_(None))
                 .all()
             )
             for case_id, priority, point_id in rows:
@@ -232,7 +231,7 @@ class ScopeService:
         if order not in ("asc", "desc"):
             raise bad_request("排序方向取值非法")
         node_ids = self._query_node_ids(db, project_id, direction, scope_node_id, include_descendants)
-        query = db.query(TestCase).filter(TestCase.project_id == project_id)
+        query = db.query(TestCase).filter(TestCase.project_id == project_id, TestCase.deleted_at.is_(None))
         if node_ids is not None:
             if not node_ids:
                 return ScopeCaseListResponse(items=[], total=0, page=page, page_size=page_size)
@@ -243,7 +242,7 @@ class ScopeService:
             query = (
                 query.join(TestCaseScope, TestCaseScope.test_case_id == TestCase.id)
                 .join(TestScopeNode, TestScopeNode.id == TestCaseScope.scope_node_id)
-                .filter(TestScopeNode.direction == direction, TestScopeNode.project_id == project_id)
+                .filter(TestScopeNode.direction == direction, TestScopeNode.project_id == project_id, TestScopeNode.deleted_at.is_(None))
             )
         if case_type:
             query = query.filter(TestCase.case_type == case_type)
@@ -253,16 +252,17 @@ class ScopeService:
             query = query.filter(TestCase.status == status)
         kw = (keyword or "").strip()
         if kw:
-            query = query.filter(TestCase.name.ilike(f"%{kw}%"))
+            number = kw[1:] if kw.startswith("#") else kw
+            if number.isdigit():
+                if len(number) > 10 or int(number) > 2147483647:
+                    return ScopeCaseListResponse(items=[], total=0, page=page, page_size=page_size)
+                query = query.filter(TestCase.id == int(number))
+            else:
+                query = query.filter(TestCase.name.ilike(f"%{kw}%"))
         query = query.distinct()
         total = int(query.order_by(None).count())
-        rank = sql_case(
-            (TestCase.priority == "P0", 0),
-            (TestCase.priority == "P1", 1),
-            (TestCase.priority == "P2", 2),
-            else_=3,
-        )
-        sort_column = {"updated_at": TestCase.updated_at, "priority": rank, "name": TestCase.name}[sort]
+        # P0–P3 already sort in priority order and remain valid with SELECT DISTINCT.
+        sort_column = {"updated_at": TestCase.updated_at, "priority": TestCase.priority, "name": TestCase.name}[sort]
         sorted_query = query.order_by(sort_column.asc() if order == "asc" else sort_column.desc(), TestCase.id.desc())
         rows = sorted_query.offset((page - 1) * page_size).limit(page_size).all()
         point_ids = {row.test_point_id for row in rows if row.test_point_id is not None}
@@ -543,7 +543,7 @@ class ScopeService:
         node_ids = [node.id for node in nodes]
         links = db.query(TestCaseScope.scope_node_id, TestCase.id, TestCase.test_point_id).join(
             TestCase, TestCase.id == TestCaseScope.test_case_id,
-        ).filter(TestCaseScope.scope_node_id.in_(node_ids)).all()
+        ).filter(TestCaseScope.scope_node_id.in_(node_ids), TestCase.deleted_at.is_(None)).all()
         direct_cases: dict[int, set[int]] = defaultdict(set)
         direct_points: dict[int, set[int]] = defaultdict(set)
         for node_id, case_id, point_id in links:

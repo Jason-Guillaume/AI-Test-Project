@@ -278,7 +278,10 @@ def execute(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: 
         works = batch_works(db, batch)
         policy['call_token_limit'] = policy['token_budget'] // max(1, len(works) * policy['max_attempts'])
         policy['_claim'] = claim
-        sources = search(db, snapshot['knowledge'], actor, request['requirements'])
+        knowledge_query = '\n'.join(part for part in (
+            snapshot.get('module') if work.kind == 'CASE_GENERATE' else '', request['requirements'],
+        ) if part)
+        sources = search(db, snapshot['knowledge'], actor, knowledge_query)
         results = [item.output_json if item.status == 'SUCCEEDED' else {'module': item.work_key, 'status': item.status, 'error_code': item.error_code, 'cases': []} for item in works if item.kind == 'CASE_GENERATE']
         db.commit()
 

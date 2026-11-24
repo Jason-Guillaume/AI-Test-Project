@@ -5,7 +5,7 @@ import { collectArrayPages } from '@/shared/api/pagination';
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；写/执行 = 项目成员（member+）；越权 404，前端不展示。
 // §32：执行同步返回完成态 TestRun（status/total/passed/failed/skipped/error）。
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   App,
@@ -32,6 +32,7 @@ import { fmtTimeSec } from '@/shared/lib/format';
 import { TEST_RUN_STATUS_COLOR } from '@/features/test-management/status';
 import { TEST_RUN_STATUS_OPTIONS } from './constants';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
+import { useAuth } from '@/app/providers/AuthProvider';
 import type { Environment } from '@/features/environments/contracts';
 import type { TestPlan, TestRun } from '@/features/test-management/contracts';
 
@@ -46,10 +47,34 @@ export function ConsoleExecutionCenterPage() {
   const { token } = theme.useToken();
   const navigate = useNavigate();
   const { currentProjectId } = useConsoleScope();
+  const { user } = useAuth();
+  const storageKey = (projectId: number) => `run-intent-${user?.id ?? 0}-${projectId}`;
 
   const [runPlanId, setRunPlanId] = useState<number | null>(null);
   const [resultRun, setResultRun] = useState<TestRun | null>(null);
   const [form] = Form.useForm<RunFormValues>();
+  const projectRef = useRef(currentProjectId);
+  projectRef.current = currentProjectId;
+  type Intent = { projectId: number; planId: number; environmentId: number | null; key: string };
+  const [intent, setIntent] = useState<Intent | null>(null);
+  useEffect(() => {
+    setRunPlanId(null);
+    setResultRun(null);
+    form.resetFields();
+    try { setIntent(currentProjectId == null ? null : JSON.parse(localStorage.getItem(storageKey(currentProjectId)) || 'null')); }
+    catch { setIntent(null); }
+  }, [currentProjectId, user?.id, form]);
+  const saveIntent = (value: Intent) => {
+    localStorage.setItem(storageKey(value.projectId), JSON.stringify(value));
+    setIntent(value);
+  };
+  const lookup = async () => {
+    if (!intent) return;
+    try {
+      const run = await testManagementApi.getRunByRequest(intent.projectId, intent.key);
+      if (projectRef.current === intent.projectId) setResultRun(run);
+    } catch (e) { if (projectRef.current === intent.projectId) message.warning(getErrorMessage(e, '尚未找到运行，可使用同一请求重试')); }
+  };
 
   const plansQuery = useQuery({
     queryKey: ['test-plans', currentProjectId, 'exec-center'],
@@ -64,14 +89,16 @@ export function ConsoleExecutionCenterPage() {
   const environments: Environment[] = envsQuery.data?.items ?? [];
 
   const runMutation = useMutation({
-    mutationFn: ({ planId, body }: { planId: number; body: RunFormValues }) =>
-      testManagementApi.createRun(planId, { environment_id: body.environment_id ?? null }),
-    onSuccess: (run) => {
-      message.success('执行完成');
+    mutationFn: (submission: Intent) => testManagementApi.createRun(submission.planId, { environment_id: submission.environmentId, request_key: submission.key }),
+    onSuccess: (run, submission) => {
+      if (projectRef.current !== submission.projectId) return;
+      message.success(run.status === 'RUNNING' ? '执行中，可稍后核对结果' : '已取得执行结果');
       setRunPlanId(null);
       setResultRun(run);
     },
-    onError: (e) => message.error(getErrorMessage(e, '执行失败')),
+    onError: (e, submission) => {
+      if (projectRef.current === submission.projectId) message.warning(getErrorMessage(e, '提交结果待确认，请核对或使用相同请求重试'));
+    },
   });
 
   if (currentProjectId == null) {
@@ -111,7 +138,7 @@ export function ConsoleExecutionCenterPage() {
           type="primary"
           size="small"
           icon={<CaretRightOutlined />}
-          disabled={row.status === 'DISABLED'}
+          disabled={row.status === 'DISABLED' || intent != null}
           onClick={() => {
             setRunPlanId(row.id);
             form.resetFields();
@@ -133,6 +160,12 @@ export function ConsoleExecutionCenterPage() {
         <Typography.Text type="secondary">选择一个测试计划并触发执行；执行同步返回结果。</Typography.Text>
       </Space>
 
+      {intent && <Space style={{ marginBottom: 16 }}>
+        <Typography.Text>上次请求：计划 #{intent.planId}，环境 #{intent.environmentId ?? '计划默认'}（结果可核对）</Typography.Text>
+        <Button onClick={() => void lookup()}>核对运行</Button>
+        <Button disabled={runMutation.isPending} onClick={() => runMutation.mutate(intent)}>使用相同请求重试</Button>
+        {resultRun && !['RUNNING', 'PENDING'].includes(resultRun.status) && <Button onClick={() => { localStorage.removeItem(storageKey(intent.projectId)); setIntent(null); setResultRun(null); }}>主动再次运行</Button>}
+      </Space>}
       {plansQuery.isLoading ? (
         <LoadingState />
       ) : plansQuery.isError ? (
@@ -150,8 +183,11 @@ export function ConsoleExecutionCenterPage() {
         open={runPlanId != null}
         onCancel={() => setRunPlanId(null)}
         onOk={async () => {
-          const values = await form.validateFields().catch(() => ({}) as RunFormValues);
-          runMutation.mutate({ planId: runPlanId!, body: values });
+          const values = await form.validateFields();
+          if (!activePlan || currentProjectId == null || projectRef.current !== currentProjectId) return;
+          const submission = { projectId: currentProjectId, planId: activePlan.id, environmentId: values.environment_id ?? null, key: crypto.randomUUID() };
+          saveIntent(submission);
+          runMutation.mutate(submission);
         }}
         confirmLoading={runMutation.isPending}
         okText="执行"
@@ -159,6 +195,7 @@ export function ConsoleExecutionCenterPage() {
         destroyOnHidden
         width={460}
       >
+        <Typography.Text>项目 #{currentProjectId} · 计划 {activePlan?.name}</Typography.Text>
         <Form<RunFormValues> form={form} layout="vertical">
           <Form.Item name="environment_id" label="执行环境（覆盖计划环境；留空使用计划环境）">
             <Select

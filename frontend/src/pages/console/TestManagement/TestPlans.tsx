@@ -4,7 +4,7 @@ import { collectArrayPages } from '@/shared/api/pagination';
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；写 = 项目成员（member+）；跨项目越权 404，前端不展示。
 // 返回形态：listPlans / listPlanSuites / listSuites 均返回裸数组；environment_id 关联 platform 级 Environment（按数字 id）。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   App,
   Alert,
@@ -62,6 +62,10 @@ export function ConsoleTestPlansPage() {
   const [addSuiteId, setAddSuiteId] = useState<number | null>(null);
   const [addSuiteSort, setAddSuiteSort] = useState(0);
   const [form] = Form.useForm<PlanFormValues>();
+  useEffect(() => {
+    setModalOpen(false); setEditing(null); setPlanDrawerId(null); setSelectedPlanIds([]);
+    setAddSuiteId(null); form.resetFields();
+  }, [currentProjectId, form]);
 
   const plansQuery = useQuery({
     queryKey: ['test-plans', currentProjectId],

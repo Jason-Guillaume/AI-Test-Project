@@ -30,6 +30,8 @@ from app.platform.projects.services.access_service import get_project_or_404
 
 _SUPPORTED_ADAPTERS = {
     "TEXT_GENERATION": {"openai-compatible-chat": "OpenAI 兼容聊天"},
+    "EMBEDDING": {"openai-compatible-embeddings": "OpenAI 兼容向量编码"},
+    "RERANK": {"json-rerank": "JSON 重排"},
     "ASR": {"generic-json-http": "通用 JSON HTTP 转写",
             "siliconflow-audio-transcriptions": "硅基流动音频文件转写"},
     "DIARIZATION": {
@@ -39,6 +41,8 @@ _SUPPORTED_ADAPTERS = {
 }
 _ADAPTER_CAPABILITIES = {
     ("TEXT_GENERATION", "openai-compatible-chat"): {"text_generation"},
+    ("EMBEDDING", "openai-compatible-embeddings"): {"embedding"},
+    ("RERANK", "json-rerank"): {"rerank"},
     ("ASR", "generic-json-http"): {
         "transcription", "timestamped_segments", "word_timestamps", "native_speaker_labels",
         "channel_metadata", "confidence",
@@ -75,6 +79,8 @@ def adapter_catalog() -> dict:
         ],
         "categories": [
             {"value": "TEXT_GENERATION", "label": "文本推理"},
+            {"value": "EMBEDDING", "label": "向量编码"},
+            {"value": "RERANK", "label": "重排"},
             {"value": "ASR", "label": "ASR 转写"},
             {"value": "DIARIZATION", "label": "说话人分段"},
         ],
@@ -106,6 +112,8 @@ def _require_resource_editor(db: Session, resource: ModelResource, actor: User) 
     _require_platform_admin(actor)
     if resource.visibility != 'PLATFORM':
         raise bad_request('历史私有资源已隔离，请先审核替代模型映射')
+    if resource.status == 'ARCHIVED':
+        raise bad_request('模型已删除，请先恢复')
 
 
 def _supported_adapter(category: str, adapter_key: str) -> None:
@@ -119,6 +127,8 @@ def _validate_capabilities(category: str, adapter_key: str, capabilities: list[s
     supported = _ADAPTER_CAPABILITIES.get((category, adapter_key), set())
     if len(set(capabilities)) != len(capabilities) or any(item not in supported for item in capabilities):
         raise bad_request("能力声明包含当前调用适配器未实现的能力")
+    if category in {'EMBEDDING', 'RERANK'} and category.lower() not in capabilities:
+        raise bad_request('检索模型必须声明对应能力')
 
 
 def _endpoint(value: str) -> tuple[str, str]:
@@ -135,6 +145,13 @@ def _validate_connection_config(category: str, adapter: str, config: dict) -> di
     _supported_adapter(category, adapter)
     if category == "TEXT_GENERATION":
         return dict(config)
+    if category in {"EMBEDDING", "RERANK"}:
+        if set(config) - {"timeout_seconds"}:
+            raise bad_request("检索模型连接仅支持 timeout_seconds")
+        timeout = config.get("timeout_seconds", 10)
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 600:
+            raise bad_request("检索模型超时必须在 1 到 600 秒之间")
+        return {"timeout_seconds": timeout}
     if adapter != "siliconflow-audio-transcriptions" and config.get("request_encoding") not in {None, "json"}:
         raise bad_request("所选适配器不支持该请求编码")
     if adapter == "siliconflow-audio-transcriptions":
@@ -777,15 +794,66 @@ def create_resource(db: Session, body: ModelResourceCreate, actor: User, *, comm
 
 def list_resources(
     db: Session, actor: User, *, category: str | None = None, project_id: int | None = None,
+    archived: bool = False,
 ) -> dict:
     """列出平台共享资源；显式指定项目时再包含该项目的私有资源。"""
     if project_id is not None:
         get_project_or_404(db, project_id, actor)
+    if archived:
+        _require_platform_admin(actor)
     query = db.query(ModelResource).filter(ModelResource.visibility == "PLATFORM")
+    query = query.filter(ModelResource.status == 'ARCHIVED' if archived else ModelResource.status != 'ARCHIVED')
     if category:
         query = query.filter(ModelResource.category == category)
     rows = query.order_by(ModelResource.category, ModelResource.display_name, ModelResource.id).limit(1000).all()
     return {"items": [_dump_resource(db, row) for row in rows], "total": len(rows)}
+
+
+def archive_resource(db: Session, resource_id: int, actor: User) -> None:
+    """Archive a model without destroying revisions or breaking active configuration."""
+    _require_platform_admin(actor)
+    resource = db.query(ModelResource).filter_by(id=resource_id).with_for_update().first()
+    if resource is None or resource.visibility != 'PLATFORM' or resource.status == 'ARCHIVED':
+        raise not_found('模型资源不存在')
+    legacy = db.get(ModelConfiguration, resource.legacy_model_id) if resource.legacy_model_id else None
+    if legacy and legacy.is_default:
+        raise bad_request('该模型是默认文本模型，请先更换默认模型')
+    defaults = db.query(ModelDefaultBinding).all()
+    if any(item.resource_id == resource.id or resource.id in (item.fallback_resource_ids or []) for item in defaults):
+        raise bad_request('该模型被默认策略或备用策略引用，请先解除引用')
+    if legacy and any(legacy.id in (item.fallback_model_ids or []) for item in db.query(ModelConfiguration).all()):
+        raise bad_request('该模型被文本备用策略引用，请先解除引用')
+    from app.knowledge.models import KnowledgeIndexGeneration, KnowledgeRetrievalConfig
+    revision_ids = db.query(ModelRevision.id).filter_by(resource_id=resource.id)
+    if db.query(KnowledgeIndexGeneration.id).filter(
+        KnowledgeIndexGeneration.embedding_revision_id.in_(revision_ids),
+        KnowledgeIndexGeneration.state.in_(['BUILDING', 'ACTIVE', 'STANDBY']),
+    ).first() or db.query(KnowledgeRetrievalConfig.project_id).filter(
+        KnowledgeRetrievalConfig.rerank_revision_id.in_(revision_ids),
+    ).first():
+        raise bad_request('该模型被项目检索配置或索引代引用，请先解除引用')
+    _set_resource_enabled(db, resource, False)
+    resource.status = 'ARCHIVED'
+    db.commit()
+
+
+def _set_resource_enabled(db: Session, resource: ModelResource, enabled: bool) -> None:
+    """Update both the center and legacy runtime projections in one transaction."""
+    from app.features.asr_evaluation.models import AsrConnection
+    from app.platform.model_configuration.models import ModelTaskSlot
+    resource.status = 'ACTIVE' if enabled else 'DISABLED'
+    revision = db.get(ModelRevision, resource.current_revision_id)
+    if revision:
+        revision.enabled = enabled
+    legacy = db.get(ModelConfiguration, resource.legacy_model_id) if resource.legacy_model_id else None
+    if legacy:
+        legacy.is_enabled = enabled
+    revisions = db.query(ModelRevision).filter_by(resource_id=resource.id).all()
+    connection_ids = [r.legacy_connection_id for r in revisions if r.legacy_connection_id]
+    connection_ids.extend(slot.legacy_connection_id for slot in db.query(ModelTaskSlot).filter_by(resource_id=resource.id).all()
+                          if slot.legacy_connection_id)
+    if connection_ids:
+        db.query(AsrConnection).filter(AsrConnection.id.in_(connection_ids)).update({'enabled': enabled}, synchronize_session=False)
 
 
 def list_available_models(db: Session, *, project_id: int, category: str | None, actor: User) -> dict:
@@ -820,7 +888,7 @@ def list_available_models(db: Session, *, project_id: int, category: str | None,
 
 def create_revision(db: Session, resource_id: int, body: ModelRevisionInput, actor: User) -> dict:
     """追加不可变连接修订并将其设为当前可用版本。"""
-    resource = db.get(ModelResource, resource_id)
+    resource = db.query(ModelResource).filter_by(id=resource_id).with_for_update().populate_existing().first()
     if resource is None:
         raise not_found("模型资源不存在")
     _require_resource_editor(db, resource, actor)
@@ -1040,7 +1108,7 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
         _require_platform_admin(actor)
     else:
         _require_project_editor(db, body.project_id, actor)
-    resource = db.get(ModelResource, body.resource_id)
+    resource = db.query(ModelResource).filter_by(id=body.resource_id).with_for_update().populate_existing().first()
     revision = db.get(ModelRevision, body.revision_id)
     profile = db.get(ModelParameterProfile, body.profile_id) if body.profile_id else None
     if (resource is None or resource.status != "ACTIVE" or revision is None or resource.category != body.category or
@@ -1058,7 +1126,7 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
         raise bad_request("参数方案不属于所选模型修订")
     fallbacks = []
     for fallback_id in dict.fromkeys(body.fallback_resource_ids):
-        fallback = db.get(ModelResource, fallback_id)
+        fallback = db.query(ModelResource).filter_by(id=fallback_id).with_for_update().populate_existing().first()
         if fallback is None or fallback.category != body.category or fallback.id == resource.id or fallback.status != "ACTIVE":
             raise bad_request("备用模型必须处于启用状态且与默认模型类别一致")
         if body.project_id is None and fallback.visibility != "PLATFORM":
@@ -1169,10 +1237,12 @@ def create_diagnostic(db: Session, resource_id: int, body, actor: User) -> dict:
         resolve_task_slots(db, body.project_id, [ModelTaskSlotInput(
             slot=slot, resource_id=resource.id, revision_id=revision.id, profile_id=profile.id,
         )], actor)
+    if resource.category == 'EMBEDDING' and body.dimension is None:
+        raise bad_request('向量模型诊断需要填写预期维度')
     row = ModelValidationRun(
         resource_id=resource.id, revision_id=revision.id, profile_id=profile.id if profile else None,
         project_id=project.id, audio_id=body.audio_id, status="QUEUED",
-        diagnostic_kind=resource.category, result_json={"message": "诊断已排队"}, requested_by=actor.id,
+        diagnostic_kind=resource.category, result_json={"message": "诊断已排队", "dimension": body.dimension}, requested_by=actor.id,
     )
     db.add(row)
     db.commit()
@@ -1278,6 +1348,25 @@ def run_model_diagnostic(run_id: int) -> None:
                 raise ValueError(f"模型服务诊断失败（HTTP {response.status_code or '网络错误'}）")
             result = {"message": "模型请求成功", "http_status": int(response.status_code),
                       "response_time_ms": response.response_time_ms}
+        elif resource.category in {'EMBEDDING', 'RERANK'}:
+            from app.execution.http.outbound_policy import resolve_project_outbound_target
+            from app.knowledge.providers import RetrievalConnection, embed, rerank
+            url = decrypt_secret(revision.endpoint_ciphertext) or revision.endpoint_display or ''
+            if resolve_project_outbound_target(db, url, run.project_id).rejection_message:
+                raise ValueError('模型服务不在项目出站白名单')
+            connection = RetrievalConnection(
+                endpoint=url, model=revision.model_name, credential=secret,
+                timeout=int((revision.config_json or {}).get('timeout_seconds', 10)),
+                credential_header=(credential.header_name if credential else None) or 'Authorization',
+            )
+            category = resource.category
+            dimension = (run.result_json or {}).get('dimension')
+            db.commit()
+            if category == 'EMBEDDING':
+                embed(connection, ['diagnostic'], dimension)
+            else:
+                rerank(connection, 'diagnostic', ['diagnostic'])
+            result = {'message': '检索模型协议诊断成功'}
         else:
             audio = db.get(AsrAudio, run.audio_id) if run.audio_id else None
             connection = db.query(AsrConnection).join(

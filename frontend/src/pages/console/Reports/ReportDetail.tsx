@@ -75,6 +75,7 @@ export function ConsoleReportDetailPage() {
   const [caseStatus, setCaseStatus] = useState<string | undefined>(undefined);
   const [casePriority, setCasePriority] = useState<string | undefined>(undefined);
   const [workspaceTab, setWorkspaceTab] = useState('cases');
+  const [notificationPage, setNotificationPage] = useState(1);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [notifyChannelId, setNotifyChannelId] = useState<number | undefined>(undefined);
 
@@ -108,9 +109,9 @@ export function ConsoleReportDetailPage() {
   });
   // 显式传分页：后端默认 page_size=20，不传会在 Tab 标题显示 total 而表格只出 20 条
   const recordsQuery = useQuery({
-    queryKey: ['report-notifications', id],
-    queryFn: () => collectPages((page) => notificationChannelsApi.listReportNotifications(id!, { page, page_size: 100 })),
-    enabled: id != null,
+    queryKey: ['report-notifications', id, notificationPage],
+    queryFn: () => notificationChannelsApi.listReportNotifications(id!, { page: notificationPage, page_size: 20 }),
+    enabled: id != null && workspaceTab === 'notify',
   });
 
   const channels = (channelsQuery.data?.items ?? []).filter((c) => c.enabled && c.webhook_configured);
@@ -411,6 +412,8 @@ export function ConsoleReportDetailPage() {
         isFetching={detailQuery.isFetching}
         records={records}
         recordsQuery={recordsQuery}
+        notificationPage={notificationPage}
+        onNotificationPageChange={setNotificationPage}
         channelsQuery={channelsQuery}
         channels={channels}
         canNotify={canNotify}

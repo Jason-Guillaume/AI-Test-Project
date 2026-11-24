@@ -135,10 +135,10 @@ class SuiteService:
         """列出套件`cases`。"""
         self._get_or_404(db, suite_id, user)
         rows = (
-            db.query(TestSuiteCase).filter(TestSuiteCase.suite_id == suite_id)
+            db.query(TestSuiteCase, TestCase.name).outerjoin(TestCase, TestCase.id == TestSuiteCase.test_case_id).filter(TestSuiteCase.suite_id == suite_id)
             .order_by(TestSuiteCase.sort.asc(), TestSuiteCase.id.asc()).all()
         )
-        return [TestSuiteCaseResponse.model_validate(r) for r in rows]
+        return [TestSuiteCaseResponse.model_validate(r).model_copy(update={"case_name": name}) for r, name in rows]
 
     def add_suite_case(
         self, db: Session, suite_id: int, body: TestSuiteCaseAdd, *, actor: User,

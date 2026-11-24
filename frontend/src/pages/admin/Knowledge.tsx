@@ -13,6 +13,7 @@ import { PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { useNavigate } from 'react-router-dom';
+import { KnowledgeRetrieval } from './KnowledgeRetrieval';
 
 type Base = { id: number; name: string; enabled: boolean };
 type Doc = { id: number; name: string; category: string; enabled: boolean };
@@ -187,6 +188,7 @@ export function AdminKnowledgePage() {
             setScopedCategories([]);
           }}
         />
+        {project != null && <KnowledgeRetrieval key={project} projectId={project} />}
         <Card title="资料">
           <Space wrap style={{ display: 'flex', width: '100%', minWidth: 0 }}>
             <Select

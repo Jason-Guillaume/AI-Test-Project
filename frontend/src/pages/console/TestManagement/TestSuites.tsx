@@ -4,7 +4,7 @@ import { collectArrayPages } from '@/shared/api/pagination';
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；写 = 项目成员（member+）；跨项目越权 404，前端不展示。
 // 返回形态：listSuites / listSuiteCases / listCases 均返回裸数组（无分页信封）。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   App,
   Alert,
@@ -61,6 +61,10 @@ export function ConsoleTestSuitesPage() {
   const [addCaseId, setAddCaseId] = useState<number | null>(null);
   const [addCaseSort, setAddCaseSort] = useState(0);
   const [form] = Form.useForm<SuiteFormValues>();
+  useEffect(() => {
+    setModalOpen(false); setEditing(null); setSuiteDrawerId(null); setSelectedSuiteIds([]);
+    setAddCaseId(null); form.resetFields();
+  }, [currentProjectId, form]);
 
   const suitesQuery = useQuery({
     queryKey: ['test-suites', currentProjectId],
@@ -326,9 +330,12 @@ function SuiteCasesDrawer({
     queryFn: () => testManagementApi.listSuiteCases(suiteId!),
     enabled: suiteId != null,
   });
+  const [keyword, setKeyword] = useState('');
+  const [candidatePage, setCandidatePage] = useState(1);
+  useEffect(() => { setKeyword(''); setCandidatePage(1); }, [suiteId, currentProjectId]);
   const allCasesQuery = useQuery({
-    queryKey: ['test-cases', currentProjectId, 'for-suite'],
-    queryFn: () => collectArrayPages((page) => testManagementApi.listCases(currentProjectId!, { page, page_size: 100 }), 100),
+    queryKey: ['test-cases', currentProjectId, 'for-suite', keyword, candidatePage],
+    queryFn: () => testManagementApi.listCases(currentProjectId!, { page: candidatePage, page_size: 20, keyword }),
     enabled: suiteId != null && currentProjectId != null,
   });
 
@@ -354,15 +361,13 @@ function SuiteCasesDrawer({
 
   const suiteCases = suiteCasesQuery.data ?? [];
   const allCases = allCasesQuery.data ?? [];
-  const caseName = (cid: number) =>
-    allCases.find((c) => c.id === cid)?.name ?? `用例#${cid}`;
 
   const columns: TableColumnsType<TestSuiteCaseResponse> = [
     { title: '用例ID', dataIndex: 'test_case_id', width: 80 },
     {
       title: '用例名称',
-      dataIndex: 'test_case_id',
-      render: (cid: number) => caseName(cid),
+      dataIndex: 'case_name',
+      render: (name: string | null, row) => name ?? `用例#${row.test_case_id}`,
     },
     { title: '排序', dataIndex: 'sort', width: 80 },
     {
@@ -390,8 +395,11 @@ function SuiteCasesDrawer({
         <Select
           className="member-add-row__select"
           showSearch
-          optionFilterProp="label"
-          placeholder="选择要加入的用例"
+          filterOption={false}
+          onSearch={(value) => { setKeyword(value); setCandidatePage(1); }}
+          loading={allCasesQuery.isFetching}
+          notFoundContent={allCasesQuery.isError ? '加载失败，请重试' : '没有匹配用例'}
+          placeholder="搜索用例名称或编号"
           value={addCaseId ?? undefined}
           onChange={setAddCaseId}
           options={allCases.map((c) => ({ value: c.id, label: c.name }))}
@@ -416,6 +424,12 @@ function SuiteCasesDrawer({
           添加
         </Button>
       </div>
+      <Space style={{ margin: '8px 0' }}>
+        <Button disabled={candidatePage === 1} onClick={() => setCandidatePage(candidatePage - 1)}>上一页候选</Button>
+        <Typography.Text>第 {candidatePage} 页</Typography.Text>
+        <Button disabled={allCases.length < 20} onClick={() => setCandidatePage(candidatePage + 1)}>下一页候选</Button>
+        {allCasesQuery.isError && <Button onClick={() => void allCasesQuery.refetch()}>重试候选加载</Button>}
+      </Space>
       <Table
         rowKey="id"
         size="small"

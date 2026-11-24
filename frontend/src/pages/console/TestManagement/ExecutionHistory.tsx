@@ -63,15 +63,20 @@ export function ConsoleExecutionHistoryPage() {
   const queryClient = useQueryClient();
   const currentProjectRef = useRef(currentProjectId);
   currentProjectRef.current = currentProjectId;
+  const linkedRunQuery = useQuery({
+    queryKey: ['test-run', drawerRunId],
+    queryFn: () => testManagementApi.getRun(drawerRunId!),
+    enabled: drawerRunId != null && requestedExecutionId > 0 && currentProjectId != null,
+  });
   const linkedExecutionQuery = useQuery({
-    queryKey: ['case-executions', currentProjectId, drawerRunId],
-    queryFn: () => testManagementApi.listCaseExecutions(drawerRunId!),
-    enabled: drawerRunId != null && requestedExecutionId > 0 && currentProjectId != null && (!requestedProjectId || requestedProjectId === currentProjectId),
+    queryKey: ['case-execution', currentProjectId, drawerRunId, requestedExecutionId],
+    queryFn: () => testManagementApi.getCaseExecution(drawerRunId!, requestedExecutionId),
+    enabled: drawerRunId != null && requestedExecutionId > 0 && currentProjectId != null && linkedRunQuery.data?.project_id === currentProjectId && (!requestedProjectId || requestedProjectId === currentProjectId),
   });
 
   useEffect(() => {
     if (requestedExecutionId > 0 && linkedExecutionQuery.data) {
-      setSelectedCe(linkedExecutionQuery.data.items.find(item => item.id === requestedExecutionId) ?? null);
+      setSelectedCe(linkedExecutionQuery.data);
     }
   }, [linkedExecutionQuery.data, requestedExecutionId]);
 
@@ -406,10 +411,18 @@ function RunDetailDrawer({
   onClose: () => void;
   onSelect: (ce: CaseExecution) => void;
 }) {
-  const caseExecQuery = useQuery({
-    queryKey: ['case-executions', projectId, runId],
-    queryFn: () => testManagementApi.listCaseExecutions(runId!),
+  const [casePage, setCasePage] = useState(1);
+  const [failedOnly, setFailedOnly] = useState(false);
+  useEffect(() => { setCasePage(1); setFailedOnly(false); }, [runId, projectId]);
+  const runQuery = useQuery({
+    queryKey: ['test-run', runId],
+    queryFn: () => testManagementApi.getRun(runId!),
     enabled: runId != null && projectId != null,
+  });
+  const caseExecQuery = useQuery({
+    queryKey: ['case-executions', projectId, runId, casePage, failedOnly],
+    queryFn: () => testManagementApi.listCaseExecutions(runId!, { page: casePage, page_size: 20, failed_only: failedOnly }),
+    enabled: runId != null && projectId != null && runQuery.data?.project_id === projectId,
   });
   const items: CaseExecution[] = caseExecQuery.data?.items ?? [];
 
@@ -453,16 +466,16 @@ function RunDetailDrawer({
       onClose={onClose}
       title={runId != null ? `执行 #${runId}` : '执行详情'}
       width={760}
-      loading={caseExecQuery.isLoading}
-      error={caseExecQuery.isError ? caseExecQuery.error : undefined}
-      empty={caseExecQuery.isSuccess && items.length === 0 ? '无用例执行记录' : null}
+      loading={runQuery.isLoading || caseExecQuery.isLoading}
+      error={runQuery.isError ? runQuery.error : runQuery.data && runQuery.data.project_id !== projectId ? new Error('运行不属于当前项目') : caseExecQuery.isError ? caseExecQuery.error : undefined}
     >
+      <Button onClick={() => { setFailedOnly(!failedOnly); setCasePage(1); }}>{failedOnly ? '查看全部' : '只看失败'}</Button>
       <Table
         rowKey="id"
         size="small"
         columns={columns}
         dataSource={items}
-        pagination={false}
+        pagination={{ current: casePage, pageSize: 20, total: caseExecQuery.data?.total ?? 0, onChange: setCasePage, showSizeChanger: false }}
         locale={{ emptyText: <Empty description="无用例执行记录" /> }}
       />
       <div style={{ marginTop: 16 }}>

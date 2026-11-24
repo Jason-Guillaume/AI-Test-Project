@@ -259,7 +259,10 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
     from app.knowledge.service import search
     knowledge = profile.get('knowledge')
     if knowledge:
-        sources = search(db, knowledge, actor, task.title or '')
+        # Use the frozen goal alongside the title so generic task titles do not
+        # discard the requirement details available at planning time.
+        knowledge_query = '\n'.join(part for part in (task.title, run.goal_snapshot) if part)
+        sources = search(db, knowledge, actor, knowledge_query)
         attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), 'knowledge_sources': [
             {key: value for key, value in source.items() if key != 'text'} for source in sources
         ]}
