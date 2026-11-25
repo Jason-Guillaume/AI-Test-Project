@@ -17,7 +17,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import and_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,7 +28,7 @@ from app.core.security.crypto import decrypt_secret
 from app.platform.projects.services.access_service import require_writable_project
 from app.features.asr_evaluation.models import (
     AsrConnection, AsrContentReviewJob, AsrJob, AsrModelRun, AsrProcessingRun, AsrProcessingWorkItem, AsrSchedule,
-    AsrSuggestionJob, AsrWorkItem, AsrWorkerHeartbeat,
+    AsrQueueItem, AsrSuggestionJob, AsrWorkItem, AsrWorkerHeartbeat,
 )
 from app.features.asr_evaluation.providers.generic_json import (
     AsrProviderError, AsrRateLimited, AsrRemoteFailure, AsrSubmissionUncertain,
@@ -47,7 +47,7 @@ from app.features.asr_evaluation.services.suggestion_job_service import (
     execute_suggestion_job, extend_suggestion_lease, recover_expired_suggestion_jobs,
 )
 from app.features.asr_evaluation.runtime.request_slots import asr_request_slot
-from app.platform.model_configuration.models import ModelTaskSlot, ModelResource, ModelRevision
+from app.platform.model_configuration.models import ModelLegacyBinding, ModelResource, ModelRevision, ModelTaskSlot
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,79 @@ def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _owned_item(
+    db: Session, model: type[AsrQueueItem], item_id: int, run_id: int, owner: str,
+    generation: int, *, lock: bool = True,
+) -> AsrQueueItem | None:
+    """Resolve a live claim in its own queue and lock it for the result transaction."""
+    parent = model.run_id if model is AsrWorkItem else model.processing_run_id
+    query = db.query(model).filter(
+        model.id == item_id, parent == run_id, model.lease_owner == owner,
+        model.lease_generation == generation, model.lease_expires_at > datetime.now(timezone.utc),
+    )
+    if lock:
+        query = query.with_for_update()
+    item = query.populate_existing().one_or_none()
+    if item is None:
+        return None
+    # A row lock can outlive the deadline that qualified the original SELECT.
+    deadline = _as_utc(item.lease_expires_at)
+    return item if deadline is not None and deadline > datetime.now(timezone.utc) else None
+
+
+def _remote_action(
+    db: Session, model: type[AsrQueueItem], item_id: int, run: AsrModelRun | AsrProcessingRun,
+    owner: str, generation: int, submitting: bool,
+) -> str | None:
+    """Recheck the claim and any durable receipt after waiting for outbound capacity."""
+    if _owned_item(db, model, item_id, run.id, owner, generation) is None:
+        return None
+    db.refresh(run, ["status", "remote_task_id"])
+    if run.status not in {"SUBMITTING", "REMOTE_RUNNING"}:
+        return None
+    if run.remote_task_id:
+        return "POLL"
+    return "SUBMIT" if submitting and run.status == "SUBMITTING" else None
+
+
+def _connection_available(
+    db: Session, connection_id: int | None, project_id: int, *, task_type: str | None = None,
+) -> bool:
+    connection = db.get(AsrConnection, connection_id) if connection_id is not None else None
+    if (connection is None or not connection.enabled or connection.project_id != project_id
+            or (task_type is not None and connection.task_type != task_type)):
+        return False
+    # Historical slots, revisions and shared aliases can each identify the platform resource.
+    refs = select(ModelTaskSlot.resource_id).where(ModelTaskSlot.legacy_connection_id == connection_id).union(
+        select(ModelRevision.resource_id).where(ModelRevision.legacy_connection_id == connection_id),
+        select(ModelLegacyBinding.resource_id).where(ModelLegacyBinding.connection_public_id == connection_id),
+    ).subquery()
+    associations = db.query(ModelResource, ModelLegacyBinding, ModelRevision).select_from(refs).outerjoin(
+        ModelResource, ModelResource.id == refs.c.resource_id,
+    ).outerjoin(ModelLegacyBinding, and_(
+        ModelLegacyBinding.resource_id == ModelResource.id,
+        ModelLegacyBinding.connection_public_id == connection_id,
+    )).outerjoin(ModelRevision, ModelRevision.id == ModelLegacyBinding.revision_id).all()
+    for resource, binding, revision in associations:
+        if resource is None or resource.status != "ACTIVE":
+            return False
+        if binding is not None and (
+            binding.project_id not in (None, project_id) or revision is None or not revision.enabled
+            or revision.resource_id != resource.id
+        ):
+            return False
+        if resource.visibility == "PLATFORM":
+            continue
+        # Unbound legacy connections ran only in their original project. The migration
+        # records that admission explicitly; old private model-center resources stay quarantined.
+        if not (resource.visibility == "PROJECT" and resource.project_id == project_id
+                and binding is not None and binding.legacy_kind == "ASR_CONNECTION"
+                and binding.project_id == project_id and binding.allow_project_execution
+                and resource.category == ("DIARIZATION" if connection.task_type == "DIARIZATION" else "ASR")):
+            return False
+    return True
 
 
 class AsrWorker:
@@ -211,7 +284,7 @@ class AsrWorker:
         db = SessionLocal()
         try:
             db.execute(text("SELECT 1"))
-            for model in (AsrWorkItem, AsrProcessingWorkItem, AsrSchedule, AsrSuggestionJob, AsrContentReviewJob):
+            for model in (AsrQueueItem, AsrSchedule, AsrSuggestionJob, AsrContentReviewJob):
                 db.query(model.id).limit(1).all()
             return True
         except Exception:
@@ -388,12 +461,14 @@ class AsrWorker:
                 AsrWorkItem.available_at <= now,
                 ((AsrWorkItem.lease_expires_at.is_(None)) | (AsrWorkItem.lease_expires_at <= now)),
                 AsrModelRun.status.in_(["PENDING", "SUBMITTING", "REMOTE_RUNNING"]),
-            ).order_by(AsrWorkItem.available_at, AsrWorkItem.id).with_for_update(
+            ).order_by(AsrWorkItem.available_at, AsrWorkItem.public_id).with_for_update(
                 of=AsrWorkItem, skip_locked=True,
             ).first()
             if query is None:
                 return None
             item, run = query
+            if run.status == "SUBMITTING" and run.remote_task_id:
+                run.status = "REMOTE_RUNNING"
             if run.status == "SUBMITTING":
                 # A prior process may have reached the provider before it exited.
                 # Without a returned remote task ID, replaying the POST could charge twice.
@@ -467,12 +542,14 @@ class AsrWorker:
                     | (AsrProcessingWorkItem.lease_expires_at <= now)
                 ),
                 AsrProcessingRun.status.in_(["PENDING", "SUBMITTING", "REMOTE_RUNNING"]),
-            ).order_by(AsrProcessingWorkItem.available_at, AsrProcessingWorkItem.id).with_for_update(
+            ).order_by(AsrProcessingWorkItem.available_at, AsrProcessingWorkItem.public_id).with_for_update(
                 of=AsrProcessingWorkItem, skip_locked=True,
             ).first()
             if pair is None:
                 return None
             item, run = pair
+            if run.status == "SUBMITTING" and run.remote_task_id:
+                run.status = "REMOTE_RUNNING"
             if run.status == "SUBMITTING":
                 # 提交结果不确定时停止自动调用，必须人工对照幂等键核实远端任务。
                 self._complete_processing_state(
@@ -518,7 +595,7 @@ class AsrWorker:
         item_id, run_id, owner, generation, submitting = claim
         pulse_stop = threading.Event()
         pulse = threading.Thread(
-            target=self._renew_processing_lease, args=(item_id, owner, generation, pulse_stop),
+            target=self._renew_lease, args=(AsrProcessingWorkItem, item_id, run_id, owner, generation, pulse_stop),
             name="asr-processing-lease-heartbeat", daemon=True,
         )
         pulse.start()
@@ -542,7 +619,7 @@ class AsrWorker:
         item_id, run_id, owner, generation, _ = claim
         pulse_stop = threading.Event()
         pulse = threading.Thread(
-            target=self._renew_processing_lease, args=(item_id, owner, generation, pulse_stop),
+            target=self._renew_lease, args=(AsrProcessingWorkItem, item_id, run_id, owner, generation, pulse_stop),
             name="asr-media-lease-heartbeat", daemon=True,
         )
         pulse.start()
@@ -553,12 +630,11 @@ class AsrWorker:
             db = SessionLocal()
             try:
                 run = db.get(AsrProcessingRun, run_id)
-                item = db.get(AsrProcessingWorkItem, item_id)
+                item = _owned_item(db, AsrProcessingWorkItem, item_id, run_id, owner, generation, lock=False)
                 actor = db.get(User, run.created_by) if run and run.created_by else None
-                if (
-                    run is None or item is None or actor is None or not actor.is_active
-                    or item.lease_owner != owner or item.lease_generation != generation
-                ):
+                if item is None:
+                    return
+                if run is None or actor is None or not actor.is_active:
                     self._finish_processing(item_id, run_id, owner, generation, "FAILED", "媒体任务发起人或租约不可用")
                     return
                 try:
@@ -568,22 +644,11 @@ class AsrWorker:
                     return
                 db.commit()
                 analysis = analyze_audio_version(db, run)
-                current = db.get(AsrProcessingRun, run_id)
-                current_item = db.get(AsrProcessingWorkItem, item_id)
-                if (
-                    current is None or current_item is None or current_item.lease_owner != owner
-                    or current_item.lease_generation != generation
-                ):
+                current_item = _owned_item(db, AsrProcessingWorkItem, item_id, run_id, owner, generation)
+                if current_item is None:
                     return
                 record_media_analysis(db, run_id, analysis, commit=False)
-                removed = db.query(AsrProcessingWorkItem).filter(
-                    AsrProcessingWorkItem.id == item_id,
-                    AsrProcessingWorkItem.lease_owner == owner,
-                    AsrProcessingWorkItem.lease_generation == generation,
-                ).delete(synchronize_session=False)
-                if removed != 1:
-                    db.rollback()
-                    return
+                db.delete(current_item)
                 db.commit()
             except Exception:
                 db.rollback()
@@ -597,38 +662,16 @@ class AsrWorker:
             pulse_stop.set()
             pulse.join(timeout=2)
 
-    def _renew_processing_lease(
-        self, item_id: int, owner: str, generation: int, stop: threading.Event,
-    ) -> None:
-        """用独立短 Session 续约说话人运行租约，避免远端等待期间被重复领取。"""
-        while not stop.wait(max(10, self.lease_seconds // 3)):
-            db = SessionLocal()
-            try:
-                row = db.get(AsrProcessingWorkItem, item_id)
-                if row is None or row.lease_owner != owner or row.lease_generation != generation:
-                    return
-                row.lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=self.lease_seconds)
-                db.commit()
-            except Exception:
-                db.rollback()
-                logger.exception("说话人处理租约续约失败，工作项 ID=%s", item_id)
-                return
-            finally:
-                db.close()
-
     def _execute_processing_claim(
         self, item_id: int, run_id: int, owner: str, generation: int, submitting: bool,
     ) -> None:
         """每次外呼前重验权限与连接快照，成功时原子写结果并完成独立工作项。"""
         db = SessionLocal()
         try:
-            item = db.get(AsrProcessingWorkItem, item_id)
+            item = _owned_item(db, AsrProcessingWorkItem, item_id, run_id, owner, generation, lock=False)
             run = db.get(AsrProcessingRun, run_id)
             actor = db.get(User, run.created_by) if run and run.created_by else None
-            if (
-                item is None or run is None or item.lease_owner != owner
-                or item.lease_generation != generation
-            ):
+            if item is None or run is None:
                 return
             if actor is None or not actor.is_active:
                 self._finish_processing(item_id, run_id, owner, generation, "FAILED", "任务发起人已不可用")
@@ -638,12 +681,7 @@ class AsrWorker:
             except Exception:
                 self._finish_processing(item_id, run_id, owner, generation, "FAILED", "发起人的项目权限已撤销")
                 return
-            connection = db.get(AsrConnection, run.connection_id) if run.connection_id else None
-            canonical_slots = db.query(ModelTaskSlot).filter_by(legacy_connection_id=run.connection_id).all()
-            canonical_revisions = db.query(ModelRevision).filter_by(legacy_connection_id=run.connection_id).all()
-            resource_ids = {slot.resource_id for slot in canonical_slots} | {rev.resource_id for rev in canonical_revisions}
-            model_disabled = any((resource := db.get(ModelResource, ident, populate_existing=True)) is None or resource.status != 'ACTIVE' or resource.visibility != 'PLATFORM' for ident in resource_ids)
-            if model_disabled or connection is None or not connection.enabled or connection.task_type != "DIARIZATION":
+            if not _connection_available(db, run.connection_id, run.project_id, task_type="DIARIZATION"):
                 self._finish_processing(item_id, run_id, owner, generation, "FAILED", "说话人连接已停用或不存在")
                 return
             try:
@@ -653,6 +691,11 @@ class AsrWorker:
                 return
             db.commit()
             with asr_request_slot(db.get_bind()):
+                action = _remote_action(db, AsrProcessingWorkItem, item_id, run, owner, generation, submitting)
+                if action is None:
+                    return
+                submitting = action == "SUBMIT"
+                db.commit()
                 if submitting:
                     response = self._diarization_provider.submit(
                         db, project_id=run.project_id, execution=execution,
@@ -664,12 +707,9 @@ class AsrWorker:
                     )
             db.rollback()
             db.expire_all()
-            current_item = db.get(AsrProcessingWorkItem, item_id)
+            current_item = _owned_item(db, AsrProcessingWorkItem, item_id, run_id, owner, generation)
             current_run = db.get(AsrProcessingRun, run_id)
-            if (
-                current_item is None or current_run is None or current_item.lease_owner != owner
-                or current_item.lease_generation != generation
-            ):
+            if current_item is None or current_run is None:
                 return
             if response["state"] == "SUCCEEDED":
                 record_diarization_result(
@@ -677,14 +717,7 @@ class AsrWorker:
                     raw_response=response.get("raw_response"), model_version=response.get("model_version"),
                     duration_ms=response.get("response_time_ms"), commit=False,
                 )
-                removed = db.query(AsrProcessingWorkItem).filter(
-                    AsrProcessingWorkItem.id == item_id,
-                    AsrProcessingWorkItem.lease_owner == owner,
-                    AsrProcessingWorkItem.lease_generation == generation,
-                ).delete(synchronize_session=False)
-                if removed != 1:
-                    db.rollback()
-                    return
+                db.delete(current_item)
                 db.commit()
                 return
             if submitting and response.get("remote_task_id"):
@@ -733,11 +766,7 @@ class AsrWorker:
         """核验独立租约代次后同事务结束说话人处理运行与队列项。"""
         db = SessionLocal()
         try:
-            item = db.query(AsrProcessingWorkItem).filter(
-                AsrProcessingWorkItem.id == item_id,
-                AsrProcessingWorkItem.lease_owner == owner,
-                AsrProcessingWorkItem.lease_generation == generation,
-            ).with_for_update().first()
+            item = _owned_item(db, AsrProcessingWorkItem, item_id, run_id, owner, generation)
             run = db.get(AsrProcessingRun, run_id)
             if item is None or run is None:
                 return
@@ -759,11 +788,7 @@ class AsrWorker:
         """保存说话人阶段下一次安全轮询时间，并在统一分支执行尝试数和期限上限。"""
         db = SessionLocal()
         try:
-            item = db.query(AsrProcessingWorkItem).filter(
-                AsrProcessingWorkItem.id == item_id,
-                AsrProcessingWorkItem.lease_owner == owner,
-                AsrProcessingWorkItem.lease_generation == generation,
-            ).with_for_update().first()
+            item = _owned_item(db, AsrProcessingWorkItem, item_id, run_id, owner, generation)
             run = db.get(AsrProcessingRun, run_id)
             if item is None or run is None:
                 return
@@ -795,7 +820,7 @@ class AsrWorker:
         item_id, run_id, owner, generation, submitting = claim
         pulse_stop = threading.Event()
         pulse = threading.Thread(
-            target=self._renew_lease, args=(item_id, owner, generation, pulse_stop),
+            target=self._renew_lease, args=(AsrWorkItem, item_id, run_id, owner, generation, pulse_stop),
             name="asr-lease-heartbeat", daemon=True,
         )
         pulse.start()
@@ -812,13 +837,16 @@ class AsrWorker:
             pulse_stop.set()
             pulse.join(timeout=2)
 
-    def _renew_lease(self, item_id: int, owner: str, generation: int, stop: threading.Event) -> None:
+    def _renew_lease(
+        self, model: type[AsrQueueItem], item_id: int, run_id: int, owner: str,
+        generation: int, stop: threading.Event,
+    ) -> None:
         """用独立短 Session 续约，长音频响应等待期间不会被其他 Worker 重领。"""
         while not stop.wait(max(10, self.lease_seconds // 3)):
             db = SessionLocal()
             try:
-                row = db.get(AsrWorkItem, item_id)
-                if row is None or row.lease_owner != owner or row.lease_generation != generation:
+                row = _owned_item(db, model, item_id, run_id, owner, generation)
+                if row is None:
                     return
                 row.lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=self.lease_seconds)
                 db.commit()
@@ -833,10 +861,10 @@ class AsrWorker:
         """复核发起人和连接状态后提交或轮询一个 ASR 运行。"""
         db = SessionLocal()
         try:
-            item = db.get(AsrWorkItem, item_id)
+            item = _owned_item(db, AsrWorkItem, item_id, run_id, owner, generation, lock=False)
             run = db.get(AsrModelRun, run_id)
             job = db.get(AsrJob, run.job_id) if run else None
-            if item is None or run is None or job is None or item.lease_owner != owner or item.lease_generation != generation:
+            if item is None or run is None or job is None:
                 return
             if job.cancel_requested and submitting:
                 db.commit()
@@ -853,13 +881,7 @@ class AsrWorker:
                 db.commit()
                 self._finish(run_id, item_id, owner, generation, "FAILED", "发起人的项目权限已撤销，已阻止新请求")
                 return
-            from app.features.asr_evaluation.models import AsrConnection
-            connection = db.get(AsrConnection, run.connection_id)
-            canonical_slots = db.query(ModelTaskSlot).filter_by(legacy_connection_id=run.connection_id).all()
-            canonical_revisions = db.query(ModelRevision).filter_by(legacy_connection_id=run.connection_id).all()
-            resource_ids = {slot.resource_id for slot in canonical_slots} | {rev.resource_id for rev in canonical_revisions}
-            model_disabled = any((resource := db.get(ModelResource, ident, populate_existing=True)) is None or resource.status != 'ACTIVE' or resource.visibility != 'PLATFORM' for ident in resource_ids)
-            if model_disabled or connection is None or not connection.enabled:
+            if not _connection_available(db, run.connection_id, job.project_id):
                 db.commit()
                 self._finish(run_id, item_id, owner, generation, "FAILED", "接口连接已停用，已阻止新请求")
                 return
@@ -869,17 +891,18 @@ class AsrWorker:
                 db.commit()
                 self._finish(run_id, item_id, owner, generation, "FAILED", "加密的执行快照无法读取")
                 return
-            if submitting:
-                # 结束领取事务，避免在模型接口响应期间持有批次工作项的数据库事务。
+            db.commit()
+            with asr_request_slot(db.get_bind()):
+                action = _remote_action(db, AsrWorkItem, item_id, run, owner, generation, submitting)
+                if action is None:
+                    return
+                submitting = action == "SUBMIT"
                 db.commit()
-                with asr_request_slot(db.get_bind()):
+                if submitting:
                     response = self._provider.submit(
                         db, project_id=job.project_id, execution=execution, idempotency_key=run.idempotency_key,
                     )
-            else:
-                # 轮询前同样释放 ASR 工作项读取事务；共享出站策略仍在每次请求前复核白名单。
-                db.commit()
-                with asr_request_slot(db.get_bind()):
+                else:
                     response = self._provider.poll(
                         db, project_id=job.project_id, execution=execution, remote_task_id=run.remote_task_id,
                     )
@@ -887,7 +910,8 @@ class AsrWorker:
             db.rollback()
             db.expire_all()
             # HTTP 请求期间没有行锁；写回前必须验证租约代次，旧 Worker 不可覆盖新结果。
-            if not self._owns(db, item_id, owner, generation):
+            work = _owned_item(db, AsrWorkItem, item_id, run_id, owner, generation)
+            if work is None:
                 return
             if response.get("response_capture") is not None:
                 # 响应在短事务中持久化后再次检查租约；提交事务期间旧 Worker 可能已失去所有权。
@@ -899,14 +923,15 @@ class AsrWorker:
                     current.remote_task_id = response["remote_task_id"]
                     db.commit()
                     db.expire_all()
-                    if not self._owns(db, item_id, owner, generation):
+                    if _owned_item(db, AsrWorkItem, item_id, run_id, owner, generation) is None:
                         return
                     current = db.get(AsrModelRun, run_id)
                     if current is None:
                         return
                 save_provider_response(db, current, response["response_kind"], response["response_capture"])
                 db.expire_all()
-                if not self._owns(db, item_id, owner, generation):
+                work = _owned_item(db, AsrWorkItem, item_id, run_id, owner, generation)
+                if work is None:
                     return
             if response["state"] == "SUCCEEDED":
                 record_run_result(
@@ -915,19 +940,12 @@ class AsrWorker:
                     commit=False,
                 )
                 # 结果、对比、批次状态与队列完成使用同一事务，失败后工作项仍可恢复。
-                deleted = db.query(AsrWorkItem).filter(
-                    AsrWorkItem.id == item_id, AsrWorkItem.lease_owner == owner,
-                    AsrWorkItem.lease_generation == generation,
-                ).delete(synchronize_session=False)
-                if deleted != 1:
-                    db.rollback()
-                    return
+                db.delete(work)
                 db.commit()
             else:
                 current = db.get(AsrModelRun, run_id)
-                work = db.get(AsrWorkItem, item_id)
                 job = db.get(AsrJob, current.job_id) if current else None
-                if current is None or work is None:
+                if current is None:
                     return
                 if submitting and response.get("remote_task_id"):
                     current.remote_task_id = response["remote_task_id"]
@@ -977,11 +995,6 @@ class AsrWorker:
         finally:
             db.close()
 
-    def _owns(self, db: Session, item_id: int, owner: str, generation: int) -> bool:
-        """检查当前数据库租约所有者与代次是否仍匹配。"""
-        row = db.get(AsrWorkItem, item_id)
-        return bool(row and row.lease_owner == owner and row.lease_generation == generation)
-
     def _finish(
         self, run_id: int, item_id: int, owner: str, generation: int,
         status: str, message: str,
@@ -989,10 +1002,7 @@ class AsrWorker:
         """栅栏校验后结束运行并删除其工作项，保留待核实状态。"""
         db = SessionLocal()
         try:
-            item = db.query(AsrWorkItem).filter(
-                AsrWorkItem.id == item_id, AsrWorkItem.lease_owner == owner,
-                AsrWorkItem.lease_generation == generation,
-            ).with_for_update().first()
+            item = _owned_item(db, AsrWorkItem, item_id, run_id, owner, generation)
             if item is None:
                 return
             record_run_result(db, run_id, status=status, error_message=message, commit=False)
@@ -1012,10 +1022,8 @@ class AsrWorker:
         """保存下一次安全轮询或明确被 429 拒绝的提交时刻，不占用线程 sleep。"""
         db = SessionLocal()
         try:
-            if not self._owns(db, item_id, owner, generation):
-                return
+            item = _owned_item(db, AsrWorkItem, item_id, run_id, owner, generation)
             run = db.get(AsrModelRun, run_id)
-            item = db.get(AsrWorkItem, item_id)
             if run is None or item is None:
                 return
             created_at = _as_utc(run.created_at)

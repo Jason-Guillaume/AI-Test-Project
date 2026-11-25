@@ -13,7 +13,8 @@ from app.core.models.configuration import ModelConfiguration
 def test_member_needs_no_grant_and_disabled_provider_rejected():
     engine = create_engine('sqlite://')
     names = {'user', 'organization', 'organization_member', 'project', 'project_member', 'model_configuration',
-             'model_resource', 'model_revision', 'model_parameter_profile', 'model_default_binding', 'model_resource_grant'}
+             'model_resource', 'model_revision', 'model_parameter_profile', 'model_default_binding',
+             'model_resource_grant', 'model_legacy_binding'}
     # Resolve optional ASR FK tables without creating unrelated domain tables.
     from app.features.asr_evaluation import models
     Base.metadata.create_all(engine, tables=[t for t in Base.metadata.tables.values() if t.name in names])

@@ -566,8 +566,8 @@ export function ModelCenterPage() {
         <Input.Search allowClear value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)} placeholder="搜索名称、供应商、模型标识或适配器" aria-label="搜索模型资源" />
         <Select value={resourceView} onChange={setResourceView} options={[{ value: 'cards', label: '卡片视图' }, { value: 'table', label: '表格视图' }]} aria-label="模型资源视图" />
         <Typography.Text type="secondary">类别、供应商、适配器、能力和任务用途分别记录。仅展示已注册适配器。</Typography.Text>
-        <Space>
-          {isPlatformAdmin && <Space><span>已删除</span><Switch checked={showArchived} onChange={setShowArchived} /></Space>}
+        <Space wrap>
+          {isPlatformAdmin && <Space style={{ whiteSpace: 'nowrap' }}><label htmlFor="show-archived-models">已删除</label><Switch id="show-archived-models" checked={showArchived} onChange={setShowArchived} /></Space>}
           {isPlatformAdmin && <Button onClick={() => { setImportPreview(null); setImportOpen(true); }}>批量导入预检</Button>}
           <Button type="primary" icon={<PlusOutlined />} disabled={!isPlatformAdmin || showArchived} onClick={openCreate}>新增模型资源</Button>
         </Space>
@@ -659,12 +659,12 @@ export function ModelCenterPage() {
         {!revisionTarget && <>
           <Form.Item name="display_name" label="模型名称" rules={[{ required: true }]}><Input maxLength={160} /></Form.Item>
         </>}
-        <Space style={{ display: 'flex' }} align="start">
-          <Form.Item name="provider" label="供应商" rules={[{ required: true }]} style={{ flex: 1 }}>
+        <div className="model-connection-fields">
+          <Form.Item name="provider" label="供应商" rules={[{ required: true }]}>
             <Select options={(catalogQuery.data?.providers || []).concat([{ value: 'custom', label: '其他供应商' }])
               .filter((item, index, all) => all.findIndex((entry) => entry.value === item.value) === index)} />
           </Form.Item>
-          <Form.Item name="adapter_key" label="调用适配器" rules={[{ required: true }]} style={{ flex: 1 }}>
+          <Form.Item name="adapter_key" label="调用适配器" rules={[{ required: true }]}>
             <Select options={adapters.map((item) => ({ value: item.value, label: item.label }))}
               onChange={(adapter) => {
                 if (adapter === 'siliconflow-audio-transcriptions') resourceForm.setFieldsValue({
@@ -676,8 +676,8 @@ export function ModelCenterPage() {
                 else resourceForm.setFieldsValue({ config_json: JSON_CONFIG_EXAMPLES[category], capabilities: category === 'EMBEDDING' ? ['embedding'] : category === 'RERANK' ? ['rerank'] : [] });
               }} />
           </Form.Item>
-          <Form.Item name="model_name" label="厂商模型 ID" rules={[{ required: true }]} style={{ flex: 1 }}><Input /></Form.Item>
-        </Space>
+          <Form.Item name="model_name" label="厂商模型 ID" rules={[{ required: true }]}><Input /></Form.Item>
+        </div>
         <Form.Item name="endpoint" label="服务地址" rules={[{ required: true }]}><Input placeholder="https://..." /></Form.Item>
         <Form.Item name="credential" label="Token / API Key（只写入）" style={{ width: '100%' }}>
           <Input.Password autoComplete="new-password" placeholder="留空表示不设置凭据" style={{ width: '100%' }} />

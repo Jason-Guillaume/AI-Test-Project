@@ -1,5 +1,5 @@
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
-from sqlalchemy.sql import text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy.sql import func, text
 from app.core.database.base import Base
 from app.core.database.soft_delete import SoftDeleteBase
 
@@ -32,6 +32,8 @@ class KnowledgeVersion(Base):
     status = Column(String(20), nullable=False, default='QUEUED')
     error = Column(String(500))
     attempts = Column(Integer, nullable=False, default=0)
+    queued_at = Column(DateTime(timezone=True), server_default=func.now())
+    chunking_version = Column(String(40))
 
 class KnowledgeChunk(Base):
     __tablename__ = 'knowledge_chunk'
@@ -55,8 +57,6 @@ class KnowledgeBinding(Base):
 
 # Index generations are immutable encoding spaces. A project points to one active
 # generation; a second generation can be built without changing query behaviour.
-from sqlalchemy import DateTime
-from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 
 
@@ -110,3 +110,4 @@ class KnowledgeIndexJob(Base):
     lease_token = Column(String(64))
     lease_until = Column(DateTime(timezone=True))
     error = Column(String(200))
+    queued_at = Column(DateTime(timezone=True), server_default=func.now())

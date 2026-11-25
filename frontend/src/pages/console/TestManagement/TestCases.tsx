@@ -1,7 +1,7 @@
 // 用例管理中心。
 // 三个测试方向各自一棵无限级范围树。维度只做筛选，不进入目录。
 // 生成结果先进入审核抽屉，接受后才写入正式用例。AI 执行未开放时详情会明确标出。
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ApiOutlined,
   DesktopOutlined,
@@ -148,7 +148,7 @@ export function ConsoleTestCasesPage() {
   const selectionKey = JSON.stringify([currentProjectId, direction, selectedNodeId, keyword, priority, caseStatus, dimension, sort, order]);
   const [selection, setSelection] = useState<{ key: string; ids: number[] }>({ key: selectionKey, ids: [] });
   const selectedCaseIds = selection.key === selectionKey ? selection.ids : [];
-  const setSelectedCaseIds = (ids: number[]) => setSelection({ key: selectionKey, ids });
+  const setSelectedCaseIds = useCallback((ids: number[]) => setSelection({ key: selectionKey, ids }), [selectionKey]);
   useEffect(() => { setSelection({ key: selectionKey, ids: [] }); }, [selectionKey]);
   const [treeKeyword, setTreeKeyword] = useState('');
   const [onlyWithCases, setOnlyWithCases] = useState(false);
@@ -172,7 +172,7 @@ export function ConsoleTestCasesPage() {
       setSelectedCaseIds([]);
       setSearchParams(next);
     }
-  }, [globalProjectId, setSearchParams]);
+  }, [globalProjectId, setSearchParams, setSelectedCaseIds]);
   useEffect(() => {
     if (globalChange.current) { globalChange.current = false; return; }
     if (requestedProjectId && requestedProjectId !== globalProjectId) {

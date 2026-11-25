@@ -6,10 +6,11 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
-import type { MCPServer } from '@/features/agent-governance/contracts';
+import type { AgentToolDependencies, MCPServer } from '@/features/agent-governance/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { DetailDrawer } from '@/shared/ui/DetailDrawer';
+import { ToolSourceTags } from './DependencyDetails';
 
 export function McpPane() {
   const [searchText, setSearchText] = useState('');
@@ -21,9 +22,10 @@ export function McpPane() {
   const navigate = useNavigate();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const servers = useQuery({ queryKey: ['agent-governance', 'mcp'], queryFn: agentGovernanceApi.mcpServers });
-  const agents = useQuery({ queryKey: ['agent-governance', 'agents'], queryFn: agentGovernanceApi.agents });
+  const agents = useQuery({ queryKey: ['agent-governance', 'tool-dependencies'], queryFn: agentGovernanceApi.toolDependencies });
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['agent-governance', 'mcp'] });
+    queryClient.invalidateQueries({ queryKey: ['agent-governance', 'tool-dependencies'] });
     queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
   };
   const createMutation = useMutation({ mutationFn: agentGovernanceApi.createMcpServer, onSuccess: () => { message.success('MCP 服务已登记'); setCreating(false); invalidate(); }, onError: (e) => message.error(getErrorMessage(e)) });
@@ -69,7 +71,7 @@ export function McpPane() {
     </div>
     {visibleServers.length ? <Row gutter={[12, 12]}>
       {visibleServers.map((server) => {
-        const linkedAgents = agentRows.filter((agent) => agent.tool_keys.some((key) => key.startsWith(`mcp:${server.id}:`)));
+        const linkedAgents = agentRows.filter((agent) => agent.tools.some((tool) => tool.server_id === server.id));
         const connectionLabel = server.connection_status === 'connected' ? '已连接' : server.connection_status === 'error' ? '连接失败' : '未检查';
         const connectionColor = server.connection_status === 'connected' ? 'green' : server.connection_status === 'error' ? 'red' : 'default';
         return <Col xs={24} md={12} xl={8} xxl={6} key={server.id}>
@@ -130,7 +132,7 @@ export function McpPane() {
 
 function McpToolsModal({ server, agents, loading, onCancel, onSave }: {
   server: MCPServer | null;
-  agents: Array<{ id: number; name: string; tool_keys: string[] }>;
+  agents: AgentToolDependencies[];
   loading: boolean;
   onCancel: () => void;
   onSave: (names: string[]) => void;
@@ -142,7 +144,7 @@ function McpToolsModal({ server, agents, loading, onCancel, onSave }: {
     setSelected(server?.approved_tools_json ?? []);
     setDirty(false);
   }, [server]);
-  const linkedAgents = server ? agents.filter((agent) => agent.tool_keys.some((key) => key.startsWith(`mcp:${server.id}:`))) : [];
+  const linkedAgents = server ? agents.filter((agent) => agent.tools.some((tool) => tool.server_id === server.id)) : [];
   const requestClose = () => {
     if (!dirty) { onCancel(); return; }
     modal.confirm({
@@ -170,7 +172,9 @@ function McpToolsModal({ server, agents, loading, onCancel, onSave }: {
         </> },
         { key: 'agents', label: `Agent 关联（${linkedAgents.length}）`, children: linkedAgents.length
           ? <Space direction="vertical" style={{ width: '100%' }}>{linkedAgents.map((agent) => <Card size="small" key={agent.id} title={agent.name}>
-            <Space wrap>{agent.tool_keys.filter((key) => key.startsWith(`mcp:${server.id}:`)).map((key) => <Tag key={key}>{key.slice(`mcp:${server.id}:`.length)}</Tag>)}</Space>
+            <Space direction="vertical" style={{ width: '100%' }}>{agent.tools.filter((tool) => tool.server_id === server.id).map((tool) => <div key={tool.key}>
+              <Typography.Paragraph strong>{tool.key.slice(`mcp:${server.id}:`.length)}</Typography.Paragraph><ToolSourceTags path={tool} />
+            </div>)}</Space>
           </Card>)}</Space>
           : <EmptyState description="尚无 Agent 绑定此服务的工具" /> },
       ]} />

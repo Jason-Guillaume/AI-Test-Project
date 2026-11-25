@@ -101,7 +101,7 @@ const routeLimit = process.env.E2E_ROUTE_UNTIL ? ROUTES.indexOf(process.env.E2E_
 const ROUTES_TO_CHECK = process.env.E2E_ROUTE_ONLY
   ? [process.env.E2E_ROUTE_ONLY]
   : routeLimit >= 0 ? ROUTES.slice(0, routeLimit + 1) : ROUTES;
-const VIEWPORTS_TO_CHECK = process.env.E2E_VIEWPORT_ONLY
+const VIEWPORTS = process.env.E2E_VIEWPORT_ONLY
   ? [{ width: 390, height: 844, label: '390×844' }]
   : [
     { width: 1920, height: 1080, label: '1920×1080' },
@@ -111,6 +111,8 @@ const VIEWPORTS_TO_CHECK = process.env.E2E_VIEWPORT_ONLY
     { width: 768, height: 1024, label: '768×1024' },
     { width: 390, height: 844, label: '390×844' },
   ];
+const viewportWidths = process.env.E2E_VIEWPORT_WIDTHS?.split(',').map(Number);
+const VIEWPORTS_TO_CHECK = viewportWidths ? VIEWPORTS.filter((viewport) => viewportWidths.includes(viewport.width)) : VIEWPORTS;
 
 test('all registered business routes render without page-level horizontal overflow', async ({ page }) => {
   test.setTimeout(480_000);

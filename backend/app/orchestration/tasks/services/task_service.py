@@ -389,9 +389,10 @@ class TaskService:
 
     def trace_timeline(
         self, db: Session, run_id: int, user: User, *, cursor: str | None = None, limit: int = 100,
+        event_id: int | None = None,
     ) -> dict[str, Any]:
         """兼容入口：委托 Trace 只读索引查询，不复制 Langfuse 正文。"""
-        return TaskQueryService.trace_timeline(db, run_id, user, cursor=cursor, limit=limit)
+        return TaskQueryService.trace_timeline(db, run_id, user, cursor=cursor, limit=limit, event_id=event_id)
 
     def replay_trace_projections(self, db: Session, run_id: int, user: User) -> dict[str, int]:
         """Requeue failed Trace projections through the existing project write permission."""

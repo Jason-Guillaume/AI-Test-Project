@@ -1,5 +1,6 @@
 import { api } from '@/shared/api/client';
 import type { AgentDefinition, AgentDefinitionInput, AgentDefinitionPatch, AgentRuntimeOverview, SkillDefinition, SkillInput, SkillPatch, MCPServer, MCPServerInput, MCPServerPatch, GovernanceTool, GovernanceToolUpdate, SkillUsage, WorkflowTemplate, DefinitionVersion } from '../contracts';
+import type { AgentEffectiveConfiguration, AgentToolDependencies } from '../contracts';
 
 
 
@@ -10,6 +11,9 @@ export const agentGovernanceApi = {
   invokeEvaluation: (id: number, key: string, project_id: number, args: Record<string, unknown>) => api.post<unknown>(`/agent-governance/agents/${id}/evaluation-tools/${encodeURIComponent(key)}/invoke`, { project_id, arguments: args }),
   workflows: () => api.get<WorkflowTemplate[]>('/agent-governance/workflows'),
   tools: () => api.get<GovernanceTool[]>('/agent-governance/tools'),
+  toolDependencies: () => api.get<AgentToolDependencies[]>('/agent-governance/tool-dependencies'),
+  effectiveConfig: (id: number, projectId: number, parentId?: number) => api.get<AgentEffectiveConfiguration>(
+    `/agent-governance/agents/${id}/effective-config`, { params: { project_id: projectId, parent_id: parentId } }),
   updateTool: (key: string, body: GovernanceToolUpdate) => api.put<GovernanceTool>(`/agent-governance/tools/${encodeURIComponent(key)}`, body),
   restoreToolDefaults: (key: string) => api.post<GovernanceTool>(`/agent-governance/tools/${encodeURIComponent(key)}/restore-defaults`),
   agents: () => api.get<AgentDefinition[]>('/agent-governance/agents'),

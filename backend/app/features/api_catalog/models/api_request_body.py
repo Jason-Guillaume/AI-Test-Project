@@ -17,7 +17,7 @@ class ApiRequestBody(Base):
     """接口请求体（与接口一对一）。"""
 
     __tablename__ = "api_request_body"
-    __table_args__ = ({"comment": "接口请求体（json/form/multipart/raw）"},)
+    __table_args__ = ({"info": {"is_view": True}, "comment": "接口请求体（json/form/multipart/raw）"},)
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     interface_id = Column(

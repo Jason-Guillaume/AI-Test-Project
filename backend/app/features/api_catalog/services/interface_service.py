@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_module import ApiModule
@@ -83,7 +84,7 @@ def list_interfaces(db: Session,
         if status not in API_STATUSES:
             raise bad_request("接口状态取值非法")
         query = query.filter(ApiInterface.status == status)
-    total = int(query.count())
+    total = query.with_entities(func.count(ApiInterface.id)).scalar()
     items = (
         query.order_by(ApiInterface.id.desc())
         .offset((page - 1) * page_size)

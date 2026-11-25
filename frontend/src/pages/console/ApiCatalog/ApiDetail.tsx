@@ -35,7 +35,7 @@ export function ApiDetail({
   });
 
   if (apiId == null) {
-    return <EmptyState description="请在左侧选择一个接口" />;
+    return <EmptyState description="从接口列表中选择一个接口" />;
   }
   if (detailQuery.isPending) return <LoadingState />;
   if (detailQuery.isError)

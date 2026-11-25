@@ -21,6 +21,7 @@ from app.core.models.identity import User
 from app.core.security.crypto import decrypt_secret, encrypt_secret
 from app.core.security.roles import PROJECT_ROLE_EDITOR, has_project_role, project_role_for
 from app.platform.projects.services.access_service import get_project_or_404, require_writable_project
+from app.platform.model_configuration.services.legacy_bindings import mark_managed_connection_insert
 from app.platform.model_configuration.services.model_center_service import (
     resolve_task_slots, sync_legacy_asr_connection, sync_legacy_asr_parameter_set,
 )
@@ -386,6 +387,7 @@ def create_connections(db: Session, body: ConnectionCreate, actor: User) -> dict
         secret_ciphertext=encrypt_secret(body.secret) if body.secret else (latest.secret_ciphertext if latest else None),
         secret_header=body.secret_header or (latest.secret_header if latest else None), created_by=actor.id,
     )
+    mark_managed_connection_insert(db, row)
     db.add(row)
     db.flush()
     sync_legacy_asr_connection(db, row)

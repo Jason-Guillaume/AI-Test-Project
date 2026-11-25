@@ -61,5 +61,6 @@ def test_agent_memories_are_versioned_scoped_and_expirable(api, admin, db):
     )
     assert expired.status_code == 200, expired.text
     assert expired.json()["status"] == "EXPIRED"
+    assert retrieve_agent_memories(db, project_id, agent_id, "退款") == []
     listed = api.get(path.rsplit("/", 1)[0], username=admin).json()["items"]
     assert len(listed) == 1 and listed[0]["status"] == "EXPIRED"

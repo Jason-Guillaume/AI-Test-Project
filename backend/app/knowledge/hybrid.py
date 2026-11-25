@@ -5,30 +5,30 @@ from types import SimpleNamespace
 from sqlalchemy.orm import Session
 
 from app.knowledge.indexing import retrieval_connection
-from app.knowledge.models import KnowledgeChunk, KnowledgeIndexGeneration, KnowledgeRetrievalConfig, KnowledgeVector
+from app.knowledge.models import KnowledgeChunk, KnowledgeIndexGeneration, KnowledgeVector
 from app.knowledge.providers import embed, rerank
 
 
-def vector_candidates(db, project_id, version_ids, query, top_k):
-    # Do not commit or roll back the caller's task transaction around I/O.
-    with Session(bind=db.get_bind(), expire_on_commit=False) as isolated:
-        return _vector_candidates(isolated, project_id, version_ids, query, top_k)
-
-
-def _vector_candidates(db, project_id, version_ids, query, top_k):
-    started = time.monotonic()
-    row = db.get(KnowledgeRetrievalConfig, project_id)
-    if not row or not row.enabled or not row.active_generation_id:
+def vector_candidates(db, project_id, version_ids, query, settings):
+    if not settings or not settings.enabled or not settings.active_generation_id:
         return None, None, 'UNCONFIGURED', 0
     # One search uses a consistent config snapshot even if an administrator
     # switches generations while the query embedding request is in flight.
-    config = SimpleNamespace(**{key: getattr(row, key) for key in (
-        'active_generation_id', 'rerank_revision_id', 'bm25_candidates', 'vector_candidates',
+    config = SimpleNamespace(**{key: getattr(settings, key) for key in (
+        'active_generation_id', 'rerank_revision_id', 'vector_candidates',
         'rerank_window', 'timeout_seconds', 'fusion_min_score', 'rerank_min_score',
     )})
+    # Do not commit or roll back the caller's task transaction around I/O.
+    with Session(bind=db.get_bind(), expire_on_commit=False) as isolated:
+        return _vector_candidates(isolated, project_id, version_ids, query, config)
+
+
+def _vector_candidates(db, project_id, version_ids, query, config):
+    started = time.monotonic()
     generation = db.get(KnowledgeIndexGeneration, config.active_generation_id)
     if not generation or generation.project_id != project_id or generation.state != 'ACTIVE':
         return None, config, 'UNAVAILABLE', 0
+    config.embedding_revision_id = generation.embedding_revision_id
     try:
         available = db.query(KnowledgeVector.id).join(
             KnowledgeChunk, KnowledgeVector.chunk_id == KnowledgeChunk.id,
@@ -38,7 +38,7 @@ def _vector_candidates(db, project_id, version_ids, query, top_k):
             return None, config, 'EMPTY', int((time.monotonic() - started) * 1000)
         connection = retrieval_connection(db, project_id, generation.embedding_revision_id, 'EMBEDDING', timeout=config.timeout_seconds)
         generation_id, dimension, mode, distance = generation.id, generation.dimension, generation.query_input_type, generation.distance
-        cap = max(top_k, config.vector_candidates)
+        cap = config.vector_candidates
         db.commit()
         query_vector = embed(connection, [query], dimension, input_type=mode)[0]
         if distance == 'cosine' and not any(query_vector):

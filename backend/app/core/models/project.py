@@ -8,6 +8,7 @@
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -15,7 +16,9 @@ from sqlalchemy import (
     Integer,
     PrimaryKeyConstraint,
     String,
+    UniqueConstraint,
 )
+from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
@@ -26,7 +29,34 @@ class Project(SoftDeleteBase):
     """测试项目及负责人信息。"""
 
     __tablename__ = "project"
-    __table_args__ = {"comment": "测试项目及负责人信息"}
+    __table_args__ = (
+        CheckConstraint(
+            "(security_setting_id IS NULL AND security_allow_dev IS NULL AND security_allow_test IS NULL "
+            "AND security_allow_staging IS NULL AND security_allow_production IS NULL AND "
+            "security_updated_by IS NULL AND security_created_at IS NULL AND security_updated_at IS NULL "
+            "AND security_revision IS NULL) OR (security_setting_id IS NOT NULL AND security_allow_dev IS "
+            "NOT NULL AND security_allow_test IS NOT NULL AND security_allow_staging IS NOT NULL AND "
+            "security_allow_production IS NOT NULL AND security_created_at IS NOT NULL AND "
+            "security_updated_at IS NOT NULL AND security_revision IS NOT NULL)",
+            name="ck_security_project_setting_presence",
+        ),
+        UniqueConstraint("security_setting_id", name="uq_project_security_setting_id"),
+        {"comment": "测试项目及负责人信息"},
+    )
+
+    # 列表只加载父记录，详情按需读取这一组扩展字段。
+    security_setting_id = deferred(Column(Integer), group="security")
+    security_allow_dev = deferred(Column(Boolean), group="security")
+    security_allow_test = deferred(Column(Boolean), group="security")
+    security_allow_staging = deferred(Column(Boolean), group="security")
+    security_allow_production = deferred(Column(Boolean), group="security")
+    security_updated_by = deferred(
+        Column(Integer, ForeignKey("user.id", name="fk_project_security_updated_by", ondelete="SET NULL")),
+        group="security",
+    )
+    security_created_at = deferred(Column(DateTime), group="security")
+    security_updated_at = deferred(Column(DateTime), group="security")
+    security_revision = deferred(Column(Integer), group="security")
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     name = Column(String(100), unique=True, nullable=False, index=True, comment="项目名称")

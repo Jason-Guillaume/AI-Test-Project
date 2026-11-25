@@ -9,7 +9,9 @@ type Config = { enabled: boolean; active_generation_id: number | null; rerank_re
   fusion_min_score?: number | null; rerank_min_score?: number | null };
 type Generation = { id: number; embedding_revision_id: number; dimension: number; distance: string;
   encoding_version: string; state: string; vector_count: number; covered_count: number; eligible_count: number; jobs: Record<string, number> };
-type State = { config: Config | null; generations: Generation[] };
+type Queue = { queued_count: number; oldest_wait_seconds: number | null; unknown_age_count: number;
+  expired_lease_count?: number; oldest_expired_seconds?: number | null };
+type State = { config: Config | null; generations: Generation[]; queues?: { parse: Queue; vector: Queue } };
 type GenerationForm = { embedding_revision_id: number; dimension: number; distance: string; encoding_version: string;
   document_input_type?: string; query_input_type?: string };
 
@@ -33,9 +35,18 @@ export function KnowledgeRetrieval({ projectId }: { projectId: number }) {
     try { await work(); message.success('已保存'); await client.invalidateQueries({ queryKey: ['retrieval-config', projectId] }); }
     catch (error) { message.error(getErrorMessage(error, '操作失败')); }
   };
-  return <Card title="混合检索配置" style={{ marginTop: 16 }}>
+  return <Card title="索引与模型" style={{ marginTop: 16 }}>
     <Alert type="info" showIcon message="先在模型中心配置并诊断检索模型；新索引代完成回填并验证后切换。旧代继续追平，可用于回滚。" />
-    {state.isError && <Alert type="error" message={getErrorMessage(state.error, '检索配置加载失败')} />}
+    {state.isError && <Alert type="error" message={getErrorMessage(state.error, '检索配置加载失败')}
+      action={<Button size="small" onClick={() => state.refetch()}>重试</Button>} />}
+    <Space wrap style={{ marginTop: 12 }}>
+      {(['parse', 'vector'] as const).map((kind) => {
+        const queue = state.data?.queues?.[kind];
+        return <div key={kind}>{kind === 'parse' ? '解析队列' : '向量队列'} {queue ? `${queue.queued_count} 项` : '未知'}
+          {queue && queue.queued_count > 0 && ` · 最久等待 ${queue.oldest_wait_seconds == null ? '未知' : `${queue.oldest_wait_seconds} 秒`}`}
+          {Boolean(queue?.expired_lease_count) && ` · 待回收 ${queue?.expired_lease_count} 项，最久过期 ${queue?.oldest_expired_seconds ?? '未知'} 秒`}</div>;
+      })}
+    </Space>
     <Form form={settings} layout="vertical" onFinish={(values) => run(() => api.put(`${root}/knowledge-retrieval-config`, values))}>
       <Space wrap align="start" style={{ marginTop: 12 }}>
         <Form.Item name="enabled" label="启用混合检索" valuePropName="checked"><Switch /></Form.Item>
@@ -65,17 +76,22 @@ export function KnowledgeRetrieval({ projectId }: { projectId: number }) {
       </Space>
       <Button htmlType="submit" type="primary">创建索引代并回填</Button>
     </Form>
-    <Table<Generation> style={{ marginTop: 16 }} rowKey="id" size="small" pagination={false} dataSource={state.data?.generations || []}
+    <Table<Generation> style={{ marginTop: 16 }} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }}
+      loading={state.isLoading} dataSource={state.data?.generations || []}
       columns={[
         { title: '索引代', dataIndex: 'id' }, { title: '模型修订', dataIndex: 'embedding_revision_id' },
         { title: '维度', dataIndex: 'dimension' }, { title: '距离', dataIndex: 'distance' },
         { title: '编码版本', dataIndex: 'encoding_version' }, { title: '状态', dataIndex: 'state' },
         { title: '向量数', dataIndex: 'vector_count' },
-        { title: '覆盖', render: (_, row) => `${row.covered_count} / ${row.eligible_count}` },
+        { title: '向量覆盖', render: (_, row) => `${row.covered_count} / ${row.eligible_count}` },
         { title: '任务', render: (_, row) => Object.entries(row.jobs).map(([key, value]) => `${key}: ${value}`).join(' / ') || '无' },
-        { title: '操作', render: (_, row) => <Space wrap>{['backfill', 'retry', 'activate'].map((action) =>
+        { title: '操作', render: (_, row) => <Space wrap>{['backfill', 'retry'].map((action) =>
           <Button key={action} size="small" disabled={row.state === 'RETIRED'} onClick={() => run(() => api.post(`${root}/knowledge-index-generations/${row.id}/commands`, { action }))}>
-            {{ backfill: '补齐', retry: '重试失败', activate: '切换 / 回滚' }[action]}</Button>)}
+            {{ backfill: '补齐', retry: '重试失败' }[action]}</Button>)}
+          <Button size="small" disabled={row.state === 'RETIRED' || row.state === 'ACTIVE'} onClick={() => modal.confirm({
+            title: `切换到索引代 #${row.id}？`, content: '确认前请核对向量覆盖和同题评测结果。', okText: '确认切换', cancelText: '取消',
+            onOk: () => run(() => api.post(`${root}/knowledge-index-generations/${row.id}/commands`, { action: 'activate' })),
+          })}>切换 / 回滚</Button>
           {(row.state === 'BUILDING' || row.state === 'STANDBY') && <Button danger size="small" onClick={() => modal.confirm({
             title: `退役索引代 #${row.id}？`, content: '退役后该索引代不能再用于切换或回滚，未完成的向量任务将停止。',
             okText: '退役', cancelText: '取消', okButtonProps: { danger: true },

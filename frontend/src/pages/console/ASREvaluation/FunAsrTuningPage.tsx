@@ -346,8 +346,8 @@ export function FunAsrTuningPage() {
     { title: '状态', dataIndex: 'status', key: 'status', render: statusTag },
     { title: '轮次', dataIndex: 'current_round', key: 'round', width: 90, render: (value, row) => `${value} / ${row.total_rounds || '—'}` },
     { title: '进度', key: 'progress', render: (_value, row) => `${row.completed_items}/${row.total_items} 项` },
-    { title: '最佳微平均 CER', dataIndex: 'best_micro_cer', key: 'cer', render: (value) => value == null ? '—' : Number(value).toFixed(4) },
-    { title: 'ASR / AI 用量', key: 'usage', render: (_value, row) => `${row.asr_requests_used}/${row.max_asr_requests} · ${row.ai_calls_used}/${row.max_ai_calls}` },
+    { title: '最佳微平均 CER', dataIndex: 'best_micro_cer', key: 'cer', width: 144, render: (value) => value == null ? '—' : Number(value).toFixed(4) },
+    { title: 'ASR / AI 用量', key: 'usage', width: 140, render: (_value, row) => `${row.asr_requests_used}/${row.max_asr_requests} · ${row.ai_calls_used}/${row.max_ai_calls}` },
     { title: '操作', key: 'action', width: 130, render: (_value, row) => <Button size="small" onClick={() => void openTuningSession(row.id)}>查看详情</Button> },
   ];
 
@@ -527,7 +527,7 @@ export function FunAsrTuningPage() {
 
       <Card title="4. 后台任务与轮次结果">
         {sessionsError && <Alert type="warning" showIcon message="后台任务列表读取失败" description={sessionsError} action={<Button size="small" onClick={() => void loadSessions()}>重试</Button>} style={{ marginBottom: 12 }} />}
-        <Table rowKey="id" size="small" dataSource={sessions} columns={sessionColumns} pagination={{ pageSize: 8 }}
+        <Table rowKey="id" size="small" dataSource={sessions} columns={sessionColumns} scroll={{ x: 800 }} pagination={{ pageSize: 8 }}
           loading={sessionsLoading}
           rowClassName={(row) => row.id === selectedSession?.id ? 'ant-table-row-selected' : ''}
           locale={{ emptyText: '尚无 FunASR AI 分析任务。' }} />

@@ -19,7 +19,7 @@ class ApiParameter(Base):
     __tablename__ = "api_parameter"
     __table_args__ = (
         Index("ix_api_parameter_interface_location", "interface_id", "location"),
-        {"comment": "接口请求参数（PATH/QUERY/HEADER/COOKIE/BODY）"},
+        {"info": {"is_view": True}, "comment": "接口请求参数（PATH/QUERY/HEADER/COOKIE/BODY）"},
     )
     # (interface_id, location) 复合索引：按接口分组、按参数位置过滤是详情页主查询形状。
 

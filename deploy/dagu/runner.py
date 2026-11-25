@@ -135,7 +135,7 @@ def _append_log(log_path: Path, chunk: bytes) -> None:
 
 def _run_command(
     args: list[str], *, cwd: Path, env: dict[str, str], log_path: Path,
-    timeout_seconds: int, label: str,
+    timeout_seconds: int, label: str, honor_stop: bool = True,
 ) -> int:
     """以参数数组运行子进程、实时保存有界日志，并在超时或终止信号时结束整个进程组。"""
     global STOP_SIGNAL
@@ -153,7 +153,7 @@ def _run_command(
     selector.register(process.stdout, selectors.EVENT_READ)
     deadline = time.monotonic() + timeout_seconds
     while True:
-        if STOP_SIGNAL is not None:
+        if honor_stop and STOP_SIGNAL is not None:
             stop_code = 128 + STOP_SIGNAL
             _append_log(log_path, f"收到停止信号 {STOP_SIGNAL}，正在结束 {label}\n".encode())
             break
@@ -311,9 +311,27 @@ def _cached_python(repo_dir: Path, log_path: Path, env: dict[str, str]) -> tuple
     lock_file = lock_path.open("a+b")
     try:
         os.chmod(lock_path, 0o600)
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        if cache_python.is_file() and (venv_dir / ".ready").is_file():
-            os.utime(venv_dir / ".ready", None)
+        ready = venv_dir / ".ready"
+        while True:
+            if STOP_SIGNAL is not None:
+                raise RuntimeError("等待依赖环境时收到停止信号")
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                time.sleep(0.1)
+                continue
+            if cache_python.is_file() and ready.is_file():
+                os.utime(ready, None)
+                return cache_python, lock_file
+            # Competing cold starts must recheck readiness as readers after construction.
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                time.sleep(0.1)
+                continue
+            if not (cache_python.is_file() and ready.is_file()):
+                break
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_SH)
             return cache_python, lock_file
         staging = CACHE_ROOT / "venvs" / f".{cache_key}.{os.getpid()}.tmp"
@@ -350,9 +368,32 @@ def _cached_python(repo_dir: Path, log_path: Path, env: dict[str, str]) -> tuple
         raise
 
 
-def _set_status(status: str) -> None:
-    """记录当前运行的最终平台状态，供签名回调元数据使用。"""
-    os.environ["AUTOMATION_STATUS"] = status
+def _deliver_result(work_dir: Path, callback_script: Path, env: dict[str, str]) -> int:
+    """Deliver a completed run once and return its original execution result on replay."""
+    with (work_dir / ".callback.lock").open("a+b") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        result = json.loads((work_dir / ".result.json").read_text(encoding="utf-8"))
+        exit_code = int(result["exit_code"])
+        marker = work_dir / ".callback-ok"
+        if marker.is_file():
+            return exit_code
+        upload_env = {
+            **env,
+            "AUTOMATION_STATUS": result["status"],
+            "AUTOMATION_START_MS": str(result["started_ms"]),
+            "AUTOMATION_FINISH_MS": str(result["finished_ms"]),
+            "GIT_COMMIT": result["git_commit"],
+        }
+        upload_code = _run_command(
+            [sys.executable, str(callback_script), "upload"], cwd=work_dir, env=upload_env,
+            log_path=work_dir / "run.log", timeout_seconds=120,
+            label="签名上传 Allure 与运行状态", honor_stop=False,
+        )
+        if upload_code:
+            _append_log(work_dir / "run.log", "回调未确认；重试本次运行可补传。\n".encode())
+            return exit_code or 1
+        marker.touch(mode=0o600)
+        return exit_code
 
 
 def main() -> int:
@@ -389,15 +430,8 @@ def main() -> int:
     _cleanup_expired_runs(RUN_ROOT)
     run_key = hashlib.sha256(dag_run_id.encode("utf-8")).hexdigest()[:12]
     work_dir = RUN_ROOT / f"{execution_id}-{run_key}"
-    if work_dir.exists():
-        if (work_dir / ".callback-ok").is_file():
-            print("本次 Dagu Run 已成功回调，按幂等语义跳过重复处理。")
-            return 0
-        raise RuntimeError(f"发现未完成的工作目录，保留现场以供恢复：{work_dir}")
-    work_dir.mkdir(mode=0o700)
     repo_dir = work_dir / "repository"
     log_path = work_dir / "run.log"
-    log_path.touch(mode=0o600)
     callback_env.update({
         "AUTOMATION_LOG_FILE": str(log_path),
         "AUTOMATION_REPORT_ARCHIVE": str(work_dir / "allure-report.zip"),
@@ -405,7 +439,6 @@ def main() -> int:
         "AUTOMATION_REPORT_DIR": str(repo_dir / "allure-report"),
     })
     temp_root = work_dir / "tmp"
-    temp_root.mkdir(mode=0o700)
     env = {
         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
         "HOME": str(work_dir),
@@ -431,6 +464,13 @@ def main() -> int:
     })
     signal.signal(signal.SIGTERM, lambda signum, _frame: _record_signal(signum))
     signal.signal(signal.SIGINT, lambda signum, _frame: _record_signal(signum))
+    if work_dir.exists():
+        if (work_dir / ".result.json").is_file():
+            return _deliver_result(work_dir, callback_script, {**env, **callback_env, "AUTOMATION_CALLBACK_REPLAY": "1"})
+        raise RuntimeError(f"运行目录缺少可恢复的执行结果，请核对原运行：{work_dir}")
+    work_dir.mkdir(mode=0o700)
+    log_path.touch(mode=0o600)
+    temp_root.mkdir(mode=0o700)
     result_code = 0
     status = "FAILED"
     cache_lock: BinaryIO | None = None
@@ -500,7 +540,6 @@ def main() -> int:
         try:
             if STOP_SIGNAL is not None and status not in {"TIMEOUT", "CANCELLED"}:
                 status = "CANCELLED"
-            _set_status(status)
             allure_results = repo_dir / "allure-results"
             allure_report = repo_dir / "allure-report"
             if allure_results.is_dir() and any(allure_results.iterdir()):
@@ -524,7 +563,6 @@ def main() -> int:
                 if status not in {"CANCELLED", "TIMEOUT"}:
                     status = "FAILED"
                     result_code = result_code or 1
-            _set_status(status)
 
             if allure_results.is_dir() and any(allure_results.iterdir()):
                 if not _make_archive(allure_results, work_dir / "allure-results.zip"):
@@ -538,40 +576,25 @@ def main() -> int:
                     _append_log(log_path, "Allure HTML 压缩包校验失败。\n".encode("utf-8"))
                     if status not in {"CANCELLED", "TIMEOUT"}:
                         status = "FAILED"
-                    _set_status(status)
                     result_code = result_code or 1
             elif status not in {"CANCELLED", "TIMEOUT"}:
                 _append_log(log_path, "Allure HTML 报告缺少有效的 index.html。\n".encode("utf-8"))
                 status = "FAILED"
                 result_code = result_code or 1
 
-            upload_env = {**env, **callback_env}
-            upload_env.update({
-                "AUTOMATION_STATUS": status,
-                "AUTOMATION_LOG_FILE": str(log_path),
-                "AUTOMATION_REPORT_ARCHIVE": str(work_dir / "allure-report.zip"),
-                "AUTOMATION_RESULTS_ARCHIVE": str(work_dir / "allure-results.zip"),
-                "AUTOMATION_REPORT_DIR": str(allure_report),
-                "AUTOMATION_START_MS": callback_env["AUTOMATION_START_MS"],
-                "AUTOMATION_EXECUTION_ID": execution_id,
-                "AUTOMATION_PROJECT_ID": project_id,
-                "AUTOMATION_PROVIDER_TYPE": "DAGU",
-                "AUTOMATION_PIPELINE_ID": callback_env["AUTOMATION_PIPELINE_ID"],
-                "DAG_RUN_ID": dag_run_id,
-                "BRANCH_NAME": branch,
-                "TEST_ENV": callback_env["TEST_ENV"],
-                "GIT_COMMIT": callback_env.get("GIT_COMMIT", ""),
-            })
-            upload_code = _run_command(
-                [sys.executable, str(callback_script), "upload"], cwd=work_dir, env=upload_env,
-                log_path=log_path, timeout_seconds=120, label="签名上传 Allure 与运行状态",
-            )
-            if upload_code == 0:
-                (work_dir / ".callback-ok").write_text(str(int(time.time())), encoding="utf-8")
-            else:
-                _append_log(log_path, "回调未成功确认；保留工作目录供重试和排查。\n".encode("utf-8"))
-                result_code = result_code or 1
-            print(f"自动化状态：{status}；工作目录：{work_dir}")
+            if STOP_SIGNAL is not None and status != "TIMEOUT":
+                status = "CANCELLED"
+                result_code = 128 + STOP_SIGNAL
+            result = {
+                "status": status, "exit_code": result_code,
+                "started_ms": int(callback_env["AUTOMATION_START_MS"]),
+                "finished_ms": int(time.time() * 1000),
+                "git_commit": callback_env.get("GIT_COMMIT", ""),
+            }
+            staging = work_dir / ".result.tmp"
+            staging.write_text(json.dumps(result), encoding="utf-8")
+            staging.replace(work_dir / ".result.json")
+            result_code = _deliver_result(work_dir, callback_script, {**env, **callback_env})
         finally:
             run_slot.close()
     return result_code

@@ -216,6 +216,11 @@ def test_dispatch_timeout_and_cancel_preserve_intent_in_center_service(api, db, 
 
     row_pending = db.get(AutomationExecution, pending_id)
     assert row_pending.dispatch_state == "PENDING"
+    assert row_pending.next_dispatch_at > datetime.now()
+    service = AutomationCenterService()
+    service.poll(db)
+    db.refresh(row_pending)
+    assert row_pending.dispatch_attempts == 1
     row_pending.timeout_at = datetime.now() - timedelta(minutes=5)
     db.commit()
 
@@ -224,7 +229,17 @@ def test_dispatch_timeout_and_cancel_preserve_intent_in_center_service(api, db, 
     db.expire_all()
     refreshed_pending = db.get(AutomationExecution, pending_id)
     assert refreshed_pending.status == "TIMEOUT"
-    assert refreshed_pending.dispatch_state == "FAILED"
+    assert refreshed_pending.dispatch_state == "RECONCILING"
+    assert refreshed_pending.stop_requested_at is not None
+    assert "远端状态待确认" in refreshed_pending.error_message
+    fake_client.get_run = lambda _name, _run_id: {"dagRunId": _run_id, "statusLabel": "running"}
+    service._sync_one(db, pending_id, force=True)
+    assert refreshed_pending.dispatch_state == "CONFIRMED"
+    assert fake_client.stopped[-1][1] == f"automation-{pending_id}"
+    fake_client.get_run = lambda _name, _run_id: {"dagRunId": _run_id, "statusLabel": "aborted"}
+    service._sync_one(db, pending_id, force=True)
+    assert refreshed_pending.status == "TIMEOUT"
+    assert refreshed_pending.stop_requested_at is None
 
     # Case 2: Cancelled run stays stop_reason='CANCELLED' even if timeout_at passes before Dagu finishes stopping.
     fake_client.get_run = lambda _name, _run_id: {"dagRunId": _run_id, "statusLabel": "running"}
@@ -244,3 +259,27 @@ def test_dispatch_timeout_and_cancel_preserve_intent_in_center_service(api, db, 
     refreshed_cancel = db.get(AutomationExecution, cancel_id)
     assert refreshed_cancel.stop_reason == "CANCELLED"
     assert refreshed_cancel.status != "TIMEOUT"
+
+
+def test_poll_dispatches_due_run_behind_twenty_backed_off_runs(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    engine = create_engine("sqlite://")
+    AutomationExecution.__table__.create(engine)
+    now = datetime.now()
+    with Session(engine) as db:
+        for index in range(21):
+            db.add(AutomationExecution(
+                project_id=1, automation_project_id=1, provider_type="DAGU",
+                dispatch_state="PENDING", status="PENDING", pipeline_run_id=f"automation-{index + 1}",
+                next_dispatch_at=now + timedelta(minutes=1) if index < 20 else None,
+            ))
+        db.commit()
+        service = AutomationCenterService()
+        dispatched = []
+        monkeypatch.setattr(service, "_dispatch_dagu", lambda _db, run_id: dispatched.append(run_id))
+        monkeypatch.setattr(service, "_discover", lambda _db: None)
+        service.poll(db)
+        assert dispatched == [21]
+    engine.dispose()

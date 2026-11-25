@@ -16,7 +16,7 @@ class ApiResponse(Base):
     __tablename__ = "api_response"
     __table_args__ = (
         Index("ix_api_response_interface_status", "interface_id", "status_code"),
-        {"comment": "接口响应（按 HTTP status_code 保存结构）"},
+        {"info": {"is_view": True}, "comment": "接口响应（按 HTTP status_code 保存结构）"},
     )
     # (interface_id, status_code) 复合索引：详情页按状态码定位响应结构。
 

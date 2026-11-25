@@ -1,0 +1,136 @@
+{
+  "date": "2026-11-25",
+  "timezone": "Asia/Shanghai",
+  "baseline": "4881117ed0f45b991af3f6d18d7d11e6d3a8cde5",
+  "build": "SuperAgent 三批改动后的工作树",
+  "browser": "Chromium",
+  "isolation": "临时 PostgreSQL 16 / pgvector，合成数据与本地模型桩",
+  "fixture_sha256": {
+    "frontend/e2e/superagent-optimization.spec.ts": "3b1f6cba4752e065cee8f4182a38e6e958671f8fbe79dcce552cb9ef82ed4ce7",
+    "frontend/e2e/all-routes-responsive.spec.ts": "859f1b3933a13e19211f9470d977d0357b6852e1caf29149feeffa115bcc7d16",
+    "backend/scripts/llm_stub_server.py": "a5f0c33896d3cb9394fd05b7e603d1f2364e04b8b4e0452cf0f789202c55c32f",
+    "docs/superagent-optimization/retrieval-fixture.json": "71b72c807493360838e4175da8d95223f323be3f6fdedab144cbc8272e964b99"
+  },
+  "screenshots": [
+    {
+      "file": "01-agent-scope-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "757fe25022649a22026698c859f699b6d81b0310edc8919595048f7fd8968cd9"
+    },
+    {
+      "file": "01-agent-scope-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "21a94ccbad649461874a68ac623e68d731079770ad36098f6e177a86565165c6"
+    },
+    {
+      "file": "02-agent-search-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "027d527f9d1d398382190c7cd49642f57d00bfcb6c2059057385ce94f666ea8a"
+    },
+    {
+      "file": "02-agent-search-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "ba78d1d8113b83771f79ec229eb8387f16f2e56a8f6d9677df34cba9103aeaa5"
+    },
+    {
+      "file": "03-document-source-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "72e8fa7fe162e9205054d7802efd3f14057419002d86c4277e432ec14bb94242"
+    },
+    {
+      "file": "03-document-source-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "3b46f9afbb4b784b9c46562dca10c4a41fe74cf12356ddb35bad83267679a0c0"
+    },
+    {
+      "file": "04-project-search-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "b6e389a4ef55fd21a865c31aea1781fe491979c5178ee727a34055e0aafe9584"
+    },
+    {
+      "file": "04-project-search-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "bee6a572c2d1277e138b084941c698569e698a056dede0e2cd1d827cb7d4e6dc"
+    },
+    {
+      "file": "05-quality-failure-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "2dbb8ed19a85a9059eced23949781605430016c5b18807b38e9f539edf17c810"
+    },
+    {
+      "file": "05-quality-failure-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "7cdb4bf73d7547ee76e3d6cd710d4cc86a85119a3a829f84bd727404e054fc4d"
+    },
+    {
+      "file": "06-focused-subagent-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "16b12b68db78385e1b13f5e6ab6139b1432782cde52d98e9e7c7c92c7e474fe4"
+    },
+    {
+      "file": "06-focused-subagent-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "8507ebb7c0fc59754ddf6735d81c907e611bbca10035890f3090c946c89aa75c"
+    },
+    {
+      "file": "07-run-retrieval-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "84cbfe6b242926072c5bbec783313b452fd70cc97db49c08d8148700202c0acc"
+    },
+    {
+      "file": "07-run-retrieval-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "8662961eaf714de2ecae3c29bcc17bd5985b7e36eeb4e4822e6ba1ed07c9e20e"
+    },
+    {
+      "file": "08-mcp-dependencies-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "562bab7e25647b6042b841aad48fdf79c326f64776eacd26e5b153d3aeb9ec50"
+    },
+    {
+      "file": "08-mcp-dependencies-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "4addac89387a1605524412dc8b278a7c1efc1d4671cb7f7e469e788d23f01bd0"
+    },
+    {
+      "file": "09-agent-effective-config-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "fbaf5f9db7b8091510c2dffd3168222019c65bf5e94e5b4e6c1afaa0253a082a"
+    },
+    {
+      "file": "09-agent-effective-config-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "19dc359f137e8d8c4d6735f5dd69abd22d6f44e59b0bf26c6bd09490ea1fe204"
+    },
+    {
+      "file": "10-environment-page-201-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "94460f43bcadbfe0c9d6055a7d7e0b900123737cb495977cbb5bad6783a17a12"
+    },
+    {
+      "file": "10-environment-page-201-390x844.png",
+      "width": 390,
+      "height": 844,
+      "sha256": "fb141a4b07ee2e0e7e15e7620070a9f460100068c7c195a05000715b943e0678"
+    }
+  ]
+}

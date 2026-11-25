@@ -1,6 +1,6 @@
 // 平台管理端布局：左侧菜单 + 顶部用户菜单。仅平台管理员可进入。
 // 真正的权限拦截由路由层的 RequireAdmin 完成，本组件只做展示与导航。
-import { Button, Layout, Menu, Dropdown, Avatar, Space, theme } from 'antd';
+import { Button, Layout, Menu, Dropdown, Avatar } from 'antd';
 import {
   AppstoreOutlined,
   CloseOutlined,
@@ -60,7 +60,6 @@ export function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth(); // 当前用户与登出操作
-  const { token: themeToken } = theme.useToken(); // antd 设计令牌，用于边框等主题色
   const [narrowViewport, setNarrowViewport] = useState(isNarrowViewport);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(isNarrowViewport);
 
@@ -80,7 +79,7 @@ export function AdminLayout() {
         key: 'role',
         // 只读项：把角色展示为禁用菜单，提示其不可切换。
         label: (
-          <span style={{ color: themeToken.colorTextDisabled }}>角色</span>
+          <span className="app-user-identity">{user?.username}{user && <PlatformRoleTag role={user.role} />}</span>
         ),
         disabled: true,
       },
@@ -144,21 +143,21 @@ export function AdminLayout() {
             />
             <div className="app-admin-context">平台管理<span>/ 全局治理</span></div>
           </div>
-          <Space size="middle">
+          <div className="app-topbar-actions">
             <Button
               icon={<AppstoreOutlined />}
               onClick={() => navigate('/console')}
             >
               用户工作台
             </Button>
-            <Dropdown menu={userMenu} placement="bottomRight">
-              <Space className="app-user-trigger" style={{ cursor: 'pointer' }}>
+            <Dropdown menu={userMenu} placement="bottomRight" trigger={narrowViewport ? ['click'] : ['hover', 'click']}>
+              <Button type="text" className="app-user-trigger" aria-label={`用户菜单，${user?.username ?? ''}`}>
                 <Avatar size={30} icon={<UserOutlined />} />
-                <span>{user?.username}</span>
-                {user && <PlatformRoleTag role={user.role} />}
-              </Space>
+                <span className="app-user-name">{user?.username}</span>
+                {user && <span className="app-user-role"><PlatformRoleTag role={user.role} /></span>}
+              </Button>
             </Dropdown>
-          </Space>
+          </div>
         </Header>
         <Content className="app-content">
           <RouteErrorBoundary><Outlet /></RouteErrorBoundary>

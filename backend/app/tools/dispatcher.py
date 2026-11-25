@@ -6,15 +6,25 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from inspect import signature
+import logging
 import time
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy import event
+from sqlalchemy.engine import Connection
+from sqlalchemy.orm import Session
+
+from app.core.security.sensitive import is_sensitive_key
 from app.llm.tracing import runtime_call_observation, task_trace_metadata
 from app.orchestration.tasks.services.runtime_fact_service import record_runtime_event
 from app.tools.contracts import ToolCallContext, ToolChannel
 from app.tools.registry import ToolDispatchError, get_binding
+
+_PENDING_EVENTS = 'tool_runtime_events'
+logger = logging.getLogger(__name__)
 
 
 def dispatch_tool(
@@ -38,52 +48,64 @@ def dispatch_tool(
     Raises:
         ToolDispatchError: 键未注册、来源不允许或模型参数试图覆盖可信身份时抛出。
     """
-    binding = get_binding(key, channel=channel)
-    _reject_disabled_tool(key, context)
-    _reject_expired_deadline(context)
-    handler = binding.handler
-    trusted = dict(context.trusted_arguments) if context is not None else {}
-    if context is not None:
-        parameters = signature(handler).parameters
-        if "actor" in parameters and context.actor is not None:
-            trusted.setdefault("actor", context.actor)
-        if "user" in parameters and context.actor is not None:
-            trusted.setdefault("user", context.actor)
-        if "project_id" in parameters and context.project_id is not None:
-            trusted.setdefault("project_id", context.project_id)
-    for name, value in trusted.items():
-        if name in kwargs and kwargs[name] != value:
-            raise ToolDispatchError(f"调用参数不能覆盖服务端上下文：{name}")
-        kwargs[name] = value
     tool_call_id = uuid4().hex
+    started = time.monotonic()
+    trace = task_trace_metadata.get() or {}
+    try:
+        binding = get_binding(key, channel=channel)
+        _reject_disabled_tool(key, context)
+        _reject_expired_deadline(context)
+        handler = binding.handler
+        parameters = signature(handler).parameters
+        trusted = dict(context.trusted_arguments) if context is not None else {}
+        if context is not None:
+            for name, value in (("actor", context.actor), ("user", context.actor), ("project_id", context.project_id)):
+                if name in parameters and value is not None:
+                    trusted.setdefault(name, value)
+        for name, value in trusted.items():
+            if name in kwargs and kwargs[name] != value:
+                raise ToolDispatchError(f"调用参数不能覆盖服务端上下文：{name}", code='TOOL_CONTEXT_OVERRIDE')
+            kwargs[name] = value
+    except ToolDispatchError as exc:
+        record_tool_rejection(key, channel, context, exc.code, call_id=tool_call_id,
+                              duration_ms=int((time.monotonic() - started) * 1000))
+        raise
+    field_names = sorted(name for name in kwargs if name in parameters and not is_sensitive_key(name))
     event_metadata = {
         "tool_call_id": tool_call_id,
         "tool_key": key,
         "channel": channel,
         "task_run_id": context.task_run_id if context else None,
         "attempt_id": context.attempt_id if context else None,
-        "input_field_names": sorted(kwargs),
+        "input_field_names": field_names,
     }
-    started = time.monotonic()
     span_id = None
     try:
         _arm_statement_timeout(context)
         with runtime_call_observation(name="tool.call", metadata=event_metadata) as span:
-            result = handler(*args, **kwargs)
             span_id = getattr(span, "id", None)
+            result = handler(*args, **kwargs)
             if span is not None:
                 span.update(output={"status": "SUCCEEDED", "result_type": type(result).__name__})
     except Exception as exc:
         _record_tool_event(
-            context, task_trace_metadata.get() or {}, tool_call_id, key, channel,
-            sorted(kwargs), "FAILED", type(exc).__name__, int((time.monotonic() - started) * 1000), span_id,
+            context, trace, tool_call_id, key, channel,
+            field_names, "FAILED", type(exc).__name__, int((time.monotonic() - started) * 1000), span_id,
         )
         raise
     _record_tool_event(
-        context, task_trace_metadata.get() or {}, tool_call_id, key, channel,
-        sorted(kwargs), "SUCCEEDED", None, int((time.monotonic() - started) * 1000), span_id,
+        context, trace, tool_call_id, key, channel,
+        field_names, "SUCCEEDED", None, int((time.monotonic() - started) * 1000), span_id,
     )
     return result
+
+
+def record_tool_rejection(key: str, channel: ToolChannel, context: ToolCallContext | None, code: str,
+                          *, call_id: str | None = None, duration_ms: int = 0) -> None:
+    """为真实调度的服务端授权拒绝记一条无输入、无正文的工具事实。"""
+    _record_tool_event(context, task_trace_metadata.get() or {}, call_id or uuid4().hex,
+                       'unregistered' if code == 'TOOL_UNREGISTERED' else key, channel,
+                       [], 'REJECTED', code, duration_ms, None)
 
 
 def _arm_statement_timeout(context: ToolCallContext | None) -> None:
@@ -109,8 +131,6 @@ def _arm_statement_timeout(context: ToolCallContext | None) -> None:
 
 def _reject_expired_deadline(context: ToolCallContext | None) -> None:
     """截止时间已过时不再开始工具调用，避免超时后继续产生副作用。"""
-    from datetime import datetime
-
     db = getattr(context, "db", None) if context is not None else None
     if db is None or context is None or context.task_run_id is None:
         return
@@ -119,12 +139,12 @@ def _reject_expired_deadline(context: ToolCallContext | None) -> None:
     run = db.get(TaskRun, context.task_run_id)
     now = datetime.now()
     if run is not None and run.deadline_at is not None and run.deadline_at <= now:
-        raise ToolDispatchError("任务已超过截止时间，未开始工具调用")
+        raise ToolDispatchError("任务已超过截止时间，未开始工具调用", code='TOOL_RUN_DEADLINE_EXCEEDED')
     if context.attempt_id is None:
         return
     attempt = db.get(TaskAttempt, context.attempt_id)
     if attempt is not None and attempt.deadline_at is not None and attempt.deadline_at <= now:
-        raise ToolDispatchError("本次尝试已超过截止时间，未开始工具调用")
+        raise ToolDispatchError("本次尝试已超过截止时间，未开始工具调用", code='TOOL_ATTEMPT_DEADLINE_EXCEEDED')
 
 
 def _reject_disabled_tool(key: str, context: ToolCallContext | None) -> None:
@@ -136,7 +156,7 @@ def _reject_disabled_tool(key: str, context: ToolCallContext | None) -> None:
 
     override = db.query(ToolDefinitionOverride).filter(ToolDefinitionOverride.tool_key == key).first()
     if override is not None and override.is_enabled is False:
-        raise ToolDispatchError(f"工具已停用：{key}")
+        raise ToolDispatchError(f"工具已停用：{key}", code='TOOL_DISABLED')
 
 
 def _record_tool_event(context, trace_metadata, call_id, key, channel, field_names,
@@ -146,8 +166,7 @@ def _record_tool_event(context, trace_metadata, call_id, key, channel, field_nam
     project_id = get_context_value("project_id") or trace_metadata.get("project_id")
     if project_id is None:
         return
-    record_runtime_event(
-        db=get_context_value("db"),
+    fact = dict(
         event_id=call_id,
         project_id=project_id,
         task_id=get_context_value("task_id") or trace_metadata.get("task_id"),
@@ -166,5 +185,35 @@ def _record_tool_event(context, trace_metadata, call_id, key, channel, field_nam
         status=status,
         error_code=error_code,
         duration_ms=duration_ms,
+        occurred_at=datetime.now(),
         event_metadata={"tool_call_id": call_id, "channel": channel, "input_field_names": field_names},
     )
+    db = get_context_value('db')
+    if isinstance(db, Session):
+        if db.in_transaction():
+            db.info.setdefault(_PENDING_EVENTS, []).append(fact)
+        else:
+            _write_tool_events(db, [fact])
+    else:
+        record_runtime_event(**fact)
+
+
+def _write_tool_events(db: Session, events: list[dict]) -> None:
+    """通过独立事务保存事实，工具副作用的提交结果由调用方决定。"""
+    try:
+        bind = db.get_bind()
+        with Session(bind=bind.engine if isinstance(bind, Connection) else bind) as audit:
+            for fact in events:
+                record_runtime_event(db=audit, **fact)
+            audit.commit()
+    except Exception as exc:  # 审计持久化故障仍保留原工具返回或异常。
+        logger.warning('工具运行事实提交失败 %s', type(exc).__name__)
+
+
+@event.listens_for(Session, 'after_transaction_end')
+def _flush_tool_events(db, transaction) -> None:
+    """等外层事务释放任务、工作项和尝试的行锁，再提交工具事实。"""
+    if transaction.parent is None:
+        pending = db.info.pop(_PENDING_EVENTS, [])
+        if pending:
+            _write_tool_events(db, pending)

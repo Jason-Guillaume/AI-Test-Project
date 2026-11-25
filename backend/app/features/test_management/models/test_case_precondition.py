@@ -18,7 +18,7 @@ class TestCasePrecondition(SoftDeleteBase):
     """测试用例前置条件。"""
 
     __tablename__ = "test_case_precondition"
-    __table_args__ = ({"comment": "测试用例前置条件"},)
+    __table_args__ = ({"info": {"is_view": True}, "comment": "测试用例前置条件"},)
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     test_case_id = Column(

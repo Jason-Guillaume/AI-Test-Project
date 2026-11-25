@@ -6,7 +6,8 @@
 此 Agent 专属数据表由迁移 0007 显式建立；目录迁移保留既有表结构。
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func, text
 
 from app.core.database.base import Base
@@ -18,10 +19,31 @@ class AgentSession(SoftDeleteBase):
 
     __tablename__ = "agent_session"
     __table_args__ = (
+        CheckConstraint(
+            "(summary_version IS NULL AND summary_kind IS NULL AND summary_text IS NULL AND "
+            "summary_source_refs IS NULL AND summary_source_digest IS NULL AND "
+            "summary_source_through_message_id IS NULL AND summary_expires_at IS NULL AND "
+            "summary_created_at IS NULL AND summary_updated_at IS NULL) OR (summary_version IS NOT NULL "
+            "AND summary_kind IS NOT NULL AND summary_text IS NOT NULL AND summary_source_refs IS NOT NULL "
+            "AND summary_source_digest IS NOT NULL AND summary_source_through_message_id IS NOT NULL AND "
+            "summary_created_at IS NOT NULL AND summary_updated_at IS NOT NULL)",
+            name="ck_agent_session_summary_presence",
+        ),
         Index("ix_agent_session_project_status", "project_id", "status"),
         UniqueConstraint("task_run_id", name="uq_agent_session_task_run"),
         {"comment": "Agent 会话：记录项目、用户、工作流阶段及关联任务"},
     )
+
+    # 列表只加载父记录，详情按需读取这一组扩展字段。
+    summary_version = deferred(Column(Integer), group="summary")
+    summary_kind = deferred(Column(String(24)), group="summary")
+    summary_text = deferred(Column(Text), group="summary")
+    summary_source_refs = deferred(Column(JSON(none_as_null=True)), group="summary")
+    summary_source_digest = deferred(Column(String(64)), group="summary")
+    summary_source_through_message_id = deferred(Column(Integer), group="summary")
+    summary_expires_at = deferred(Column(DateTime), group="summary")
+    summary_created_at = deferred(Column(DateTime), group="summary")
+    summary_updated_at = deferred(Column(DateTime), group="summary")
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     project_id = Column(

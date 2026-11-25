@@ -241,7 +241,8 @@ def upload() -> int:
     log_path = Path(os.environ.get("AUTOMATION_LOG_FILE", "run.log"))
     report_dir = Path(os.environ.get("AUTOMATION_REPORT_DIR", "allure-report"))
     started_ms = int(os.environ.get("AUTOMATION_START_MS", "0") or 0)
-    duration = max(0, int(time.time() * 1000) - started_ms) if started_ms else 0
+    finished_ms = int(os.environ.get("AUTOMATION_FINISH_MS") or time.time() * 1000)
+    duration = max(0, finished_ms - started_ms) if started_ms else 0
     provider_type = os.environ.get("AUTOMATION_PROVIDER_TYPE", "YUNXIAO").strip().upper()
     dag_run_id = os.environ.get("DAG_RUN_ID", "").strip()
     pipeline_run_id = os.environ.get("PIPELINE_RUN_ID", "").strip()
@@ -265,6 +266,8 @@ def upload() -> int:
         "stats": _allure_stats(report_dir),
         "log_excerpt": _read_tail(log_path, 20_000).decode("utf-8", errors="replace") if log_path.is_file() else "",
     }
+    if provider_type == "DAGU" and os.environ.get("AUTOMATION_CALLBACK_REPLAY") == "1":
+        metadata_obj["callback_replay"] = True
     metadata = json.dumps(metadata_obj, ensure_ascii=False, separators=(",", ":"))
     if provider_type == "DAGU":
         if not dag_run_id or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for char in dag_run_id):

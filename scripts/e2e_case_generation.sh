@@ -11,7 +11,7 @@
 #   KEEP_DB=1 bash scripts/e2e_case_generation.sh    # 保留库便于排查
 #   bash scripts/e2e_case_generation.sh -g "并发"     # 透传 playwright 参数
 #
-# 依赖：backend/.env 里的 DATABASE_URL 提供 PostgreSQL 连接（仅取主机/账号，库名替换为隔离库）。
+# PostgreSQL 连接从 E2E_DATABASE_URL 或 backend/.env 获取，库名替换为隔离库。
 
 set -euo pipefail
 
@@ -32,7 +32,7 @@ FRONTEND_PID=""
 STUB_PID=""
 
 # 从 backend/.env 的 DATABASE_URL 派生隔离库连接串（只替换库名，凭据不回显）。
-BASE_URL="$(grep -E '^DATABASE_URL=' "$BACKEND_DIR/.env" | tail -1 | cut -d= -f2-)"
+BASE_URL="${E2E_DATABASE_URL:-$(grep -E '^DATABASE_URL=' "$BACKEND_DIR/.env" | tail -1 | cut -d= -f2-)}"
 [[ -n "$BASE_URL" ]] || { echo "ERROR: backend/.env 缺少 DATABASE_URL" >&2; exit 2; }
 DB_URL="$("$PY" - "$BASE_URL" "$DB_NAME" <<'EOF'
 import re, sys
@@ -135,6 +135,7 @@ set +e
 (cd "$FRONTEND_DIR" && \
   E2E_BASE_URL="http://127.0.0.1:$FRONTEND_PORT" \
   E2E_API_URL="http://127.0.0.1:$BACKEND_PORT/api/v1" \
+  E2E_STUB_URL="http://127.0.0.1:$STUB_PORT" \
   E2E_ADMIN_USERNAME="$INIT_ADMIN_USERNAME" \
   E2E_ADMIN_PASSWORD="$INIT_ADMIN_PASSWORD" \
   npx playwright test "$@")

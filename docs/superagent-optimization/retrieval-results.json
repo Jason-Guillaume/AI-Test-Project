@@ -1,0 +1,1193 @@
+{
+  "dataset": "SuperAgent 合成工程样例（模型返回为预制排名与分数）",
+  "config": {
+    "generation": "synthetic-fixed-window-v2",
+    "embedding_revision": "synthetic-embedding-v1",
+    "rerank_revision": "synthetic-rerank-v1",
+    "top_k": 2,
+    "bm25_candidates": 50,
+    "vector_candidates": 50,
+    "rerank_window": 3,
+    "rerank_min_score": 0.1
+  },
+  "duplicate_chunk_rate": 0.11111111111111116,
+  "summary": {
+    "BM25": {
+      "questions": 7,
+      "candidate_recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "rr": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "ndcg": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "no_answer_has_hits": {
+        "mean": 0,
+        "n": 2
+      },
+      "citation_support": {
+        "mean": null,
+        "n": 0
+      },
+      "unanswerable_answered": {
+        "mean": null,
+        "n": 0
+      },
+      "downgraded": {
+        "mean": 0,
+        "n": 7
+      },
+      "model_calls": {
+        "mean": 0,
+        "n": 7
+      },
+      "cost": {
+        "mean": 0,
+        "n": 7
+      },
+      "no_hit_rate": 0.2857142857142857,
+      "mrr_delta_vs_bm25": 0.0,
+      "unauthorized_sources": 0,
+      "p50_ms": 0.07104600081220269,
+      "p95_ms": 1.8378900131210685,
+      "latency_n": 7
+    },
+    "VECTOR": {
+      "questions": 7,
+      "candidate_recall": {
+        "mean": 0.8,
+        "n": 5
+      },
+      "recall": {
+        "mean": 0.8,
+        "n": 5
+      },
+      "rr": {
+        "mean": 0.7,
+        "n": 5
+      },
+      "ndcg": {
+        "mean": 0.7261859507142915,
+        "n": 5
+      },
+      "no_answer_has_hits": {
+        "mean": 0.5,
+        "n": 2
+      },
+      "citation_support": {
+        "mean": null,
+        "n": 0
+      },
+      "unanswerable_answered": {
+        "mean": null,
+        "n": 0
+      },
+      "downgraded": {
+        "mean": 0.2857142857142857,
+        "n": 7
+      },
+      "model_calls": {
+        "mean": 0,
+        "n": 7
+      },
+      "cost": {
+        "mean": null,
+        "n": 0
+      },
+      "no_hit_rate": 0.2857142857142857,
+      "mrr_delta_vs_bm25": -0.3,
+      "unauthorized_sources": 0,
+      "p50_ms": 2,
+      "p95_ms": 2,
+      "latency_n": 7
+    },
+    "RRF": {
+      "questions": 7,
+      "candidate_recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "rr": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "ndcg": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "no_answer_has_hits": {
+        "mean": 0.5,
+        "n": 2
+      },
+      "citation_support": {
+        "mean": null,
+        "n": 0
+      },
+      "unanswerable_answered": {
+        "mean": null,
+        "n": 0
+      },
+      "downgraded": {
+        "mean": 0.2857142857142857,
+        "n": 7
+      },
+      "model_calls": {
+        "mean": 0,
+        "n": 7
+      },
+      "cost": {
+        "mean": null,
+        "n": 0
+      },
+      "no_hit_rate": 0.14285714285714285,
+      "mrr_delta_vs_bm25": 0.0,
+      "unauthorized_sources": 0,
+      "p50_ms": 2.0710460008122027,
+      "p95_ms": 3.8378900131210685,
+      "latency_n": 7
+    },
+    "RRF_RERANK": {
+      "questions": 7,
+      "candidate_recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "rr": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "ndcg": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "no_answer_has_hits": {
+        "mean": 0,
+        "n": 2
+      },
+      "citation_support": {
+        "mean": null,
+        "n": 0
+      },
+      "unanswerable_answered": {
+        "mean": null,
+        "n": 0
+      },
+      "downgraded": {
+        "mean": 0.2857142857142857,
+        "n": 7
+      },
+      "model_calls": {
+        "mean": 0,
+        "n": 7
+      },
+      "cost": {
+        "mean": null,
+        "n": 0
+      },
+      "no_hit_rate": 0.2857142857142857,
+      "mrr_delta_vs_bm25": 0.0,
+      "unauthorized_sources": 0,
+      "p50_ms": 5.06984401261434,
+      "p95_ms": 6.8378900131210685,
+      "latency_n": 7
+    },
+    "BM25_RERANK": {
+      "questions": 7,
+      "candidate_recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "recall": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "rr": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "ndcg": {
+        "mean": 1.0,
+        "n": 5
+      },
+      "no_answer_has_hits": {
+        "mean": 0,
+        "n": 2
+      },
+      "citation_support": {
+        "mean": null,
+        "n": 0
+      },
+      "unanswerable_answered": {
+        "mean": null,
+        "n": 0
+      },
+      "downgraded": {
+        "mean": 0,
+        "n": 7
+      },
+      "model_calls": {
+        "mean": 0,
+        "n": 5
+      },
+      "cost": {
+        "mean": null,
+        "n": 0
+      },
+      "no_hit_rate": 0.2857142857142857,
+      "mrr_delta_vs_bm25": 0.0,
+      "unauthorized_sources": 0,
+      "p50_ms": 3.078104028943926,
+      "p95_ms": 4.8378900131210685,
+      "latency_n": 5
+    }
+  },
+  "cases": [
+    {
+      "id": "refund-current",
+      "project_id": 1,
+      "agent_id": 1,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 5,
+          "hits": [
+            2,
+            4
+          ],
+          "relevant_ranks_before": {
+            "2": 1
+          },
+          "relevant_ranks_after": {
+            "2": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 1.8378900131210685,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "VECTOR",
+          "candidate_count": 2,
+          "hits": [
+            3,
+            2
+          ],
+          "relevant_ranks_before": {
+            "2": 2
+          },
+          "relevant_ranks_after": {
+            "2": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 0.5,
+          "ndcg": 0.6309297535714575,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 1,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "RRF",
+          "candidate_count": 6,
+          "hits": [
+            2,
+            3
+          ],
+          "relevant_ranks_before": {
+            "2": 1
+          },
+          "relevant_ranks_after": {
+            "2": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 1,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 3.8378900131210685,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 6,
+          "hits": [
+            2,
+            3
+          ],
+          "relevant_ranks_before": {
+            "2": 1
+          },
+          "relevant_ranks_after": {
+            "2": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 1,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 6.8378900131210685,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 5,
+          "hits": [
+            2
+          ],
+          "relevant_ranks_before": {
+            "2": 1
+          },
+          "relevant_ranks_after": {
+            "2": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 4.8378900131210685,
+          "model_calls": 0,
+          "cost": null
+        }
+      }
+    },
+    {
+      "id": "api-field",
+      "project_id": 1,
+      "agent_id": 1,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 1,
+          "hits": [
+            3
+          ],
+          "relevant_ranks_before": {
+            "3": 1
+          },
+          "relevant_ranks_after": {
+            "3": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 0.0781040289439261,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "VECTOR",
+          "candidate_count": 2,
+          "hits": [
+            3,
+            2
+          ],
+          "relevant_ranks_before": {
+            "3": 1
+          },
+          "relevant_ranks_after": {
+            "3": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "RRF",
+          "candidate_count": 2,
+          "hits": [
+            3,
+            2
+          ],
+          "relevant_ranks_before": {
+            "3": 1
+          },
+          "relevant_ranks_after": {
+            "3": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2.078104028943926,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 2,
+          "hits": [
+            3
+          ],
+          "relevant_ranks_before": {
+            "3": 1
+          },
+          "relevant_ranks_after": {
+            "3": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 5.078104028943926,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 1,
+          "hits": [
+            3
+          ],
+          "relevant_ranks_before": {
+            "3": 1
+          },
+          "relevant_ranks_after": {
+            "3": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 3.078104028943926,
+          "model_calls": 0,
+          "cost": null
+        }
+      }
+    },
+    {
+      "id": "error-code-degraded",
+      "project_id": 1,
+      "agent_id": 1,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 2,
+          "hits": [
+            4,
+            9
+          ],
+          "relevant_ranks_before": {
+            "4": 1,
+            "9": 2
+          },
+          "relevant_ranks_after": {
+            "4": 1,
+            "9": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 0.07104600081220269,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "NONE",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": 0.0,
+          "recall": 0.0,
+          "rr": 0,
+          "ndcg": 0.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": true,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "BM25",
+          "candidate_count": 2,
+          "hits": [
+            4,
+            9
+          ],
+          "relevant_ranks_before": {
+            "4": 1,
+            "9": 2
+          },
+          "relevant_ranks_after": {
+            "4": 1,
+            "9": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": true,
+          "latency_ms": 2.0710460008122027,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "BM25",
+          "candidate_count": 2,
+          "hits": [
+            4,
+            9
+          ],
+          "relevant_ranks_before": {
+            "4": 1,
+            "9": 2
+          },
+          "relevant_ranks_after": {
+            "4": 1,
+            "9": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": true,
+          "latency_ms": 2.0710460008122027,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 2,
+          "hits": [
+            4,
+            9
+          ],
+          "relevant_ranks_before": {
+            "4": 1,
+            "9": 2
+          },
+          "relevant_ranks_after": {
+            "4": 1,
+            "9": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 3.0710460008122027,
+          "model_calls": 0,
+          "cost": null
+        }
+      }
+    },
+    {
+      "id": "mixed-language",
+      "project_id": 1,
+      "agent_id": 1,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 1,
+          "hits": [
+            5
+          ],
+          "relevant_ranks_before": {
+            "5": 1
+          },
+          "relevant_ranks_after": {
+            "5": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 0.06984401261433959,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "VECTOR",
+          "candidate_count": 1,
+          "hits": [
+            5
+          ],
+          "relevant_ranks_before": {
+            "5": 1
+          },
+          "relevant_ranks_after": {
+            "5": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "RRF",
+          "candidate_count": 1,
+          "hits": [
+            5
+          ],
+          "relevant_ranks_before": {
+            "5": 1
+          },
+          "relevant_ranks_after": {
+            "5": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2.0698440126143396,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 1,
+          "hits": [
+            5
+          ],
+          "relevant_ranks_before": {
+            "5": 1
+          },
+          "relevant_ranks_after": {
+            "5": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 5.06984401261434,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 1,
+          "hits": [
+            5
+          ],
+          "relevant_ranks_before": {
+            "5": 1
+          },
+          "relevant_ranks_after": {
+            "5": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 3.0698440126143396,
+          "model_calls": 0,
+          "cost": null
+        }
+      }
+    },
+    {
+      "id": "cross-paragraph",
+      "project_id": 1,
+      "agent_id": 1,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 5,
+          "hits": [
+            6,
+            7
+          ],
+          "relevant_ranks_before": {
+            "6": 1,
+            "7": 2
+          },
+          "relevant_ranks_after": {
+            "6": 1,
+            "7": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 0.1921529765240848,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "VECTOR",
+          "candidate_count": 3,
+          "hits": [
+            7,
+            6
+          ],
+          "relevant_ranks_before": {
+            "6": 2,
+            "7": 1
+          },
+          "relevant_ranks_after": {
+            "6": 2,
+            "7": 1
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "RRF",
+          "candidate_count": 5,
+          "hits": [
+            6,
+            7
+          ],
+          "relevant_ranks_before": {
+            "6": 1,
+            "7": 2
+          },
+          "relevant_ranks_after": {
+            "6": 1,
+            "7": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2.192152976524085,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 5,
+          "hits": [
+            6,
+            7
+          ],
+          "relevant_ranks_before": {
+            "6": 1,
+            "7": 2
+          },
+          "relevant_ranks_after": {
+            "6": 1,
+            "7": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 5.192152976524085,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 5,
+          "hits": [
+            6,
+            7
+          ],
+          "relevant_ranks_before": {
+            "6": 1,
+            "7": 2
+          },
+          "relevant_ranks_after": {
+            "6": 1,
+            "7": 2
+          },
+          "candidate_recall": 1.0,
+          "recall": 1.0,
+          "rr": 1.0,
+          "ndcg": 1.0,
+          "no_answer_has_hits": null,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 3.192152976524085,
+          "model_calls": 0,
+          "cost": null
+        }
+      }
+    },
+    {
+      "id": "no-answer",
+      "project_id": 1,
+      "agent_id": 1,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 0.03155198646709323,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "VECTOR",
+          "candidate_count": 1,
+          "hits": [
+            2
+          ],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": true,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "RRF",
+          "candidate_count": 1,
+          "hits": [
+            2
+          ],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": true,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 2.0315519864670932,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "RERANK",
+          "candidate_count": 1,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 5.031551986467093,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "BM25",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": null,
+          "model_calls": null,
+          "cost": null
+        }
+      }
+    },
+    {
+      "id": "denied-project",
+      "project_id": 1,
+      "agent_id": 2,
+      "variants": {
+        "BM25": {
+          "effective": "BM25",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": 0.032355019357055426,
+          "model_calls": 0,
+          "cost": 0
+        },
+        "VECTOR": {
+          "effective": "NONE",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 1,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": true,
+          "latency_ms": 2,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF": {
+          "effective": "BM25",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 1,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": true,
+          "latency_ms": 2.0323550193570554,
+          "model_calls": 0,
+          "cost": null
+        },
+        "RRF_RERANK": {
+          "effective": "BM25",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 1,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": true,
+          "latency_ms": 2.0323550193570554,
+          "model_calls": 0,
+          "cost": null
+        },
+        "BM25_RERANK": {
+          "effective": "BM25",
+          "candidate_count": 0,
+          "hits": [],
+          "relevant_ranks_before": {},
+          "relevant_ranks_after": {},
+          "candidate_recall": null,
+          "recall": null,
+          "rr": null,
+          "ndcg": null,
+          "no_answer_has_hits": false,
+          "unauthorized_candidates_filtered": 0,
+          "unauthorized_sources": 0,
+          "citation_support": null,
+          "unanswerable_answered": null,
+          "downgraded": false,
+          "latency_ms": null,
+          "model_calls": null,
+          "cost": null
+        }
+      }
+    }
+  ]
+}

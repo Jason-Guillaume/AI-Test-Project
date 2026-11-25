@@ -9,6 +9,25 @@ from app.platform.model_configuration.models import ModelResource, ModelRevision
 from tests.conftest import unique
 
 
+def test_parse_retry_with_cached_queued_version_preserves_committed_chunk(api, admin, db):
+    from sqlalchemy.orm import Session
+    project = api.post('/projects', username=admin, json={'name': unique('parse-race')}).json()['id']
+    base = KnowledgeBase(project_id=project, name='两会话解析')
+    db.add(base)
+    db.flush()
+    actor = db.query(User).filter_by(username=admin).one()
+    version = service.upload(db, project, base.id, actor, '退款.txt', '退款期限'.encode())
+    ident = version.id
+    assert version.status == 'QUEUED'
+    with Session(bind=db.get_bind()) as winner:
+        service.parse_version(winner, ident)
+        first_id = winner.query(KnowledgeChunk.id).filter_by(version_id=ident).scalar()
+    # 重试会话在另一解析器提交前已读过 QUEUED，此时仍持有旧 ORM 实例。
+    service.parse_version(db, ident)
+    assert db.query(KnowledgeChunk.id).filter_by(version_id=ident).scalar() == first_id
+    assert db.query(KnowledgeVersion.attempts).filter_by(id=ident).scalar() == 1
+
+
 def test_pgvector_generations_and_authorized_search(api, admin, db, monkeypatch):
     project_ids = []
     for _ in range(2):
@@ -52,14 +71,33 @@ def test_pgvector_generations_and_authorized_search(api, admin, db, monkeypatch)
     assert metadata['strategy'] == 'HYBRID_RRF'
     assert metadata['vector_candidate_count'] == 1
 
+    # Real pgvector ordering and SQL candidate windows over the same authorized corpus.
+    extra = [KnowledgeChunk(version_id=chunks[0].version_id, position=position, text='semantic source')
+             for position in range(1, 1003)]
+    db.add_all(extra)
+    db.flush()
+    db.add_all(KnowledgeVector(generation_id=generations[0].id, chunk_id=chunk.id, embedding=[1, 0]) for chunk in extra)
+    db.get(KnowledgeRetrievalConfig, project_ids[0]).vector_candidates = 1000
+    db.commit()
+    rows, metadata = service.search(db, snapshot, actor, 'semantic source', return_metadata=True)
+    assert metadata['vector_candidate_count'] == metadata['vector_candidate_limit'] == 1000
+    assert metadata['candidate_count'] == metadata['candidate_limit'] == 50
+    assert metadata['fusion_candidate_count'] >= 1000
+    assert len(rows) == metadata['top_k'] == 8
+    assert {item['version_id'] for item in rows} == {chunks[0].version_id}
+    _, overridden = service.search(db, snapshot, actor, 'semantic source', candidate_limit=75, return_metadata=True)
+    assert overridden['candidate_limit'] == 75
+    assert overridden['vector_candidate_count'] == 1000
+
 
 def test_postgres_full_path_with_fake_model_http(api, admin, db):
     import json
     import threading
     import time
+    from datetime import datetime, timedelta, timezone
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from app.core.models.project import ProjectOutboundTarget
-    from app.knowledge.indexing import claim_job, run_job
+    from app.knowledge.indexing import claim_job, finish_job, run_job
     from app.knowledge.models import KnowledgeIndexJob
 
     requests = []
@@ -141,9 +179,11 @@ def test_postgres_full_path_with_fake_model_http(api, admin, db):
             'credential_header': 'Authorization', 'config': {'timeout_seconds': 5}, 'capabilities': ['embedding'],
         })
         assert response.status_code == 201, response.text
+        rotated_revision = response.json()['current_revision_id']
         response = api.post(f'/projects/{project_id}/knowledge-search', username=admin, json={'query': '退款渠道'})
         assert response.status_code == 200, response.text
         assert response.json()['items'][0]['score_type'] == 'RERANK'
+        old_chunk_id = response.json()['items'][0]['chunk_id']
         assert any(path == '/embedding' and payload.get('input_type') == 'document' for path, payload, _ in requests)
         assert any(path == '/embedding' and payload.get('input_type') == 'query' for path, payload, _ in requests)
         assert any(path == '/rerank' and payload['documents'] == ['原路返还款项'] for path, payload, _ in requests)
@@ -151,6 +191,44 @@ def test_postgres_full_path_with_fake_model_http(api, admin, db):
                    for path, payload, header in requests)
         assert sum(path == '/embedding' and payload.get('input_type') == 'document'
                    for path, payload, _ in requests) == documents_before_rotation
+
+        response = api.post(f'/projects/{project_id}/knowledge-index-generations', username=admin, json={
+            'embedding_revision_id': rotated_revision, 'dimension': 2, 'distance': 'cosine',
+            'encoding_version': 'rollback-drill-v2', 'document_input_type': 'document', 'query_input_type': 'query',
+        })
+        assert response.status_code == 201, response.text
+        new_generation = response.json()['id']
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            db.expire_all()
+            job = db.query(KnowledgeIndexJob).filter_by(generation_id=new_generation).one()
+            if job.status == 'DONE':
+                break
+            claim = claim_job(db)
+            if claim:
+                run_job(db, *claim)
+            else:
+                time.sleep(0.1)
+        assert job.status == 'DONE'
+        for active in (new_generation, generation_id):
+            switched = api.post(f'/projects/{project_id}/knowledge-index-generations/{active}/commands',
+                                username=admin, json={'action': 'activate'})
+            assert switched.json()['active_generation_id'] == active, switched.text
+            found = api.post(f'/projects/{project_id}/knowledge-search', username=admin, json={'query': '退款渠道'}).json()
+            assert found['retrieval']['generation_id'] == active
+            assert found['items'][0]['chunk_id'] == old_chunk_id
+
+        # Make a queued job due only on the controlled clock; the background worker cannot steal it.
+        future = datetime.now(timezone.utc) + timedelta(days=1)
+        job.status, job.attempts, job.queued_at, job.next_attempt_at = 'QUEUED', 0, future, future
+        job_id = job.id
+        db.commit()
+        first = claim_job(db, now=future, lease_seconds=5)
+        second = claim_job(db, now=future + timedelta(seconds=6), lease_seconds=5)
+        assert first[0] == second[0] == job_id and first[1] != second[1]
+        assert not finish_job(db, *first, [0, 1], now=future + timedelta(seconds=7))
+        assert finish_job(db, *second, [1, 0], now=future + timedelta(seconds=7))
+        assert db.query(KnowledgeVector).filter_by(generation_id=new_generation, chunk_id=old_chunk_id).count() == 1
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=3)
 

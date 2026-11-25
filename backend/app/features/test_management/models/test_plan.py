@@ -22,7 +22,7 @@ class TestPlan(SoftDeleteBase):
         Index("uq_test_plan_project_name", "project_id", "name", unique=True,
               postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_plan_project_status", "project_id", "status"),
-        {"comment": "测试计划：组织套件与环境的执行单元"},
+        {"info": {"is_view": True}, "comment": "测试计划：组织套件与环境的执行单元"},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -67,7 +67,7 @@ class TestPlanSuite(SoftDeleteBase):
             sqlite_where=text("deleted_at IS NULL"),
         ),
         Index("ix_test_plan_suite_plan_sort", "plan_id", "sort"),
-        {"comment": "计划-套件关联"},
+        {"info": {"is_view": True}, "comment": "计划-套件关联"},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

@@ -21,6 +21,10 @@ _BUILTINS_LOADED = False
 class ToolDispatchError(RuntimeError):
     """表示工具未注册、调用通道未授权或参数契约不符。"""
 
+    def __init__(self, message: str, *, code: str = 'TOOL_DISPATCH_REJECTED') -> None:
+        super().__init__(message)
+        self.code = code
+
 
 def register_handler(
     key: str,
@@ -133,11 +137,11 @@ def get_binding(key: str, *, channel: ToolChannel) -> ToolBinding:
     load_builtin_handlers()
     binding = _BINDINGS.get(key)
     if binding is None:
-        raise ToolDispatchError(f"工具未注册：{key}")
+        raise ToolDispatchError(f"工具未注册：{key}", code='TOOL_UNREGISTERED')
     if channel not in binding.allowed_channels:
-        raise ToolDispatchError(f"工具不允许从当前调用通道执行：{key}")
+        raise ToolDispatchError(f"工具不允许从当前调用通道执行：{key}", code='TOOL_CHANNEL_NOT_ALLOWED')
     if channel == "model" and binding.catalog_status != "active":
-        raise ToolDispatchError(f"工具未开放模型调用：{key}")
+        raise ToolDispatchError(f"工具未开放模型调用：{key}", code='TOOL_CHANNEL_NOT_ALLOWED')
     return binding
 
 

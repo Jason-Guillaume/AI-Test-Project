@@ -94,3 +94,21 @@ def test_long_term_memory_is_explicitly_scoped_in_context_manifest():
     assert manifest["memory_count"] == 1
     assert manifest["memory_ids"] == [15]
     assert manifest["estimated_tokens"] <= 300
+
+
+def test_oversized_memory_does_not_exclude_a_short_rule_or_user_intent():
+    session = SimpleNamespace(id=6, project_id=2, task_agent_instance_id=9)
+    user = SimpleNamespace(id=3, role='USER', message_type='TEXT', content='请处理退款', created_at=None)
+    memories = [
+        {'id': ident, 'memory_key': key, 'version': 1, 'content': content, 'source_digest': 'a' * 64,
+         'source_refs': [{'kind': 'USER_PROVIDED', 'created_by': 1}]}
+        for ident, key, content in [(15, 'long', '退款' * 700), (16, 'rule', '退款使用原支付渠道')]
+    ]
+    selected, manifest = assemble_history(
+        session=session, messages=[user], query='退款', token_budget=256, long_term_memories=memories,
+    )
+    assert '退款使用原支付渠道' in selected[0]['content']
+    assert selected[-1]['content'] == '请处理退款'
+    assert manifest['estimated_tokens'] <= 256
+    assert manifest['memory_ids'] == [16]
+    assert manifest['memory_omissions'] == [{'id': 15, 'version': 1, 'reason': 'TOKEN_BUDGET'}]

@@ -10,6 +10,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.core.models.identity import User
+from app.core.models.project import Project
 from app.core.http.errors import conflict
 from app.core.security.roles import PROJECT_ROLE_VIEWER, has_project_role, project_role_for
 from app.core.http.errors import not_found
@@ -39,16 +40,21 @@ class SecuritySettingService:
         self, db: Session, project_id: int, body: SecuritySettingUpdate, *, actor: User,
     ) -> SecuritySettingRead:
         """更新开关。乐观锁 revision 不匹配返回 409。"""
-        project = require_manage_project(db, project_id, actor)
+        require_manage_project(db, project_id, actor)
+        # The parent exists even for the first write. Serialize before checking the setting revision.
+        db.query(Project.id).filter(Project.id == project_id).with_for_update().one()
         row = (
             db.query(SecurityProjectSetting)
             .filter(SecurityProjectSetting.project_id == project_id)
+            .populate_existing()
             .one_or_none()
         )
         if row is None:
             if body.revision is not None:
                 # 客户端带了 revision 但库里没有行，说明并发创建了两次。
                 raise conflict("配置已被他人修改，请刷新后重试")
+            if not body.model_dump(exclude_unset=True, exclude_none=True):
+                return SecuritySettingRead(project_id=project_id)
             row = SecurityProjectSetting(project_id=project_id)
             db.add(row)
 

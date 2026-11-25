@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.agents.models import AgentDefinition
@@ -20,6 +20,7 @@ from app.orchestration.tasks.models import (
     RuntimeCallFact,
     RuntimeEventFact,
     Task,
+    TaskAttempt,
     TaskAgentInstance,
     TaskRun,
     TaskToolInvocation,
@@ -32,6 +33,9 @@ _SAFE_EVENT_METADATA_KEYS = frozenset({
     "tool_call_id", "channel", "input_field_names", "query_sha256", "strategy",
     "bm25_k1", "bm25_b", "tokenizer_version",
     "candidate_count", "candidate_limit", "candidate_truncated", "vector_candidate_count",
+    "search_mode", "bm25_candidate_count", "vector_candidate_limit",
+    "fusion_candidate_count", "fusion_candidate_limit", "rerank_candidate_count", "rerank_candidate_limit",
+    "generation_id", "embedding_revision_id", "rerank_revision_id", "vector_duration_ms", "rerank_duration_ms", "bm25_duration_ms",
     "fusion", "result_count",
     "minimum_score", "top_k", "duration_ms", "vector_status", "reranker_status",
     "chunk_ids", "version_ids", "source_count", "context_token_budget", "estimated_tokens",
@@ -181,7 +185,7 @@ def _positive_token_average(query) -> tuple[int, float | None]:
 
 def model_revision_admitted(db: Session, model_config_id: int) -> bool:
     """有模型中心修订时，停用修订不再因为旧配置行仍启用而被调用。"""
-    from app.platform.model_configuration.models import ModelLegacyBinding, ModelRevision
+    from app.platform.model_configuration.models import ModelLegacyBinding, ModelResource, ModelRevision
 
     binding = db.query(ModelLegacyBinding).filter(
         ModelLegacyBinding.legacy_kind == "MODEL_CONFIGURATION",
@@ -189,8 +193,11 @@ def model_revision_admitted(db: Session, model_config_id: int) -> bool:
     ).first()
     if binding is None:
         return True
-    revision = db.get(ModelRevision, binding.revision_id)
-    return revision is not None and bool(revision.enabled)
+    resource = db.get(ModelResource, binding.resource_id)
+    if resource is None or resource.status != "ACTIVE" or resource.visibility != "PLATFORM":
+        return False
+    revision = db.get(ModelRevision, resource.current_revision_id) if resource.current_revision_id is not None else None
+    return revision is not None and revision.resource_id == resource.id and bool(revision.enabled)
 
 
 def assert_token_quota(db: Session, *, project_id: int, user_id: int | None) -> None:
@@ -301,6 +308,7 @@ def record_runtime_event(
     span_id: str | None = None,
     error_code: str | None = None,
     event_metadata: dict[str, Any] | None = None,
+    occurred_at: datetime | None = None,
 ) -> None:
     """记录无正文事实；有调用方 Session 时随该事务原子提交，避免 FK 锁自阻塞。"""
     if not project_id or event_type not in {
@@ -341,7 +349,7 @@ def record_runtime_event(
             error_code=error_code[:80] if error_code else None,
             duration_ms=max(0, int(duration_ms)),
             event_metadata=_safe_metadata(event_metadata),
-            occurred_at=datetime.now(),
+            occurred_at=occurred_at or datetime.now(),
         ))
         session.flush()
         from app.orchestration.tasks.services.trace_projection_service import enqueue_projection
@@ -498,7 +506,13 @@ def runtime_overview(
         RuntimeEventFact.status, func.count(RuntimeEventFact.id),
     ).group_by(RuntimeEventFact.status).all()}
     tool_event_terminal = tool_event_statuses.get("SUCCEEDED", 0) + tool_event_statuses.get("FAILED", 0)
-    retrieval_count = int(event_query.filter(RuntimeEventFact.event_type == "KNOWLEDGE_RETRIEVAL").count())
+    retrieval_events = event_query.filter(RuntimeEventFact.event_type == "KNOWLEDGE_RETRIEVAL")
+    mode = RuntimeEventFact.event_metadata['search_mode'].as_string()
+    permission_check = or_(mode == 'PERMISSION_CHECK',
+                           and_(mode.is_(None), RuntimeEventFact.event_metadata['top_k'].as_integer() == 0))
+    retrieval_total, permission_count = retrieval_events.with_entities(
+        func.count(), func.count().filter(permission_check),
+    ).one()
     context_count = int(event_query.filter(RuntimeEventFact.event_type == "CONTEXT_ASSEMBLY").count())
     skill_event_query = event_query.filter(RuntimeEventFact.event_type == "SKILL_LOAD")
     skill_status_rows = skill_event_query.with_entities(
@@ -621,14 +635,18 @@ def runtime_overview(
     ).group_by(RuntimeEventFact.event_name, RuntimeEventFact.status).all()
     tool_events: dict[str, dict[str, Any]] = {}
     for name, status, count, average_ms in event_rows:
-        row = tool_events.setdefault(name, {"tool_key": name, "calls": 0, "succeeded": 0, "failed": 0, "_latency_sum": 0.0})
+        row = tool_events.setdefault(name, {"tool_key": name, "calls": 0, "succeeded": 0, "failed": 0, "rejected": 0, "_latency_sum": 0.0})
         row["calls"] += int(count)
         row["succeeded"] += int(count) if status == "SUCCEEDED" else 0
         row["failed"] += int(count) if status == "FAILED" else 0
-        row["_latency_sum"] += float(average_ms or 0) * int(count)
+        row["rejected"] += int(count) if status == "REJECTED" else 0
+        if status in {"FAILED", "SUCCEEDED"}:
+            row["_latency_sum"] += float(average_ms or 0) * int(count)
     tool_breakdown = []
     for row in tool_events.values():
-        row["avg_latency_ms"] = round(row.pop("_latency_sum") / row["calls"], 2) if row["calls"] else None
+        executed = row["succeeded"] + row["failed"]
+        latency_sum = row.pop("_latency_sum")
+        row["avg_latency_ms"] = round(latency_sum / executed, 2) if executed else None
         tool_breakdown.append(row)
     tool_breakdown.sort(key=lambda row: (-row["calls"], row["tool_key"]))
 
@@ -833,21 +851,24 @@ def runtime_overview(
     ).group_by(RuntimeEventFact.event_name, RuntimeEventFact.status).all()
     previous_tools: dict[str, dict[str, int]] = {}
     for name, status, count in previous_tool_rows:
+        if status not in {"SUCCEEDED", "FAILED"}:
+            continue
         row = previous_tools.setdefault(name, {"calls": 0, "failed": 0})
         row["calls"] += int(count)
         row["failed"] += int(count) if status == "FAILED" else 0
     for tool in tool_breakdown:
         baseline = previous_tools.get(tool["tool_key"])
-        if not baseline or tool["calls"] < 5 or baseline["calls"] < 5:
+        executions = tool['succeeded'] + tool['failed']
+        if not baseline or executions < 5 or baseline["calls"] < 5:
             continue
-        current_failure_rate = tool["failed"] / tool["calls"]
+        current_failure_rate = tool["failed"] / executions
         baseline_failure_rate = baseline["failed"] / baseline["calls"]
         if current_failure_rate - baseline_failure_rate >= 0.15:
             anomalies.append({
                 "kind": "TOOL_FAILURE_RATE_INCREASE", "severity": "WARNING",
                 "tool_key": tool["tool_key"], "current": round(current_failure_rate, 4),
                 "baseline": round(baseline_failure_rate, 4),
-                "current_samples": tool["calls"], "baseline_samples": baseline["calls"],
+                "current_samples": executions, "baseline_samples": baseline["calls"],
             })
 
     previous_skill_rows = previous_skill_query.with_entities(
@@ -881,6 +902,45 @@ def runtime_overview(
         "model_calls": call_query.with_entities(func.max(RuntimeCallFact.created_at)).scalar(),
         "runtime_events": event_query.with_entities(func.max(RuntimeEventFact.occurred_at)).scalar(),
     }
+    from app.core.security.sanitizer import sanitize_text
+    failed_attempt_at = select(func.max(TaskAttempt.finished_at)).join(
+        TaskWorkItem, TaskWorkItem.id == TaskAttempt.work_item_id,
+    ).where(TaskWorkItem.task_run_id == TaskRun.id, TaskAttempt.error_code.isnot(None)).correlate(TaskRun).scalar_subquery()
+    retry_state = TaskRun.status.in_(('QUEUED', 'PAUSED'))
+    issue_time = func.coalesce(TaskRun.finished_at, case((retry_state, failed_attempt_at)), TaskRun.updated_at)
+    issue_query = db.query(TaskRun).join(Task, Task.id == TaskRun.task_id).join(Project, Project.id == Task.project_id).filter(
+        _execution_root_filter(), issue_time >= start, issue_time < end,
+        or_(TaskRun.status.in_(('FAILED', 'SUCCEEDED_WITH_ISSUES', 'RECONCILIATION_REQUIRED')),
+            and_(retry_state, TaskRun.error_code.isnot(None))),
+    )
+    if project_id is not None:
+        issue_query = issue_query.filter(Task.project_id == project_id)
+    issues = issue_query.with_entities(TaskRun.id, TaskRun.task_id, TaskRun.status, TaskRun.error_code,
+        Task.project_id, Task.title, Project.name.label('project_name'), issue_time.label('occurred_at'),
+    ).order_by(issue_time.desc(), TaskRun.id.desc()).limit(20).all()
+    root = func.coalesce(RuntimeEventFact.execution_root_run_id, RuntimeEventFact.task_run_id)
+    issue_events = db.query(RuntimeEventFact, root.label('root_id')).filter(
+        root.in_([row.id for row in issues]), RuntimeEventFact.occurred_at < end,
+        RuntimeEventFact.event_type.in_(("AGENT_RUN", "TOOL_CALL", "KNOWLEDGE_RETRIEVAL")),
+        or_(RuntimeEventFact.status.in_(("FAILED", "REJECTED")), and_(
+            RuntimeEventFact.event_type == "KNOWLEDGE_RETRIEVAL",
+            or_(RuntimeEventFact.event_metadata['vector_status'].as_string() == 'FAILED',
+                RuntimeEventFact.event_metadata['reranker_status'].as_string() == 'FAILED'),
+        )),
+    ).distinct(root).order_by(root, RuntimeEventFact.occurred_at.desc(), RuntimeEventFact.id.desc()).all() if issues else []
+    events_by_root = {root_id: event for event, root_id in issue_events}
+    recent_issues = []
+    for row in issues:
+        event = events_by_root.get(row.id)
+        if event is not None and (event.task_id != row.task_id or event.project_id != row.project_id):
+            event = None
+        recent_issues.append({
+            'run_id': row.id, 'task_id': row.task_id, 'title': sanitize_text(row.title), 'status': row.status,
+            'project_id': row.project_id, 'project_name': row.project_name, 'error_code': row.error_code,
+            'occurred_at': row.occurred_at,
+            'event': {'id': event.id, 'type': event.event_type, 'name': event.event_name,
+                      'status': event.status, 'error_code': event.error_code} if event else None,
+        })
     return {
         "metric_definition_version": "agent-runtime-v2",
         "window": {"from": start, "to": end, "project_id": project_id},
@@ -925,13 +985,15 @@ def runtime_overview(
             "durable_tool_success_rate": round(tool_statuses.get("SUCCEEDED", 0) / durable_tool_terminal, 4) if durable_tool_terminal else None,
             "durable_tool_terminal_invocations": durable_tool_terminal,
             "traced_tool_calls": tool_event_count,
+            "traced_tool_rejections": tool_event_statuses.get("REJECTED", 0),
             "traced_tool_success_rate": round(tool_event_statuses.get("SUCCEEDED", 0) / tool_event_terminal, 4) if tool_event_terminal else None,
             "skill_loads": sum(row["loads"] for row in skills),
             "skill_load_failures": sum(row["failed"] for row in skills),
             "skill_load_success_rate": round(
                 sum(row["succeeded"] for row in skills) / (sum(row["succeeded"] + row["failed"] for row in skills)), 4,
             ) if sum(row["succeeded"] + row["failed"] for row in skills) else None,
-            "knowledge_retrievals": retrieval_count,
+            "knowledge_retrievals": retrieval_total - permission_count,
+            "knowledge_permission_checks": permission_count,
             "context_assemblies": context_count,
             "manual_reviewed_drafts": feedback["reviewed_drafts"],
             "manual_rejection_rate": feedback["rejection_rate"],
@@ -945,8 +1007,11 @@ def runtime_overview(
         "tools": tool_breakdown,
         "skills": skills,
         "anomalies": anomalies,
+        "recent_issues": recent_issues,
         "manual_feedback": feedback,
         "definitions": {
+            "recent_issues": "异常运行按完成时间、最近失败尝试时间或状态更新时间过滤并排序。统计截止时间为开区间。",
+            "knowledge": "业务检索与授权探测分别统计，历史事实用 top_k 为 0 识别授权探测。",
             "time_window": "TaskRun 执行根的终态按 finished_at 分桶，排队/运行/待核对等非终态按 created_at 分桶；模型调用与运行事件按事实发生时间过滤。结束时间为开区间。",
             "task_runs": "来源：TaskRun 自指协调根或 execution_root_run_id 为空的历史 Run；Fan-out 子 Run 不重复计数。旧数据无根关系时按行计数，歧义历史不会猜测合并。",
             "success_rate": "SUCCEEDED / (SUCCEEDED + SUCCEEDED_WITH_ISSUES + FAILED + CANCELLED)；RECONCILIATION_REQUIRED、排队/运行中和 SUPERSEDED 单列且不进分母。",
@@ -961,7 +1026,7 @@ def runtime_overview(
             "subagent_runtime_events": "来源：RuntimeEventFact event_type=AGENT_RUN；按 attempt_id 记录已提交的子 Agent 成功/失败运行事件，恢复复用结果使用稳定 event_id 去重。",
             "model": "RuntimeCallFact；不包含未写入 RuntimeCallFact 的历史调用。",
             "model_status_rate": "来源：RuntimeCallFact；仅 SUCCEEDED/FAILED 为已知终态调用，UNKNOWN 不进成功率分母；模型明细同时列出已知与未知调用数。",
-            "tool": "RuntimeEventFact 覆盖本版本接入 dispatcher 的工具；其成功率按成功/失败终态计算。TaskToolInvocation 业务回执成功率同样排除 STARTED/未知状态。",
+            "tool": "工具事实单列治理拒绝、执行失败和执行成功。执行成功率的分母为成功及失败的执行，业务回执另按其终态统计。",
             "skill": "统计 Skill 文件装载/渲染是否完成，不代表 Markdown Skill 的业务结果或正确率。",
             "cost": "仅汇总有明确价格快照的调用；未配置价格时为 null，不按 Token 猜测成本。",
             "model_latency": "来源：RuntimeCallFact.duration_ms > 0；平均值、P50 和 P95 仅使用实测正时长，单列有效样本数；零值不作为测量结果。",

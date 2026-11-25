@@ -118,6 +118,43 @@ def test_text_docx_and_scanned_pdf():
         service.extract('scan.pdf', file.getvalue())
 
 
+@pytest.mark.parametrize(('length', 'windows'), [(1000, [1000]), (1001, [1001]), (1200, [1200]), (1201, [1200, 201])])
+def test_fixed_chunks_cover_source_without_a_redundant_tail(db, length, windows):
+    raw = ('甲' * 1000 + '乙' * 200 + '丙')[:length]
+    version = service.upload(db, 1, 1, {1}, '边界.txt', raw.encode())
+    service.parse_version(db, version.id)
+    chunks = db.query(KnowledgeChunk).filter_by(version_id=version.id).order_by(KnowledgeChunk.position).all()
+    assert [len(chunk.text) for chunk in chunks] == windows
+    assert chunks[0].text + ''.join(chunk.text[200:] for chunk in chunks[1:]) == raw
+    before = [chunk.id for chunk in chunks]
+    service.parse_version(db, version.id)
+    assert [chunk.id for chunk in db.query(KnowledgeChunk).filter_by(version_id=version.id).order_by(KnowledgeChunk.position)] == before
+
+
+def test_pdf_chunks_continue_across_blank_pages_without_losing_page_numbers(db):
+    import io
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+
+    writer = PdfWriter()
+    for text in ('a' * 1001, None, 'b' * 1201):
+        page = writer.add_blank_page(width=200, height=200)
+        if text:
+            stream = DecodedStreamObject()
+            stream.set_data(f'BT /F1 12 Tf 20 20 Td ({text}) Tj ET'.encode())
+            page[NameObject('/Contents')] = writer._add_object(stream)
+            page[NameObject('/Resources')] = DictionaryObject({NameObject('/Font'): DictionaryObject({
+                NameObject('/F1'): DictionaryObject({NameObject('/Type'): NameObject('/Font'),
+                    NameObject('/Subtype'): NameObject('/Type1'), NameObject('/BaseFont'): NameObject('/Helvetica')}),
+            })})
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    version = service.upload(db, 1, 1, {1}, '边界.pdf', buffer.getvalue())
+    service.parse_version(db, version.id)
+    chunks = db.query(KnowledgeChunk).filter_by(version_id=version.id).order_by(KnowledgeChunk.position).all()
+    assert [(chunk.page, chunk.position, len(chunk.text)) for chunk in chunks] == [(1, 0, 1001), (3, 1, 1200), (3, 2, 201)]
+
+
 def test_agents_share_project_knowledge(db):
     prepared(db)
     first_doc = db.query(KnowledgeDocument).filter_by(project_id=1).one()
@@ -148,6 +185,27 @@ def test_bm25_top_k_and_relevance_threshold(db):
     assert results[0]['score'] > 0
     assert results[0]['version'] == version.version
     assert service.search(db, snapshot, {1}, '支付', minimum_score=100.0) == []
+
+
+@pytest.mark.parametrize('query', ['???', 'é', '😀'])
+def test_nonblank_query_without_lexical_terms_never_browses(db, query):
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    items, metadata = service.search(db, snapshot, {1}, query, return_metadata=True)
+    assert items == []
+    assert metadata['candidate_count'] == 0
+    assert len(service.search(db, snapshot, {1}, '')) == 1
+    assert service.search(db, snapshot, {1}, query, limit=0) == []
+    with pytest.raises(HTTPException):
+        service.search(db, snapshot, {2}, '', limit=0)
+
+
+def test_query_without_lexical_terms_can_use_semantic_candidates(db):
+    prepared(db)
+    snapshot = service.freeze(db, 1, 1, {1})
+    chunk_id = service.search(db, snapshot, {1}, '')[0]['chunk_id']
+    items = service.search(db, snapshot, {1}, '😀', vector_candidate_ids=[chunk_id])
+    assert [(item['chunk_id'], item['score_type']) for item in items] == [(chunk_id, 'RRF')]
 
 
 def test_search_limits_sql_candidates_and_persists_retrieval_facts(db):

@@ -10,6 +10,7 @@ class AgentSessionSummary(Base):
     """会话历史的提取式摘要；来源消息仍是唯一事实来源。"""
 
     __tablename__ = "agent_session_summary"
+    __table_args__ = {"info": {"is_view": True}}
 
     session_id = Column(
         Integer, ForeignKey("agent_session.id", ondelete="CASCADE"), primary_key=True,

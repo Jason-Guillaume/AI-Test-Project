@@ -26,7 +26,7 @@ class TestCaseData(SoftDeleteBase):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
-        {"comment": "测试用例数据项"},
+        {"info": {"is_view": True}, "comment": "测试用例数据项"},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

@@ -346,15 +346,23 @@ export function ConsoleLayout() {
     return items;
   }, [location.pathname, menuItems, selectedMenuKey]);
 
-  // 顶部用户菜单：个人中心与退出登录两个可操作项。
   const userMenu = {
     items: [
+      ...(narrowViewport && user ? [{
+        key: 'identity', disabled: true, label: <span className="app-user-identity">{user.username}</span>,
+      }] : []),
       {
         key: 'profile',
         icon: <UserOutlined />,
         label: '个人中心',
         onClick: () => navigate('/console/profile'),
       },
+      ...(narrowViewport && user?.role === 'admin' ? [{
+        key: 'admin',
+        icon: <AppstoreOutlined />,
+        label: '管理后台',
+        onClick: () => navigate('/admin/dashboard'),
+      }] : []),
       {
         key: 'logout',
         icon: <LogoutOutlined />,
@@ -420,8 +428,7 @@ export function ConsoleLayout() {
         </div>
       </Sider>
       <Layout>
-        <Header className="app-topbar">
-          {/* 窄屏时项目选择器按视口宽度收窄，并允许整体换行 */}
+        <Header className="app-topbar console-topbar">
           <Flex className="app-topbar-left" wrap="wrap" gap="middle" align="center">
             <Button
               className="app-sidebar-toggle"
@@ -433,7 +440,7 @@ export function ConsoleLayout() {
             />
             <Select
               className="app-scope-select"
-              style={{ width: 'min(300px, 52vw)' }}
+              aria-label="选择项目"
               placeholder="选择项目"
               loading={projectsQuery.isLoading}
               value={currentProjectId ?? undefined}
@@ -458,7 +465,7 @@ export function ConsoleLayout() {
           </Flex>
           <Flex className="app-topbar-actions" gap="small" align="center">
             <TaskSchedulerDrawer />
-            {user?.role === 'admin' && (
+            {user?.role === 'admin' && !narrowViewport && (
               <Button
                 icon={<AppstoreOutlined />}
                 onClick={() => navigate('/admin/dashboard')}
@@ -473,10 +480,10 @@ export function ConsoleLayout() {
               aria-label="通知中心"
               onClick={() => navigate('/console/notifications')}
             />
-            <Dropdown menu={userMenu} placement="bottomRight">
-              <Button type="text" className="app-user-trigger">
+            <Dropdown menu={userMenu} placement="bottomRight" trigger={narrowViewport ? ['click'] : ['hover', 'click']}>
+              <Button type="text" className="app-user-trigger" aria-label={`用户菜单，${user?.username ?? ''}`}>
                 <Avatar size={30} icon={<UserOutlined />} />
-                <span>{user?.username}</span>
+                <span className="app-user-name">{user?.username}</span>
               </Button>
             </Dropdown>
           </Flex>

@@ -14,6 +14,7 @@ import {
   Table,
   Tabs,
   Tag,
+  Typography,
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -253,11 +254,15 @@ function EnvironmentCatalogTab() {
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Environment | null>(null);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [checkedIds, setSelectedIds] = useState<number[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const listQuery = useQuery({
-    queryKey: ['environment-catalog'],
-    queryFn: () => environmentsApi.list({ include_inactive: true, page: 1, page_size: 200 }),
+    queryKey: ['environment-catalog', page, pageSize],
+    queryFn: () => environmentsApi.list({ include_inactive: true, page, page_size: pageSize }),
   });
+  const items = listQuery.data?.items ?? [];
+  const selectedIds = checkedIds.filter((id) => items.some((item) => item.id === id && !item.is_default));
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['environment-catalog'] });
     queryClient.invalidateQueries({ queryKey: ['environments'] });
@@ -275,7 +280,7 @@ function EnvironmentCatalogTab() {
   });
   const removeMutation = useMutation({
     mutationFn: (name: string) => environmentsApi.remove(name),
-    onSuccess: () => { message.success('环境类型已移入回收站'); invalidate(); },
+    onSuccess: () => { message.success('环境类型已移入回收站'); if (items.length === 1 && page > 1) setPage(page - 1); invalidate(); },
     onError: (error) => message.error(getErrorMessage(error)),
   });
   const deleteMany = () => {
@@ -288,6 +293,7 @@ function EnvironmentCatalogTab() {
         try {
           const result = await dataLifecycleApi.deleteMany('environment', null, selectedIds);
           setSelectedIds([]);
+          if (result.succeeded === items.length && page > 1) setPage(page - 1);
           invalidate();
           if (result.failed) {
             modal.info({
@@ -318,7 +324,6 @@ function EnvironmentCatalogTab() {
       ),
     },
   ];
-  if (listQuery.isPending) return <LoadingState />;
   if (listQuery.isError) return <ErrorState error={listQuery.error} onRetry={listQuery.refetch} />;
   return (
     <>
@@ -327,10 +332,22 @@ function EnvironmentCatalogTab() {
         <Button type="primary" onClick={() => setCreating(true)}>新增环境类型</Button>
         <Button danger disabled={!selectedIds.length} onClick={deleteMany}>批量删除（{selectedIds.length}）</Button>
         <Button onClick={() => navigate('/admin/recycle-bin')}>回收站</Button>
+        <Typography.Text type="secondary">批量选择仅限当前页</Typography.Text>
+        <Select
+          aria-label="环境每页条数"
+          value={pageSize}
+          style={{ width: 112 }}
+          options={[20, 50, 100, 200].map((value) => ({ value, label: `${value} 条/页` }))}
+          onChange={(size) => { setSelectedIds([]); setPage(1); setPageSize(size); }}
+        />
       </Space>
       <Table<Environment>
         rowKey="id" size="small" scroll={{ x: 'max-content' }} columns={columns}
-        dataSource={listQuery.data.items} loading={listQuery.isFetching} pagination={false}
+        dataSource={items} loading={listQuery.isFetching} pagination={{
+          current: page, pageSize, total: listQuery.data?.total ?? 0, showSizeChanger: false, responsive: true,
+          showTotal: (total) => `共 ${total} 项`,
+          onChange: (next) => { setSelectedIds([]); setPage(next); },
+        }}
         rowSelection={{
           selectedRowKeys: selectedIds,
           onChange: (keys) => setSelectedIds(keys.map(Number)),

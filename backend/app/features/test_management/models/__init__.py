@@ -29,6 +29,13 @@ from app.features.test_management.models.test_scope import (
 )
 from app.features.test_management.models.test_strategy import TestStrategy
 from app.features.test_management.models.test_suite import TestSuite, TestSuiteCase
+from app.core.database.base import Base
+from app.features.test_management.storage_schema_v1 import collection_tables, component_table
+
+# The named ORM resources above keep their independent public primary keys on
+# PostgreSQL views. These tables are the corresponding Alembic storage metadata.
+test_collection, test_collection_member = collection_tables(Base.metadata)
+test_case_component = component_table(Base.metadata)
 
 __all__ = [
     "CaseDraft",

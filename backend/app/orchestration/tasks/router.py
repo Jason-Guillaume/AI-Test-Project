@@ -303,11 +303,12 @@ def get_trace_timeline(
     run_id: int,
     cursor: str | None = Query(None, max_length=500),
     limit: int = Query(100, ge=1, le=200),
+    event_id: int | None = Query(None, gt=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
     """返回经项目权限过滤的 Trace 索引事实；请求与工具正文仍由 Langfuse 保存。"""
-    return service.trace_timeline(db, run_id, user, cursor=cursor, limit=limit)
+    return service.trace_timeline(db, run_id, user, cursor=cursor, limit=limit, event_id=event_id)
 
 
 @router.post("/task-runs/{run_id}/trace/replay", summary="补偿和重放运行事实的 Langfuse 投影")

@@ -18,7 +18,7 @@ class SecurityProjectSetting(Base):
     __tablename__ = "security_project_setting"
     __table_args__ = (
         UniqueConstraint("project_id", name="uq_security_setting_project"),
-        {"comment": "项目级安全执行环境开关：生产永远拒绝，allow_production 仅记录意图"},
+        {"info": {"is_view": True}, "comment": "项目级安全执行环境开关：生产永远拒绝，allow_production 仅记录意图"},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

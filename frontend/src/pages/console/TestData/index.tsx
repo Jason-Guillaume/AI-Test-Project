@@ -10,7 +10,7 @@
 // Phase B：顶部环境同时驱动「Fixture 生成/清理」「Provider 试跑」，
 // 三者的结果都开进 ExecutionDetailDrawer（每步 input/output/error）。
 import { useMemo, useState } from 'react';
-import { Select, Space, Tabs } from 'antd';
+import { Select, Space, Tabs, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/features/projects/api/projects';
 import { EmptyState, PageContainer } from '@/shared/ui/PageState';
@@ -57,11 +57,13 @@ export function ConsoleTestDataPage() {
 
   return (
     <PageContainer>
-      <Space style={{ marginBottom: 16 }} size="middle">
-        <span style={{ color: '#888' }}>执行环境：</span>
+      <Space wrap style={{ marginBottom: 16 }}>
+        <label htmlFor="test-data-environment">执行环境</label>
         <Select
-          style={{ width: 220 }}
-          placeholder="选择环境（生成 / 清理 / 试跑用）"
+          id="test-data-environment"
+          aria-describedby="test-data-environment-hint"
+          style={{ width: 220, maxWidth: '100%' }}
+          placeholder="选择环境"
           value={environmentId ?? undefined}
           onChange={(v) => setEnvironmentId(v ?? null)}
           options={environments.map((e) => ({
@@ -72,6 +74,7 @@ export function ConsoleTestDataPage() {
           optionFilterProp="label"
           allowClear
         />
+        <Typography.Text type="secondary" id="test-data-environment-hint">用于生成、清理和试跑。</Typography.Text>
       </Space>
 
       <Tabs

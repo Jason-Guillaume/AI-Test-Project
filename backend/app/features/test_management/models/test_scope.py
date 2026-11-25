@@ -86,7 +86,7 @@ class TestScopeMigrationCheck(Base):
     """迁移前后行数核对。正式资产表的前后数量必须相等。"""
 
     __tablename__ = "test_scope_migration_check"
-    __table_args__ = ({"comment": "测试范围迁移的数量核对"},)
+    __table_args__ = ({"info": {"is_view": True}, "comment": "测试范围迁移的数量核对"},)
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     metric = Column(String(80), nullable=False, unique=True)
@@ -98,6 +98,6 @@ class TestScopeApiBackfill(Base):
     """本次迁移回填了 api_id 的用例。降级时只清空这些行，不动原本已有的关联。"""
 
     __tablename__ = "test_scope_api_backfill"
-    __table_args__ = ({"comment": "迁移唯一匹配回填的 api_id，供降级撤销"},)
+    __table_args__ = ({"info": {"is_view": True}, "comment": "迁移唯一匹配回填的 api_id，供降级撤销"},)
 
     test_case_id = Column(Integer, ForeignKey("test_case.id", ondelete="CASCADE"), primary_key=True)

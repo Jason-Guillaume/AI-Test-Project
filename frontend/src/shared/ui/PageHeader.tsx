@@ -4,7 +4,7 @@
 // 重构计划 §3.A 要求报告页头部集中展示报告名称、编号、所属项目、环境、执行时间、
 // 状态与主操作，必须收敛成一处实现。
 
-import { Breadcrumb, Button, Flex, Space, theme, Typography } from 'antd';
+import { Breadcrumb, Button, Flex, theme, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { type ReactNode } from 'react';
 
@@ -72,7 +72,7 @@ export function PageHeader({
             ) : null}
           </div>
         </Flex>
-        {extra ? <Space size="small" wrap style={{ flexShrink: 0 }}>{extra}</Space> : null}
+        {extra && <Flex align="center" gap={token.marginXS} wrap="wrap" style={{ minWidth: 0, maxWidth: '100%' }}>{extra}</Flex>}
       </Flex>
 
       {meta && meta.length > 0 ? (
@@ -87,8 +87,8 @@ export function PageHeader({
           }}
         >
           {meta.map((m, i) => (
-            <Flex key={i} align="baseline" gap={token.marginXXS} wrap="nowrap">
-              <Typography.Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
+            <Flex key={i} align="baseline" gap={token.marginXXS} style={{ maxWidth: '100%' }}>
+              <Typography.Text type="secondary" style={{ flexShrink: 0, fontSize: token.fontSizeSM }}>
                 {m.label}
               </Typography.Text>
               <Typography.Text strong style={{ fontSize: token.fontSize, wordBreak: 'break-all' }}>

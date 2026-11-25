@@ -5,11 +5,15 @@
 
 from app.features.asr_evaluation.models.asr_models import (
     AsrAudio, AsrAudioVersion, AsrComparison, AsrConnection, AsrDiffBlock, AsrDiarizationResult,
-    AsrContentReviewChunk, AsrContentReviewJob, AsrEvaluationArtifact, AsrExperiment, AsrFusionVersion, AsrMediaAnalysis, AsrProcessingRun, AsrProcessingWorkItem,
-    AsrReferenceSample, AsrSpeaker, AsrSpeakerAssignment, AsrSpeakerNameAudit, AsrSpeakerReviewAudit,
+    AsrContentReviewChunk, AsrContentReviewJob, AsrEvaluationArtifact, AsrExperiment, AsrFusionVersion, AsrMediaAnalysis, AsrProcessingRun,
+    AsrReferenceSample, AsrSpeaker, AsrSpeakerAssignment,
     AsrSpeakerTurn, AsrTranscriptSegment,
-    AsrJob, AsrModelRun, AsrParameterSet, AsrReviewAudit, AsrSchedule,
-    AsrSuggestion, AsrSuggestionJob, AsrWorkItem, AsrWorkerHeartbeat,
+    AsrJob, AsrModelRun, AsrParameterSet, AsrSchedule,
+    AsrSuggestion, AsrSuggestionJob, AsrWorkerHeartbeat,
+)
+from app.features.asr_evaluation.models.queue_review import (
+    AsrProcessingWorkItem, AsrQueueItem, AsrReviewAudit, AsrReviewEvent, AsrSpeakerNameAudit,
+    AsrSpeakerReviewAudit, AsrWorkItem,
 )
 from app.features.asr_evaluation.models.funasr_models import (
     AsrApiBinding, AsrGroundTruthVersion, AsrTuningItem, AsrTuningRound, AsrTuningSession,
@@ -18,7 +22,7 @@ from app.features.asr_evaluation.models.funasr_models import (
 __all__ = [
     "AsrAudio", "AsrAudioVersion", "AsrComparison", "AsrConnection", "AsrDiffBlock", "AsrDiarizationResult",
     "AsrContentReviewChunk", "AsrContentReviewJob", "AsrEvaluationArtifact", "AsrExperiment", "AsrFusionVersion", "AsrMediaAnalysis", "AsrProcessingRun", "AsrProcessingWorkItem",
-    "AsrReferenceSample", "AsrSpeaker", "AsrSpeakerAssignment", "AsrSpeakerNameAudit",
+    "AsrQueueItem", "AsrReviewEvent", "AsrReferenceSample", "AsrSpeaker", "AsrSpeakerAssignment", "AsrSpeakerNameAudit",
     "AsrSpeakerReviewAudit", "AsrSpeakerTurn", "AsrTranscriptSegment",
     "AsrJob", "AsrModelRun", "AsrParameterSet", "AsrReviewAudit", "AsrSchedule",
     "AsrSuggestion", "AsrSuggestionJob", "AsrWorkItem", "AsrWorkerHeartbeat",

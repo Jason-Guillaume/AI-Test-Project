@@ -40,23 +40,26 @@
 .dashboard-section-card .ant-card-extra { color: #5776d4; font-size: 12px; }
 .dashboard-list-meta { color: #929dad; font-size: 11px; }
 .dashboard-quick-start { margin-top: 28px; }
-.dashboard-charts { margin: 22px 0 4px; }
+.dashboard-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin: 22px 0 4px; }
+@container page (656px <= width < 992px) {
+  .dashboard-charts > :last-child { grid-column: 1 / -1; }
+}
 .dashboard-chart-card { height: 100%; border: 1px solid #e8edf4; border-radius: 14px; }
 .dashboard-chart-card > .ant-card-head { min-height: 68px; padding-inline: 18px; border-bottom-color: #edf0f5; }
 .dashboard-chart-card > .ant-card-body { min-height: 292px; padding: 16px 18px 14px; }
 .dashboard-chart-heading { display: flex; flex-direction: column; gap: 4px; }
 .dashboard-chart-heading strong { color: #25334a; font-size: 13px; font-weight: 650; }
-.dashboard-chart-heading span { color: #8995a7; font-size: 11px; font-weight: 400; }
+.dashboard-chart-heading span { color: #617087; font-size: 12px; font-weight: 400; white-space: normal; }
 .dashboard-chart-card .ant-card-extra { padding-block: 0; }
 .dashboard-chart-card .ant-tag { margin-inline-end: 0; color: #71809a; background: #f3f6fa; font-size: 10px; }
 .dashboard-chart-content { display: flex; min-height: 244px; flex-direction: column; justify-content: space-between; }
-.dashboard-chart-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.dashboard-chart-svg { display: block; width: 100%; }
 .dashboard-chart-gridline { stroke: #edf1f6; stroke-width: 1; }
-.dashboard-chart-axis-label { fill: #929eaf; font-family: inherit; font-size: 10px; }
+.dashboard-chart-axis-label { fill: #596980; font-family: inherit; font-size: 12px; }
 .dashboard-chart-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .dashboard-chart-point { stroke: #fff; stroke-width: 2; }
 .dashboard-chart-empty-label { fill: #98a3b3; font-family: inherit; font-size: 12px; }
-.dashboard-chart-legend { display: flex; min-height: 24px; flex-wrap: wrap; justify-content: center; gap: 10px 18px; color: #68768b; font-size: 10px; }
+.dashboard-chart-legend { display: flex; min-height: 24px; flex-wrap: wrap; justify-content: center; gap: 10px 18px; color: #617087; font-size: 12px; }
 .dashboard-chart-legend > span, .dashboard-severity-label { display: inline-flex; align-items: center; gap: 6px; }
 .dashboard-chart-legend i, .dashboard-severity-label i { display: inline-block; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; }
 .dashboard-chart-legend-bar { background: var(--chart-bar); }
@@ -67,7 +70,7 @@
 .dashboard-donut-track { stroke: #edf1f6; }
 .dashboard-donut-segment { stroke-linecap: round; }
 .dashboard-donut-total { fill: #25334a; font-size: 27px; font-weight: 700; }
-.dashboard-donut-caption { fill: #8995a7; font-size: 10px; }
+.dashboard-donut-caption { fill: #617087; font-size: 15px; }
 .dashboard-severity-legend { display: flex; min-width: 112px; flex: 1; flex-direction: column; gap: 12px; }
 .dashboard-severity-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 34px; align-items: center; gap: 8px; color: #617087; font-size: 11px; }
 .dashboard-severity-row strong { color: #25334a; font-size: 12px; font-weight: 650; text-align: right; }
@@ -79,7 +82,8 @@
 .quick-action-card .ant-card-body { display: flex; min-height: 80px; align-items: center; gap: 14px; padding: 16px; }
 .quick-action-icon { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; border-radius: 12px; background: #edf2ff; color: #5272de; font-size: 18px; }
 .quick-action-copy, .admin-link-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
-.quick-action-copy .ant-typography, .admin-link-copy .ant-typography { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.quick-action-copy .ant-typography-secondary { font-size: 12px; overflow-wrap: anywhere; }
+.admin-link-copy .ant-typography { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .quick-action-arrow, .admin-link-arrow { color: #97a2b2; font-size: 12px; }
 .admin-primary-stats { margin-bottom: 18px; }
 .admin-dashboard-main-row { margin-bottom: 18px; }

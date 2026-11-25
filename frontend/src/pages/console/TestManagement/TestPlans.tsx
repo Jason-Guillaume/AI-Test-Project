@@ -22,7 +22,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
@@ -31,6 +31,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_EXECUTION_MODE_OPTIONS, TEST_PLAN_STATUS_OPTIONS } from './constants';
+import { ManagementRowActions } from './ManagementRowActions';
 import type { Environment } from '@/features/environments/contracts';
 import type { TestPlan, TestPlanCreate, TestPlanStatus, TestPlanSuiteResponse, TestPlanUpdate, TestSuite } from '@/features/test-management/contracts';
 
@@ -178,7 +179,7 @@ export function ConsoleTestPlansPage() {
 
   const columns: TableColumnsType<TestPlan> = [
     { title: 'ID', dataIndex: 'id', width: 64 },
-    { title: '名称', dataIndex: 'name' },
+    { title: '名称', dataIndex: 'name', width: 200, className: 'table-record-name' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -201,21 +202,15 @@ export function ConsoleTestPlansPage() {
     },
     {
       title: '操作',
-      width: 240,
+      width: 160,
       render: (_, row) => (
-        <Space size={4}>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>
-            编辑
-          </Button>
-          <Button size="small" onClick={() => setPlanDrawerId(row.id)}>
-            管理套件
-          </Button>
-          <Popconfirm title="删除该计划？正在运行的计划会拒绝删除，历史运行记录将保留。" onConfirm={() => removeMutation.mutate(row.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        <ManagementRowActions
+          onEdit={() => openEdit(row)}
+          manageLabel="管理套件"
+          onManage={() => setPlanDrawerId(row.id)}
+          deleteTitle={`删除计划「${row.name}」？正在运行的计划会拒绝删除，历史运行记录将保留。`}
+          onDelete={() => removeMutation.mutateAsync(row.id)}
+        />
       ),
     },
   ];
@@ -255,7 +250,7 @@ export function ConsoleTestPlansPage() {
       ) : plans.length === 0 ? (
         <EmptyState description="暂无测试计划" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={plans} pagination={false} size="middle"
+        <Table rowKey="id" columns={columns} dataSource={plans} scroll={{ x: 1100 }} pagination={false} size="middle"
           rowSelection={{ selectedRowKeys: selectedPlanIds, onChange: (keys) => setSelectedPlanIds(keys.map(Number)) }} />
       )}
 

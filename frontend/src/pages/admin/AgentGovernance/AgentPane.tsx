@@ -15,9 +15,10 @@ import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 import { DefinitionHistoryModal } from './SkillPane';
 
 import { CaseGenerationModal } from './CaseGenerationModal';
-import { agentTestTypes, fixedModel, filterAgentHierarchy, matchesAgent, TEST_TYPE_LABELS } from './agentHierarchy.mjs';
+import { fixedModel, filterAgentHierarchy, matchesAgent, TEST_TYPE_LABELS } from './agentHierarchy.mjs';
 
 import { EvaluationToolModal } from './EvaluationToolModal';
+import { EffectiveConfigurationDrawer } from './DependencyDetails';
 
 const WORKFLOW_LABELS: Record<string, string> = {
   case_generation: '用例生成 · 主子协作',
@@ -34,10 +35,11 @@ export function AgentPane() {
   const [modelFilter, setModelFilter] = useState<string>();
   const [agentSearch, setAgentSearch] = useState('');
   const [agentPage, setAgentPage] = useState(1);
-  const [view, setView] = useState('cards');
+  const [view, setView] = useState('tree');
   const [generating, setGenerating] = useState<AgentDefinition | null>(null);
   const [evaluating, setEvaluating] = useState<AgentDefinition | null>(null);
   const [editing, setEditing] = useState<AgentDefinition | null>(null);
+  const [effective, setEffective] = useState<{ agent: AgentDefinition; parent?: AgentDefinition }>();
   const [creating, setCreating] = useState(false);
   const [history, setHistory] = useState<{ kind: 'agent' | 'skill'; id: number; name: string } | null>(null);
   const [selectedAgentIds, setSelectedAgentIds] = useState<number[]>([]);
@@ -71,25 +73,36 @@ export function AgentPane() {
   if (failed) return <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />;
   const allAgents = agents.data ?? [];
   const normalizedSearch = agentSearch.trim().toLocaleLowerCase();
-  const searchedAgents = allAgents.filter((agent) => `${agent.name} ${agent.key} ${agent.description} ${agent.workflow_template} ${agent.purpose}`.toLocaleLowerCase().includes(normalizedSearch));
-  const groups = filterAgentHierarchy(searchedAgents, moduleFilter, modelFilter);
-  const agentRows = searchedAgents.filter((agent) => matchesAgent(agent, moduleFilter, modelFilter));
+  const matchesSearch = (agent: AgentDefinition) => `${agent.name} ${agent.key} ${agent.description} ${agent.workflow_template} ${agent.purpose}`.toLocaleLowerCase().includes(normalizedSearch);
+  const groups = filterAgentHierarchy(allAgents, moduleFilter, modelFilter, matchesSearch);
+  const agentRows = allAgents.filter((agent) => matchesSearch(agent) && matchesAgent(agent, moduleFilter, modelFilter));
   const agentPageSize = 12;
   const cardRows = agentRows.slice((agentPage - 1) * agentPageSize, agentPage * agentPageSize);
-  const modelLabel = (agent: AgentDefinition, child = false) => {
-    const id = fixedModel(agent);
-    return id == null ? (child ? '模型：继承主 Agent' : '模型：本次选择 / 全局默认') : `模型：${models.data?.items.find((item) => item.id === id)?.label ?? `#${id}`}`;
+  const modelLabel = (agent: AgentDefinition, parent?: AgentDefinition) => {
+    const explicit = fixedModel(agent, parent);
+    const id = explicit ?? (parent ? fixedModel(parent) : undefined);
+    const fallback = [...(models.data?.items ?? [])].sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.sort_order - b.sort_order || a.id - b.id)[0];
+    const model = id == null ? fallback : models.data?.items.find((item) => item.id === id);
+    const label = model ? `${model.label} (${model.model_name})` : id == null ? '无可用模型' : `#${id} 不可用`;
+    return `${explicit != null ? '固定模型' : parent ? '继承模型' : '默认模型'} · ${label}`;
   };
-  const treeTitle = (agent: AgentDefinition, child = false) => <Space wrap>
+  const configurationIssues = (agent: AgentDefinition) => [
+    ...agent.skill_keys.filter((key) => !skills.data?.some((skill) => skill.key === key && skill.is_enabled)).map(() => 'Skill 缺失或停用'),
+    ...agent.child_agent_ids.filter((id) => !allAgents.some((child) => child.id === id && child.is_enabled)).map(() => '子 Agent 缺失或停用'),
+    ...(fixedModel(agent) != null && !models.data?.items.some((model) => model.id === fixedModel(agent)) ? ['固定模型不可用'] : []),
+  ];
+  const treeTitle = (agent: AgentDefinition, parent?: AgentDefinition) => <Space wrap>
     <Typography.Text strong>{agent.name}</Typography.Text>
-    <Tag color={child ? 'cyan' : agent.child_agent_ids.length ? 'purple' : 'default'}>{child ? '子 Agent' : agent.child_agent_ids.length ? '主 Agent' : '独立 Agent'}</Tag>
-    <Tag>{agentTestTypes(agent).map((type) => TEST_TYPE_LABELS[type] ?? TEST_TYPE_LABELS.general).join("、")}</Tag><Tag>{modelLabel(agent, child)}</Tag>
+    <Tag color={parent ? 'cyan' : agent.child_agent_ids.length ? 'purple' : 'default'}>{parent ? '子 Agent' : agent.child_agent_ids.length ? '主 Agent' : '独立 Agent'}</Tag>
+    <Tag>{WORKFLOW_LABELS[agent.workflow_template] ?? agent.workflow_template}</Tag><Tag>{modelLabel(agent, parent)}</Tag>
     <Tag>{agent.is_enabled ? '启用' : '停用'}</Tag>
+    {[...new Set(configurationIssues(agent))].map((issue) => <Tag color="orange" key={issue}>{issue}</Tag>)}
+    <Button size="small" onClick={() => setEffective({ agent, parent })}>有效配置</Button>
     <Button size="small" onClick={() => setEditing(agent)}>配置</Button>
     {agent.tool_keys.some((key) => key.startsWith('asr.') || key === 'ai.check_output') && <Button size="small" disabled={!agent.is_enabled} onClick={() => setEvaluating(agent)}>运行评测工具</Button>}
     {agent.workflow_template === 'case_generation' && agent.child_agent_ids.length > 0 && <Button size="small" type="primary" disabled={!agent.is_enabled} onClick={() => setGenerating(agent)}>生成用例</Button>}
   </Space>;
-  const treeData = groups.map(({ agent, children, matches }) => ({ key: `root-${agent.id}`, title: <>{treeTitle(agent)}{!matches && <Tag>包含匹配子 Agent</Tag>}</>, children: children.map((child) => ({ key: `${agent.id}-${child.id}`, title: treeTitle(child, true) })) }));
+  const treeData = groups.map(({ agent, children, matches }) => ({ key: `root-${agent.id}`, title: <>{treeTitle(agent)}{!matches && <Tag>包含匹配子 Agent</Tag>}</>, children: children.map((child) => ({ key: `${agent.id}-${child.id}`, title: treeTitle(child, agent) })) }));
 
   const submit = (body: AgentDefinitionInput) => {
     const normalized = { ...body, skill_keys: body.skill_keys ?? [], tool_keys: body.tool_keys ?? [], child_agent_ids: body.child_agent_ids ?? [], instruction: body.instruction ?? '' };
@@ -149,7 +162,9 @@ export function AgentPane() {
       />}
       {view === 'cards' && (agentRows.length ? <>
         <Row gutter={[12, 12]}>
-        {cardRows.map((agent) => <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
+        {cardRows.map((agent) => {
+          const parents = allAgents.filter((parent) => parent.child_agent_ids.includes(agent.id));
+          return <Col xs={24} md={12} xl={8} xxl={6} key={agent.id}>
           <Card
             size="small"
             style={{ height: '100%' }}
@@ -169,8 +184,11 @@ export function AgentPane() {
             <Typography.Paragraph type="secondary" ellipsis={{ rows: 2, tooltip: agent.description || '暂无说明' }} style={{ minHeight: 40, marginTop: 6, marginBottom: 8 }}>
               {agent.description || '暂无说明'}
             </Typography.Paragraph>
-            <Tag>{modelLabel(agent, allAgents.some((parent) => parent.child_agent_ids.includes(agent.id)))}</Tag>
-            <Tag>{allAgents.some((parent) => parent.child_agent_ids.includes(agent.id)) ? `子 Agent · 主 Agent：${allAgents.filter((parent) => parent.child_agent_ids.includes(agent.id)).map((parent) => parent.name).join('、')}` : agent.child_agent_ids.length ? '主 Agent' : '独立 Agent'}</Tag>
+            {(parents.length ? parents : [undefined]).map((parent) => <Space wrap key={parent?.id ?? 'root'} size={[4, 4]}>
+              <Tag>{parent ? `主 Agent · ${parent.name}` : agent.child_agent_ids.length ? '主 Agent' : '独立 Agent'}</Tag>
+              <Tag>{modelLabel(agent, parent)}</Tag>
+              <Button size="small" onClick={() => setEffective({ agent, parent })}>有效配置</Button>
+            </Space>)}
             {agent.workflow_template === 'case_generation' && agent.child_agent_ids.length > 0 && <Button onClick={() => setGenerating(agent)} disabled={!agent.is_enabled}>生成用例</Button>}
             <Space wrap size={[4, 4]} style={{ marginTop: 'auto', marginBottom: 8 }}>
               <Tag>子 Agent {agent.child_agent_ids.length}</Tag>
@@ -184,10 +202,11 @@ export function AgentPane() {
               <Button size="small" danger onClick={() => modal.confirm({ title: `将 Agent「${agent.name}」移入回收站？`, okText: '移入回收站', okButtonProps: { danger: true }, onOk: () => deleteMutation.mutateAsync(agent.id) })}>删除</Button>
             </div>
           </Card>
-        </Col>)}
+        </Col>; })}
         </Row>
         {agentRows.length > agentPageSize && <Pagination current={agentPage} pageSize={agentPageSize} total={agentRows.length} showSizeChanger={false} onChange={setAgentPage} style={{ marginTop: 16, textAlign: 'right' }} />}
       </> : <EmptyState description="没有匹配的 Agent" />)}
+      {effective && <EffectiveConfigurationDrawer agent={effective.agent} parent={effective.parent} onClose={() => setEffective(undefined)} />}
       <CaseGenerationModal key={generating ? `gen-${generating.id}` : 'gen-closed'} agent={generating} agents={allAgents} models={(models.data?.items ?? []).map((item) => ({ value: item.id, label: `${item.label} (${item.model_name})` }))} onClose={() => setGenerating(null)} />
       {evaluating && <EvaluationToolModal key={`eval-${evaluating.id}`} agent={evaluating} onClose={() => setEvaluating(null)} />}
       {(creating || Boolean(editing)) && <AgentFormModal

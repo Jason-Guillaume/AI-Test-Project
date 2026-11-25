@@ -4,6 +4,17 @@ from types import SimpleNamespace
 
 from app.knowledge.retrieval import mean_reciprocal_rank, recall_at_k
 from app.knowledge.service import _bm25_scores
+from scripts.evaluate_superagent_retrieval import evaluate_case
+
+
+def test_evaluation_caps_vector_candidates_after_permission_filter():
+    corpus = {key: SimpleNamespace(id=key, position=0, version_id=key, project_id=key, text="same")
+              for key in (1, 2)}
+    case = dict(id="scope", project_id=2, agent_id=7, visible_versions=[2], relevant_chunks=[2],
+                answerable=True, query="same", vector={'status': 'ACTIVE', 'ids': [1, 2]})
+    config = dict(top_k=1, bm25_candidates=1, vector_candidates=1, rerank_window=1)
+    vector = evaluate_case(case, corpus, config)['variants']['VECTOR']
+    assert vector['hits'] == [2] and vector['unauthorized_candidates_filtered'] == 1
 
 
 def test_rag_lexical_fixtures_report_recall_at_k_and_mrr():

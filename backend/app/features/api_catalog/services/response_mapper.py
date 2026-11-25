@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.features.api_catalog.models.api_contract_entry import ApiContractEntry
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_module import ApiModule
 from app.features.api_catalog.models.api_parameter import ApiParameter
@@ -121,10 +122,10 @@ def interface_response(iface: ApiInterface, module_map: dict[int, str]) -> ApiIn
     )
 
 
-def param_response(p: ApiParameter) -> ApiParameterResponse:
+def param_response(p: ApiParameter | ApiContractEntry) -> ApiParameterResponse:
     """构造参数响应数据。"""
     return ApiParameterResponse(
-        id=p.id,
+        id=p.public_id if isinstance(p, ApiContractEntry) else p.id,
         interface_id=p.interface_id,
         name=p.name,
         location=p.location,
@@ -150,10 +151,10 @@ def body_response(b: ApiRequestBody | None, interface_id: int) -> ApiRequestBody
     )
 
 
-def response_response(r: ApiResponse) -> ApiResponseResponse:
+def response_response(r: ApiResponse | ApiContractEntry) -> ApiResponseResponse:
     """构造响应响应数据。"""
     return ApiResponseResponse(
-        id=r.id,
+        id=r.public_id if isinstance(r, ApiContractEntry) else r.id,
         interface_id=r.interface_id,
         status_code=r.status_code,
         response_key=r.response_key,

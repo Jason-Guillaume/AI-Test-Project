@@ -126,6 +126,9 @@ body {
 .app-topbar-left { flex: 1; }
 .app-topbar-actions { flex: 0 0 auto; }
 .app-scope-select { min-width: 0; }
+.console-topbar .app-scope-select { flex: 1 1 0; max-width: 300px; }
+.app-user-name { max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-user-identity { display: flex; max-width: min(70vw, 28em); flex-wrap: wrap; align-items: center; gap: 6px; white-space: normal; overflow-wrap: anywhere; }
 .app-scope-select .ant-select-selector { border-radius: 9px !important; background: #f8f9fc !important; }
 .app-user-trigger { display: inline-flex; height: 42px; align-items: center; gap: 9px; padding: 0 9px; border-radius: 10px; color: inherit; }
 .app-user-trigger:hover { background: #f2f5fa !important; }
@@ -144,6 +147,11 @@ body {
 .app-layout-dark .page-container .ant-card { border-color: #343a44; box-shadow: none; }
 .page-container .ant-card, .page-container .ant-table-wrapper { border-radius: 12px; }
 .page-container .ant-table-wrapper { overflow: auto; padding: 8px 14px 12px; border: 1px solid #e9edf3; background: #fff; box-shadow: 0 3px 14px rgb(31 48 79 / 3%); }
+.table-record-name { overflow-wrap: anywhere; }
+.project-detail-meta .ant-tag { max-width: 100%; margin-inline-end: 0; white-space: normal; overflow-wrap: anywhere; }
+.wrapping-card-heading > .ant-card-head .ant-card-head-wrapper { flex-wrap: wrap; gap: 4px 12px; padding-block: 8px; }
+.wrapping-card-heading > .ant-card-head .ant-card-head-title { flex: 1 0 auto; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.wrapping-card-heading > .ant-card-head .ant-card-extra { max-width: 100%; margin-inline-start: 0; white-space: normal; }
 .app-layout-dark .page-container .ant-table-wrapper { border-color: #343a44; background: #1f242c; box-shadow: none; }
 .page-container .ant-input-affix-wrapper, .page-container .ant-select-selector, .page-container .ant-picker { border-radius: 8px !important; }
 /* 页面顶层工具条默认是 inline-flex，连续两组会排进同一行并被内容区裁切。 */
@@ -188,6 +196,8 @@ body {
 .knowledge-search-controls .ant-input-number { width: 150px; max-width: 100%; }
 .form-field-row { display: flex; width: 100%; align-items: flex-start; gap: 12px; }
 .form-field-row > .ant-form-item { min-width: 0; }
+.model-connection-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); column-gap: 12px; }
+.model-connection-fields > .ant-form-item { min-width: 0; }
 /* 缺陷详情弹窗中的接口报文块：限制高度并保留换行，避免长报文撑破弹窗。 */
 .bug-api-pre {
   margin: 4px 0 8px;

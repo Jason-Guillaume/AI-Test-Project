@@ -23,7 +23,7 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
@@ -31,6 +31,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_SUITE_TYPE_OPTIONS } from './constants';
+import { ManagementRowActions } from './ManagementRowActions';
 import type { TestSuite, TestSuiteCaseResponse, TestSuiteCreate, TestSuiteType, TestSuiteUpdate } from '@/features/test-management/contracts';
 
 
@@ -172,7 +173,7 @@ export function ConsoleTestSuitesPage() {
 
   const columns: TableColumnsType<TestSuite> = [
     { title: 'ID', dataIndex: 'id', width: 64 },
-    { title: '名称', dataIndex: 'name' },
+    { title: '名称', dataIndex: 'name', width: 200, className: 'table-record-name' },
     {
       title: '类型',
       dataIndex: 'suite_type',
@@ -199,24 +200,15 @@ export function ConsoleTestSuitesPage() {
     },
     {
       title: '操作',
-      width: 240,
+      width: 160,
       render: (_, row) => (
-        <Space size={4}>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>
-            编辑
-          </Button>
-          <Button size="small" onClick={() => setSuiteDrawerId(row.id)}>
-            管理用例
-          </Button>
-          <Popconfirm
-            title="删除该套件？仍被启用计划或执行任务引用时会拒绝删除。"
-            onConfirm={() => removeMutation.mutate(row.id)}
-          >
-            <Button size="small" danger icon={<DeleteOutlined />}>
-              删除
-            </Button>
-          </Popconfirm>
-        </Space>
+        <ManagementRowActions
+          onEdit={() => openEdit(row)}
+          manageLabel="管理用例"
+          onManage={() => setSuiteDrawerId(row.id)}
+          deleteTitle={`删除套件「${row.name}」？仍被启用计划或执行任务引用时会拒绝删除。`}
+          onDelete={() => removeMutation.mutateAsync(row.id)}
+        />
       ),
     },
   ];
@@ -256,7 +248,7 @@ export function ConsoleTestSuitesPage() {
       ) : suites.length === 0 ? (
         <EmptyState description="暂无测试套件" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={suites} pagination={false} size="middle"
+        <Table rowKey="id" columns={columns} dataSource={suites} scroll={{ x: 970 }} pagination={false} size="middle"
           rowSelection={{ selectedRowKeys: selectedSuiteIds, onChange: (keys) => setSelectedSuiteIds(keys.map(Number)) }} />
       )}
 

@@ -1513,6 +1513,12 @@ def _project_purge_references(db: Session, project_id: int) -> list[str]:
             ), {"project_id": project_id}).scalar_one()
             if count:
                 references.append(f"{table_name}: {count}")
+    if "security_project_setting" in inspector.get_view_names():
+        present = db.execute(text(
+            "SELECT 1 FROM project WHERE id = :parent_id AND security_setting_id IS NOT NULL"
+        ), {"parent_id": project_id}).scalar()
+        if present:
+            references.append("security_project_setting: 1")
     return references
 
 
@@ -1555,6 +1561,12 @@ def _agent_session_purge_references(db: Session, session_id: int) -> list[str]:
             ), {"session_id": session_id}).scalar_one()
             if count:
                 references.append(f"{table_name}.{source_column}: {count}")
+    if "agent_session_summary" in inspector.get_view_names():
+        present = db.execute(text(
+            "SELECT 1 FROM agent_session WHERE id = :parent_id AND summary_version IS NOT NULL"
+        ), {"parent_id": session_id}).scalar()
+        if present:
+            references.append("agent_session_summary.session_id: 1")
     return references
 
 

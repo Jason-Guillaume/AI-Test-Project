@@ -40,16 +40,18 @@ def build_agent_guidance(profile: dict[str, Any] | None) -> str:
     for skill in profile.get("skills") or []:
         skill_started = time.monotonic()
         name = str(skill.get("name") or skill.get("key") or "Skill")
+        version = skill.get("version")
+        label = f"Skill「{name}」" + (f" v{version}" if version is not None else "")
         try:
             files = load_skill_files(skill)
             rendered_file_count += len(files)
             content = render_skill_text(str(files.get("SKILL.md") or ""), values).strip()
             if content:
-                sections.append(f"Skill「{name}」：\n{content}")
+                sections.append(f"{label}：\n{content}")
             for path, file_content in files.items():
                 if path == "SKILL.md" or not str(file_content).strip():
                     continue
-                sections.append(f"Skill「{name}」文件 `{path}`：\n{render_skill_text(str(file_content), values).strip()}")
+                sections.append(f"{label} 文件 `{path}`：\n{render_skill_text(str(file_content), values).strip()}")
         except Exception as exc:
             runtime = task_trace_metadata.get() or {}
             span_id = record_runtime_span(

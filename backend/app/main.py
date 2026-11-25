@@ -2,7 +2,7 @@
 
 运行时能力与旧项目对齐：请求 ID 中间件、CORS、统一异常处理、`/api/v1` 版本前缀。
 新增约束：应用启动不自动变更表结构，全部结构变更走 Alembic；
-仅在 ``AUTO_CREATE_SCHEMA=true`` 时允许启动期 create_all（限本地首次调试）。
+仅在 ``AUTO_CREATE_SCHEMA=true`` 时允许启动期建立完整结构（限本地首次调试）。
 
 启动方式（开发）：
     uvicorn app.main:app --reload --port 8000
@@ -16,12 +16,11 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import AsyncIterator
+from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker
 
 import app.core.models  # noqa: F401  集中导入全部 ORM 模型，确保 metadata 完整
 from app.llm.tracing import flush_langfuse
@@ -101,18 +100,18 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         settings.VERSION,
         settings.DATABASE_URL.split("@")[-1] if settings.DATABASE_URL else "未配置",
     )
-    # 降级路径：默认 AUTO_CREATE_SCHEMA=False，启动期不做任何表结构变更；
-    # 仅本地首次调试允许打开，避免和 Alembic 迁移脚本产生双写。
     if settings.AUTO_CREATE_SCHEMA:
-        Base.metadata.create_all(bind=engine)
-        factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-        session = factory()
-        try:
-            # SELECT 1 只做连接探测，不访问业务表；用来提前暴露配置错误
-            probe = session.execute(text("SELECT 1")).scalar()
-            logger.info("AUTO_CREATE_SCHEMA 已开启，create_all 完成（连接探测：%s）", probe)
-        finally:
-            session.close()
+        if engine.dialect.name == "postgresql":
+            # The versioned schema also installs compatibility views, sequences and write triggers.
+            from alembic import command
+            from alembic.config import Config
+
+            command.upgrade(Config(str(Path(__file__).resolve().parents[1] / "alembic.ini")), "head")
+        else:
+            from app.core.database.schema_metadata import sqlite_metadata
+
+            sqlite_metadata(Base.metadata).create_all(bind=engine)
+        logger.info("本地数据库结构初始化完成")
     from app.execution.browser.session_manager import configure_stale_session_callback
     from app.features.defects.services.share_archive_worker import defect_share_archive_worker
     from app.features.defects.services.share_service import validate_public_share_base_url

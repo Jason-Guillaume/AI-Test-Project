@@ -31,7 +31,7 @@ export function FixtureDetail({ fixtureId }: { fixtureId: number | null }) {
   });
 
   if (fixtureId == null) {
-    return <Alert type="info" showIcon message="请先在左侧选择一个 Fixture" />;
+    return <Alert type="info" showIcon message="从 Fixture 列表中选择一项" />;
   }
   if (query.isPending) return <LoadingState />;
   if (query.isError) return <ErrorState error={query.error} onRetry={query.refetch} />;

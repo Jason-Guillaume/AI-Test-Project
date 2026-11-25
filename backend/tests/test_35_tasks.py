@@ -98,6 +98,101 @@ def _bind_environment(db, project_id, environment_id, admin_id):
     db.commit()
 
 
+def test_planner_and_child_query_frozen_goal_and_render_frozen_skill_files(api, admin, db, monkeypatch):
+    from app.agents.models import AgentDefinition
+    from app.core.models.identity import User
+    from app.knowledge.models import KnowledgeBase, KnowledgeBinding
+    from app.knowledge.service import parse_version, upload
+    from app.main import task_worker
+    from app.orchestration.tasks.models import Task
+    from app.orchestration.tasks.runtime import worker
+    from app.orchestration.tasks.runtime.handlers import planning
+    from app.orchestration.tasks.services.assembly_service import required_agent_tools
+    from app.skills.models import SkillDefinition
+
+    prompts = {}
+
+    class CapturingProvider(DeterministicTaskLLM):
+        def chat(self, system, user_content, **kwargs):
+            if self.before_request:
+                self.before_request()
+            prompts['child'] = (system, json.loads(user_content))
+            return '已核对退款规则'
+
+        def generate_structured(self, system, user_content, **kwargs):
+            if kwargs.get('kind') == 'task_planner':
+                prompts['parent'] = (system, json.loads(user_content))
+            return super().generate_structured(system, user_content, **kwargs)
+
+    monkeypatch.setattr(worker, 'ProductionLLMProvider', CapturingProvider)
+    monkeypatch.setattr(planning, 'ProductionLLMProvider', CapturingProvider)
+    admin_id = _admin_id(db)
+    model = _seed_default_model(db, admin_id)
+    actor = db.get(User, admin_id)
+    project_id = _create_project(api, admin)
+    env_id = _make_env(db, 'http://127.0.0.1:18081', admin_id)
+    _bind_environment(db, project_id, env_id, admin_id)
+    interface_id = _make_iface(db, project_id, 'GET', '/refund', '退款接口')
+    case_id = _create_case(api, admin, project_id, name=unique('refund-case'), api_id=interface_id)
+    db.get(CaseEntity, case_id).status = 'ACTIVE'
+    base = KnowledgeBase(project_id=project_id, name='退款资料')
+    skill = SkillDefinition(key=unique('refund-skill'), name='退款 Skill', content='入口', is_enabled=True,
+        files_json={'SKILL.md': '入口', 'rules.md': '仅附件规则 {{.Area}}'})
+    db.add_all([base, skill])
+    db.flush()
+    child = AgentDefinition(key=unique('refund-child'), name='退款子 Agent', workflow_template='api_test',
+        is_enabled=True, skill_keys=[skill.key], settings_json={'runtime_variables': [{'name': 'Area', 'value': '子'}]})
+    db.add(child)
+    db.flush()
+    parent = AgentDefinition(key=unique('refund-parent'), name='退款主 Agent', workflow_template='api_test',
+        is_enabled=True, model_config_id=model.id, tool_keys=sorted(required_agent_tools('API')), child_agent_ids=[child.id],
+        skill_keys=[skill.key], settings_json={'runtime_variables': [{'name': 'Area', 'value': '主'}]})
+    db.add(parent)
+    db.commit()
+    documents = []
+    for label in ('主节点专用追踪码', '子节点专用追踪码'):
+        version = upload(db, project_id, base.id, actor, f'{label}.txt', f'退款原路返回，{label}'.encode())
+        parse_version(db, version.id)
+        documents.append(version.document_id)
+    for agent, document_id in zip((parent, child), documents, strict=True):
+        db.add(KnowledgeBinding(project_id=project_id, agent_id=agent.id, access_mode='AGENT_SCOPED',
+            scopes=[{'base_id': base.id, 'mode': 'DOCUMENTS', 'document_ids': [document_id]}]))
+    db.commit()
+
+    was_running = task_worker.is_running
+    task_worker.stop()
+    try:
+        response = api.post(f'/projects/{project_id}/tasks', username=admin, json={
+            'title': '回归测试', 'goal': '验证退款原路返回', 'environment_id': env_id,
+            'case_ids': [case_id], 'agent_definition_id': parent.id,
+        })
+        assert response.status_code == 201, response.text
+        saved = response.json()
+        db.get(Task, saved['id']).goal = '活跃任务目标已改动'
+        skill.files_json = {'SKILL.md': '更新入口', 'rules.md': '更新的附件'}
+        skill.version += 1
+        db.commit()
+        assert task_worker.tick() == 1
+        detail = api.get(f"/task-runs/{saved['latest_run']['id']}", username=admin).json()
+        assert detail['run']['status'] == 'WAITING_CONFIRMATION', detail['run']
+        system, context = prompts['child']
+        assert system.count('仅附件规则 子') == 1
+        assert '更新的附件' not in system
+        assert '子节点专用追踪码' in system and '主节点专用追踪码' not in system
+        assert context['description'] == '验证退款原路返回'
+        system, context = prompts['parent']
+        assert system.count('仅附件规则 主') == 1
+        assert [item['document_id'] for item in context['task_context']['knowledge_data']] == [documents[0]]
+    finally:
+        try:
+            db.rollback()
+            db.query(Task).filter_by(project_id=project_id).delete(synchronize_session=False)
+            db.commit()
+        finally:
+            if was_running:
+                task_worker.start()
+
+
 def test_p4_migration_adds_scan_polling_and_idempotency_contract(db, test_database_head):
     """0016 的调度字段与 0017 的备用路由字段均已持久化。"""
     inspector = inspect(db.bind)

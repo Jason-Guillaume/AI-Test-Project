@@ -161,7 +161,7 @@ def _seed_into_target_database() -> str:
     target_dsn = TEST_DSN.replace(f"/{TEST_DATABASE_NAME}", f"/{TARGET_DATABASE}")
     with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
         connection.execute(f'DROP DATABASE IF EXISTS "{TARGET_DATABASE}"')
-        connection.execute(f'CREATE DATABASE "{TARGET_DATABASE}"')
+        connection.execute(f'CREATE DATABASE "{TARGET_DATABASE}" TEMPLATE template0')
     return target_dsn
 
 

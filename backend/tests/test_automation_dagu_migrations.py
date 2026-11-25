@@ -47,6 +47,7 @@ def test_head_schema_removes_jenkins_columns_and_adds_dagu_configuration(isolate
         execution_columns = {column["name"] for column in inspector.get_columns("automation_execution")}
         assert {"dagu_base_url", "dagu_api_key_encrypted", "dagu_api_key_configured"} <= config_columns
         assert not {"allow_private_network", "queue_missing_since"} & config_columns
+        assert {"dispatch_attempts", "next_dispatch_at"} <= execution_columns
         assert not {"external_queue_id", "external_build_number", "queue_missing_since"} & execution_columns
         assert "automation_jenkins_credential" not in inspector.get_table_names()
         execution_indexes = {index["name"] for index in inspector.get_indexes("automation_execution")}
@@ -176,6 +177,7 @@ def test_dagu_migration_downgrade_restores_empty_schema_and_keeps_history(isolat
 def test_upgrade_from_legacy_share_0088_adds_missing_dagu_schema(isolated_migration_database):
     """旧分享工作树的 0088 已建分享表，但尚未包含 Dagu 的 0088。"""
     config, engine = isolated_migration_database
+    command.downgrade(config, "0089")
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE automation_execution_idempotency"))
         connection.execute(text("DROP INDEX ix_automation_execution_dispatch"))

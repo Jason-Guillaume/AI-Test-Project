@@ -3,7 +3,7 @@
 // 资料只挂在项目上；默认项目共享，也可在本页为 Agent 显式限定文档范围。
 // 平台管理员通过项目下拉选择目标项目；上传后的解析在后台异步完成。
 import { useEffect, useState } from 'react';
-import { Alert, App, Button, Card, Checkbox, DatePicker, Input, InputNumber, Radio, Select, Space, Table, Typography, Upload } from 'antd';
+import { Alert, App, Button, Card, Checkbox, DatePicker, Input, Radio, Select, Space, Table, Typography, Upload } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { projectsApi } from '@/features/projects/api/projects';
@@ -14,17 +14,14 @@ import { PageHeader } from '@/shared/ui/PageHeader';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { useNavigate } from 'react-router-dom';
 import { KnowledgeRetrieval } from './KnowledgeRetrieval';
+import { KnowledgeSearch } from './KnowledgeSearch';
 
 type Base = { id: number; name: string; enabled: boolean };
 type Doc = { id: number; name: string; category: string; enabled: boolean };
-type Version = { id: number; version: number; status: string; error: string | null };
+type Version = { id: number; version: number; status: string; error: string | null; chunking_version?: string | null };
 type AgentOption = { id: number; name: string };
 type KnowledgeScope = { base_id: number; mode: string; document_ids: number[]; categories: string[] };
 type KnowledgeBinding = { revision: number; enabled: boolean; required: boolean; access_mode: 'PROJECT_SHARED' | 'AGENT_SCOPED'; scopes: KnowledgeScope[] };
-type SearchResult = {
-  items: { chunk_id: number; version_id: number; version: number; document_id: number; document_name: string; score: number; score_type: string; page: number | null; text: string }[];
-  retrieval: { strategy: string; candidate_count: number; candidate_limit: number; candidate_truncated: boolean; vector_candidate_count: number; result_count: number; duration_ms: number; vector_status: string; reranker_status: string };
-};
 type AgentMemory = { id: number; memory_key: string; version: number; content: string; source_refs: { kind: string; message_id?: number }[]; source_digest: string; status: string; expires_at: string | null };
 
 const CATEGORIES = [
@@ -48,15 +45,12 @@ export function AdminKnowledgePage() {
   const [category, setCategory] = useState('项目情况');
   const [document, setDocument] = useState<Doc>();
   const [query, setQuery] = useState('');
-  const [sources, setSources] = useState<SearchResult>();
+  const [searchScope, setSearchScope] = useState<'project' | 'agent'>('project');
   const [agentId, setAgentId] = useState<number>();
   const [accessMode, setAccessMode] = useState<'PROJECT_SHARED' | 'AGENT_SCOPED'>('PROJECT_SHARED');
   const [scopeMode, setScopeMode] = useState<'ALL' | 'DOCUMENTS' | 'CATEGORIES'>('DOCUMENTS');
   const [scopedDocumentIds, setScopedDocumentIds] = useState<number[]>([]);
   const [scopedCategories, setScopedCategories] = useState<string[]>([]);
-  const [topK, setTopK] = useState(8);
-  const [minimumScore, setMinimumScore] = useState(0);
-  const [candidateK, setCandidateK] = useState(320);
   const [memoryKey, setMemoryKey] = useState('');
   const [memoryContent, setMemoryContent] = useState('');
   const [memoryVersion, setMemoryVersion] = useState(0);
@@ -75,6 +69,7 @@ export function AdminKnowledgePage() {
     enabled: project != null,
     queryFn: () => api.get<AgentOption[]>(`${root}/knowledge-agent-options`),
   });
+  const activeAgent = agents.data?.find((item) => item.id === agentId);
   const binding = useQuery({
     queryKey: ['knowledge-binding', project, agentId],
     enabled: project != null && agentId != null,
@@ -104,6 +99,9 @@ export function AdminKnowledgePage() {
 
   useEffect(() => {
     setAccessMode(binding.data?.access_mode ?? 'PROJECT_SHARED');
+  }, [binding.data]);
+
+  useEffect(() => {
     const selectedScope = (binding.data?.scopes ?? []).find((scope) => scope.base_id === base);
     setScopeMode(selectedScope?.mode === 'ALL' || selectedScope?.mode === 'CATEGORIES'
       ? selectedScope.mode
@@ -167,8 +165,9 @@ export function AdminKnowledgePage() {
       <PageHeader title="项目知识库" subtitle="按项目管理资料，并为 Agent 配置共享或限定文档范围" />
       <Space direction="vertical" style={{ width: '100%' }}>
         <Select
+          aria-label="项目"
           placeholder="选择项目"
-          style={{ width: 320 }}
+          style={{ width: 320, maxWidth: '100%' }}
           value={project}
           options={projectsQuery.data?.items.map((item) => ({ value: item.id, label: item.name }))}
           onChange={(value) => {
@@ -177,7 +176,7 @@ export function AdminKnowledgePage() {
             setDocument(undefined);
             setSelectedBaseIds([]);
             setSelectedDocumentIds([]);
-            setSources(undefined);
+            setSearchScope('project');
             setAgentId(undefined);
             setMemoryKey('');
             setMemoryContent('');
@@ -188,8 +187,7 @@ export function AdminKnowledgePage() {
             setScopedCategories([]);
           }}
         />
-        {project != null && <KnowledgeRetrieval key={project} projectId={project} />}
-        <Card title="资料">
+        <Card title="资料与版本">
           <Space wrap style={{ display: 'flex', width: '100%', minWidth: 0 }}>
             <Select
               placeholder="选择知识库"
@@ -257,6 +255,7 @@ export function AdminKnowledgePage() {
           <Table<Base>
             rowKey="id"
             scroll={{ x: 'max-content' }}
+            loading={bases.isLoading}
             dataSource={bases.data?.items || []}
             rowSelection={{
               selectedRowKeys: selectedBaseIds,
@@ -283,6 +282,7 @@ export function AdminKnowledgePage() {
           {base != null && <Table<Doc>
             rowKey="id"
             scroll={{ x: 'max-content' }}
+            loading={docs.isLoading}
             dataSource={docs.data?.items || []}
             rowSelection={{
               selectedRowKeys: selectedDocumentIds,
@@ -303,10 +303,13 @@ export function AdminKnowledgePage() {
             <Table<Version>
               rowKey="id"
               scroll={{ x: 'max-content' }}
+              loading={versions.isLoading}
               dataSource={versions.data?.items || []}
               columns={[
                 { title: '版本', dataIndex: 'version' },
+                { title: '版本 ID', dataIndex: 'id' },
                 { title: '解析状态', dataIndex: 'status' },
+                { title: '分块策略', dataIndex: 'chunking_version', render: (value) => value ?? '未知' },
                 { title: '错误', dataIndex: 'error' },
                 {
                   title: '操作',
@@ -336,8 +339,10 @@ export function AdminKnowledgePage() {
           <Space direction="vertical" style={{ width: '100%' }}>
             <Space wrap style={{ display: 'flex', width: '100%', minWidth: 0 }}>
               <Select
+                aria-label="配置 Agent"
                 placeholder="选择 Agent"
                 style={{ width: 280 }}
+                loading={agents.isLoading}
                 value={agentId}
                 options={agents.data?.map((item) => ({ value: item.id, label: item.name }))}
                 onChange={(value) => {
@@ -357,7 +362,7 @@ export function AdminKnowledgePage() {
                 ]}
               />
               <Button
-                disabled={agentId == null || saving || (accessMode === 'AGENT_SCOPED' && base == null)}
+                disabled={agentId == null || binding.isFetching || binding.isError || saving || (accessMode === 'AGENT_SCOPED' && base == null)}
                 onClick={() => execute(async () => {
                   const scopes = (binding.data?.scopes ?? []).filter((scope) => scope.base_id !== base);
                   if (accessMode === 'AGENT_SCOPED' && base != null) {
@@ -381,17 +386,21 @@ export function AdminKnowledgePage() {
                 保存 Agent 范围
               </Button>
             </Space>
+            {binding.isError && <Alert type="error" showIcon message="Agent 范围加载失败"
+              action={<Button size="small" onClick={() => binding.refetch()}>重试</Button>} />}
             {accessMode === 'PROJECT_SHARED' ? (
               <Alert type="info" showIcon message="该 Agent 可读取当前项目内所有启用资料；这是旧配置的兼容默认值。" />
             ) : (
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Select
+                  aria-label="授权知识库"
                   placeholder="选择要授权的知识库"
                   style={{ width: 280 }}
                   value={base}
                   options={bases.data?.items.map((item) => ({ value: item.id, label: item.name }))}
                   onChange={(value) => {
                     setBase(value);
+                    setDocument(undefined);
                     setSelectedDocumentIds([]);
                   }}
                 />
@@ -480,36 +489,21 @@ export function AdminKnowledgePage() {
             />
           </Space>
         </Card>
-        <Card title="当前项目检索">
-          <Space wrap className="knowledge-search-controls">
-            <Input placeholder="试查项目资料" value={query} onChange={(event) => setQuery(event.target.value)} />
-            <Space.Compact><Space.Addon>Top‑K</Space.Addon><InputNumber min={1} max={50} value={topK} onChange={(value) => setTopK(value ?? 8)} /></Space.Compact>
-            <Space.Compact><Space.Addon>最低分</Space.Addon><InputNumber min={0} max={100} step={0.1} value={minimumScore} onChange={(value) => setMinimumScore(value ?? 0)} /></Space.Compact>
-            <Space.Compact><Space.Addon>候选数</Space.Addon><InputNumber min={50} max={2000} step={50} value={candidateK} onChange={(value) => setCandidateK(value ?? 320)} /></Space.Compact>
-            <Button
-              disabled={project == null}
-              onClick={() => execute(async () => {
-                setSources(await api.post<SearchResult>(`${root}/knowledge-search`, {
-                  query, top_k: topK, candidate_k: candidateK, minimum_score: minimumScore,
-                }));
-              })}
-            >
-              检索
-            </Button>
+        <Card title="试搜与来源">
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Radio.Group aria-label="试搜范围" value={searchScope} onChange={(event) => setSearchScope(event.target.value)}
+              options={[{ label: '项目范围', value: 'project' }, { label: '指定 Agent', value: 'agent' }]} />
+            {searchScope === 'agent' && !activeAgent && <Alert type="info" message="请先在 Agent 知识范围中选择 Agent" />}
+            <KnowledgeSearch
+              key={`${project}:${searchScope}:${agentId}:${binding.data?.revision}`}
+              endpoint={searchScope === 'agent' ? `${root}/agents/${agentId}` : root}
+              scopeLabel={`${projectsQuery.data?.items.find((item) => item.id === project)?.name ?? ''} · ${searchScope === 'agent' ? activeAgent?.name ?? '' : '项目范围'}`}
+              disabled={project == null || (searchScope === 'agent' && (!activeAgent || saving))}
+              query={query} onQuery={setQuery}
+            />
           </Space>
-          {sources && <Alert
-            type={sources.retrieval.vector_status === 'ACTIVE' ? 'success' : 'info'}
-            showIcon
-            style={{ marginTop: 12 }}
-            message={`策略 ${sources.retrieval.strategy} · 候选 ${sources.retrieval.candidate_count}/${sources.retrieval.candidate_limit}${sources.retrieval.candidate_truncated ? '（已截断）' : ''} · 命中 ${sources.retrieval.result_count} · ${sources.retrieval.duration_ms} ms`}
-            description={`向量：${sources.retrieval.vector_status}；Reranker：${sources.retrieval.reranker_status}。当前环境未配置向量后端时使用 BM25。`}
-          />}
-          {sources?.items.map((item) => (
-            <Card key={item.chunk_id} style={{ marginTop: 12 }} title={`${item.document_name} · v${item.version} · 片段 ${item.chunk_id}${item.page ? ` · 第 ${item.page} 页` : ''} · ${item.score_type} ${item.score.toFixed(6)}`}>
-              <div style={{ whiteSpace: 'pre-wrap' }}>{item.text}</div>
-            </Card>
-          ))}
         </Card>
+        {project != null && <KnowledgeRetrieval key={project} projectId={project} />}
       </Space>
     </PageContainer>
   );

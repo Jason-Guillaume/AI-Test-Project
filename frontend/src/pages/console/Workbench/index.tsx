@@ -192,7 +192,7 @@ export function ConsoleWorkbenchPage() {
         </div>
         <Row gutter={[16, 16]}>
           {QUICK_LINKS.map((item) => (
-            <Col xs={24} sm={8} key={item.to}>
+            <Col xs={24} md={8} key={item.to}>
               <Link className="quick-action-link" to={item.to}>
                 <Card hoverable className="quick-action-card">
                   <span className="quick-action-icon">{item.icon}</span>

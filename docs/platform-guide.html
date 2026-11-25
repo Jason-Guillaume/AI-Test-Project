@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>测试开发平台 · 平台说明文档</title>
+<style>
+:root{color-scheme:light;--ink:#17243a;--muted:#52647a;--blue:#345edb;--line:#dce4ef;--paper:#fff;--bg:#f4f7fb}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.8 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}a{color:#2d56c8;text-decoration:none}a:hover{text-decoration:underline}.layout{max-width:1440px;margin:auto;display:grid;grid-template-columns:250px minmax(0,1fr);gap:40px;padding:38px 42px 80px}.sidebar{position:sticky;top:32px;height:max-content}.brand{font-weight:750;font-size:17px;letter-spacing:.02em;margin-bottom:24px}.brand span{color:var(--blue)}nav{display:grid;gap:3px}nav a{padding:6px 12px;color:var(--muted);border-left:2px solid var(--line);font-size:14px}nav a:hover{border-color:var(--blue);color:var(--blue);text-decoration:none}main{min-width:0}.hero{padding:44px 48px;background:#172d57;color:white;border-radius:18px;margin-bottom:26px}.eyebrow{font-size:12px;letter-spacing:.16em;font-weight:700;color:#a8c4ff}.hero h1{font-size:36px;line-height:1.3;margin:12px 0}.hero p{max-width:760px;color:#d1ddf3;margin:0}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.meta span{border:1px solid #60749a;border-radius:999px;padding:3px 12px;font-size:12px;color:#e0e9fb}.section{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:34px 40px;margin:18px 0;scroll-margin-top:24px}.section h2{font-size:24px;line-height:1.4;margin:0 0 18px}.section h3{font-size:17px;margin:24px 0 8px}.section p{margin:10px 0;color:#34465e}.section ul,.section ol{padding-left:22px;color:#34465e}.section li{margin:5px 0}.kicker{color:var(--blue);font-size:12px;font-weight:700;letter-spacing:.12em;margin-bottom:5px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}.card{background:#f6f8fd;border:1px solid #e2e9f4;border-radius:10px;padding:16px 18px}.card strong{display:block;margin-bottom:4px}.card p{font-size:14px;margin:0}.note{border-left:3px solid #6989e7;background:#f1f5ff;padding:12px 16px;margin:18px 0;color:#354a6d}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;vertical-align:top;padding:11px 12px;border-bottom:1px solid var(--line)}th{color:#536780;background:#f6f8fb;font-weight:650}code{font:0.92em ui-monospace,SFMono-Regular,Consolas,monospace;background:#edf2fa;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}pre{background:#14243c;color:#e2ecfa;padding:18px 20px;border-radius:10px;overflow:auto;line-height:1.65;font-size:13px}pre code{background:transparent;color:inherit;padding:0;white-space:pre;overflow-wrap:normal}.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0}.flow span{background:#eef3ff;border:1px solid #dbe5ff;border-radius:8px;padding:7px 12px;font-size:14px}.flow b{color:#95a5bd}.footer{color:#718198;font-size:13px;padding:10px 4px}@media(max-width:800px){.layout{display:block;padding:18px}.sidebar{position:static;margin-bottom:20px}.brand{margin-bottom:10px}nav{display:flex;overflow:auto;white-space:nowrap}nav a{border-left:0;border-bottom:2px solid var(--line)}.hero{padding:30px 25px}.hero h1{font-size:28px}.section{padding:25px 22px}.grid{grid-template-columns:1fr}}@media print{body{background:white}.layout{display:block;padding:0}.sidebar{display:none}.hero{background:#edf2fb;color:#17243a}.hero p,.eyebrow,.meta span{color:#34465e}.section{break-inside:avoid;border:0;border-bottom:1px solid #dce4ef;border-radius:0;padding:20px 0}a{color:inherit}pre{white-space:pre-wrap;overflow-wrap:anywhere}}
+</style>
+</head>
+<body><div class="layout">
+<aside class="sidebar"><div class="brand"><span>●</span> 测试开发平台</div><nav aria-label="文档目录"><a href="#overview">01 平台概览</a><a href="#structure">02 项目结构</a><a href="#start">03 启动与访问</a><a href="#modules">04 功能与入口</a><a href="#workflow">05 使用路径</a><a href="#config">06 配置与权限</a><a href="#architecture">07 架构与开发约定</a><a href="#references">08 相关资料</a></nav></aside>
+<main>
+<header class="hero"><div class="eyebrow">PLATFORM GUIDE · 2026.11</div><h1>测试开发平台<br>平台说明文档</h1><p>面向平台使用者、开发者和维护人员，介绍当前项目的组成、主要功能入口、启动方式与配置边界。</p><div class="meta"><span>FastAPI + PostgreSQL</span><span>React + TypeScript</span><span>独立 HTML 文档</span></div></header>
+<section class="section" id="overview"><div class="kicker">01 / OVERVIEW</div><h2>平台概览</h2><p>本项目是一个前后端分离的测试开发平台，以组织和项目为管理边界，集中管理接口、测试资产、缺陷、报告及相关配置，并提供 AI 智能体、Web UI、数据、Mock、安全测试和语音评测等工作入口。</p><div class="grid"><div class="card"><strong>平台管理</strong><p>用户、组织、项目、模型、环境及智能体资源的管理入口。</p></div><div class="card"><strong>测试资产</strong><p>围绕项目组织接口、业务、用例、套件、计划、报告与缺陷。</p></div><div class="card"><strong>智能能力</strong><p>提供智能体、知识、Skill 和工具相关入口，具体能力依赖配置与权限。</p></div><div class="card"><strong>专项工作区</strong><p>覆盖测试数据、Mock、Web UI、安全测试与 ASR 评测等场景。</p></div></div><div class="note">本文依据当前仓库的代码结构、路由和已有文档编写；页面可见性、实际数据和外部服务可用性取决于部署配置及账号权限。</div></section>
+<section class="section" id="structure"><div class="kicker">02 / STRUCTURE</div><h2>项目结构</h2><pre><code>ai-test-project/
+├── backend/                 FastAPI 后端
+│   ├── app/
+│   │   ├── main.py          应用入口
+│   │   ├── features/        项目、接口、测试管理、报告等业务域
+│   │   ├── agents/          智能体及运行时
+│   │   ├── knowledge/       知识相关能力
+│   │   ├── skills/          Skill 管理与加载
+│   │   ├── core/            配置等核心基础能力
+│   │   └── platform/        平台基础能力
+│   ├── alembic/             数据库迁移
+│   ├── scripts/             初始化及维护脚本
+│   └── requirements.txt    Python 依赖
+├── frontend/                React + TypeScript 前端
+│   └── src/
+│       ├── app/             应用装配、布局与路由
+│       ├── pages/           管理端和控制台页面
+│       ├── features/        业务域 API 与能力
+│       ├── shared/          通用 API、会话、主题和组件
+│       ├── widgets/         跨页面组合组件
+│       └── styles/          样式
+├── docs/                    平台设计和使用文档
+├── deploy/                  部署相关文件
+└── compose.yaml             本地服务编排配置</code></pre><p>后端业务域按需拆分为路由、数据模型、数据结构与服务等目录；前端以页面和业务域组织代码，公共能力放在 <code>shared</code>。</p></section>
+<section class="section" id="start"><div class="kicker">03 / GETTING STARTED</div><h2>启动与访问</h2><p>本地联调需要 Python 3.11+、Node.js 22.12+ 和 PostgreSQL 16。首次使用需准备数据库，安装前后端依赖，配置后端环境变量，并完成数据库迁移和管理员初始化。详细步骤以 <a href="getting-started.md">启动指南</a> 为准。</p><h3>日常启动</h3><pre><code># 终端 1：后端
+cd backend
+.venv/bin/uvicorn app.main:app --reload --port 8001
+
+# 终端 2：前端
+cd frontend
+npm run dev
+
+# 使用 ASR 任务时，另开终端启动独立 Worker
+cd backend
+.venv/bin/python scripts/run_asr_worker.py</code></pre><div class="table-wrap"><table><thead><tr><th>服务</th><th>默认地址</th><th>说明</th></tr></thead><tbody><tr><td>平台前端</td><td><code>http://localhost:5173</code></td><td>登录后进入控制台或管理端</td></tr><tr><td>后端 API</td><td><code>http://127.0.0.1:8001</code></td><td>业务接口使用 <code>/api/v1</code> 前缀</td></tr><tr><td>API 文档</td><td><code>http://127.0.0.1:8001/docs</code></td><td>查看接口定义</td></tr><tr><td>平台数据库</td><td><code>127.0.0.1:5432</code></td><td>本地 PostgreSQL 默认端口</td></tr></tbody></table></div></section>
+<section class="section" id="modules"><div class="kicker">04 / WORKSPACES</div><h2>功能与页面入口</h2><p>以下路径来自前端路由，均相对于平台前端地址。可访问范围由当前账号的角色、组织和项目权限决定。</p><div class="table-wrap"><table><thead><tr><th>功能</th><th>页面入口</th><th>用途</th></tr></thead><tbody><tr><td>项目</td><td><code>/console/projects</code></td><td>查看和管理可访问的项目及项目详情。</td></tr><tr><td>接口与业务</td><td><code>/console/api-catalog</code><br><code>/console/business-management</code></td><td>管理接口目录和业务相关资产。</td></tr><tr><td>测试资产</td><td><code>/console/test-asset</code><br><code>/console/test-cases</code></td><td>维护测试资产和测试用例。</td></tr><tr><td>测试组织</td><td><code>/console/test-suites</code><br><code>/console/test-plans</code></td><td>按套件与计划组织测试内容。</td></tr><tr><td>报告与缺陷</td><td><code>/console/test-reports</code><br><code>/console/defects</code></td><td>查看报告及管理缺陷。</td></tr><tr><td>数据与 Mock</td><td><code>/console/test-data</code><br><code>/console/mock-management</code></td><td>管理测试数据及 Mock 相关资源。</td></tr><tr><td>Web UI 与安全</td><td><code>/console/web-ui</code><br><code>/console/security-testing</code></td><td>进入 Web UI 和安全测试工作区。</td></tr><tr><td>智能体与任务</td><td><code>/console/agent</code><br><code>/console/tasks</code></td><td>访问智能体工作区和任务管理。</td></tr><tr><td>ASR 评测</td><td><code>/console/asr/audio</code><br><code>/console/asr/jobs</code><br><code>/console/asr/comparisons</code></td><td>管理音频、评测任务和对比结果。</td></tr><tr><td>通知与个人设置</td><td><code>/console/notifications</code><br><code>/console/notification-channels</code><br><code>/console/profile</code></td><td>查看通知、管理通知渠道和个人资料。</td></tr><tr><td>平台管理</td><td><code>/admin/dashboard</code><br><code>/admin/users</code><br><code>/admin/organizations</code><br><code>/admin/projects</code></td><td>管理平台用户、组织和项目。</td></tr><tr><td>模型与资源治理</td><td><code>/admin/model-configs</code><br><code>/admin/environments</code><br><code>/admin/knowledge</code><br><code>/admin/agents</code></td><td>管理模型配置、环境、知识和智能体资源。</td></tr></tbody></table></div></section>
+<section class="section" id="workflow"><div class="kicker">05 / WORKFLOW</div><h2>常见使用路径</h2><div class="flow"><span>登录平台</span><b>→</b><span>进入组织与项目</span><b>→</b><span>维护接口和测试资产</span><b>→</b><span>组织套件与计划</span><b>→</b><span>查看报告与缺陷</span></div><ol><li><strong>准备组织与项目：</strong>管理员或有权限的成员维护组织、项目及成员；使用者进入自己可访问的项目。</li><li><strong>整理测试资产：</strong>根据实际项目维护接口目录、业务信息及测试用例，并用套件和计划组织测试内容。</li><li><strong>查看结果与跟踪问题：</strong>在报告与缺陷页面查看已有记录，结合项目上下文跟进问题。</li><li><strong>按需进入专项工作区：</strong>根据需要使用测试数据、Mock、Web UI、智能体或 ASR 等页面；相关外部依赖需预先配置。</li></ol></section>
+<section class="section" id="config"><div class="kicker">06 / CONFIGURATION</div><h2>配置与权限</h2><h3>基础配置</h3><p>后端配置模板位于 <code>backend/.env.example</code>。本地运行至少需要配置 <code>DATABASE_URL</code> 和满足启动要求的 <code>SECRET_KEY</code>；本地 HTTP 开发时按启动指南设置 <code>AUTH_COOKIE_SECURE=false</code>。模型、通知或其他外部服务按实际场景配置。</p><p>前端开发服务器默认将 <code>/api</code> 请求代理到后端；后端端口不同时，可通过 <code>VITE_API_PROXY_TARGET</code> 调整目标。数据库结构通过 Alembic 迁移维护。</p><h3>访问边界</h3><p>平台区分平台角色、组织成员角色和项目成员角色。平台管理页面和项目资源需要对应权限；项目访问同时受组织边界与项目身份约束。服务端执行权限判断，页面是否展示操作入口不能代替授权。</p><div class="note">真实密钥、数据库密码和第三方凭据应保存在本地环境配置或部署密钥系统中，不写入共享文档或代码仓库。</div></section>
+<section class="section" id="architecture"><div class="kicker">07 / ARCHITECTURE</div><h2>架构与开发约定</h2><div class="flow"><span>浏览器 / React</span><b>→</b><span>FastAPI 路由</span><b>→</b><span>业务服务</span><b>→</b><span>数据库 / 外部服务</span></div><ul><li><strong>前端：</strong>React、TypeScript、Vite 和 Ant Design；页面与业务能力分目录组织。</li><li><strong>后端：</strong>FastAPI 提供版本化 API，按业务域组织路由、服务、模型及数据结构。</li><li><strong>持久化：</strong>平台主库使用 PostgreSQL，表结构变更通过 Alembic 管理。</li><li><strong>外部依赖：</strong>模型服务、通知、ASR 等能力依赖相应配置和运行环境，部署时应分别确认。</li></ul></section>
+<section class="section" id="references"><div class="kicker">08 / REFERENCES</div><h2>相关资料</h2><ul><li><a href="../README.md">项目 README</a>：项目介绍、技术栈与基础约定。</li><li><a href="getting-started.md">启动指南</a>：首次初始化、本地联调、环境变量与常见故障。</li><li><a href="README.md">文档索引</a>：平台设计、专项与交付资料。</li><li><a href="target-architecture.md">目标架构</a>：平台设计与架构背景。</li></ul><p>本文参考《1.2 - 自动化（API&amp;APP）项目结构优化》的文档组织方式，具体平台信息以本仓库为依据。</p></section>
+<div class="footer">测试开发平台 · 文档根据当前仓库整理 · 2026 年 11 月</div>
+</main></div></body></html>

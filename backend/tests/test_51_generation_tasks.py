@@ -1,6 +1,7 @@
 """P6：真实隔离 PostgreSQL + 受控模型替身，覆盖持久化调度和审核入库。"""
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 import threading
 import time
 
@@ -103,6 +104,85 @@ def drain(worker):
         if worker.tick() == 0:
             return
     raise AssertionError('任务未收敛')
+
+
+def test_worker_renders_frozen_attachments_and_recovers_legacy_review_snapshot(setup, db, monkeypatch):
+    from app.orchestration.tasks.models import RuntimeEventFact
+    from app.skills.models import SkillDefinition
+
+    api, admin, project, body, _, worker = setup
+    body['include_security'] = False
+    main = db.get(AgentDefinition, body['agent_id'])
+    child = next(row for row in (db.get(AgentDefinition, ident) for ident in main.child_agent_ids)
+                 if 'case_generation.generate_api' in row.tool_keys)
+    skill = db.query(SkillDefinition).filter_by(key=child.skill_keys[0]).one()
+    original_files, original_settings = skill.files_json, child.settings_json
+    skill.files_json = {'SKILL.md': skill.content, 'acceptance.md': 'Worker 附件验收 {{.Area}}'}
+    child.settings_json = {**child.settings_json, 'runtime_variables': [{'name': 'Area', 'value': '接口'}]}
+    db.commit()
+    prompts = {}
+
+    class CapturingStub(Stub):
+        def generate_structured(self, system, user_content, **kwargs):
+            prompts[self.module] = user_content
+            return super().generate_structured(system, user_content, **kwargs)
+
+    monkeypatch.setattr(handler, 'GenerationProvider', CapturingStub)
+    try:
+        batch = submit(setup)
+        for run in db.query(TaskRun).filter_by(task_id=batch['task_id']).all():
+            frozen = deepcopy(run.input_snapshot)
+            for name in ('agent', 'supervisor'):
+                if frozen[name]['id'] == main.id:
+                    frozen[name].pop('settings_json')
+                    for frozen_skill in frozen[name]['skills']:
+                        frozen_skill.pop('files_json')
+                        frozen_skill['content'] = '历史审阅规则'
+            run.input_snapshot = frozen
+        db.commit()
+        drain(worker)
+        assert prompts['api'].count('Worker 附件验收 接口') == 1
+        assert prompts['review'].count('历史审阅规则') == 1
+        facts = db.query(RuntimeEventFact).filter_by(task_id=batch['task_id'], event_type='KNOWLEDGE_RETRIEVAL').all()
+        searches = [event for event in facts if event.event_metadata['search_mode'] == 'SEARCH']
+        assert {event.agent_definition_id for event in searches} == {main.id, child.id}
+        assert all(event.attempt_id and event.work_item_id for event in searches)
+        probes = [event for event in facts if event.event_metadata['search_mode'] == 'PERMISSION_CHECK']
+        child_run = next(event.task_run_id for event in searches if event.agent_definition_id == child.id)
+        assert any(event.task_run_id == child_run and event.agent_definition_id == main.id for event in probes)
+        overview = api.get('/agent-governance/runtime/overview', username=admin, params={'project_id': project}).json()
+        assert overview['summary']['knowledge_retrievals'] == len(searches)
+        assert overview['summary']['knowledge_permission_checks'] == len(probes)
+    finally:
+        skill.files_json, child.settings_json = original_files, original_settings
+        db.commit()
+
+
+def test_worker_audits_module_tool_disabled_after_submission(setup, db):
+    from app.orchestration.tasks.models import RuntimeEventFact
+    from app.tools.models import ToolDefinitionOverride
+
+    batch = submit(setup)
+    key = 'case_generation.generate_api'
+    original = db.get(ToolDefinitionOverride, key)
+    override = original or ToolDefinitionOverride(tool_key=key)
+    previous_state = override.is_enabled
+    override.is_enabled = False
+    db.add(override)
+    db.commit()
+    try:
+        drain(setup[-1])
+        event = db.query(RuntimeEventFact).filter_by(task_id=batch['task_id'], event_name=key).one()
+        assert (event.status, event.error_code) == ('REJECTED', 'TOOL_ACCESS_REVOKED')
+        assert event.work_item_id and event.attempt_id and event.agent_instance_id
+        assert event.event_metadata['tool_call_id'] == event.event_id
+        assert 'api' not in Stub.calls
+    finally:
+        if original:
+            override.is_enabled = previous_state
+        else:
+            db.delete(override)
+        db.commit()
 
 
 def test_submit_idempotent_and_review_import(setup):

@@ -12,8 +12,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from app.core.database.schema_metadata import postgres_metadata
 from app.core.config import settings
 from app.core.database.base import Base
+from app.core.database import migration_evidence  # noqa: F401
 
 # 确保所有 ORM 模型被导入并注册进 Base.metadata。
 import app.core.models  # noqa: F401
@@ -53,7 +55,7 @@ if config.config_file_name is not None:
 
 # target_metadata 是 autogenerate 的比较基准：ORM 模型即「真源」，
 # 迁移内容应始终由模型推导，而不是手写 SQL。
-target_metadata = Base.metadata
+target_metadata = postgres_metadata(Base.metadata)
 
 # 与应用保持同一配置来源：进程环境变量优先，其次读取 backend/.env。
 database_url = os.getenv("DATABASE_URL") or settings.DATABASE_URL
@@ -63,6 +65,13 @@ if not database_url:
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
+def include_object(obj, name, type_, reflected, compare_to):
+    """Compatibility relations are views created by the versioned migrations."""
+    if type_ == "table" and (obj.info.get("is_view") or (reflected and name == "td_sandbox_task")):
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """离线模式：只生成 SQL，不连接数据库。"""
     url = config.get_main_option("sqlalchemy.url")
@@ -70,6 +79,7 @@ def run_migrations_offline() -> None:
     context.configure(
         url=url,
         target_metadata=target_metadata,
+        include_object=include_object,
         literal_binds=True,  # 参数渲染为字面量，而不是绑定占位符
         dialect_opts={"paramstyle": "named"},  # 与 literal_binds 配套的命名参数风格
         compare_type=True,  # 让 autogenerate 也能发现列类型变更（默认只比有无变更）
@@ -93,6 +103,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            include_object=include_object,
             compare_type=True,
             render_as_batch=False,
         )

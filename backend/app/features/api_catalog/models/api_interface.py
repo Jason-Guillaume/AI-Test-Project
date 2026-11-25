@@ -12,14 +12,18 @@ feature-local 表，由迁移 0003 显式建立。
 """
 
 from sqlalchemy import (
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
+    UniqueConstraint,
 )
+from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func, text
 
 from app.core.database.soft_delete import SoftDeleteBase
@@ -30,6 +34,15 @@ class ApiInterface(SoftDeleteBase):
 
     __tablename__ = "api_interface"
     __table_args__ = (
+        CheckConstraint(
+            "(request_body_id IS NULL AND request_body_type IS NULL AND request_body_content_type IS NULL "
+            "AND request_body_schema IS NULL AND request_body_raw_text IS NULL AND request_body_created_at "
+            "IS NULL AND request_body_updated_at IS NULL) OR (request_body_id IS NOT NULL AND "
+            "request_body_type IS NOT NULL AND request_body_created_at IS NOT NULL AND "
+            "request_body_updated_at IS NOT NULL)",
+            name="ck_api_request_body_presence",
+        ),
+        UniqueConstraint("request_body_id", name="uq_api_interface_request_body_id"),
         Index("uq_api_interface_project_method_path", "project_id", "method", "path", unique=True,
               postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_api_interface_project_module", "project_id", "module_id"),
@@ -38,6 +51,15 @@ class ApiInterface(SoftDeleteBase):
     )
     # 去重唯一约束：(project_id, method, path) —— 重新导入同 method+path 的接口不会重复创建。
     # (project_id, module_id) 索引服务于按模块列接口；source_hash 索引服务于快速变更比对。
+
+    # 列表只加载父记录，详情按需读取这一组扩展字段。
+    request_body_id = deferred(Column(Integer), group="request_body")
+    request_body_type = deferred(Column(String(20)), group="request_body")
+    request_body_content_type = deferred(Column(String(100)), group="request_body")
+    request_body_schema = deferred(Column(JSON(none_as_null=True)), group="request_body")
+    request_body_raw_text = deferred(Column(Text), group="request_body")
+    request_body_created_at = deferred(Column(DateTime), group="request_body")
+    request_body_updated_at = deferred(Column(DateTime), group="request_body")
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     project_id = Column(

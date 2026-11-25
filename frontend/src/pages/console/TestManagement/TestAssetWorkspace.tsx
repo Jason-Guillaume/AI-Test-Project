@@ -225,7 +225,7 @@ export function TestAssetWorkspace() {
   };
 
   const strategyColumns: TableColumnsType<TestStrategy> = [
-    { title: '策略', dataIndex: 'name', ellipsis: true },
+    { title: '策略', dataIndex: 'name', width: 200, className: 'table-record-name' },
     { title: '类别', dataIndex: 'category', width: 160, render: (value: string) => <Tag>{value}</Tag> },
     { title: '启用', dataIndex: 'enabled', width: 80, render: (value: boolean) => value ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
     { title: '说明', dataIndex: 'description', ellipsis: true, render: (value: string | null) => value || '-' },
@@ -242,7 +242,7 @@ export function TestAssetWorkspace() {
     },
   ];
   const pointColumns: TableColumnsType<TestPoint> = [
-    { title: '测试点', dataIndex: 'name', ellipsis: true },
+    { title: '测试点', dataIndex: 'name', className: 'table-record-name' },
     { title: '策略', width: 220, ellipsis: true, render: (_, row) => strategyName.get(row.strategy_id ?? -1) || '-' },
     { title: '优先级', dataIndex: 'priority', width: 90 },
     { title: '对象', dataIndex: 'target_type', width: 140 },
@@ -279,7 +279,7 @@ export function TestAssetWorkspace() {
                   <Button danger disabled={!selectedStrategyIds.length} onClick={batchDeleteStrategies}>批量删除已选（{selectedStrategyIds.length}）</Button>
                   <Button disabled={!selectedStrategyIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
                 </Space>
-                <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedStrategyIds, onChange: keys => setSelectedStrategyIds(keys.map(Number)) }} columns={strategyColumns} dataSource={visibleStrategies} loading={strategiesQuery.isFetching} pagination={false} locale={{ emptyText: strategiesQuery.isError ? '策略加载失败' : '还没有测试策略' }} />
+                <Table rowKey="id" scroll={{ x: 800 }} rowSelection={{ selectedRowKeys: selectedStrategyIds, onChange: keys => setSelectedStrategyIds(keys.map(Number)) }} columns={strategyColumns} dataSource={visibleStrategies} loading={strategiesQuery.isFetching} pagination={false} locale={{ emptyText: strategiesQuery.isError ? '策略加载失败' : '还没有测试策略' }} />
               </>
             ),
           },
@@ -294,7 +294,7 @@ export function TestAssetWorkspace() {
                   <Button danger disabled={!selectedPointIds.length} onClick={batchDeletePoints}>批量删除已选（{selectedPointIds.length}）</Button>
                   <Button disabled={!selectedPointIds.length} onClick={() => navigate('/console/recycle-bin')}>查看回收站</Button>
                 </Space>
-                <Table rowKey="id" rowSelection={{ selectedRowKeys: selectedPointIds, onChange: keys => setSelectedPointIds(keys.map(Number)) }} columns={pointColumns} dataSource={visiblePoints} loading={pointsQuery.isFetching} pagination={false} locale={{ emptyText: pointsQuery.isError ? '测试点加载失败' : '还没有测试点' }} />
+                <Table rowKey="id" scroll={{ x: 940 }} rowSelection={{ selectedRowKeys: selectedPointIds, onChange: keys => setSelectedPointIds(keys.map(Number)) }} columns={pointColumns} dataSource={visiblePoints} loading={pointsQuery.isFetching} pagination={false} locale={{ emptyText: pointsQuery.isError ? '测试点加载失败' : '还没有测试点' }} />
               </>
             ),
           },

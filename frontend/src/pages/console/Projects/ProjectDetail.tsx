@@ -1,6 +1,6 @@
 // 项目详情：当前用户可见项目及允许的管理操作（按 my_role 控制按钮）。
 // 本模块导出 ConsoleProjectDetailPage，由路由 /console/projects/:id 挂载。
-import { App, Button, Modal, Space, Table, Tag } from 'antd';
+import { App, Button, Flex, Modal, Space, Table, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -78,12 +78,11 @@ export function ConsoleProjectDetailPage() {
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
         <div>
           <h2 style={{ margin: 0 }}>{project.name}</h2>
-          <Space size="small" style={{ color: '#666' }}>
+          <Flex className="project-detail-meta" align="center" wrap gap={8}>
             <Tag /* 项目未挂到任何组织时 organization_name 为 null，展示「无」而非空串 */>组织：{project.organization_name ?? '无'}</Tag>
             <Tag>负责人：{project.owner_username ?? '未知'}</Tag>
-            <span>我的角色：</span>
-            <ProjectRoleTag role={myRole} />
-          </Space>
+            <Space size={4}><span>我的角色：</span><ProjectRoleTag role={myRole} /></Space>
+          </Flex>
         </div>
         <div>
           <strong>项目描述</strong>

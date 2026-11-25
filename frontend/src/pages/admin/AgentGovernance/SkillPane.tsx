@@ -343,7 +343,7 @@ export function SkillPane() {
       <main className="skill-workspace__main">
         {!activeSkill || !draft ? <Card className="skill-workspace__welcome">
           <Typography.Title level={4}>Skill 文件工作区</Typography.Title>
-          <Typography.Paragraph type="secondary">从左侧选择一个 Skill，查看概览、编辑入口文件和引用资料。所有修改会先暂存，保存后创建新版本。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">从列表中选择一个 Skill，查看概览、编辑入口文件和引用资料。所有修改会先暂存，保存后创建新版本。</Typography.Paragraph>
           <Typography.Text type="secondary">共 {allSkills.length} 个 Skill · 已启用 {allSkills.filter((skill) => skill.is_enabled).length} 个</Typography.Text>
         </Card> : <>
           <div className="skill-workspace__resource-header">

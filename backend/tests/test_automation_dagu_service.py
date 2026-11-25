@@ -246,11 +246,15 @@ def test_dagu_idempotency_whitelist_and_callback_ownership(api, db, admin, monke
     stored = db.get(AutomationExecution, execution["id"])
     assert stored.status == "PENDING"
     assert db.query(AutomationReport).filter_by(execution_id=execution["id"]).count() == 0
+    stored.status = "FAILED"
+    stored.external_status = "failed"
+    db.commit()
     accepted = _signed_callback(api, config["callback_key"], CALLBACK_SECRET, {
         "execution_id": execution["id"], "automation_project_id": automation_id,
-        "dag_run_id": execution["pipeline_run_id"], "status": "SUCCESS",
+        "dag_run_id": execution["pipeline_run_id"], "status": "SUCCESS", "callback_replay": True,
     }, "callback-ok")
     assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "SUCCESS"
     duplicate = _signed_callback(api, config["callback_key"], CALLBACK_SECRET, {
         "execution_id": execution["id"], "automation_project_id": automation_id,
         "dag_run_id": execution["pipeline_run_id"], "status": "FAILED",

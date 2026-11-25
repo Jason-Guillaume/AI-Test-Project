@@ -47,7 +47,9 @@ def test_dagu_upload_uses_stable_run_id_idempotency_and_hmac(tmp_path, monkeypat
         "AUTOMATION_RESULTS_ARCHIVE": str(results),
         "AUTOMATION_LOG_FILE": str(log_path),
         "AUTOMATION_REPORT_DIR": str(tmp_path / "report-dir"),
-        "AUTOMATION_START_MS": "0",
+        "AUTOMATION_START_MS": "1000",
+        "AUTOMATION_FINISH_MS": "1250",
+        "AUTOMATION_CALLBACK_REPLAY": "1",
     }.items():
         monkeypatch.setenv(key, value)
 
@@ -66,6 +68,8 @@ def test_dagu_upload_uses_stable_run_id_idempotency_and_hmac(tmp_path, monkeypat
     payload = request.data.decode("utf-8", errors="replace")
     metadata = payload.split('name="metadata"\r\n\r\n', 1)[1].split("\r\n", 1)[0]
     parsed = json.loads(metadata)
+    assert parsed["duration_ms"] == 250
+    assert parsed["callback_replay"] is True
     assert parsed["provider_type"] == "DAGU"
     assert parsed["dag_run_id"] == "automation-12"
     assert parsed["pipeline_id"] == "automation-pytest-allure"

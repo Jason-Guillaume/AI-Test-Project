@@ -194,14 +194,17 @@ def test_unbound_model_stays_admitted_and_disabled_revision_does_not():
             return self
 
         def first(self):
-            return SimpleNamespace(revision_id=9)
+            return SimpleNamespace(resource_id=1, revision_id=9)
 
     class ClosedDB:
         def query(self, _model):
             return Bound()
 
-        def get(self, _model, _ident):
-            return SimpleNamespace(enabled=False)
+        def get(self, model, ident):
+            if model.__tablename__ == "model_resource":
+                return SimpleNamespace(id=1, status="ACTIVE", visibility="PLATFORM", current_revision_id=10)
+            assert ident == 10
+            return SimpleNamespace(resource_id=1, enabled=False)
 
     assert model_revision_admitted(ClosedDB(), 1) is False
 

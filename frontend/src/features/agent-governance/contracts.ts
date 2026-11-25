@@ -70,7 +70,7 @@ export interface AgentRuntimeOverview {
     known_usage_calls: number; unknown_usage_calls: number; cost_amount: number | null;
     cost_currency: string | null; cost_by_currency: { currency: string | null; amount: number; calls: number }[];
     priced_model_calls: number; unpriced_model_calls: number; durable_tool_invocations: number;
-    durable_tool_success_rate: number | null; traced_tool_success_rate: number | null; traced_tool_calls: number; knowledge_retrievals: number;
+    durable_tool_success_rate: number | null; traced_tool_success_rate: number | null; traced_tool_calls: number; traced_tool_rejections?: number; knowledge_retrievals: number; knowledge_permission_checks?: number;
     context_assemblies: number; durable_tool_terminal_invocations: number;
     skill_loads: number; skill_load_failures: number; skill_load_success_rate: number | null;
     manual_reviewed_drafts: number; manual_rejection_rate: number | null; manual_edit_rate: number | null;
@@ -80,12 +80,27 @@ export interface AgentRuntimeOverview {
   providers: { provider: string; calls: number; succeeded: number; failed: number; unknown_calls: number; known_calls: number; tokens: number; success_rate: number | null; status: string; enabled_configs: number; disabled_configs: number; cost_by_currency: { currency: string; amount: number }[] }[];
   models: { model_config_id: number | null; model_name: string; model_revision: string | null; cost_currency: string | null; calls: number; known_calls: number; unknown_calls: number; success_rate: number | null; succeeded: number; failed: number; tokens: number; cost: number | null; latency_sample_count: number; avg_latency_ms: number | null; p50_latency_ms: number | null; p95_latency_ms: number | null }[];
   agents_by_revision: { agent_definition_id: number | null; agent_name: string; revision_id: number | null; cost_currency: string | null; calls: number; succeeded: number; failed: number; tokens: number; cost: number | null; avg_latency_ms: number | null }[];
-  tools: { tool_key: string; calls: number; succeeded: number; failed: number; avg_latency_ms: number | null }[];
+  tools: { tool_key: string; calls: number; succeeded: number; failed: number; rejected?: number; avg_latency_ms: number | null }[];
   skills: { skill_key: string; skill_version: number | null; loads: number; succeeded: number; failed: number; avg_latency_ms: number | null }[];
   anomalies: { kind: string; severity: string; current: number; baseline: number; current_samples: number; baseline_samples: number; model_name?: string; model_revision?: string | null; tool_key?: string; skill_key?: string; skill_version?: number | null; agent_name?: string; revision_id?: number; currency?: string | null }[];
+  recent_issues?: { run_id: number; task_id: number; project_id: number; project_name: string; title: string; status: string;
+    error_code: string | null; occurred_at: string; event: { id: number; type: string; name: string; status: string; error_code: string | null } | null }[];
   manual_feedback: { reviewed_drafts: number; accepted_drafts: number; rejected_drafts: number; edited_reviewed_drafts: number; rejection_rate: number | null; edit_rate: number | null };
   definitions: Record<string, string>;
 }
+
+export type SkillDependency = { key: string; name: string; version: number; is_enabled: boolean };
+export type ToolDependency = { key: string; server_id: number | null; direct: boolean; skills: SkillDependency[]; available: boolean;
+  parent_paths?: { id: number; name: string; available: boolean }[] };
+export type AgentToolDependencies = { id: number; name: string; tools: ToolDependency[] };
+export type AgentEffectiveConfiguration = {
+  agent_id: number; version: number;
+  model: { id: number; label: string; name: string; source: 'agent' | 'parent' | 'default' } | null;
+  knowledge: { access_mode: 'PROJECT_SHARED' | 'AGENT_SCOPED'; revision: number; version_ids: number[] } | null;
+  skills: (SkillDependency & { files: string[] })[];
+  tools: ToolDependency[];
+  warnings: string[];
+};
 
 export type AgentDefinitionPatch = Partial<AgentDefinitionInput>;
 

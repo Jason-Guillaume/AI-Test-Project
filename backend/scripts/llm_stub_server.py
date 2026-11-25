@@ -91,19 +91,26 @@ def _chat_response(payload: dict) -> dict:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    """只处理 POST /v1/chat/completions；其余路径 404。"""
+    """为隔离验收提供对话桩和只读 MCP 发现桩。"""
 
     def do_POST(self) -> None:  # noqa: N802（http.server 约定）
         """按模块和请求数量返回可控合成响应。"""
-        if self.path.rstrip("/") not in ("/v1/chat/completions", "/chat/completions"):
+        path = self.path.rstrip('/')
+        if path not in ("/v1/chat/completions", "/chat/completions", "/mcp"):
             self.send_error(404, "not found")
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
+            if path == '/mcp':
+                self._mcp_fixture(body)
+                return
             messages = body.get("messages") or []
             system = next((str(item.get("content") or "") for item in messages if item.get("role") == "system"), "")
             user = "\n".join(str(item.get("content") or "") for item in messages if item.get("role") == "user")
+            if '你是任务中的子 Agent' in system and '[stub-fail-subagent]' in user:
+                self._reply(400, {'error': {'message': 'synthetic subagent failure', 'type': 'stub_failure'}})
+                return
             if "审阅模块子 Agent" in system:
                 kind, payload = "review", _review_payload()
             elif "## 意图枚举" in system:
@@ -131,6 +138,24 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # 桩本身出错也要返回结构化 500，避免悬挂后端请求。
             self._reply(500, {"error": {"message": f"stub error: {type(exc).__name__}", "type": "stub_error"}})
             print(f"[llm-stub] stub error: {type(exc).__name__}", flush=True)
+
+    def _mcp_fixture(self, request: dict) -> None:
+        """返回合成 MCP 工具清单，验收访问路径和审批状态。"""
+        method = request.get('method')
+        if method == 'notifications/initialized':
+            self._reply(202, {})
+            return
+        results = {
+            'initialize': {'protocolVersion': '2025-11-25', 'capabilities': {'tools': {}},
+                           'serverInfo': {'name': 'SuperAgent E2E', 'version': '1.0'}},
+            'tools/list': {'tools': [{'name': 'read_policy', 'description': '读取合成退款规则',
+                                    'annotations': {'readOnlyHint': True},
+                                    'inputSchema': {'type': 'object', 'properties': {}}}]},
+        }
+        if method not in results:
+            self._reply(400, {'error': 'unsupported fixture method'})
+            return
+        self._reply(200, {'jsonrpc': '2.0', 'id': request.get('id'), 'result': results[method]})
 
     def _reply(self, status: int, payload: dict) -> None:
         """发送不含真实模型数据的 JSON 响应。"""

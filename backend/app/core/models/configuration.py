@@ -32,7 +32,7 @@ class ModelConfiguration(SoftDeleteBase):
             postgresql_where=text("deleted_at IS NULL"),
             sqlite_where=text("deleted_at IS NULL"),
         ),
-        {"comment": "大模型连接、调用参数及启停状态配置"},
+        {"comment": "大模型连接、调用参数及启停状态配置", "info": {"is_view": True}},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

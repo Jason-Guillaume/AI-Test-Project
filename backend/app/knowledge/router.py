@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Response, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -30,7 +32,7 @@ class BindingInput(BaseModel):
 class SearchInput(BaseModel):
     query: str = Field(max_length=4000)
     top_k: int | None = Field(default=None, ge=1, le=50)
-    candidate_k: int = Field(default=320, ge=50, le=2000)
+    candidate_k: int | None = Field(default=None, ge=1, le=5000, description='仅覆盖本次 BM25 候选窗口')
     minimum_score: float = Field(default=0.0, ge=0.0, le=100.0)
 
 class Command(BaseModel):
@@ -93,12 +95,21 @@ def delete_document(project_id: int, document_id: int, db: Session = Depends(get
 @router.post('/knowledge-document-versions/{version_id}/commands')
 def command(project_id: int, version_id: int, body: Command, background: BackgroundTasks, db: Session = Depends(get_db), actor=Depends(get_current_user)):
     service.access(db, project_id, actor, True)
-    row = db.get(KnowledgeVersion, version_id)
+    document_id = db.query(KnowledgeVersion.document_id).filter_by(id=version_id).scalar()
+    if document_id is None:
+        raise not_found('版本不存在')
+    # Match the parser's lock order. A concurrent retry must never reset a READY version.
+    doc = db.query(KnowledgeDocument).filter_by(id=document_id, project_id=project_id).populate_existing().with_for_update().first()
+    if doc is None:
+        raise not_found('知识资源不存在')
+    row = db.query(KnowledgeVersion).filter_by(id=version_id).populate_existing().with_for_update().first()
     if row is None:
         raise not_found('版本不存在')
-    doc = service.owned(db, KnowledgeDocument, row.document_id, project_id)
     if body.action == 'retry' and row.status in {'FAILED', 'QUEUED'}:
-        row.status = 'QUEUED'; db.commit(); background.add_task(parse, row.id)
+        row.status = 'QUEUED'
+        row.queued_at = datetime.now(timezone.utc)
+        db.commit()
+        background.add_task(parse, row.id)
     elif body.action in {'enable', 'disable'}:
         doc.enabled = body.action == 'enable'
         if doc.enabled:
@@ -136,6 +147,10 @@ def project_search(project_id: int, body: SearchInput, db: Session = Depends(get
 def search(project_id: int, agent_id: int, body: SearchInput, db: Session = Depends(get_db), actor=Depends(get_current_user)):
     # Agent 检索按显式知识绑定过滤；尚未配置范围的旧 Agent 维持项目默认范围。
     snapshot = service.freeze(db, project_id, agent_id, actor)
+    from app.agents.models import AgentDefinition
+    agent = db.get(AgentDefinition, agent_id)
+    if agent is None or not agent.is_enabled:
+        raise not_found('当前 Agent 不可试搜')
     items, retrieval = service.search(
         db, snapshot, actor, body.query, limit=body.top_k,
         minimum_score=body.minimum_score, candidate_limit=body.candidate_k,
@@ -146,6 +161,10 @@ def search(project_id: int, agent_id: int, body: SearchInput, db: Session = Depe
 @router.get('/agents/{agent_id}/knowledge-sources/{chunk_id}')
 def source(project_id: int, agent_id: int, chunk_id: int, db: Session = Depends(get_db), actor=Depends(get_current_user)):
     return dump(service.source(db, project_id, agent_id, actor, chunk_id))
+
+@router.get('/knowledge-sources/{chunk_id}')
+def project_source(project_id: int, chunk_id: int, db: Session = Depends(get_db), actor=Depends(get_current_user)):
+    return dump(service.source(db, project_id, 0, actor, chunk_id))
 
 @router.post('/knowledge-bases/{base_id}/commands')
 def base_command(project_id: int, base_id: int, body: Command, db: Session = Depends(get_db), actor=Depends(get_current_user)):
@@ -217,7 +236,7 @@ def _available_revision(db, project_id, actor, revision_id, category, *, current
 @router.get('/knowledge-retrieval-config')
 def retrieval_config(project_id: int, db: Session = Depends(get_db), actor=Depends(get_current_user)):
     from app.knowledge.models import KnowledgeIndexGeneration, KnowledgeIndexJob, KnowledgeRetrievalConfig, KnowledgeVector
-    from app.knowledge.indexing import project_chunks
+    from app.knowledge.indexing import project_chunks, queue_status
     from sqlalchemy import func
     service.access(db, project_id, actor)
     config = db.get(KnowledgeRetrievalConfig, project_id)
@@ -235,7 +254,7 @@ def retrieval_config(project_id: int, db: Session = Depends(get_db), actor=Depen
         items.append({**dump(generation), 'jobs': counts, 'vector_count': vectors,
                       'eligible_count': eligible_count, 'covered_count': covered,
                       'coverage': covered / eligible_count if eligible_count else 1.0})
-    return {'config': dump(config) if config else None, 'generations': items}
+    return {'config': dump(config) if config else None, 'generations': items, 'queues': queue_status(db, project_id)}
 
 
 @router.put('/knowledge-retrieval-config')
@@ -276,7 +295,7 @@ def create_index_generation(project_id: int, body: GenerationInput, db: Session 
 @router.post('/knowledge-index-generations/{generation_id}/commands')
 def index_generation_command(project_id: int, generation_id: int, body: Command,
                              db: Session = Depends(get_db), actor=Depends(get_current_user)):
-    from app.knowledge.indexing import activate_generation, backfill_generation, lock_project
+    from app.knowledge.indexing import activate_generation, backfill_generation, lock_project, requeue_job
     from app.knowledge.models import KnowledgeIndexGeneration, KnowledgeIndexJob
     service.access(db, project_id, actor, True)
     lock_project(db, project_id)
@@ -290,7 +309,7 @@ def index_generation_command(project_id: int, generation_id: int, body: Command,
             raise bad_request('该索引代不可重试')
         jobs = db.query(KnowledgeIndexJob).filter_by(generation_id=generation_id, status='FAILED').all()
         for job in jobs:
-            job.status, job.attempts, job.error, job.next_attempt_at = 'QUEUED', 0, None, None
+            requeue_job(job)
         result = {'queued': len(jobs)}
     elif body.action == 'activate':
         _available_revision(db, project_id, actor, generation.embedding_revision_id, 'EMBEDDING', current=False)

@@ -222,7 +222,7 @@ class TestMigration:
         indexes = _indexes(db)
         assert "uq_security_strategy_system_key" in indexes
         assert "uq_security_finding_open_fingerprint" in indexes
-        assert "uq_security_setting_project" in indexes
+        assert "uq_project_security_setting_id" in indexes
         assert "uq_security_strategy_project_key" in indexes
         assert "uq_security_case_test_case" in indexes
         assert "uq_security_execution_case" in indexes
@@ -251,6 +251,17 @@ class TestMigration:
             assert {c["name"] for c in inspector.get_columns(table.name)} == {
                 c.name for c in table.columns
             }
+            if model is SecurityProjectSetting:
+                assert table.name in inspector.get_view_names()
+                # The project primary key enforces a single setting per project.
+                assert inspector.get_pk_constraint("project")["constrained_columns"] == ["id"]
+                assert ["security_setting_id"] in [
+                    key["column_names"] for key in inspector.get_unique_constraints("project")
+                ]
+                updated_by = next(fk for fk in inspector.get_foreign_keys("project")
+                                  if fk["constrained_columns"] == ["security_updated_by"])
+                assert (updated_by["referred_table"], updated_by["options"]["ondelete"]) == ("user", "SET NULL")
+                continue
             expected = {
                 constraint.name for constraint in table.constraints
                 if constraint.name and constraint not in table.foreign_key_constraints

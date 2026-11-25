@@ -3,7 +3,9 @@
 All operations that add chunks or change a generation take the same project row
 lock. This makes coverage verification and a pointer switch atomic with parsing.
 """
-from sqlalchemy import exists, select
+from datetime import datetime, timezone
+
+from sqlalchemy import exists, func, select
 
 from app.core.models.project import Project
 from app.core.http.errors import bad_request, not_found
@@ -55,6 +57,44 @@ def project_chunks(db, project_id):
              KnowledgeDocument.enabled.is_(True), KnowledgeBase.enabled.is_(True))
 
 
+def parse_queue(db):
+    return db.query(KnowledgeVersion.id).join(
+        KnowledgeDocument, KnowledgeVersion.document_id == KnowledgeDocument.id,
+    ).join(KnowledgeBase, KnowledgeDocument.base_id == KnowledgeBase.id).filter(
+        KnowledgeVersion.status == 'QUEUED', KnowledgeDocument.deleted_at.is_(None),
+        KnowledgeBase.deleted_at.is_(None),
+    )
+
+
+def queue_status(db, project_id, *, now=None):
+    now = now or datetime.now(timezone.utc)
+
+    def summarize(query, queued_at):
+        count, known, oldest = query.with_entities(func.count(), func.count(queued_at), func.min(queued_at)).one()
+        if oldest is not None and oldest.tzinfo is None:
+            oldest = oldest.replace(tzinfo=timezone.utc)
+        return {'queued_count': count, 'unknown_age_count': count - known,
+                'oldest_wait_seconds': max(0, int((now - oldest).total_seconds())) if oldest and count == known else None}
+
+    vector_jobs = db.query(KnowledgeIndexJob.id).join(KnowledgeIndexGeneration).filter(
+        KnowledgeIndexGeneration.project_id == project_id,
+    )
+    expired = (KnowledgeIndexJob.status == 'RUNNING') & (KnowledgeIndexJob.lease_until <= now)
+    vector = summarize(vector_jobs.filter(KnowledgeIndexJob.status == 'QUEUED'), KnowledgeIndexJob.queued_at)
+    recovery = summarize(vector_jobs.filter(expired), KnowledgeIndexJob.lease_until)
+    return {
+        'parse': summarize(parse_queue(db).filter(KnowledgeDocument.project_id == project_id), KnowledgeVersion.queued_at),
+        'vector': {**vector, 'expired_lease_count': recovery['queued_count'],
+                   'oldest_expired_seconds': recovery['oldest_wait_seconds']},
+    }
+
+
+def requeue_job(job):
+    job.status, job.attempts, job.error = 'QUEUED', 0, None
+    job.next_attempt_at, job.lease_token, job.lease_until = None, None, None
+    job.queued_at = datetime.now(timezone.utc)
+
+
 def backfill_generation(db, generation_id):
     generation = db.get(KnowledgeIndexGeneration, generation_id)
     if generation is None:
@@ -69,7 +109,7 @@ def backfill_generation(db, generation_id):
                         & (KnowledgeVector.chunk_id == KnowledgeIndexJob.chunk_id)),
     ).all()
     for job in lost:
-        job.status, job.attempts, job.error, job.next_attempt_at = 'QUEUED', 0, None, None
+        requeue_job(job)
     missing = project_chunks(db, generation.project_id).filter(~exists().where(
         (KnowledgeIndexJob.generation_id == generation.id) & (KnowledgeIndexJob.chunk_id == KnowledgeChunk.id)
     ))
@@ -93,7 +133,7 @@ def reconcile_project(db, project_id):
     for generation in generations:
         backfill_generation(db, generation.id)
         for job in db.query(KnowledgeIndexJob).filter_by(generation_id=generation.id, status='FAILED').all():
-            job.status, job.attempts, job.error, job.next_attempt_at = 'QUEUED', 0, None, None
+            requeue_job(job)
 
 
 def activate_generation(db, project_id, generation_id):
@@ -197,6 +237,8 @@ def fail_job(db, job_id, token, *, max_attempts=3, now=None):
         return False
     job.status = 'FAILED' if job.attempts >= max_attempts else 'QUEUED'
     job.next_attempt_at = None if job.status == 'FAILED' else now + timedelta(seconds=min(300, 5 * 2 ** (job.attempts - 1)))
+    if job.status == 'QUEUED':
+        job.queued_at = now
     job.error, job.lease_token, job.lease_until = 'embedding_failed', None, None
     db.commit()
     return True

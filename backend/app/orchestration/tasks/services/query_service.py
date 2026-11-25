@@ -31,7 +31,7 @@ from app.orchestration.tasks.models import (
 from app.orchestration.tasks.schemas import TaskTraceEventResponse, TaskTracePageResponse, TaskWorkItemResponse
 from app.orchestration.tasks.services.access import TaskAccessService
 from app.orchestration.tasks.services.serializers import TaskSerializers
-from app.core.http.errors import bad_request
+from app.core.http.errors import bad_request, not_found
 from app.features.test_management.models.case_generation import CaseGenerationBatch
 
 
@@ -193,6 +193,7 @@ class TaskQueryService:
     @staticmethod
     def trace_timeline(
         db: Session, run_id: int, user: User, *, cursor: str | None = None, limit: int = 100,
+        event_id: int | None = None,
     ) -> dict[str, Any]:
         """按任务权限聚合 Langfuse 关联索引与运行事实，并以 keyset 游标返回时间线。"""
         run, task = TaskAccessService.get_run_for_read(db, run_id, user)
@@ -212,6 +213,8 @@ class TaskQueryService:
         ).scalar()
 
         cursor_key: tuple[datetime, str, int] | None = None
+        if cursor and event_id is not None:
+            raise bad_request('定位事件和分页游标须单独查询')
         if cursor:
             try:
                 decoded = json.loads(base64.urlsafe_b64decode(cursor.encode() + b"=" * (-len(cursor) % 4)))
@@ -243,18 +246,23 @@ class TaskQueryService:
         calls = apply_filter(
             db.query(RuntimeCallFact).filter(RuntimeCallFact.task_id == task.id, root_filter),
             keyset_filter(call_time, literal("MODEL_CALL"), RuntimeCallFact.id),
-        ).order_by(call_time.desc(), RuntimeCallFact.id.desc()).limit(limit + 1).all()
+        ).order_by(call_time.desc(), RuntimeCallFact.id.desc()).limit(limit + 1).all() if event_id is None else []
 
         event_root_filter = or_(
             RuntimeEventFact.execution_root_run_id == root_id,
             RuntimeEventFact.task_run_id.in_(run_ids),
         )
-        events = apply_filter(
-            db.query(RuntimeEventFact).filter(RuntimeEventFact.task_id == task.id, event_root_filter),
+        event_query = db.query(RuntimeEventFact).filter(RuntimeEventFact.task_id == task.id,
+            RuntimeEventFact.project_id == task.project_id, event_root_filter)
+        if event_id is not None:
+            event_query = event_query.filter(RuntimeEventFact.id == event_id)
+        events = apply_filter(event_query,
             keyset_filter(RuntimeEventFact.occurred_at, RuntimeEventFact.event_type, RuntimeEventFact.id),
         ).order_by(
             RuntimeEventFact.occurred_at.desc(), RuntimeEventFact.event_type.desc(), RuntimeEventFact.id.desc(),
         ).limit(limit + 1).all()
+        if event_id is not None and not events:
+            raise not_found('当前运行未找到此事件')
 
         attempt_time = func.coalesce(TaskAttempt.finished_at, TaskAttempt.heartbeat_at, TaskAttempt.started_at)
         attempts_query = db.query(TaskAttempt, TaskWorkItem).join(
@@ -264,7 +272,7 @@ class TaskQueryService:
             attempts_query,
             keyset_filter(attempt_time, literal("AGENT_ATTEMPT"), TaskAttempt.id),
         )
-        attempts = attempts_query.order_by(attempt_time.desc(), TaskAttempt.id.desc()).limit(limit + 1).all()
+        attempts = attempts_query.order_by(attempt_time.desc(), TaskAttempt.id.desc()).limit(limit + 1).all() if event_id is None else []
 
         from app.orchestration.tasks.services.trace_projection_service import (
             projection_status,

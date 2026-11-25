@@ -63,7 +63,7 @@ def _prepare(name: str) -> None:
         with connection.cursor() as cursor:
             _terminate(cursor, name)
             cursor.execute(f'DROP DATABASE IF EXISTS "{name}"')
-            cursor.execute(f'CREATE DATABASE "{name}"')
+            cursor.execute(f'CREATE DATABASE "{name}" TEMPLATE template0')
 
 
 def _terminate(cursor, name: str) -> None:

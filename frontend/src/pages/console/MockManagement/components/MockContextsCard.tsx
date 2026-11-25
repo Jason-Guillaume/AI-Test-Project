@@ -84,6 +84,7 @@ function MockContextsCard({
 
   return (
     <Card
+      className="wrapping-card-heading"
       size="small"
       style={{ marginBottom: 16 }}
       title="Mock 作用域（Context · scenario_overrides 并发隔离）"

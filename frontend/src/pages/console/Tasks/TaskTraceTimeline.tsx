@@ -1,6 +1,7 @@
-import { App, Button, Card, Empty, Flex, List, Space, Tag, Typography } from 'antd';
+import { Alert, App, Button, Card, Empty, Flex, List, Space, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import { tasksApi } from '@/features/tasks/api/tasks';
 import type { TaskTraceEvent } from '@/features/tasks/contracts';
 import { fmtTime } from '@/shared/lib/format';
@@ -25,18 +26,21 @@ function TraceEventRow({ event }: { event: TaskTraceEvent }) {
     event.total_tokens != null ? `合计 ${event.total_tokens} tokens` : null,
     event.cost_amount != null ? `${event.cost_amount} ${event.cost_currency ?? ''}`.trim() : null,
   ].filter(Boolean).join(' · ');
-  const metadata = Object.keys(event.metadata ?? {}).length ? JSON.stringify(event.metadata) : null;
+  const retrieval = event.event_type === 'KNOWLEDGE_RETRIEVAL';
+  const data = event.metadata ?? {};
+  const metadata = !retrieval && Object.keys(data).length ? JSON.stringify(data) : null;
+  const stage = (count: string, limit: string) => `${data[count] ?? '未知'}/${data[limit] ?? '未知'}`;
   const projectionTone = event.projection_status === 'FAILED' ? 'red'
     : event.projection_status === 'SUCCEEDED' ? 'green'
       : event.projection_status === 'RETRYING' ? 'orange' : 'default';
   return (
     <List.Item>
-      <Flex vertical gap={4} style={{ width: '100%' }}>
+      <Flex vertical gap={4} style={{ width: '100%', minWidth: 0, overflowWrap: 'anywhere' }}>
         <Flex justify="space-between" align="flex-start" gap={12} wrap>
           <Space wrap>
             <Tag>{EVENT_LABEL[event.event_type] ?? event.event_type}</Tag>
             <Typography.Text strong>{event.event_name}</Typography.Text>
-            <Tag color={tone}>{event.status}</Tag>
+            <Tag color={event.status === 'REJECTED' ? 'orange' : tone}>{event.status === 'REJECTED' ? '治理拒绝' : event.status}</Tag>
             <Tag color={projectionTone}>投影 {event.projection_status}</Tag>
             {event.agent_name && <Tag color="purple">{event.agent_name}{event.agent_role ? ` · ${event.agent_role}` : ''}</Tag>}
           </Space>
@@ -55,6 +59,14 @@ function TraceEventRow({ event }: { event: TaskTraceEvent }) {
           {usage && <Typography.Text type="secondary">{usage}</Typography.Text>}
           {event.error_code && <Typography.Text type="danger">错误码 {event.error_code}</Typography.Text>}
         </Space>
+        {retrieval && <Space wrap size={[12, 4]}>
+          <Typography.Text type="secondary">{data.search_mode === 'PERMISSION_CHECK' ? '权限检查' : `命中 ${data.result_count ?? '未知'}`}</Typography.Text>
+          <Typography.Text type="secondary">BM25 {stage('candidate_count', 'candidate_limit')}</Typography.Text>
+          <Typography.Text type="secondary">向量 {String(data.vector_status ?? '未知')} · {stage('vector_candidate_count', 'vector_candidate_limit')}</Typography.Text>
+          <Typography.Text type="secondary">重排 {String(data.reranker_status ?? '未知')}</Typography.Text>
+          {Array.isArray(data.version_ids) && data.version_ids.length > 0 && <Typography.Text type="secondary">版本 {data.version_ids.join('、')}</Typography.Text>}
+          {Array.isArray(data.chunk_ids) && data.chunk_ids.length > 0 && <Typography.Text type="secondary">片段 {data.chunk_ids.join('、')}</Typography.Text>}
+        </Space>}
         {(event.span_id || metadata) && (
           <Space wrap>
             {event.span_id && <Typography.Text type="secondary" copyable={{ text: event.span_id }}>Span {event.span_id}</Typography.Text>}
@@ -66,7 +78,7 @@ function TraceEventRow({ event }: { event: TaskTraceEvent }) {
   );
 }
 
-export function TaskTraceTimeline({ runId, traceId, active }: { runId: number; traceId?: string | null; active: boolean }) {
+export function TaskTraceTimeline({ runId, traceId, active, focusEventId }: { runId: number; traceId?: string | null; active: boolean; focusEventId?: number }) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const query = useInfiniteQuery({
@@ -76,7 +88,14 @@ export function TaskTraceTimeline({ runId, traceId, active }: { runId: number; t
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
     refetchInterval: (current) => active && (current.state.data?.pages.length ?? 1) === 1 ? 5000 : false,
   });
-  const events = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const focus = useQuery({ queryKey: ['task-trace-event', runId, focusEventId], enabled: focusEventId != null,
+    retry: false, queryFn: () => tasksApi.trace(runId, null, focusEventId) });
+  const focused = focus.data?.items[0];
+  const focusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focused) focusRef.current?.scrollIntoView({ block: 'center' });
+  }, [focused]);
+  const events = query.data?.pages.flatMap((page) => page.items).filter((item) => item.id !== focused?.id) ?? [];
   const currentTraceId = query.data?.pages[0]?.trace_id ?? traceId;
   const generationBatchId = query.data?.pages[0]?.generation_batch_id;
   const projection = query.data?.pages[0]?.projection;
@@ -108,6 +127,11 @@ export function TaskTraceTimeline({ runId, traceId, active }: { runId: number; t
       )}
     >
       <Flex vertical gap={12}>
+        {focus.isLoading && <Typography.Text type="secondary">正在定位运行事件</Typography.Text>}
+        {focus.isError && <Alert type="error" message="运行事件定位失败" action={<Button onClick={() => focus.refetch()}>重试</Button>} />}
+        {focused && <div ref={focusRef}><Card type="inner" size="small" title="已定位的运行事件">
+          <List size="small" dataSource={[focused]} renderItem={(event) => <TraceEventRow event={event} />} />
+        </Card></div>}
         <Typography.Text type="secondary">
           这里展示任务关联、Agent 执行、模型调用、工具与知识事件索引。Trace 正文由 Langfuse 保存；本页不复制提示词或工具参数。
         </Typography.Text>

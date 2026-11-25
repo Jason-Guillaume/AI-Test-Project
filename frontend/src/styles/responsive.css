@@ -5,10 +5,12 @@
 }
 
 @media (max-width: 760px) {
-  .app-topbar.ant-layout-header { height: auto; min-height: 64px; flex-wrap: wrap; padding: 10px 14px; }
-  .app-topbar-left { flex: 1 1 100%; }
-  .app-topbar-actions { margin-left: auto; }
+  .app-topbar.ant-layout-header { height: auto; min-height: 64px; flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
+  .app-topbar .app-topbar-left { flex: 1 1 0; gap: 6px; }
+  .app-topbar .app-topbar-actions { flex-wrap: nowrap; gap: 4px; margin-left: auto; }
   .app-scope-select { flex: 1 1 120px; width: auto !important; }
+  .app-topbar .app-user-trigger { padding-inline: 2px; }
+  .app-topbar .app-user-name, .app-topbar .app-user-role { display: none; }
   .app-breadcrumb-wrap { padding: 14px 16px 0; }
   .page-container { padding: 18px 16px 28px; }
   .admin-list-toolbar { align-items: stretch; }
@@ -57,11 +59,11 @@
 @media (max-width: 480px) {
   .form-field-row { flex-direction: column; }
   .form-field-row > .ant-form-item { width: 100%; }
-  .app-topbar-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
   .mock-matcher-row { grid-template-columns: minmax(0, 1fr); }
   .mock-matcher-row > .ant-btn { grid-column: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  /* 弹层会同步测量 top/left，位置过渡会让它读取到屏幕外的初始坐标。 */
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0s !important; }
 }

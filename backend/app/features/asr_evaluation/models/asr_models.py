@@ -56,7 +56,8 @@ class AsrConnection(Base):
     """一个转写或说话人处理 HTTP 连接的不可变配置版本。"""
 
     __tablename__ = "asr_connection"
-    __table_args__ = (UniqueConstraint("project_id", "name", "version", name="uq_asr_connection_project_name_version"),)
+    __table_args__ = (UniqueConstraint("project_id", "name", "version", name="uq_asr_connection_project_name_version"),
+                      {"info": {"is_view": True}})
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -81,7 +82,8 @@ class AsrParameterSet(Base):
     """待测模型参数的不可变版本及其可验证定义。"""
 
     __tablename__ = "asr_parameter_set"
-    __table_args__ = (UniqueConstraint("connection_id", "name", "version", name="uq_asr_parameter_set_version"),)
+    __table_args__ = (UniqueConstraint("connection_id", "name", "version", name="uq_asr_parameter_set_version"),
+                      {"info": {"is_view": True}})
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(Integer, ForeignKey("project.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -193,21 +195,6 @@ class AsrEvaluationArtifact(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-class AsrWorkItem(Base):
-    """可跨 Worker 恢复领取的短任务租约。"""
-
-    __tablename__ = "asr_work_item"
-    __table_args__ = (UniqueConstraint("run_id", name="uq_asr_work_run"), Index("ix_asr_work_available", "available_at"))
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    run_id = Column(Integer, ForeignKey("asr_model_run.id", ondelete="CASCADE"), nullable=False)
-    available_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    lease_owner = Column(String(160), nullable=True)
-    lease_generation = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
-    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
-
-
 class AsrComparison(Base):
     """某次评测音频的三方对比版本与非准确率文本差异摘要。"""
 
@@ -253,21 +240,6 @@ class AsrDiffBlock(Base):
     review_status = Column(String(20), nullable=False, default="UNREVIEWED", server_default=text("'UNREVIEWED'"))
     confirmed_text = Column(Text, nullable=True)
     review_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class AsrReviewAudit(Base):
-    """人工确认每一次变更的审计记录，包括确认空文本。"""
-
-    __tablename__ = "asr_review_audit"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    block_id = Column(Integer, ForeignKey("asr_diff_block.id", ondelete="CASCADE"), nullable=False, index=True)
-    reviewer_id = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
-    version = Column(Integer, nullable=False)
-    review_status = Column(String(20), nullable=False)
-    confirmed_text = Column(Text, nullable=True)
-    include_reference_sample = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -482,24 +454,6 @@ class AsrProcessingRun(Base):
     finished_at = Column(DateTime(timezone=True), nullable=True)
 
 
-class AsrProcessingWorkItem(Base):
-    """说话人及媒体任务的独立租约，避免阶段重试触碰三方 ASR 工作项。"""
-
-    __tablename__ = "asr_processing_work_item"
-    __table_args__ = (
-        UniqueConstraint("processing_run_id", name="uq_asr_processing_work_run"),
-        Index("ix_asr_processing_work_available", "available_at"),
-    )
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    processing_run_id = Column(Integer, ForeignKey("asr_processing_run.id", ondelete="CASCADE"), nullable=False)
-    available_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    lease_owner = Column(String(160), nullable=True)
-    lease_generation = Column(Integer, nullable=False, default=0, server_default=text("0"))
-    lease_expires_at = Column(DateTime(timezone=True), nullable=True)
-    attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
-
-
 class AsrDiarizationResult(Base):
     """一个不可变说话人结果版本，保留标准协议、原始响应和模型快照。"""
 
@@ -603,35 +557,6 @@ class AsrSpeakerAssignment(Base):
     review_version = Column(Integer, nullable=False, default=0, server_default=text("0"))
     confirmed_speaker_id = Column(Integer, ForeignKey("asr_speaker.id", ondelete="SET NULL"), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-
-
-class AsrSpeakerReviewAudit(Base):
-    """保留说话人归属人工确认与历史，不覆盖识别段或模型原始结果。"""
-
-    __tablename__ = "asr_speaker_review_audit"
-    __table_args__ = (UniqueConstraint("assignment_id", "version", name="uq_asr_speaker_review_version"),)
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    assignment_id = Column(Integer, ForeignKey("asr_speaker_assignment.id", ondelete="CASCADE"), nullable=False, index=True)
-    version = Column(Integer, nullable=False)
-    reviewer_id = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
-    speaker_id = Column(Integer, ForeignKey("asr_speaker.id", ondelete="SET NULL"), nullable=True)
-    review_status = Column(String(20), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-
-class AsrSpeakerNameAudit(Base):
-    """审计单个录音内的说话人显示名修改。"""
-
-    __tablename__ = "asr_speaker_name_audit"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    speaker_id = Column(Integer, ForeignKey("asr_speaker.id", ondelete="CASCADE"), nullable=False, index=True)
-    reviewer_id = Column(Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
-    revision = Column(Integer, nullable=False)
-    previous_name = Column(String(120), nullable=False)
-    next_name = Column(String(120), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class AsrMediaAnalysis(Base):

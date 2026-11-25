@@ -8,7 +8,7 @@ import time
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.http.errors import bad_request, forbidden, not_found
@@ -27,6 +27,9 @@ from app.platform.model_configuration.center_schemas import (
 )
 from app.platform.model_configuration.schemas import normalize_provider
 from app.platform.projects.services.access_service import get_project_or_404
+from app.platform.model_configuration.services.legacy_bindings import (
+    bind_text_revision, canonical_storage, lock_text_default, resolve_project_aliases, text_state,
+)
 
 _SUPPORTED_ADAPTERS = {
     "TEXT_GENERATION": {"openai-compatible-chat": "OpenAI 兼容聊天"},
@@ -207,7 +210,7 @@ def _next_profile_version(db: Session, resource_id: int, revision_id: int, name:
     """为同一资源与方案名称分配单调递增版本。"""
     latest = db.query(ModelParameterProfile.version).filter(
         ModelParameterProfile.resource_id == resource_id, ModelParameterProfile.name == name,
-        ModelParameterProfile.revision_id == revision_id,
+        ModelParameterProfile.revision_id == revision_id, ModelParameterProfile.scope_connection_id.is_(None),
     ).order_by(ModelParameterProfile.version.desc()).first()
     return (latest[0] if latest else 0) + 1
 
@@ -268,6 +271,7 @@ def _dump_revision(db: Session, row: ModelRevision) -> dict:
     credential = db.query(ModelCredential.id).filter(ModelCredential.revision_id == row.id).first()
     profiles = db.query(ModelParameterProfile).filter(
         ModelParameterProfile.resource_id == row.resource_id, ModelParameterProfile.revision_id == row.id,
+        ModelParameterProfile.scope_connection_id.is_(None),
     ).order_by(ModelParameterProfile.name, ModelParameterProfile.version.desc()).all()
     return {
         "id": row.id, "resource_id": row.resource_id, "version": row.version,
@@ -393,6 +397,9 @@ def _write_profile(db: Session, resource: ModelResource, revision: ModelRevision
 
 def sync_legacy_text_configuration(db: Session, row: ModelConfiguration) -> None:
     """将旧文本模型配置写入口同步到唯一规范资源，保留整数 ID 与 domain_id。"""
+    if canonical_storage(db):
+        db.flush()
+        return
     resource = db.query(ModelResource).filter(
         ModelResource.resource_key == row.domain_id,
     ).one_or_none()
@@ -465,6 +472,13 @@ def _sync_text_default(db: Session, legacy_row: ModelConfiguration, resource: Mo
 
 def sync_legacy_text_default(db: Session, actor_id: int | None = None) -> None:
     """把旧表当前默认值同步到 TEXT_INFERENCE；无启用模型时清除失效默认。"""
+    if canonical_storage(db):
+        db.flush()
+        if actor_id is not None:
+            db.query(ModelDefaultBinding).filter_by(
+                category="TEXT_GENERATION", purpose="TEXT_INFERENCE", project_id=None,
+            ).update({"updated_by": actor_id}, synchronize_session=False)
+        return
     legacy = db.query(ModelConfiguration).filter(ModelConfiguration.is_default.is_(True)).first()
     current = db.query(ModelDefaultBinding).filter(
         ModelDefaultBinding.category == "TEXT_GENERATION", ModelDefaultBinding.purpose == "TEXT_INFERENCE",
@@ -505,6 +519,13 @@ def sync_legacy_text_default(db: Session, actor_id: int | None = None) -> None:
 
 def sync_legacy_asr_connection(db: Session, row) -> None:
     """将旧 ASR 连接写入口纳入统一资源目录，角色只记录在历史兼容映射。"""
+    if canonical_storage(db):
+        db.flush()
+        public_id = getattr(row, "id", row)
+        db.query(ModelLegacyBinding).filter_by(connection_public_id=public_id, legacy_kind="ASR_CONNECTION").update(
+            {"allow_project_execution": False}, synchronize_session=False,
+        )
+        return
     from app.features.asr_evaluation.models import AsrConnection
 
     connection = row if isinstance(row, AsrConnection) else db.get(AsrConnection, row)
@@ -554,6 +575,9 @@ def sync_legacy_asr_connection(db: Session, row) -> None:
 
 def sync_legacy_asr_parameter_set(db: Session, row) -> None:
     """将旧 ASR 参数方案写入口映射到资源修订关联的独立参数版本。"""
+    if canonical_storage(db):
+        db.flush()
+        return
     from app.features.asr_evaluation.models import AsrParameterSet
 
     parameter_set = row if isinstance(row, AsrParameterSet) else db.get(AsrParameterSet, row)
@@ -728,6 +752,16 @@ def _sync_revision_projection(db: Session, resource: ModelResource, revision: Mo
         ))
 
 
+def _credential_for_revision(db, resource, revision, credential, header):
+    if resource.category == "TEXT_GENERATION" and canonical_storage(db):
+        from app.platform.model_configuration.services.model_config_service import encrypt_api_key
+
+        return ModelCredential(revision_id=revision.id, ciphertext=encrypt_api_key(credential),
+                               cipher_format="model-configuration-fernet", header_name=header)
+    return ModelCredential(revision_id=revision.id, ciphertext=encrypt_secret(credential),
+                           cipher_format="shared-fernet", header_name=header)
+
+
 def create_resource(db: Session, body: ModelResourceCreate, actor: User, *, commit: bool = True) -> dict:
     """创建资源、首个连接修订、凭据和参数方案并生成兼容运行时投影。"""
     if body.visibility != "PLATFORM":
@@ -769,10 +803,7 @@ def create_resource(db: Session, body: ModelResourceCreate, actor: User, *, comm
     db.flush()
     resource.current_revision_id = revision.id
     if body.credential:
-        db.add(ModelCredential(
-            revision_id=revision.id, ciphertext=encrypt_secret(body.credential), cipher_format="shared-fernet",
-            header_name=body.credential_header,
-        ))
+        db.add(_credential_for_revision(db, resource, revision, body.credential, body.credential_header))
     profile = body.initial_profile
     values, definitions = _profile_defaults(body.category, profile.model_dump())
     profile_row = ModelParameterProfile(
@@ -781,7 +812,11 @@ def create_resource(db: Session, body: ModelResourceCreate, actor: User, *, comm
     )
     db.add(profile_row)
     db.flush()
-    _create_legacy_projection(db, resource=resource, revision=revision, profile=profile, credential=body.credential)
+    if canonical_storage(db):
+        if resource.category == "TEXT_GENERATION":
+            bind_text_revision(db, resource, revision, profile_row, endpoint)
+    else:
+        _create_legacy_projection(db, resource=resource, revision=revision, profile=profile, credential=body.credential)
     for project_id in sorted(set(body.grant_project_ids)):
         _require_project_editor(db, project_id, actor) if not is_platform_admin(actor) else get_project_or_404(db, project_id, actor)
         db.add(ModelResourceGrant(resource_id=resource.id, project_id=project_id, granted_by=actor.id))
@@ -845,6 +880,18 @@ def _set_resource_enabled(db: Session, resource: ModelResource, enabled: bool) -
     revision = db.get(ModelRevision, resource.current_revision_id)
     if revision:
         revision.enabled = enabled
+    if canonical_storage(db):
+        if resource.legacy_model_id:
+            binding = db.query(ModelLegacyBinding).filter_by(model_public_id=resource.legacy_model_id).one()
+            binding.alias_enabled = None
+            resource.text_updated_at = func.localtimestamp()
+        else:
+            db.query(ModelLegacyBinding).filter(
+                ModelLegacyBinding.resource_id == resource.id, ModelLegacyBinding.connection_public_id.is_not(None),
+            ).update({"alias_enabled": enabled, "alias_updated_at": func.now()}, synchronize_session=False)
+        db.flush()
+        db.expire_all()
+        return
     legacy = db.get(ModelConfiguration, resource.legacy_model_id) if resource.legacy_model_id else None
     if legacy:
         legacy.is_enabled = enabled
@@ -874,6 +921,7 @@ def list_available_models(db: Session, *, project_id: int, category: str | None,
             continue
         profiles = db.query(ModelParameterProfile).filter(
             ModelParameterProfile.resource_id == row.id, ModelParameterProfile.revision_id == revision.id,
+            ModelParameterProfile.scope_connection_id.is_(None),
         ).order_by(ModelParameterProfile.name, ModelParameterProfile.version.desc()).all()
         items.append({
             "id": row.id, "resource_key": row.resource_key, "category": row.category,
@@ -896,6 +944,12 @@ def create_revision(db: Session, resource_id: int, body: ModelRevisionInput, act
     _validate_capabilities(resource.category, body.adapter_key, body.capabilities)
     endpoint, display = _endpoint(body.endpoint)
     config = _validate_connection_config(resource.category, body.adapter_key, body.config)
+    previous_config = previous_timeout = None
+    if canonical_storage(db) and resource.legacy_model_id:
+        legacy = db.get(ModelConfiguration, resource.legacy_model_id, populate_existing=True)
+        previous_config = text_state(legacy)
+        if legacy and "timeout" not in config:
+            previous_timeout = legacy.timeout
     previous = db.query(ModelRevision).filter(ModelRevision.resource_id == resource_id).order_by(
         ModelRevision.version.desc(),
     ).first()
@@ -903,6 +957,9 @@ def create_revision(db: Session, resource_id: int, body: ModelRevisionInput, act
     config["credential_header"] = body.credential_header or (previous_credential.header_name if previous_credential else "Authorization")
     revision = ModelRevision(
         resource_id=resource_id, version=(previous.version + 1 if previous else 1),
+        text_timeout=previous_timeout,
+        text_cost_input=previous.text_cost_input if previous else 0,
+        text_cost_output=previous.text_cost_output if previous else 0,
         provider=body.provider.strip(), adapter_key=body.adapter_key, model_name=body.model_name.strip(),
         endpoint_ciphertext=encrypt_secret(endpoint), endpoint_display=display, config_json=config,
         capabilities=body.capabilities, parameter_schema=body.parameter_schema, enabled=body.enabled,
@@ -914,14 +971,15 @@ def create_revision(db: Session, resource_id: int, body: ModelRevisionInput, act
     resource.status = "ACTIVE" if body.enabled else "DISABLED"
     credential_supplied = body.credential is not None
     if body.credential:
-        db.add(ModelCredential(revision_id=revision.id, ciphertext=encrypt_secret(body.credential),
-                               cipher_format="shared-fernet", header_name=body.credential_header))
+        db.add(_credential_for_revision(db, resource, revision, body.credential, body.credential_header))
     elif body.credential is None and previous_credential is not None:
         db.add(ModelCredential(
             revision_id=revision.id, ciphertext=previous_credential.ciphertext,
             cipher_format=previous_credential.cipher_format, header_name=previous_credential.header_name,
+            text_ciphertext=previous_credential.text_ciphertext,
         ))
     previous_profile = db.query(ModelParameterProfile).filter(
+        ModelParameterProfile.scope_connection_id.is_(None),
         ModelParameterProfile.resource_id == resource.id,
         ModelParameterProfile.revision_id == previous.id if previous else False,
     ).order_by(ModelParameterProfile.version.desc()).first()
@@ -940,10 +998,15 @@ def create_revision(db: Session, resource_id: int, body: ModelRevisionInput, act
     )
     db.add(profile_row)
     db.flush()
-    _sync_revision_projection(
-        db, resource, revision, profile_row, credential=body.credential,
-        credential_supplied=credential_supplied,
-    )
+    if canonical_storage(db):
+        if resource.category == "TEXT_GENERATION":
+            revision.text_key_is_null = bool(previous and previous.text_key_is_null and not credential_supplied)
+            bind_text_revision(db, resource, revision, profile_row, endpoint, previous_config)
+    else:
+        _sync_revision_projection(
+            db, resource, revision, profile_row, credential=body.credential,
+            credential_supplied=credential_supplied,
+        )
     db.commit()
     db.refresh(revision)
     return _dump_resource(db, resource)
@@ -965,7 +1028,7 @@ def create_profile(db: Session, resource_id: int, body: ModelProfileCreate, acto
     )
     db.add(row)
     db.flush()
-    if resource.visibility == "PROJECT" and revision.legacy_connection_id is not None:
+    if not canonical_storage(db) and resource.visibility == "PROJECT" and revision.legacy_connection_id is not None:
         from app.features.asr_evaluation.models import AsrConnection, AsrParameterSet
 
         connection = db.get(AsrConnection, revision.legacy_connection_id)
@@ -1013,6 +1076,11 @@ def resolve_task_slots(db: Session, project_id: int, slots: list, actor: User) -
     if len({item.slot for item in slots}) != len(slots):
         raise bad_request("任务模型槽位不能重复")
     resolved = []
+    if canonical_storage(db) and slots:
+        # Serialize lazy alias creation even when two different slots select the same revision.
+        db.query(ModelRevision.id).filter(ModelRevision.id.in_({slot.revision_id for slot in slots})).order_by(
+            ModelRevision.id,
+        ).with_for_update().all()
     for item in slots:
         expected_category = "DIARIZATION" if item.slot == "DIARIZATION" else "ASR"
         resource = db.get(ModelResource, item.resource_id)
@@ -1020,12 +1088,18 @@ def resolve_task_slots(db: Session, project_id: int, slots: list, actor: User) -
         profile = db.get(ModelParameterProfile, item.profile_id)
         if (resource is None or resource.id not in allowed or resource.category != expected_category or
                 revision is None or revision.resource_id != resource.id or not revision.enabled or
-                profile is None or profile.resource_id != resource.id or profile.revision_id != revision.id):
+                profile is None or profile.resource_id != resource.id or profile.revision_id != revision.id
+                or profile.scope_connection_id is not None):
             raise not_found("所选项目模型或参数方案不可用")
         _validated_profile(resource.category,
                            {"name": profile.name, "values": profile.parameter_values or {},
                             "definitions": profile.definitions or []},
                            revision.parameter_schema or [])
+        if canonical_storage(db):
+            connection, parameter_set = resolve_project_aliases(db, project_id, resource, revision, profile, actor.id)
+            resolved.append({"slot": item.slot, "resource": resource, "revision": revision, "profile": profile,
+                             "connection": connection, "parameter_set": parameter_set})
+            continue
         connection = None
         if resource.visibility == "PROJECT" and resource.project_id == project_id and revision.legacy_connection_id:
             connection = db.get(AsrConnection, revision.legacy_connection_id)
@@ -1099,6 +1173,8 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
     """按用途设置默认模型与同类别备用列表，评测用途永远关闭自动换模型。"""
     if body.project_id is not None:
         raise bad_request("默认模型统一在平台维护")
+    if body.category == "TEXT_GENERATION":
+        lock_text_default(db)
     expected_purpose = {
         "TEXT_GENERATION": "TEXT_INFERENCE", "ASR": "ASR_EVALUATION", "DIARIZATION": "DIARIZATION",
     }.get(body.category)
@@ -1122,7 +1198,8 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
         )["items"]}
         if resource.id not in available_ids:
             raise bad_request("默认模型尚未授权给该项目")
-    if profile is not None and (profile.resource_id != resource.id or profile.revision_id != revision.id):
+    if profile is not None and (profile.resource_id != resource.id or profile.revision_id != revision.id
+                                or profile.scope_connection_id is not None):
         raise bad_request("参数方案不属于所选模型修订")
     fallbacks = []
     for fallback_id in dict.fromkeys(body.fallback_resource_ids):
@@ -1140,6 +1217,7 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
         ModelDefaultBinding.category == body.category, ModelDefaultBinding.purpose == body.purpose,
         ModelDefaultBinding.project_id == body.project_id,
     ).first()
+    previous_default = row.resource_id if row else None
     if row is None:
         row = ModelDefaultBinding(category=body.category, purpose=body.purpose, project_id=body.project_id)
         db.add(row)
@@ -1147,7 +1225,17 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
     row.fallback_resource_ids = fallbacks
     row.automatic_fallback = body.automatic_fallback
     row.updated_by = actor.id
-    if body.category == "TEXT_GENERATION" and body.project_id is None:
+    if body.category == "TEXT_GENERATION" and body.project_id is None and canonical_storage(db):
+        legacy_ids = dict(db.query(ModelResource.id, ModelResource.legacy_model_id).filter(
+            ModelResource.id.in_(fallbacks), ModelResource.legacy_model_id.is_not(None),
+        ).all())
+        legacy_fallbacks = [legacy_ids[key] for key in fallbacks if key in legacy_ids][:3]
+        if previous_default != resource.id or resource.text_fallback_ids != legacy_fallbacks:
+            resource.text_updated_at = func.localtimestamp()
+            if previous_default and previous_default != resource.id:
+                db.get(ModelResource, previous_default).text_updated_at = func.localtimestamp()
+        resource.text_fallback_ids = legacy_fallbacks
+    elif body.category == "TEXT_GENERATION" and body.project_id is None:
         text_resources = db.query(ModelResource).filter(
             ModelResource.category == "TEXT_GENERATION", ModelResource.visibility == "PLATFORM",
         ).all()
@@ -1156,10 +1244,10 @@ def set_default_binding(db: Session, body: ModelDefaultInput, actor: User) -> di
             if legacy is not None:
                 legacy.is_default = legacy.id == resource.legacy_model_id
                 if legacy.is_default:
-                    fallback_rows = db.query(ModelResource.legacy_model_id).filter(
+                    fallback_rows = dict(db.query(ModelResource.id, ModelResource.legacy_model_id).filter(
                         ModelResource.id.in_(fallbacks), ModelResource.legacy_model_id.is_not(None),
-                    ).all()
-                    legacy.fallback_model_ids = [item[0] for item in fallback_rows][:3]
+                    ).all())
+                    legacy.fallback_model_ids = [fallback_rows[key] for key in fallbacks if key in fallback_rows][:3]
     db.commit()
     return {"id": row.id, "category": row.category, "purpose": row.purpose, "project_id": row.project_id,
             "resource_id": row.resource_id, "revision_id": row.revision_id, "profile_id": row.profile_id,
@@ -1222,8 +1310,10 @@ def create_diagnostic(db: Session, resource_id: int, body, actor: User) -> dict:
     if profile is None:
         profile = db.query(ModelParameterProfile).filter(
             ModelParameterProfile.resource_id == resource.id, ModelParameterProfile.revision_id == revision.id,
+            ModelParameterProfile.scope_connection_id.is_(None),
         ).order_by(ModelParameterProfile.version.desc()).first()
-    if profile is not None and (profile.resource_id != resource.id or profile.revision_id != revision.id):
+    if profile is not None and (profile.resource_id != resource.id or profile.revision_id != revision.id
+                                or profile.scope_connection_id is not None):
         raise bad_request("诊断参数方案不属于当前模型修订")
     if resource.category in {"ASR", "DIARIZATION"}:
         if body.audio_id is None:
@@ -1331,7 +1421,7 @@ def run_model_diagnostic(run_id: int) -> None:
             else:
                 secret = decrypt_secret(credential.ciphertext)
         if resource.category == "TEXT_GENERATION":
-            url = decrypt_secret(revision.endpoint_ciphertext) or revision.endpoint_display or ""
+            url = revision.text_api_base or decrypt_secret(revision.endpoint_ciphertext) or revision.endpoint_display or ""
             if not url.rstrip("/").endswith("/chat/completions"):
                 url = f"{url.rstrip('/')}/chat/completions"
             headers = {"Content-Type": "application/json"}
@@ -1373,6 +1463,7 @@ def run_model_diagnostic(run_id: int) -> None:
                 ModelLegacyBinding, ModelLegacyBinding.legacy_id == AsrConnection.id,
             ).filter(
                 ModelLegacyBinding.resource_id == resource.id, ModelLegacyBinding.revision_id == revision.id,
+                ModelLegacyBinding.legacy_kind.in_(["ASR_CONNECTION", "ASR_SHARED_CONNECTION"]),
                 AsrConnection.project_id == run.project_id,
             ).order_by(AsrConnection.id.desc()).first()
             if audio is None or connection is None:

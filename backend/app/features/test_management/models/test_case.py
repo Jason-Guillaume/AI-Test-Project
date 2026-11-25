@@ -13,7 +13,8 @@ case_type ∈ {FUNCTIONAL, BUSINESS, NEGATIVE, BOUNDARY, PERMISSION, SECURITY, E
 status ∈ {DRAFT, ACTIVE, DEPRECATED}。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy.orm import deferred
 from sqlalchemy.sql import func, text
 
 from app.core.database.soft_delete import SoftDeleteBase
@@ -25,11 +26,31 @@ class TestCase(SoftDeleteBase):
     __test__ = False  # 业务模型，不是 pytest 测试类，测试模块导入时不应被收集。
     __tablename__ = "test_case"
     __table_args__ = (
+        UniqueConstraint("id", "project_id", name="uq_test_case_id_project"),
+        CheckConstraint(
+            "(web_auth_profile_id IS NULL AND web_timeout_ms IS NULL AND web_total_timeout_ms IS NULL AND "
+            "web_confirmed_digest IS NULL AND web_confirmed_by IS NULL) OR (web_timeout_ms IS NOT NULL AND "
+            "web_total_timeout_ms IS NOT NULL)",
+            name="ck_web_case_presence",
+        ),
         Index("uq_test_case_project_name", "project_id", "name", unique=True,
               postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_case_project_status", "project_id", "status"),
         Index("ix_test_case_project_target", "project_id", "target_type"),
         {"comment": "测试用例：可执行、可断言、可复用的测试资产核心实体"},
+    )
+
+    # 列表只加载父记录，详情按需读取这一组扩展字段。
+    web_auth_profile_id = deferred(
+        Column(Integer, ForeignKey("web_auth_profile.id", name="fk_test_case_web_auth_profile_id", ondelete="SET NULL")),
+        group="web",
+    )
+    web_timeout_ms = deferred(Column(Integer), group="web")
+    web_total_timeout_ms = deferred(Column(Integer), group="web")
+    web_confirmed_digest = deferred(Column(String(64)), group="web")
+    web_confirmed_by = deferred(
+        Column(Integer, ForeignKey("user.id", name="fk_test_case_web_confirmed_by", ondelete="SET NULL")),
+        group="web",
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

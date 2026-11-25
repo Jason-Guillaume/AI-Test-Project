@@ -88,7 +88,7 @@ EXPECTED_TABLES = frozenset(
         "project",
         "project_member",
         "project_outbound_target",
-        "model_configuration",
+        "model_resource",
         "environment",
         "notification",
         "bug",
@@ -173,7 +173,7 @@ def test_database():
                 # 上一次会话没走到 teardown，或 pid 被复用撞上旧库。
                 _terminate_connections(TEST_DATABASE_NAME)
                 cursor.execute(f'DROP DATABASE "{TEST_DATABASE_NAME}"')
-            cursor.execute(f'CREATE DATABASE "{TEST_DATABASE_NAME}"')
+            cursor.execute(f'CREATE DATABASE "{TEST_DATABASE_NAME}" TEMPLATE template0')
 
     _run_migrations()
     yield TEST_DATABASE_NAME
@@ -216,7 +216,7 @@ def isolated_migration_database(test_database, test_database_head, monkeypatch):
 
     database_name = f"testplatform_migration_{os.getpid()}_{uuid.uuid4().hex[:8]}"
     with psycopg.connect(ADMIN_DSN, autocommit=True) as connection:
-        connection.execute(f'CREATE DATABASE "{database_name}"')
+        connection.execute(f'CREATE DATABASE "{database_name}" TEMPLATE template0')
     dsn = TEST_DSN.replace(f"/{TEST_DATABASE_NAME}", f"/{database_name}")
     monkeypatch.setenv("DATABASE_URL", dsn)
     config = Config(str(BACKEND_DIR / "alembic.ini"))

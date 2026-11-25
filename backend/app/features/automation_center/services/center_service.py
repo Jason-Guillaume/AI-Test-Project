@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Iterator
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -583,21 +583,32 @@ class AutomationCenterService:
             AutomationExecutionIdempotency.id.in_([row.id for row in stale]),
         ).delete(synchronize_session=False)
 
-    def _dispatch_dagu(self, db: Session, execution_id: int) -> None:
+    def _dispatch_dagu(self, db: Session, execution_id: int, *, force: bool = False) -> None:
         """按已提交的稳定运行 ID 入队。不确定是否成功时保留记录，交给 Poller 查询。"""
-        execution = db.get(AutomationExecution, execution_id)
-        if execution is None or execution.dispatch_state == "CONFIRMED" or execution.status in TERMINAL_STATUSES:
-            return
-        if execution.timeout_at and execution.timeout_at <= datetime.now():
-            execution.dispatch_state = "FAILED"
-            execution.stop_requested_at = None
-            execution.stop_reason = "TIMEOUT"
-            execution.external_status = "DISPATCH_TIMEOUT"
-            execution.error_message = "Dagu 入队超时未确认"
-            self._transition(execution, "TIMEOUT")
+        execution = (
+            db.query(AutomationExecution).filter_by(id=execution_id).populate_existing()
+            .with_for_update(skip_locked=True).one_or_none()
+        )
+        if execution is None or execution.dispatch_state != "PENDING" or execution.status in TERMINAL_STATUSES:
             db.commit()
-            self._notify(db, execution.id)
             return
+        now = datetime.now()
+        if execution.stop_requested_at or (execution.timeout_at and execution.timeout_at <= now):
+            execution.dispatch_state = "RECONCILING"
+            execution.next_dispatch_at = None
+            execution.stop_requested_at = execution.stop_requested_at or now
+            execution.stop_reason = execution.stop_reason or "TIMEOUT"
+            execution.external_status = "DISPATCH_UNCONFIRMED"
+            execution.error_message = "已停止补投，远端状态待确认"
+            if execution.stop_reason == "TIMEOUT":
+                self._transition(execution, "TIMEOUT")
+            db.commit()
+            self._sync_one(db, execution_id, force=True)
+            return
+        if execution.next_dispatch_at and execution.next_dispatch_at > now and not force:
+            db.commit()
+            return
+        execution.dispatch_attempts += 1
         config, resource_id = self._execution_provider_args(db, execution)
         params = dict(execution.run_params or {})
         try:
@@ -612,6 +623,9 @@ class AutomationCenterService:
             uncertain = exc.status_code in {None, 408, 409, 429, 500, 502, 503, 504} or "超时" in str(exc) or "无法连接" in str(exc) or "不确定" in str(exc)
             execution.error_message = str(exc)[:500]
             if uncertain:
+                delay = min(300, 15 * 2 ** min(execution.dispatch_attempts - 1, 5))
+                retry_at = datetime.now() + timedelta(seconds=delay)
+                execution.next_dispatch_at = min(retry_at, execution.timeout_at or retry_at)
                 execution.dispatch_state = "PENDING"
                 execution.status = "PENDING"
                 db.commit()
@@ -626,6 +640,7 @@ class AutomationCenterService:
         if execution is None:
             return
         execution.pipeline_run_id = result.external_run_id
+        execution.next_dispatch_at = None
         execution.dispatch_state = "CONFIRMED"
         execution.external_run_url = result.run_url or ""
         execution.status = result.status or "PENDING"
@@ -754,7 +769,7 @@ class AutomationCenterService:
         if row.provider_type == "LEGACY":
             raise bad_request("历史执行记录只读，不能同步")
         if row.provider_type == "DAGU" and row.dispatch_state == "PENDING" and row.status in {"PENDING", "RUNNING"}:
-            self._dispatch_dagu(db, row.id)
+            self._dispatch_dagu(db, row.id, force=True)
             db.refresh(row)
             if row.dispatch_state != "CONFIRMED":
                 return self._execution_response(db, row)
@@ -991,7 +1006,12 @@ class AutomationCenterService:
             .filter(AutomationExecution.provider_type == "DAGU")
             .filter(AutomationExecution.dispatch_state == "PENDING")
             .filter(AutomationExecution.status.in_(["PENDING", "RUNNING"]))
-            .order_by(AutomationExecution.id.asc())
+            .filter(or_(
+                AutomationExecution.next_dispatch_at.is_(None),
+                AutomationExecution.next_dispatch_at <= datetime.now(),
+                AutomationExecution.stop_requested_at.isnot(None),
+            ))
+            .order_by(func.coalesce(AutomationExecution.next_dispatch_at, AutomationExecution.created_at), AutomationExecution.id)
             .limit(20)
             .all()
         )
@@ -1008,7 +1028,7 @@ class AutomationCenterService:
             .filter(AutomationExecution.pipeline_run_id.isnot(None))
             .filter(or_(
                 AutomationExecution.provider_type != "DAGU",
-                AutomationExecution.dispatch_state == "CONFIRMED",
+                AutomationExecution.dispatch_state.in_(["CONFIRMED", "RECONCILING"]),
             ))
             .filter(or_(
                 AutomationExecution.last_sync_at.is_(None),
@@ -1028,6 +1048,7 @@ class AutomationCenterService:
         waiting = (
             db.query(AutomationExecution.id)
             .filter(AutomationExecution.status.in_(list(TERMINAL_STATUSES)))
+            .filter(AutomationExecution.stop_requested_at.is_(None))
             .filter(AutomationExecution.notify_status.in_(["WAITING", "FAILED", "SENDING"]))
             .limit(20)
             .all()
@@ -1047,7 +1068,7 @@ class AutomationCenterService:
             # 已归档的 Jenkins 记录不再进入 Provider 同步。
             db.rollback()
             return
-        if execution.provider_type == "DAGU" and execution.dispatch_state != "CONFIRMED":
+        if execution.provider_type == "DAGU" and execution.dispatch_state not in {"CONFIRMED", "RECONCILING"}:
             db.rollback()
             return
         if execution.status in TERMINAL_STATUSES and execution.stop_requested_at is None:
@@ -1086,18 +1107,33 @@ class AutomationCenterService:
                     execution.provider_type == "DAGU"
                     and execution.stop_requested_at is not None
                     and exc.status_code == 404
+                    and (
+                        execution.dispatch_state != "RECONCILING"
+                        or (
+                            execution.external_status == "DISPATCH_NOT_FOUND"
+                            and execution.stop_requested_at <= datetime.now() - timedelta(seconds=60)
+                        )
+                    )
                 ):
                     # Dagu removes dequeued runs from its run endpoint. A 404 after an
                     # accepted stop is therefore the terminal confirmation for that run.
+                    if execution.dispatch_state == "RECONCILING":
+                        execution.dispatch_state = "FAILED"
+                        execution.error_message = "Dagu 未找到本次运行"
+                    else:
+                        execution.error_message = "Dagu 已从队列移除本次运行"
                     execution.external_status = "NOT_FOUND_AFTER_STOP"
                     execution.stop_requested_at = None
-                    execution.error_message = "Dagu 已从队列移除本次运行"
                     execution.last_sync_at = datetime.now()
                     self._transition(execution, execution.stop_reason or "CANCELLED")
                     db.commit()
                     self._notify(db, execution.id)
                     return
-                execution.error_message = str(exc)[:500]
+                if execution.dispatch_state == "RECONCILING":
+                    execution.external_status = "DISPATCH_NOT_FOUND" if exc.status_code == 404 else "DISPATCH_UNCONFIRMED"
+                    execution.error_message = f"远端状态待确认：{exc}"[:500]
+                else:
+                    execution.error_message = str(exc)[:500]
                 execution.last_sync_at = datetime.now()
                 db.commit()
             return
@@ -1105,6 +1141,9 @@ class AutomationCenterService:
         execution = db.get(AutomationExecution, execution_id)
         if execution is None:
             return
+        if execution.dispatch_state == "RECONCILING":
+            execution.dispatch_state = "CONFIRMED"
+            execution.error_message = ""
         mapped = result.status
         raw_status = (result.external_status or "").lower()
         if raw_status == "aborted":
@@ -1385,7 +1424,16 @@ class AutomationCenterService:
         # 客户端可以声明成功，但已经解析出的 Allure 结果才能把成功改成失败。
         failed = report.failed_cases if report is not None else 0
         broken = report.broken_cases if report is not None else 0
-        self._transition(execution, apply_test_outcome(incoming, failed=failed, broken=broken))
+        outcome = apply_test_outcome(incoming, failed=failed, broken=broken)
+        if (
+            execution.provider_type == "DAGU" and callback_run_id and metadata.get("callback_replay") is True
+            and execution.status == "FAILED" and execution.external_status.lower() == "failed"
+            and not execution.stop_reason and outcome in TERMINAL_STATUSES
+        ):
+            # The provider saw an upload failure. The signed replay carries the saved test result.
+            execution.status = outcome
+        else:
+            self._transition(execution, outcome)
         execution.external_status = requested_status[:40] or incoming
         if execution.started_at is None:
             execution.started_at = datetime.now()

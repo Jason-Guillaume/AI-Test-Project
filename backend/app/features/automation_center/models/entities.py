@@ -162,6 +162,8 @@ class AutomationExecution(Base):
     notify_status = Column(String(20), nullable=False, server_default=text("'WAITING'"))
     notify_attempts = Column(Integer, nullable=False, server_default=text("0"))
     last_sync_at = Column(DateTime, nullable=True)
+    dispatch_attempts = Column(Integer, nullable=False, server_default=text("0"))
+    next_dispatch_at = Column(DateTime, nullable=True)
     dispatch_state = Column(
         String(20), nullable=False, server_default=text("'CONFIRMED'"), default="CONFIRMED",
         comment="PENDING 表示本地记录已提交但远端尚未确认，CONFIRMED 表示运行 ID 已对齐",

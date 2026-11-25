@@ -23,7 +23,7 @@ class TestAssertion(SoftDeleteBase):
     """测试断言。"""
 
     __tablename__ = "test_assertion"
-    __table_args__ = ({"comment": "测试断言"},)
+    __table_args__ = ({"info": {"is_view": True}, "comment": "测试断言"},)
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     test_case_id = Column(

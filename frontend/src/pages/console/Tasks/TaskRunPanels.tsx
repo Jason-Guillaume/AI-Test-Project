@@ -26,6 +26,8 @@ interface TaskRunPanelsProps {
   events: TaskEvent[];
   resources: TaskResourceRef[];
   historicalRun: boolean;
+  initialTab: 'events' | 'conversation';
+  focusEventId?: number;
   latestPlan: TaskPlan | undefined;
   securityAssessmentSelection: TaskSecurityAssessmentSelection | null | undefined;
   securityAssessmentPreview: TaskSecurityAssessmentPreview | null | undefined;
@@ -117,6 +119,8 @@ export function TaskRunPanels(props: TaskRunPanelsProps) {
           extra={selectedAgent && <Tag>{STATUS_LABEL[selectedAgent.status] ?? selectedAgent.status}</Tag>}
         >
           <Tabs
+            key={`${run.id}:${props.initialTab}:${props.focusEventId ?? ''}`}
+            defaultActiveKey={props.initialTab}
             items={[
               {
                 key: 'conversation', label: '会话',
@@ -302,7 +306,7 @@ export function TaskRunPanels(props: TaskRunPanelsProps) {
                 children: (
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <EventTimeline events={events} />
-                    <TaskTraceTimeline runId={run.id} traceId={run.trace_id} active={!STOP_POLLING.has(run.status)} />
+                    <TaskTraceTimeline runId={run.id} traceId={run.trace_id} active={!STOP_POLLING.has(run.status)} focusEventId={props.focusEventId} />
                   </Space>
                 ),
               },

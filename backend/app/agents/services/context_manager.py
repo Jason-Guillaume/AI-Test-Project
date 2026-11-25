@@ -134,23 +134,31 @@ def assemble_history(
     context_preamble: list[dict[str, str]] = []
     memory_refs: list[dict[str, Any]] = []
     memory_token_count = 0
-    memory_items = long_term_memories or []
-    memory_text = "\n".join(
-        f"[{item['memory_key']}@v{item['version']}] {item['content'][:1000]}"
-        for item in memory_items
+    memory_omissions: list[dict[str, Any]] = []
+    memory_prefix = '以下是同一项目、同一 Agent 的长期记忆记录（保留原始来源指纹）：\n'
+    memory_lines: list[str] = []
+    memory_items = sorted(
+        long_term_memories or [],
+        key=lambda item: len(terms & _query_terms(item['content'])), reverse=True,
     )
-    if memory_text and len(selected) + len(context_preamble) < count_limit:
-        memory_content = "以下是同一项目、同一 Agent 的长期记忆记录（保留原始来源指纹）：\n" + memory_text
-        memory_cost = estimate_tokens(memory_content)
-        if memory_cost <= budget - used:
-            context_preamble.append({'role': 'user', 'content': memory_content})
-            used += memory_cost
-            memory_token_count = memory_cost
-            memory_refs = [
-                {'id': item['id'], 'memory_key': item['memory_key'], 'version': item['version'],
-                 'source_digest': item['source_digest'], 'source_refs': item['source_refs']}
-                for item in memory_items
-            ]
+    for item in memory_items:
+        line = f"[{item['memory_key']}@v{item['version']}] {item['content'][:1000]}"
+        cost = estimate_tokens(memory_prefix + '\n'.join([*memory_lines, line]))
+        reason = None
+        if len(selected) >= count_limit:
+            reason = 'MESSAGE_LIMIT'
+        elif cost > budget - used:
+            reason = 'TOKEN_BUDGET'
+        if reason:
+            memory_omissions.append({'id': item['id'], 'version': item['version'], 'reason': reason})
+            continue
+        memory_lines.append(line)
+        memory_token_count = cost
+        memory_refs.append({'id': item['id'], 'memory_key': item['memory_key'], 'version': item['version'],
+                            'source_digest': item['source_digest'], 'source_refs': item['source_refs']})
+    if memory_lines:
+        context_preamble.append({'role': 'user', 'content': memory_prefix + '\n'.join(memory_lines)})
+        used += memory_token_count
 
     summary_used = False
     summary_token_count = 0
@@ -183,7 +191,7 @@ def assemble_history(
         append_with_budget(source)
     selected.sort(key=lambda source: source.message_id)
     manifest = {
-        'version': 'agent-context-selection-v3',
+        'version': 'agent-context-selection-v4',
         'permission_scope': {
             'project_id': session.project_id,
             'agent_session_id': session.id,
@@ -214,6 +222,7 @@ def assemble_history(
         'memory_count': len(memory_refs),
         'memory_ids': [item['id'] for item in memory_refs],
         'memory_refs': memory_refs,
+        'memory_omissions': memory_omissions,
         'memory_token_count': memory_token_count,
     }
     assembled = [{'role': source.role, 'content': source.content} for source in selected]

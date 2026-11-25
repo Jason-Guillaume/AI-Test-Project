@@ -223,7 +223,7 @@ def load_action_step_config(db: Session, case_id: int) -> dict[str, Any]:
     )
     if step is None:
         # 退而取任意步骤。
-        step = db.query(TestStep).filter(TestStep.test_case_id == case_id).order_by(TestStep.sort.asc()).first()
+        step = db.query(TestStep).filter(TestStep.test_case_id == case_id).order_by(TestStep.sort, TestStep.id).first()
     cfg = step.config_json if (step is not None and isinstance(step.config_json, dict)) else {}
     return cfg
 

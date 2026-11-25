@@ -17,6 +17,9 @@ from app.knowledge.models import KnowledgeBase, KnowledgeDocument, KnowledgeVers
 _BM25_K1 = 1.2
 _BM25_B = 0.75
 _TOKENIZER_VERSION = "unicode-bigram-v1"
+_CHUNK_WINDOW = 1200
+_CHUNK_OVERLAP = 200
+_CHUNKING_VERSION = 'fixed-window-1200-200-v2'
 
 
 def access(db, project_id, actor, write=False):
@@ -87,15 +90,15 @@ def extract(filename, content):
 def parse_version(db, version_id):
     # Lock the document first, matching upload/delete ordering. A trashed document
     # cannot be parsed after a queued worker wakes up.
-    hint = db.query(KnowledgeVersion).filter_by(id=version_id).first()
-    if hint is None:
+    document_id = db.query(KnowledgeVersion.document_id).filter_by(id=version_id).scalar()
+    if document_id is None:
         return
-    doc = db.query(KnowledgeDocument).filter_by(id=hint.document_id).with_for_update().first()
+    doc = db.query(KnowledgeDocument).filter_by(id=document_id).populate_existing().with_for_update().first()
     if doc is None or db.query(KnowledgeBase).filter_by(id=doc.base_id).first() is None:
         db.rollback()
         return
     # The document lock serializes parse retries and concurrent uploads/deletes.
-    row = db.query(KnowledgeVersion).filter_by(id=version_id).with_for_update().first()
+    row = db.query(KnowledgeVersion).filter_by(id=version_id).populate_existing().with_for_update().first()
     if row is None:
         return
     if row.status == 'READY':
@@ -106,10 +109,16 @@ def parse_version(db, version_id):
         db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.version_id == row.id))
         position = 0
         for page, text in pages:
-            for offset in range(0, len(text), 1000):
-                db.add(KnowledgeChunk(version_id=row.id, position=position, page=page, text=text[offset:offset+1200]))
+            if not text.strip():
+                continue
+            for offset in range(0, len(text), _CHUNK_WINDOW - _CHUNK_OVERLAP):
+                end = offset + _CHUNK_WINDOW
+                db.add(KnowledgeChunk(version_id=row.id, position=position, page=page, text=text[offset:end]))
                 position += 1
+                if end >= len(text):
+                    break
         row.status, row.error = 'READY', None
+        row.chunking_version = _CHUNKING_VERSION
         current = db.get(KnowledgeVersion, doc.current_version_id) if doc.current_version_id else None
         if current is None or current.version < row.version:
             doc.current_version_id = row.id
@@ -227,6 +236,8 @@ def _candidate_chunks(db, version_ids: list[int], query: str, *, candidate_limit
     base = db.query(KnowledgeChunk).filter(KnowledgeChunk.version_id.in_(version_ids))
     terms = list(dict.fromkeys(_terms(query)))[:64]
     if not terms:
+        if query.strip():
+            return [], False, 0
         rows = base.order_by(
             KnowledgeChunk.version_id, KnowledgeChunk.position, KnowledgeChunk.id,
         ).limit(candidate_limit + 1).all()
@@ -277,14 +288,17 @@ def search(
     retrieval_started = time.monotonic()
     versions_by_id = _authorized_versions(db, snapshot, actor)
     settings = None
-    if limit is None or (int(limit) > 0 and _terms(query)):
+    has_query = bool(query.strip())
+    if limit is None or (int(limit) > 0 and has_query):
         from app.knowledge.models import KnowledgeRetrievalConfig
         settings = db.get(KnowledgeRetrievalConfig, snapshot['project_id'])
     if limit is None:
         limit = settings.default_top_k if settings else 8
     top_k = max(0, min(int(limit), 50))
-    default_cap = max(200, top_k * 40, settings.bm25_candidates if settings and settings.enabled else 0)
-    cap = max(1, top_k, min(int(candidate_limit if candidate_limit is not None else default_cap), 5000))
+    hybrid_settings = settings if has_query and top_k and settings and settings.enabled else None
+    default_cap = hybrid_settings.bm25_candidates if hybrid_settings else max(200, top_k * 40)
+    # The optional request override applies to the lexical stage only.
+    cap = max(1, min(int(candidate_limit if candidate_limit is not None else default_cap), 5000))
     bm25_started = time.monotonic()
     rows, candidates_truncated, _ = (
         _candidate_chunks(db, list(versions_by_id), query, candidate_limit=cap)
@@ -293,15 +307,19 @@ def search(
     scores = _bm25_scores(rows, query)
     scored = sorted(rows, key=lambda c: (-scores.get(c.id, 0.0), c.version_id, c.position))
     bm25_duration_ms = int((time.monotonic() - bm25_started) * 1000)
-    # 空查询保留旧版来源浏览行为；有查询词但无匹配时不再返回无关片段。
-    has_query = bool(_terms(query))
+    # 空查询保留来源浏览；无词项的非空查询仍可走向量通道。
     if has_query:
         scored = [row for row in scored if scores.get(row.id, 0.0) >= minimum_score and scores.get(row.id, 0.0) > 0]
     ranked_score_by_id = {row.id: scores.get(row.id, 0.0) for row in scored}
     score_type = 'BM25'
     candidate_rows_by_id = {row.id: row for row in rows}
     vector_count = 0
+    vector_limit = hybrid_settings.vector_candidates if hybrid_settings else None
     fusion_metadata = None
+    fusion_count = 0
+    fusion_limit = None
+    rerank_count = 0
+    rerank_limit = hybrid_settings.rerank_window if hybrid_settings and hybrid_settings.rerank_revision_id else None
     config = None
     vector_status = 'UNAVAILABLE'
     vector_duration_ms = rerank_duration_ms = 0
@@ -309,7 +327,7 @@ def search(
     if has_query and top_k and versions_by_id and vector_candidate_ids is None:
         from app.knowledge.hybrid import vector_candidates
         vector_candidate_ids, config, vector_status, vector_duration_ms = vector_candidates(
-            db, snapshot['project_id'], list(versions_by_id), query, top_k,
+            db, snapshot['project_id'], list(versions_by_id), query, settings,
         )
         # A remote call may have overlapped with revocation or deletion.
         versions_by_id = _authorized_versions(db, snapshot, actor)
@@ -319,7 +337,9 @@ def search(
 
         vector_ids = list(dict.fromkeys(
             int(ident) for ident in (vector_candidate_ids or []) if isinstance(ident, int) and ident > 0
-        ))[:cap]
+        ))[:vector_limit or 5000]
+        if vector_limit is None:
+            vector_limit = 5000
         vector_rows = db.query(KnowledgeChunk).filter(
             KnowledgeChunk.id.in_(vector_ids),
             KnowledgeChunk.version_id.in_(list(versions_by_id)),
@@ -329,61 +349,73 @@ def search(
         vector_count = len(authorized_vector_ids)
         candidate_rows_by_id.update(vector_by_id)
     hybrid = bool(authorized_vector_ids)
+    selected = scored[:top_k]
     if hybrid:
-        if config:
-            scored = scored[:max(top_k, config.bm25_candidates)]
         fused = reciprocal_rank_fusion([
             [row.id for row in scored],
             authorized_vector_ids,
         ])
+        fusion_count = len(fused)
+        fusion_limit = cap + (vector_limit or 0)
         fusion_metadata = 'RRF'
         score_type = 'RRF'
         ranked_score_by_id = {item['chunk_id']: item['score'] for item in fused}
         # minimum_score is a BM25 threshold; an RRF score has a different scale.
-        window = max(top_k, config.rerank_window) if config and config.rerank_revision_id else top_k
-        selected = [candidate_rows_by_id[item['chunk_id']] for item in fused
-                    if not config or config.fusion_min_score is None or item['score'] >= config.fusion_min_score][:window]
-        if config and config.rerank_revision_id and selected:
+        fusion_threshold = hybrid_settings.fusion_min_score if hybrid_settings else None
+        fused_rows = [candidate_rows_by_id[item['chunk_id']] for item in fused
+                      if fusion_threshold is None or item['score'] >= fusion_threshold]
+        selected = fused_rows[:top_k]
+        if hybrid_settings and hybrid_settings.rerank_revision_id and fused_rows:
             from app.knowledge.hybrid import rerank_candidates
             # Only currently authorized text may leave the process.
             _authorized_versions(db, snapshot, actor)
+            rerank_rows = fused_rows[:rerank_limit]
+            rerank_count = len(rerank_rows)
             ranking, reranker_status, rerank_duration_ms = rerank_candidates(
-                db, snapshot['project_id'], config.rerank_revision_id, config.timeout_seconds, query, selected,
+                db, snapshot['project_id'], hybrid_settings.rerank_revision_id, hybrid_settings.timeout_seconds, query, rerank_rows,
             )
             _authorized_versions(db, snapshot, actor)
             if ranking is not None:
-                ranked_rows = [(selected[index], score) for index, score in ranking
-                               if config.rerank_min_score is None or score >= config.rerank_min_score]
-                selected = [row for row, _ in ranked_rows]
+                ranked_rows = [(rerank_rows[index], score) for index, score in ranking
+                               if hybrid_settings.rerank_min_score is None or score >= hybrid_settings.rerank_min_score]
+                selected = [row for row, _ in ranked_rows[:top_k]]
                 ranked_score_by_id = {row.id: score for row, score in ranked_rows}
                 score_type = 'RERANK'
-        selected = selected[:top_k]
-    else:
-        selected = scored[:top_k]
     documents_by_id = {doc.id: doc for doc in db.query(KnowledgeDocument).filter(
         KnowledgeDocument.id.in_([versions_by_id[row.version_id]['document_id'] for row in selected])
     ).all()} if selected else {}
     from app.llm.tracing import record_runtime_span, task_trace_metadata
     runtime = task_trace_metadata.get() or {}
+    if runtime and top_k == 0 and runtime.get('agent_id') != snapshot['agent_id']:
+        # 复核另一 Agent 的快照时，保留尝试归属并避免把核查记作当前子 Agent 的检索。
+        runtime = {**runtime, 'agent_id': snapshot['agent_id'] or None, 'agent_run_id': None, 'agent_revision_id': None}
     elapsed_ms = int((time.monotonic() - retrieval_started) * 1000)
     retrieval_metadata = {
         'strategy': 'HYBRID_RRF' if hybrid else 'BM25_SQL_CANDIDATE',
+        'search_mode': 'PERMISSION_CHECK' if top_k == 0 else 'SEARCH' if has_query else 'BROWSE',
         'candidate_count': len(rows),
         'candidate_limit': cap,
         'candidate_truncated': candidates_truncated,
+        'bm25_candidate_count': len(scored),
         'vector_candidate_count': vector_count,
+        'vector_candidate_limit': vector_limit,
+        'fusion_candidate_count': fusion_count,
+        'fusion_candidate_limit': fusion_limit,
+        'rerank_candidate_count': rerank_count,
+        'rerank_candidate_limit': rerank_limit,
         'result_count': len(selected),
         'minimum_score': minimum_score,
         'top_k': top_k,
         'duration_ms': elapsed_ms,
         'tokenizer_version': _TOKENIZER_VERSION,
-        # 当前仓库无 pgvector 扩展和 Embedding Provider，保留显式降级状态。
         'vector_status': 'ACTIVE' if hybrid and vector_count else vector_status,
         'reranker_status': reranker_status,
         'vector_duration_ms': vector_duration_ms,
         'rerank_duration_ms': rerank_duration_ms,
         'bm25_duration_ms': bm25_duration_ms,
         'generation_id': config.active_generation_id if config else None,
+        'embedding_revision_id': getattr(config, 'embedding_revision_id', None),
+        'rerank_revision_id': hybrid_settings.rerank_revision_id if hybrid_settings else None,
         'fusion': fusion_metadata,
     }
     span_id = None
@@ -394,11 +426,7 @@ def search(
                 'agent_id', 'agent_revision_id', 'work_item_id', 'attempt_id', 'project_id',
             ) if runtime.get(key) is not None
         } | {
-            'strategy': retrieval_metadata['strategy'], 'query_sha256': hashlib.sha256(query.encode('utf-8')).hexdigest(),
-            'candidate_count': len(rows), 'candidate_limit': cap,
-            'candidate_truncated': candidates_truncated, 'result_count': len(selected),
-            'vector_candidate_count': vector_count, 'fusion': fusion_metadata,
-            'minimum_score': minimum_score, 'top_k': top_k,
+            **retrieval_metadata, 'query_sha256': hashlib.sha256(query.encode('utf-8')).hexdigest(),
             'bm25_k1': _BM25_K1, 'bm25_b': _BM25_B, 'tokenizer_version': _TOKENIZER_VERSION,
         }
         span_id = record_runtime_span(

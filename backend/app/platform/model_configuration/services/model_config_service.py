@@ -26,6 +26,7 @@ from app.platform.model_configuration.schemas import (
     normalize_provider,
 )
 from app.platform.model_configuration.models import ModelResource
+from app.platform.model_configuration.services.legacy_bindings import canonical_storage, lock_text_default
 from app.platform.model_configuration.services.model_center_service import (
     sync_legacy_text_configuration, sync_legacy_text_default,
 )
@@ -264,6 +265,7 @@ def _normalize_defaults(db: Session, keep: ModelConfiguration | None) -> None:
 def create_configuration(db: Session, body: ModelConfigurationCreate, *, actor: User) -> ModelConfiguration:
     """新增模型配置。"""
     _require_admin(actor)
+    lock_text_default(db)
     api_key = validate_api_key(body.api_key)
     # 明确要求启用但没有密钥时直接拒绝，而不是偷偷存成停用状态——
     # 后者会让管理员以为模型已生效，实际执行链路永远选不到它。
@@ -319,6 +321,7 @@ def update_configuration(
 ) -> ModelConfiguration:
     """更新模型配置；密钥为空表示保留原值。"""
     _require_admin(actor)
+    lock_text_default(db)
     row = get_or_404(db, config_id)
     resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).with_for_update().populate_existing().first()
     if resource is not None and resource.status == 'ARCHIVED':
@@ -376,6 +379,7 @@ def delete_configuration(db: Session, config_id: int, *, actor: User) -> None:
     from app.lifecycle.service import delete_resource
 
     _require_admin(actor)
+    lock_text_default(db)
     row = (
         db.query(ModelConfiguration).execution_options(include_deleted=True)
         .filter(ModelConfiguration.id == config_id).first()
@@ -389,7 +393,8 @@ def delete_configuration(db: Session, config_id: int, *, actor: User) -> None:
     if not already_deleted:
         resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).first()
         if resource is not None:
-            resource.legacy_model_id = None
+            if not canonical_storage(db):
+                resource.legacy_model_id = None
             resource.status = "ARCHIVED"
     delete_resource(db, "model_configuration", config_id, actor=actor)
     if not already_deleted:
@@ -401,6 +406,7 @@ def delete_configuration(db: Session, config_id: int, *, actor: User) -> None:
 def set_default(db: Session, config_id: int, *, actor: User) -> ModelConfiguration:
     """把指定模型设为默认模型；被设为默认的模型必须处于启用状态。"""
     _require_admin(actor)
+    lock_text_default(db)
     row = get_or_404(db, config_id)
     resource = db.query(ModelResource).filter_by(legacy_model_id=row.id).with_for_update().populate_existing().first()
     if resource and resource.status == 'ARCHIVED':

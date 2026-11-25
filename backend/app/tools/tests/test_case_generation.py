@@ -77,6 +77,27 @@ def test_partial_failure_and_main_review_failure_preserve_drafts(sandbox):
     assert result['modules'][0]['cases']
 
 
+def test_synchronous_generation_sends_rendered_skill_attachments_once(sandbox):
+    db, main = sandbox
+    child = next(agent for agent in (db.get(AgentDefinition, ident) for ident in main.child_agent_ids)
+                 if 'case_generation.generate_api' in agent.tool_keys)
+    for agent, label in ((main, '审阅'), (child, '模块')):
+        skill = db.query(SkillDefinition).filter_by(key=agent.skill_keys[0]).one()
+        skill.files_json = {'SKILL.md': '规则入口', 'references/acceptance.md': '附件验收规则 {{.Area}}'}
+        agent.settings_json = {'runtime_variables': [{'name': 'Area', 'value': label}]}
+    prompts = {}
+
+    class CapturingProvider(FakeProvider):
+        def generate_structured(self, system, content, **kwargs):
+            prompts[kwargs['kind']] = content
+            return super().generate_structured(system, content, **kwargs)
+
+    assert invoke(db, main, ['api'], lambda _: CapturingProvider())['status'] == 'COMPLETED'
+    assert prompts['case_generation_api'].count('附件验收规则 模块') == 1
+    assert prompts['case_generation_review'].count('附件验收规则 审阅') == 1
+    assert '{{.Area}}' not in ''.join(prompts.values())
+
+
 def test_enabled_scope_and_tools_are_enforced(sandbox):
     db, main = sandbox
     child = db.get(AgentDefinition, main.child_agent_ids[0])

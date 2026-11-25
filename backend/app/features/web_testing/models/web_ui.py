@@ -34,6 +34,7 @@ class WebAuthProfile(SoftDeleteBase):
 class WebCase(Base):
     """既有用例的 Web 执行配置与人工确认指纹，修改依赖后必须重新确认。"""
     __tablename__ = "web_case"
+    __table_args__ = {"info": {"is_view": True}}
     test_case_id = Column(Integer, ForeignKey("test_case.id", ondelete="CASCADE"), primary_key=True)
     auth_profile_id = Column(Integer, ForeignKey("web_auth_profile.id", ondelete="SET NULL"))
     timeout_ms = Column(Integer, nullable=False, default=30000, server_default="30000")

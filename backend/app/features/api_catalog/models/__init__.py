@@ -8,6 +8,7 @@
 """
 
 from app.features.api_catalog.models.api_change_log import ApiChangeLog
+from app.features.api_catalog.models.api_contract_entry import ApiContractEntry
 from app.features.api_catalog.models.api_import_record import ApiImportRecord
 from app.features.api_catalog.models.api_interface import ApiInterface
 from app.features.api_catalog.models.api_module import ApiModule
@@ -18,6 +19,7 @@ from app.features.api_catalog.models.api_response import ApiResponse
 
 __all__ = [
     "ApiChangeLog",
+    "ApiContractEntry",
     "ApiImportRecord",
     "ApiInterface",
     "ApiModule",

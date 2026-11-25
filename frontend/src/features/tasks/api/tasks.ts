@@ -39,8 +39,8 @@ export const tasksApi = {
     api.post<{ id: number; status: string; response_json: Record<string, unknown> }>(`/task-runs/${runId}/commands`, body),
   events: (runId: number, afterSeq = 0) =>
     api.get<TaskEvent[]>(`/task-runs/${runId}/events`, { params: { after_seq: afterSeq } }),
-  trace: (runId: number, cursor?: string | null) =>
-    api.get<TaskTracePage>(`/task-runs/${runId}/trace`, { params: cursor ? { cursor } : {} }),
+  trace: (runId: number, cursor?: string | null, eventId?: number) =>
+    api.get<TaskTracePage>(`/task-runs/${runId}/trace`, { params: { cursor: cursor ?? undefined, event_id: eventId } }),
   replayTrace: (runId: number) =>
     api.post<{ registered: number; requeued: number }>(`/task-runs/${runId}/trace/replay`, {}),
   resources: (runId: number) => api.get<TaskResourceRef[]>(`/task-runs/${runId}/resources`),

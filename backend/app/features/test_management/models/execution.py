@@ -35,7 +35,7 @@ class TestRun(Base):
     )
     plan_id = Column(
         Integer,
-        ForeignKey("test_plan.id", ondelete="SET NULL"),
+        ForeignKey("test_collection.plan_public_id", name="fk_test_run_plan_collection", ondelete="SET NULL"),
         nullable=True,
         index=True,
         comment="关联计划ID",

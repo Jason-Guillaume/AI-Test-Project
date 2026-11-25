@@ -3,27 +3,29 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-from app.features.api_catalog.models.api_interface import ApiInterface
-from app.features.api_catalog.models.api_module import ApiModule
+
+from app.features.api_catalog.models import ApiContractEntry, ApiInterface, ApiModule
 from app.features.api_catalog.schemas import ApiInterfaceDetailResponse
 from app.features.api_catalog.services.request_store import (
-    load_interface_request_body,
-    load_interface_request_params,
+    load_interface_request_body, load_interface_request_params, load_responses,
 )
-from app.features.api_catalog.services.response_mapper import body_response
-from app.features.api_catalog.services.response_mapper import interface_response
-from app.features.api_catalog.services.request_store import load_interface_request_body
-from app.features.api_catalog.services.request_store import load_interface_request_params
-from app.features.api_catalog.services.request_store import load_responses
-from app.features.api_catalog.services.response_mapper import param_response
-from app.features.api_catalog.services.response_mapper import response_response
+from app.features.api_catalog.services.response_mapper import (
+    body_response, interface_response, param_response, response_response,
+)
 
 
 def detail_response(db: Session, iface: ApiInterface) -> ApiInterfaceDetailResponse:
     """构造`detail`响应数据。"""
-    params = load_interface_request_params(db, iface.id)
+    if db.get_bind().dialect.name == "postgresql":
+        entries = db.query(ApiContractEntry).populate_existing().filter_by(interface_id=iface.id).order_by(
+            ApiContractEntry.kind, ApiContractEntry.sort, ApiContractEntry.public_id,
+        ).all()
+        params = [entry for entry in entries if entry.kind == "PARAMETER"]
+        responses = [entry for entry in entries if entry.kind == "RESPONSE"]
+    else:
+        params = load_interface_request_params(db, iface.id)
+        responses = load_responses(db, iface.id)
     body = load_interface_request_body(db, iface.id)
-    responses = load_responses(db, iface.id)
     module_map: dict[int, str] = {}
     if iface.module_id:
         mod = db.get(ApiModule, iface.module_id)

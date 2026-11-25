@@ -1,6 +1,6 @@
-import { Button, Card, Col, Row, Skeleton, Tag } from 'antd';
+import { Button, Card, Skeleton, Tag } from 'antd';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { dashboardApi } from '@/features/dashboard/api/dashboard';
 import type { DashboardCharts as DashboardChartsData, DashboardDailyCount, DashboardDefectSeverityItem, DashboardExecutionTrendItem } from '@/features/dashboard/contracts';
 
@@ -12,9 +12,50 @@ const SEVERITY_COLORS: Record<number, string> = {
   4: 'var(--chart-severity-critical)',
 };
 
-const CHART_WIDTH = 520;
 const CHART_HEIGHT = 220;
-const PLOT = { left: 38, right: 12, top: 14, bottom: 36 };
+const PLOT = { right: 20, top: 14, bottom: 36 };
+const PLOT_HEIGHT = CHART_HEIGHT - PLOT.top - PLOT.bottom;
+
+function useCountChart(maxValue: number) {
+  const ref = useRef<SVGSVGElement>(null);
+  const [width, setWidth] = useState(320);
+  useLayoutEffect(() => {
+    const svg = ref.current;
+    if (!svg) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) setWidth(entry.contentRect.width);
+    });
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, []);
+  const maxY = Math.max(5, Math.ceil(maxValue / 5) * 5);
+  const left = Math.max(38, String(maxY).length * 8 + 12);
+  const plotWidth = Math.max(1, width - left - PLOT.right);
+  const y = (value: number) => PLOT.top + PLOT_HEIGHT * (1 - value / maxY);
+  return { ref, width, left, plotWidth, maxY, y };
+}
+
+function CountGrid({ maxY, left, width }: { maxY: number; left: number; width: number }) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const value = (maxY / 5) * (5 - index);
+    const lineY = PLOT.top + PLOT_HEIGHT * index / 5;
+    return (
+      <g key={value}>
+        <line className="dashboard-chart-gridline" x1={left} x2={width - PLOT.right} y1={lineY} y2={lineY} />
+        <text className="dashboard-chart-axis-label" x={left - 9} y={lineY + 4} textAnchor="end">{value}</text>
+      </g>
+    );
+  });
+}
+
+function dateTickIndices(count: number, plotWidth: number) {
+  if (count < 2) return new Set(count ? [0] : []);
+  const last = count - 1;
+  const pointGap = plotWidth / last;
+  const minStep = Math.max(1, Math.ceil(40 / Math.max(1, pointGap)));
+  const intervals = Math.max(1, Math.floor(last / minStep));
+  return new Set(Array.from({ length: intervals + 1 }, (_, i) => Math.round(i * last / intervals)));
+}
 
 function dayLabel(value: string) {
   return value.slice(5).replace('-', '/');
@@ -61,13 +102,11 @@ function ChartCard({
 }
 
 function LineChart({ data }: { data: DashboardExecutionTrendItem[] }) {
-  const plotWidth = CHART_WIDTH - PLOT.left - PLOT.right;
-  const plotHeight = CHART_HEIGHT - PLOT.top - PLOT.bottom;
   const maxValue = Math.max(0, ...data.map((point) => point.total));
-  const maxY = Math.max(5, Math.ceil(maxValue / 5) * 5);
+  const { ref, width, left, plotWidth, maxY, y } = useCountChart(maxValue);
+  const dateTicks = dateTickIndices(data.length, plotWidth);
   const x = (index: number) =>
-    PLOT.left + (data.length <= 1 ? plotWidth / 2 : (index / (data.length - 1)) * plotWidth);
-  const y = (value: number) => PLOT.top + plotHeight - (value / maxY) * plotHeight;
+    left + (data.length <= 1 ? plotWidth / 2 : (index / (data.length - 1)) * plotWidth);
   const series = [
     { key: 'total', label: '执行总数', color: 'var(--chart-blue)' },
     { key: 'passed', label: '通过', color: 'var(--chart-green)' },
@@ -77,22 +116,15 @@ function LineChart({ data }: { data: DashboardExecutionTrendItem[] }) {
   return (
     <div className="dashboard-chart-content">
       <svg
+        ref={ref}
         className="dashboard-chart-svg"
-        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        height={CHART_HEIGHT}
+        viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
         role="img"
         aria-label="最近七天用例执行总数、通过数和失败异常数折线图"
       >
-        {Array.from({ length: 5 }, (_, index) => {
-          const value = (maxY / 4) * (4 - index);
-          const lineY = y(value);
-          return (
-            <g key={index}>
-              <line className="dashboard-chart-gridline" x1={PLOT.left} x2={CHART_WIDTH - PLOT.right} y1={lineY} y2={lineY} />
-              <text className="dashboard-chart-axis-label" x={PLOT.left - 9} y={lineY + 4} textAnchor="end">{Math.round(value)}</text>
-            </g>
-          );
-        })}
-        {data.map((point, index) => (
+        <CountGrid maxY={maxY} left={left} width={width} />
+        {data.map((point, index) => dateTicks.has(index) && (
           <text key={point.date} className="dashboard-chart-axis-label" x={x(index)} y={CHART_HEIGHT - 10} textAnchor="middle">
             {dayLabel(point.date)}
           </text>
@@ -111,7 +143,7 @@ function LineChart({ data }: { data: DashboardExecutionTrendItem[] }) {
           );
         })}
         {maxValue === 0 && (
-          <text className="dashboard-chart-empty-label" x={PLOT.left + plotWidth / 2} y={PLOT.top + plotHeight / 2} textAnchor="middle">暂无执行记录</text>
+          <text className="dashboard-chart-empty-label" x={left + plotWidth / 2} y={PLOT.top + PLOT_HEIGHT / 2} textAnchor="middle">暂无执行记录</text>
         )}
       </svg>
       <div className="dashboard-chart-legend">
@@ -174,46 +206,37 @@ function DefectDonut({ data }: { data: DashboardDefectSeverityItem[] }) {
 }
 
 function BarChart({ data }: { data: DashboardDailyCount[] }) {
-  const plotWidth = CHART_WIDTH - PLOT.left - PLOT.right;
-  const plotHeight = CHART_HEIGHT - PLOT.top - PLOT.bottom;
   const maxValue = Math.max(0, ...data.map((point) => point.count));
-  const maxY = Math.max(5, Math.ceil(maxValue / 5) * 5);
+  const { ref, width, left, plotWidth, maxY, y } = useCountChart(maxValue);
   const slotWidth = data.length ? plotWidth / data.length : plotWidth;
+  const dateTicks = dateTickIndices(data.length, plotWidth - slotWidth);
   const barWidth = Math.min(34, slotWidth * 0.56);
-  const y = (value: number) => PLOT.top + plotHeight - (value / maxY) * plotHeight;
 
   return (
     <div className="dashboard-chart-content">
       <svg
+        ref={ref}
         className="dashboard-chart-svg"
-        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+        height={CHART_HEIGHT}
+        viewBox={`0 0 ${width} ${CHART_HEIGHT}`}
         role="img"
         aria-label="最近七天 AI 生成并保存的用例数量柱状图"
       >
-        {Array.from({ length: 5 }, (_, index) => {
-          const value = (maxY / 4) * (4 - index);
-          const lineY = y(value);
-          return (
-            <g key={index}>
-              <line className="dashboard-chart-gridline" x1={PLOT.left} x2={CHART_WIDTH - PLOT.right} y1={lineY} y2={lineY} />
-              <text className="dashboard-chart-axis-label" x={PLOT.left - 9} y={lineY + 4} textAnchor="end">{Math.round(value)}</text>
-            </g>
-          );
-        })}
+        <CountGrid maxY={maxY} left={left} width={width} />
         {data.map((point, index) => {
-          const barHeight = (point.count / maxY) * plotHeight;
-          const barX = PLOT.left + slotWidth * index + (slotWidth - barWidth) / 2;
+          const barHeight = (point.count / maxY) * PLOT_HEIGHT;
+          const barX = left + slotWidth * index + (slotWidth - barWidth) / 2;
           return (
             <g key={point.date}>
               <rect className="dashboard-chart-bar" x={barX} y={y(point.count)} width={barWidth} height={Math.max(0, barHeight)} rx="5">
                 <title>{`${dayLabel(point.date)} AI 生成用例：${point.count}`}</title>
               </rect>
-              <text className="dashboard-chart-axis-label" x={barX + barWidth / 2} y={CHART_HEIGHT - 10} textAnchor="middle">{dayLabel(point.date)}</text>
+              {dateTicks.has(index) && <text className="dashboard-chart-axis-label" x={barX + barWidth / 2} y={CHART_HEIGHT - 10} textAnchor="middle">{dayLabel(point.date)}</text>}
             </g>
           );
         })}
         {maxValue === 0 && (
-          <text className="dashboard-chart-empty-label" x={PLOT.left + plotWidth / 2} y={PLOT.top + plotHeight / 2} textAnchor="middle">暂无 AI 生成记录</text>
+          <text className="dashboard-chart-empty-label" x={left + plotWidth / 2} y={PLOT.top + PLOT_HEIGHT / 2} textAnchor="middle">暂无 AI 生成记录</text>
         )}
       </svg>
       <div className="dashboard-chart-legend">
@@ -268,44 +291,36 @@ export function DashboardCharts({
 
   return (
     <section className="dashboard-charts" aria-label="测试质量统计图表">
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={8}>
-          <ChartPanel
-            title="用例执行趋势"
-            subtitle="执行数、通过数与失败异常数"
-            extra="最近 7 天"
-            loading={query.isPending}
-            error={query.isError}
-            retry={query.refetch}
-          >
-            <LineChart data={data?.execution_trend ?? []} />
-          </ChartPanel>
-        </Col>
-        <Col xs={24} xl={8}>
-          <ChartPanel
-            title="缺陷严重程度"
-            subtitle="按当前工作范围内的缺陷等级统计"
-            extra="全部缺陷"
-            loading={query.isPending}
-            error={query.isError}
-            retry={query.refetch}
-          >
-            <DefectDonut data={data?.defect_severity ?? []} />
-          </ChartPanel>
-        </Col>
-        <Col xs={24} xl={8}>
-          <ChartPanel
-            title="用例生成趋势"
-            subtitle="AI 生成并保存的用例数量"
-            extra="最近 7 天"
-            loading={query.isPending}
-            error={query.isError}
-            retry={query.refetch}
-          >
-            <BarChart data={data?.case_generation ?? []} />
-          </ChartPanel>
-        </Col>
-      </Row>
+      <ChartPanel
+        title="用例执行趋势"
+        subtitle="执行数、通过数与失败异常数"
+        extra="最近 7 天"
+        loading={query.isPending}
+        error={query.isError}
+        retry={query.refetch}
+      >
+        <LineChart data={data?.execution_trend ?? []} />
+      </ChartPanel>
+      <ChartPanel
+        title="缺陷严重程度"
+        subtitle="按当前工作范围内的缺陷等级统计"
+        extra="全部缺陷"
+        loading={query.isPending}
+        error={query.isError}
+        retry={query.refetch}
+      >
+        <DefectDonut data={data?.defect_severity ?? []} />
+      </ChartPanel>
+      <ChartPanel
+        title="用例生成趋势"
+        subtitle="AI 生成并保存的用例数量"
+        extra="最近 7 天"
+        loading={query.isPending}
+        error={query.isError}
+        retry={query.refetch}
+      >
+        <BarChart data={data?.case_generation ?? []} />
+      </ChartPanel>
     </section>
   );
 }

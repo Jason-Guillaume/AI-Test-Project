@@ -40,15 +40,15 @@ export function ConsoleAutomationReportPage() {
 
   return (
     <PageContainer>
-      <Row gutter={16}>
-        <Col span={4}><Statistic title="总数" value={report.total_cases} /></Col>
-        <Col span={4}><Statistic title="成功" value={report.passed_cases} /></Col>
-        <Col span={4}><Statistic title="失败" value={report.failed_cases} /></Col>
-        <Col span={4}><Statistic title="中断" value={report.broken_cases} /></Col>
-        <Col span={4}><Statistic title="跳过" value={report.skipped_cases} /></Col>
-        <Col span={4}><Statistic title="通过率" value={report.pass_rate} suffix="%" /></Col>
+      <Row gutter={[16, 12]}>
+        <Col xs={8} sm={4}><Statistic title="总数" value={report.total_cases} /></Col>
+        <Col xs={8} sm={4}><Statistic title="成功" value={report.passed_cases} /></Col>
+        <Col xs={8} sm={4}><Statistic title="失败" value={report.failed_cases} /></Col>
+        <Col xs={8} sm={4}><Statistic title="中断" value={report.broken_cases} /></Col>
+        <Col xs={8} sm={4}><Statistic title="跳过" value={report.skipped_cases} /></Col>
+        <Col xs={8} sm={4}><Statistic title="通过率" value={report.pass_rate} suffix="%" /></Col>
       </Row>
-      <Descriptions style={{ marginTop: 16 }} column={3}>
+      <Descriptions style={{ marginTop: 16 }} column={{ xs: 1, sm: 2, lg: 3 }}>
         <Descriptions.Item label="项目">{report.automation_project_name}</Descriptions.Item>
         <Descriptions.Item label="CI 平台">{report.provider_type === 'DAGU' ? 'Dagu' : report.provider_type === 'LEGACY' ? '历史执行平台' : '云效 Flow'}</Descriptions.Item>
         <Descriptions.Item label="运行链接">{report.external_run_url ? <a href={report.external_run_url} target="_blank" rel="noreferrer">打开运行</a> : '-'}</Descriptions.Item>
@@ -62,21 +62,23 @@ export function ConsoleAutomationReportPage() {
       <Card title="测试套件">
         <Table
           rowKey={(row) => row.name}
+          scroll={{ x: 560 }}
           pagination={false}
           dataSource={report.suite_summary}
           columns={[
-            { title: '套件', dataIndex: 'name' },
-            { title: '总数', dataIndex: 'total' },
-            { title: '成功', dataIndex: 'passed' },
-            { title: '失败', dataIndex: 'failed' },
-            { title: '中断', dataIndex: 'broken' },
-            { title: '跳过', dataIndex: 'skipped' },
+            { title: '套件', dataIndex: 'name', className: 'table-record-name' },
+            { title: '总数', dataIndex: 'total', width: 72 },
+            { title: '成功', dataIndex: 'passed', width: 72 },
+            { title: '失败', dataIndex: 'failed', width: 72 },
+            { title: '中断', dataIndex: 'broken', width: 72 },
+            { title: '跳过', dataIndex: 'skipped', width: 72 },
           ]}
         />
       </Card>
       <Card title="历史趋势" style={{ marginTop: 16 }}>
         <Table
           rowKey={(row) => row.id}
+          scroll={{ x: 740 }}
           pagination={false}
           dataSource={trendQuery.data || []}
           columns={[
@@ -93,7 +95,7 @@ export function ConsoleAutomationReportPage() {
         <Select
           allowClear
           placeholder="选择另一份报告"
-          style={{ width: 360, marginBottom: 16 }}
+          style={{ width: 360, maxWidth: '100%', marginBottom: 16 }}
           options={(trendQuery.data || []).filter((item) => item.id !== id).map((item) => ({
             value: item.id,
             label: `#${item.id} ${item.branch} ${new Date(item.created_at).toLocaleString()}`,
@@ -101,7 +103,7 @@ export function ConsoleAutomationReportPage() {
           onChange={(value) => setCompareId(value ?? null)}
         />
         {compareQuery.data && (
-          <Descriptions column={3}>
+          <Descriptions column={{ xs: 1, sm: 2, lg: 3 }}>
             <Descriptions.Item label="总数变化">{compareQuery.data.delta.total_cases}</Descriptions.Item>
             <Descriptions.Item label="失败变化">{compareQuery.data.delta.failed_cases}</Descriptions.Item>
             <Descriptions.Item label="通过率变化">{compareQuery.data.delta.pass_rate}</Descriptions.Item>

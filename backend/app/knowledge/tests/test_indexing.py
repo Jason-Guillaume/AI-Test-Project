@@ -110,6 +110,63 @@ def test_worker_retries_without_duplicate_vectors(db, monkeypatch):
     assert db.query(KnowledgeVector).count() == 1
 
 
+def test_worker_advances_vector_jobs_while_parse_queue_is_still_nonempty(db, monkeypatch):
+    from app.knowledge import indexing, providers, worker
+
+    assert backfill_generation(db, 1) == 1
+    db.add_all(KnowledgeVersion(document_id=1, version=version, filename='doc.txt', digest='x',
+        content=b'new text', status='QUEUED') for version in (2, 3, 4))
+    db.commit()
+    monkeypatch.setattr(worker, 'SessionLocal', lambda: Session(db.bind))
+    monkeypatch.setattr(indexing, 'retrieval_connection', lambda *args, **kwargs: object())
+    monkeypatch.setattr(providers, 'embed', lambda *args, **kwargs: [[1, 0]])
+
+    class TwoPolls:
+        polls = 0
+
+        def is_set(self):
+            self.polls += 1
+            return self.polls > 2
+
+        def wait(self, timeout):
+            pytest.fail('both queues have work')
+
+    worker.run(TwoPolls())
+    assert db.query(KnowledgeVersion).filter_by(status='QUEUED').count() == 2
+    assert db.query(KnowledgeVector).filter_by(generation_id=1, chunk_id=1).count() == 1
+
+
+def test_queue_ages_are_scoped_and_legacy_ages_are_unknown(db):
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import null
+    from app.knowledge.indexing import queue_status
+
+    now = datetime.now(timezone.utc)
+    db.add_all([
+        KnowledgeVersion(document_id=1, version=2, filename='doc.txt', digest='x', content=b'x',
+                         status='QUEUED', queued_at=now - timedelta(seconds=42)),
+        KnowledgeIndexJob(generation_id=1, chunk_id=1, queued_at=now - timedelta(seconds=17)),
+    ])
+    db.commit()
+    assert queue_status(db, 1, now=now) == {
+        'parse': {'queued_count': 1, 'unknown_age_count': 0, 'oldest_wait_seconds': 42},
+        'vector': {'queued_count': 1, 'unknown_age_count': 0, 'oldest_wait_seconds': 17,
+                   'expired_lease_count': 0, 'oldest_expired_seconds': None},
+    }
+    assert queue_status(db, 2, now=now)['vector']['queued_count'] == 0
+    job = db.query(KnowledgeIndexJob).filter_by(generation_id=1).one()
+    job.status, job.lease_until = 'RUNNING', now - timedelta(seconds=31)
+    db.commit()
+    vector = queue_status(db, 1, now=now)['vector']
+    assert (vector['queued_count'], vector['expired_lease_count'], vector['oldest_expired_seconds']) == (0, 1, 31)
+    db.add(KnowledgeVersion(document_id=1, version=3, filename='old.txt', digest='x', content=b'x',
+        status='QUEUED', queued_at=null()))
+    db.commit()
+    assert queue_status(db, 1, now=now)['parse'] == {
+        'queued_count': 2, 'unknown_age_count': 1, 'oldest_wait_seconds': None,
+    }
+
+
 def test_public_search_uses_authorized_vector_candidates_and_rerank(db, monkeypatch):
     from app.knowledge import hybrid, service
     db.add(KnowledgeChunk(id=2, version_id=1, position=1, text='semantic answer'))

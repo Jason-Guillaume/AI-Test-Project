@@ -5,7 +5,7 @@ import { collectArrayPages } from '@/shared/api/pagination';
 //
 // 权限（服务端为准）：读 = 项目可见（viewer+）；写/执行 = 项目成员（member+）；越权 404，前端不展示。
 // §32：执行同步返回完成态 TestRun（status/total/passed/failed/skipped/error）。
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   App,
@@ -27,6 +27,7 @@ import { testManagementApi } from '@/features/test-management/api/testManagement
 import { projectsApi } from '@/features/projects/api/projects';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { fmtTimeSec } from '@/shared/lib/format';
 import { TEST_RUN_STATUS_COLOR } from '@/features/test-management/status';
@@ -48,7 +49,7 @@ export function ConsoleExecutionCenterPage() {
   const navigate = useNavigate();
   const { currentProjectId } = useConsoleScope();
   const { user } = useAuth();
-  const storageKey = (projectId: number) => `run-intent-${user?.id ?? 0}-${projectId}`;
+  const storageKey = useCallback((projectId: number) => `run-intent-${user?.id ?? 0}-${projectId}`, [user?.id]);
 
   const [runPlanId, setRunPlanId] = useState<number | null>(null);
   const [resultRun, setResultRun] = useState<TestRun | null>(null);
@@ -63,7 +64,7 @@ export function ConsoleExecutionCenterPage() {
     form.resetFields();
     try { setIntent(currentProjectId == null ? null : JSON.parse(localStorage.getItem(storageKey(currentProjectId)) || 'null')); }
     catch { setIntent(null); }
-  }, [currentProjectId, user?.id, form]);
+  }, [currentProjectId, storageKey, form]);
   const saveIntent = (value: Intent) => {
     localStorage.setItem(storageKey(value.projectId), JSON.stringify(value));
     setIntent(value);
@@ -116,7 +117,7 @@ export function ConsoleExecutionCenterPage() {
 
   const columns: TableColumnsType<TestPlan> = [
     { title: 'ID', dataIndex: 'id', width: 64 },
-    { title: '名称', dataIndex: 'name' },
+    { title: '名称', dataIndex: 'name', className: 'table-record-name' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -153,12 +154,7 @@ export function ConsoleExecutionCenterPage() {
 
   return (
     <PageContainer>
-      <Space style={{ marginBottom: 16, justifyContent: 'space-between', width: '100%' }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          执行中心
-        </Typography.Title>
-        <Typography.Text type="secondary">选择一个测试计划并触发执行；执行同步返回结果。</Typography.Text>
-      </Space>
+      <PageHeader title="执行中心" subtitle="选择一个测试计划并触发执行，完成后即可查看结果。" />
 
       {intent && <Space style={{ marginBottom: 16 }}>
         <Typography.Text>上次请求：计划 #{intent.planId}，环境 #{intent.environmentId ?? '计划默认'}（结果可核对）</Typography.Text>
@@ -174,7 +170,7 @@ export function ConsoleExecutionCenterPage() {
       ) : plans.length === 0 ? (
         <EmptyState description="暂无测试计划，请先在「测试计划」页创建" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={plans} pagination={false} size="middle" />
+        <Table rowKey="id" columns={columns} dataSource={plans} tableLayout="fixed" scroll={{ x: 710 }} pagination={false} size="middle" />
       )}
 
       {/* 执行参数弹窗 */}

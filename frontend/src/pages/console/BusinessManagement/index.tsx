@@ -154,7 +154,7 @@ function BusinessWorkspace() {
             }}
           >
             {selectedFlowId == null ? (
-              <EmptyState description="请在左侧选择一个业务流程，或新建一个流程" />
+              <EmptyState description="选择或新建一个业务流程" />
             ) : (
               <FlowDetail flowId={selectedFlowId} projectId={currentProjectId} />
             )}

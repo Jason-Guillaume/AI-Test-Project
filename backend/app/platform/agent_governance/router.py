@@ -37,7 +37,7 @@ from app.tools.schemas import (
 from app.core.models.identity import User
 from app.core.security.auth import require_platform_admin
 from app.core.database.session import get_db
-from app.platform.agent_governance.services import usage_query_service
+from app.platform.agent_governance.services import dependency_service, usage_query_service
 from app.orchestration.tasks.services.runtime_fact_service import runtime_overview
 
 router = APIRouter(prefix="/agent-governance", tags=["Agent 治理"])
@@ -77,6 +77,19 @@ def update_tool(tool_key: str, body: ToolDefinitionUpdate, db: Session = Depends
 def restore_tool_defaults(tool_key: str, db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
     """恢复内置工具默认描述和启用状态。"""
     return agent_services.restore_builtin_tool_defaults(db, tool_key, actor.id)
+
+
+@router.get("/tool-dependencies")
+def list_tool_dependencies(db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """返回工具的直接和间接 Agent 依赖。"""
+    return dependency_service.tool_dependencies(db)
+
+
+@router.get("/agents/{agent_id}/effective-config")
+def effective_agent_config(agent_id: int, project_id: int = Query(gt=0), parent_id: int | None = Query(None, gt=0),
+                           db: Session = Depends(get_db), actor: User = Depends(require_platform_admin)):
+    """读取指定项目和主子路径下的候选运行配置。"""
+    return dependency_service.effective_configuration(db, agent_id, actor, project_id, parent_id)
 
 
 @router.get("/agents", response_model=list[AgentDefinitionResponse])

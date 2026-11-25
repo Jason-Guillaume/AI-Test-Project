@@ -257,11 +257,10 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
     provider = provider_for_agent(db, task, run, work, attempt, agent, actor)
     profile = (run.input_snapshot or {}).get("agent_definition") or {}
     from app.knowledge.service import search
+    # Generic titles need the business terms from the goal frozen at submission.
+    knowledge_query = '\n'.join(part for part in (task.title, run.goal_snapshot) if part)
     knowledge = profile.get('knowledge')
     if knowledge:
-        # Use the frozen goal alongside the title so generic task titles do not
-        # discard the requirement details available at planning time.
-        knowledge_query = '\n'.join(part for part in (task.title, run.goal_snapshot) if part)
         sources = search(db, knowledge, actor, knowledge_query)
         attempt.checkpoint_json = {**(attempt.checkpoint_json or {}), 'knowledge_sources': [
             {key: value for key, value in source.items() if key != 'text'} for source in sources
@@ -279,7 +278,7 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
                 TaskAgentInstance.role == "SUB_AGENT",
             ).all()
         }
-        child_prompt = json.dumps({'task': task.title, 'description': task.goal}, ensure_ascii=False, default=str)
+        child_prompt = json.dumps({'task': task.title, 'description': run.goal_snapshot}, ensure_ascii=False)
 
         def record_child_event(
             child: dict[str, object], status: str, checkpoint: dict[str, object] | None = None,
@@ -511,7 +510,7 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
             scoped["runtime_parent_span_id"] = root_parent_span_id
             if child.get('knowledge'):
                 with runtime_agent_context(scoped["runtime_metadata"], parent_span_id=root_parent_span_id):
-                    sources = search(db, child['knowledge'], actor, task.title or '')
+                    sources = search(db, child['knowledge'], actor, knowledge_query)
                 scoped['knowledge_data'] = sources
                 references = dict((attempt.checkpoint_json or {}).get('child_knowledge_sources') or {})
                 references[str(child['id'])] = [{key: value for key, value in source.items() if key != 'text'} for source in sources]
@@ -548,10 +547,10 @@ def handle_plan(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attem
             completed_results=completed_child_results,
             result_callback=persist_child_result,
         )
-        db.refresh(attempt, with_for_update=True)
         failed_children = [item for item in child_insights if item.get("status") != "SUCCEEDED"]
         if failed_children:
             # 先落失败分类，Worker 回滚当前事务时仍能保留调度依据。
+            db.refresh(attempt, with_for_update=True)
             attempt.checkpoint_json = {
                 **(attempt.checkpoint_json or {}),
                 "child_failures": [

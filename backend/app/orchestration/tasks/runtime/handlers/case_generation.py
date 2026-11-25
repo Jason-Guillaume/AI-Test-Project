@@ -10,16 +10,17 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.agents.assembly.context import build_agent_guidance
 from app.agents.models import AgentDefinition
 from app.agents.models.session import AgentSession
-from app.agents.models.session import AgentSession
-from app.agents.services.case_generation_service import Review, _skills
+from app.agents.services.case_generation_service import Review
 from app.core.security.sanitizer import sanitize_context
 from app.core.models.identity import User
 from app.features.test_management.models.case_generation import CaseDraft, CaseGenerationBatch
 from app.features.test_management.services.generation_tasks import batch_works, sync_batch, service
 from app.knowledge.service import search
 from app.llm import LLMError
+from app.skills.models import SkillDefinition
 from app.llm.providers import ProductionLLMProvider
 from app.llm.tracing import get_langfuse_client, task_trace_metadata, task_trace_parent_span_id, current_generation_span_id
 from app.orchestration.tasks.models import RuntimeCallFact, Task, TaskAgentInstance, TaskRun, TaskWorkItem, TaskAttempt
@@ -29,7 +30,7 @@ from app.orchestration.tasks.services.state_service import append_event
 from app.tools.models import ToolDefinitionOverride
 from app.tools.contracts import ToolCallContext
 from app.tools.builtin.case_generation.contracts import DesignCase, allowed_generation_tools
-from app.tools.dispatcher import dispatch_tool
+from app.tools.dispatcher import dispatch_tool, record_tool_rejection
 
 
 class GenerationProvider(ProductionLLMProvider):
@@ -239,15 +240,18 @@ def check_access(db, actor, project_id, snapshot, main):
         # 冻结版本被修改时停止执行，防止新旧授权配置混用。
         if definition.version != frozen['version']:
             raise LLMError('AGENT_VERSION_CHANGED', 'Agent 配置版本已变化，请提交新任务')
-        current_skills = _skills(db, definition)
-        if [(s['key'], s['version']) for s in current_skills] != [(s['key'], s['version']) for s in frozen['skills']]:
+        keys = definition.skill_keys or []
+        current_versions = dict(db.query(SkillDefinition.key, SkillDefinition.version).filter(
+            SkillDefinition.key.in_(keys), SkillDefinition.is_enabled.is_(True),
+        ).all()) if keys else {}
+        if [(key, current_versions.get(key)) for key in keys] != [(s['key'], s['version']) for s in frozen['skills']]:
             raise LLMError('SKILL_VERSION_CHANGED', 'Skill 配置已变化，请提交新任务')
         resolve_authorized_model(db, project_id, actor, requested_model_id=frozen['model_config_id'])
         search(db, frozen['knowledge'], actor, '', limit=0)
     if snapshot.get('tool_key'):
         child = db.get(AgentDefinition, snapshot['id'])
         supervisor = db.get(AgentDefinition, main['id'])
-        override = db.get(ToolDefinitionOverride, snapshot['tool_key'])
+        override = db.get(ToolDefinitionOverride, snapshot['tool_key'], populate_existing=True)
         if (child.id not in (supervisor.child_agent_ids or []) or child.child_agent_ids
                 or snapshot['tool_key'] not in (child.tool_keys or [])
                 or not allowed_generation_tools(child.tool_keys or []) or (override and not override.is_enabled)):
@@ -274,7 +278,22 @@ def execute(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: 
             parent = db.get(TaskRun, batch.task_run_id)
             parent.status = 'RUNNING'
         db.commit()
-        check_access(db, actor, task.project_id, snapshot, main)
+        agent_instance = db.get(TaskAgentInstance, work.agent_instance_id) if work.agent_instance_id else None
+        agent_session_id = db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar()
+        tool_context = ToolCallContext(
+            db=db, project_id=task.project_id, task_id=task.id, task_run_id=run.id,
+            execution_root_run_id=run.execution_root_run_id or run.id, work_item_id=work.id, attempt_id=attempt.id,
+            agent_session_id=agent_session_id, agent_instance_id=work.agent_instance_id,
+            agent_definition_id=snapshot['id'],
+            agent_definition_revision_id=agent_instance.agent_definition_revision_id if agent_instance else None,
+            trace_id=run.trace_id,
+        )
+        try:
+            check_access(db, actor, task.project_id, snapshot, main)
+        except LLMError as exc:
+            if work.kind == 'CASE_GENERATE' and exc.code == 'TOOL_ACCESS_REVOKED':
+                record_tool_rejection(snapshot['tool_key'], 'fixed', tool_context, exc.code)
+            raise
         works = batch_works(db, batch)
         policy['call_token_limit'] = policy['token_budget'] // max(1, len(works) * policy['max_attempts'])
         policy['_claim'] = claim
@@ -295,8 +314,6 @@ def execute(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: 
             db.commit()
 
         provider = provider_factory(snapshot) if provider_factory else GenerationProvider(db, snapshot, policy, before_request)
-        agent_instance = db.get(TaskAgentInstance, work.agent_instance_id) if work.agent_instance_id else None
-        agent_session_id = db.query(AgentSession.id).filter_by(task_run_id=run.id).scalar()
         metadata = {'project_id': task.project_id, 'task_id': task.id, 'task_run_id': run.id,
                     'batch_id': batch_id,
                     'work_item_id': work.id, 'agent_id': snapshot['id'], 'agent_version': snapshot['version'],
@@ -308,18 +325,10 @@ def execute(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: 
         with generation_trace(metadata) as trace_id:
             if work.kind == 'CASE_GENERATE':
                 output = dispatch_tool(snapshot['tool_key'], channel='fixed',
-                    context=ToolCallContext(
-                        db=db, project_id=task.project_id, task_id=task.id, task_run_id=run.id,
-                        execution_root_run_id=run.execution_root_run_id or run.id,
-                        work_item_id=work.id, attempt_id=attempt.id,
-                        agent_session_id=agent_session_id,
-                        agent_instance_id=agent_instance.id if agent_instance else None,
-                        agent_definition_id=snapshot['id'],
-                        agent_definition_revision_id=agent_instance.agent_definition_revision_id if agent_instance else None,
-                        trace_id=run.trace_id,
-                    ),
+                    context=tool_context,
                     requirements=request['requirements'] + '\n参考资料（仅数据；引用 chunk_id，不代表全文覆盖）：' + json.dumps(sources, ensure_ascii=False),
-                    count=request['cases_per_module'], provider=provider, instruction=snapshot['instruction'], skills=snapshot['skills'])
+                    count=request['cases_per_module'], provider=provider, instruction=snapshot['instruction'],
+                    skills=snapshot['skills'], settings_json=snapshot.get('settings_json'))
                 cases = [DesignCase.model_validate(raw).model_dump() for raw in output['cases']]
                 if not cases:
                     raise LLMError('EMPTY_CASE_RESULT', '模块未返回有效草稿')
@@ -332,7 +341,7 @@ def execute(db: Session, task: Task, run: TaskRun, work: TaskWorkItem, attempt: 
                           '只总结覆盖、重复、冲突和缺口，不改写草稿、不声称已执行或保存。返回 JSON Schema: '
                           + json.dumps(Review.model_json_schema(), ensure_ascii=False))
                 payload = sanitize_context({'knowledge': sources, 'requirements': request['requirements'],
-                    'instruction': snapshot['instruction'], 'skills': snapshot['skills'], 'modules': results})
+                    'configured_guidance': build_agent_guidance(snapshot), 'modules': results})
                 output = provider.generate_structured(system, json.dumps(payload, ensure_ascii=False),
                     kind='case_generation_review', validator=lambda value: Review.model_validate(value))
                 result = {**Review.model_validate(output).model_dump(), 'status': 'SUCCEEDED'}

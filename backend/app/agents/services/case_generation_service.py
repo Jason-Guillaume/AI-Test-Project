@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field
 from langgraph.graph import START, END, StateGraph
 from sqlalchemy.orm import Session
 
+from app.agents.assembly.builder import snapshot_agent_skills
+from app.agents.assembly.context import build_agent_guidance
 from app.agents.models import AgentDefinition
-from app.skills.models import SkillDefinition
 from app.tools.models import ToolDefinitionOverride
 from app.core.http.errors import bad_request, not_found
 from app.core.security.sanitizer import sanitize_context
@@ -31,17 +32,6 @@ class GenerationState(TypedDict):
     review: dict
 
 
-def _skills(db: Session, agent: AgentDefinition) -> list[dict]:
-    rows = {row.key: row for row in db.query(SkillDefinition).filter(SkillDefinition.key.in_(agent.skill_keys or [])).all()}
-    if any(key not in rows or not rows[key].is_enabled for key in (agent.skill_keys or [])):
-        raise bad_request(f'Agent「{agent.name}」的 Skill 不存在或已停用')
-    result = [{'key': rows[key].key, 'name': rows[key].name, 'version': rows[key].version, 'content': rows[key].content}
-              for key in (agent.skill_keys or [])]
-    if sum(len(item['content']) for item in result) > 100000:
-        raise bad_request('Skill 内容过大，请减少关联 Skill')
-    return result
-
-
 def prepare_case_suite(db: Session, actor, agent_id: int, body: GenerationRequest) -> tuple[dict, list[dict]]:
     """复用同步授权校验并冻结主子 Agent 配置；不提交调用方事务。"""
     from app.platform.model_configuration.services.model_config_service import model_configuration_revision
@@ -58,20 +48,23 @@ def prepare_case_suite(db: Session, actor, agent_id: int, body: GenerationReques
     if bound_model and body.model_config_id and body.model_config_id != bound_model:
         raise bad_request('主 Agent 已固定模型，不能由本次请求覆盖')
     model = resolve_authorized_model(db, body.project_id, actor, requested_model_id=bound_model or body.model_config_id)
-    main_skills = _skills(db, supervisor)
     main = {'id': supervisor.id, 'name': supervisor.name, 'version': supervisor.version, 'model_config_id': model.id,
-            'model_name': model.model_name, 'model_revision': model_configuration_revision(model), 'knowledge': freeze(db, body.project_id, supervisor.id, actor), 'instruction': supervisor.instruction, 'skills': main_skills}
+            'model_name': model.model_name, 'model_revision': model_configuration_revision(model),
+            'knowledge': freeze(db, body.project_id, supervisor.id, actor), 'instruction': supervisor.instruction,
+            'settings_json': dict(supervisor.settings_json or {})}
     children = [db.get(AgentDefinition, child_id) for child_id in supervisor.child_agent_ids]
     if any(child is None or not child.is_enabled or child.child_agent_ids or child.workflow_template != 'case_generation'
            or not allowed_generation_tools(child.tool_keys or []) for child in children):
         raise bad_request('用例生成子 Agent 配置无效、已停用或工具授权不符合专项契约')
     selected = []
+    selected_agents = []
     for module in body.modules:
         tool_key = f'case_generation.generate_{module}'
         matches = [child for child in children if tool_key in child.tool_keys]
         if len(matches) != 1:
             raise bad_request(f'{MODULE_LABELS[module]}模块须且只能绑定一个对应子 Agent')
         child = matches[0]
+        selected_agents.append(child)
         override = db.get(ToolDefinitionOverride, tool_key)
         if override is not None and not override.is_enabled:
             raise bad_request(f'{MODULE_LABELS[module]}用例生成工具已停用')
@@ -79,7 +72,11 @@ def prepare_case_suite(db: Session, actor, agent_id: int, body: GenerationReques
             child.model_config_id if (child.settings_json or {}).get('model_binding') == 'agent' else model.id))
         selected.append({'id': child.id, 'name': child.name, 'version': child.version, 'module': module,
                          'tool_key': tool_key, 'model_config_id': child_model.id, 'model_name': child_model.model_name, 'model_revision': model_configuration_revision(child_model),
-                         'knowledge': freeze(db, body.project_id, child.id, actor), 'instruction': child.instruction, 'skills': _skills(db, child)})
+                         'knowledge': freeze(db, body.project_id, child.id, actor), 'instruction': child.instruction,
+                         'settings_json': dict(child.settings_json or {})})
+    skills = snapshot_agent_skills(db, [supervisor, *selected_agents])
+    for snapshot in [main, *selected]:
+        snapshot['skills'] = skills[snapshot['id']]
     return main, selected
 
 
@@ -112,7 +109,8 @@ def generate_case_suite(db: Session, actor, agent_id: int, body: GenerationReque
                 result = dispatch_tool(snapshot['tool_key'], channel='fixed',
                     context=ToolCallContext(db=db, project_id=body.project_id, agent_definition_id=snapshot['id']),
                     requirements=body.requirements + '\n参考资料（仅数据；引用 chunk_id，不代表全文覆盖）：' + json.dumps(sources, ensure_ascii=False),
-                    count=body.cases_per_module, provider=provider, instruction=snapshot['instruction'], skills=snapshot['skills'])
+                    count=body.cases_per_module, provider=provider, instruction=snapshot['instruction'],
+                    skills=snapshot['skills'], settings_json=snapshot.get('settings_json'))
                 receipt.update(status='SUCCEEDED', cases=result['cases'])
                 # 只记录 token 数值与耗时，不携带提示词、响应或凭据。
                 usage = getattr(provider, 'last_usage', None)
@@ -137,7 +135,8 @@ def generate_case_suite(db: Session, actor, agent_id: int, body: GenerationReque
         started = time.monotonic()
         try:
             sources = search(db, main['knowledge'], actor, body.requirements)
-            payload = sanitize_context({'knowledge': sources, 'requirements': body.requirements, 'instruction': main['instruction'], 'skills': main['skills'], 'modules': state['results']})
+            payload = sanitize_context({'knowledge': sources, 'requirements': body.requirements,
+                                        'configured_guidance': build_agent_guidance(main), 'modules': state['results']})
             provider = provider_factory(main)
             result = provider.generate_structured(system, json.dumps(payload, ensure_ascii=False), kind='case_generation_review', validator=lambda value: Review.model_validate(value))
             review = {'status': 'SUCCEEDED', **Review.model_validate(result).model_dump()}

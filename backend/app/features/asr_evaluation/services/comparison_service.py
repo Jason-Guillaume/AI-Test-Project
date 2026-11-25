@@ -402,7 +402,7 @@ def list_review_history(db: Session, comparison_id: int, block_id: int, actor: U
     get_project_or_404(db, comparison.project_id, actor)
     rows = db.query(AsrReviewAudit, User.username).outerjoin(
         User, User.id == AsrReviewAudit.reviewer_id,
-    ).filter(AsrReviewAudit.block_id == block_id).order_by(AsrReviewAudit.version).all()
+    ).filter(AsrReviewAudit.block_id == block_id).order_by(AsrReviewAudit.version, AsrReviewAudit.public_id).all()
     return [{
         "version": audit.version, "review_status": audit.review_status,
         "confirmed_text": audit.confirmed_text, "include_reference_sample": audit.include_reference_sample,

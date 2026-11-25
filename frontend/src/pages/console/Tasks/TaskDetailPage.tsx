@@ -41,6 +41,8 @@ export function ConsoleTaskDetailPage() {
   const [searchParams] = useSearchParams();
   const requestedRun = searchParams.get('runId');
   const requestedRunId = requestedRun === null ? null : Number(requestedRun);
+  const requestedEventId = Number(searchParams.get('eventId'));
+  const focusEventId = Number.isSafeInteger(requestedEventId) && requestedEventId > 0 ? requestedEventId : undefined;
   const invalidRunId = requestedRun !== null && (!Number.isSafeInteger(requestedRunId) || requestedRunId! <= 0);
   const { message: toast, modal } = App.useApp();
   const queryClient = useQueryClient();
@@ -278,6 +280,8 @@ export function ConsoleTaskDetailPage() {
       />
 
       <TaskRunPanels
+        initialTab={searchParams.get('tab') === 'events' || focusEventId != null ? 'events' : 'conversation'}
+        focusEventId={focusEventId}
         task={task}
         run={run}
         detail={detail}

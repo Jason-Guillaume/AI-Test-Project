@@ -1,34 +1,60 @@
-import { Alert, Card, Col, Collapse, InputNumber, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Col, Collapse, List, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { agentGovernanceApi } from '@/features/agent-governance/api/agentGovernance';
 import type { AgentRuntimeOverview } from '@/features/agent-governance/contracts';
+import { projectsApi } from '@/features/projects/api/projects';
+import { collectPages } from '@/shared/api/pagination';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 
-const percent = (value: number | null) => value == null ? '—' : `${(value * 100).toFixed(1)}%`;
-const millis = (value: number | null) => value == null ? '—' : `${Math.round(value).toLocaleString()} ms`;
+const percent = (value: number | null) => value == null ? '未知' : `${(value * 100).toFixed(1)}%`;
+const millis = (value: number | null) => value == null ? '未知' : `${Math.round(value).toLocaleString()} ms`;
 const cost = (value: number | null) => value == null ? '未配置计价' : value.toFixed(6);
 
 export function AdminAgentRuntimePage() {
   const [days, setDays] = useState(30);
-  const [projectId, setProjectId] = useState<number | null>(null);
-  const window = useMemo(() => {
-    const end = dayjs();
-    return {
-      from_at: end.subtract(days, 'day').format('YYYY-MM-DDTHH:mm:ss'),
-      to_at: end.format('YYYY-MM-DDTHH:mm:ss'),
-    };
-  }, [days]);
+  const [projectId, setProjectId] = useState<number>();
+  const [cutoff, setCutoff] = useState(() => Date.now());
+  const end = dayjs(cutoff);
+  const projects = useQuery({ queryKey: ['projects', 'runtime-quality'],
+    queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 200 })) });
+  const projectName = projects.data?.items.find((project) => project.id === projectId)?.name;
   const overview = useQuery({
-    queryKey: ['agent-runtime', days, projectId],
-    queryFn: () => agentGovernanceApi.runtimeOverview({ ...window, project_id: projectId ?? undefined }),
+    queryKey: ['agent-runtime', days, projectId, cutoff],
+    queryFn: () => agentGovernanceApi.runtimeOverview({ from_at: end.subtract(days * 24, 'hour').toISOString(),
+      to_at: end.toISOString(), project_id: projectId }),
   });
-  if (overview.isPending) return <PageContainer><PageHeader title="Agent 运行质量" /><LoadingState /></PageContainer>;
-  if (overview.isError) return <PageContainer><PageHeader title="Agent 运行质量" /><ErrorState error={overview.error} onRetry={() => void overview.refetch()} /></PageContainer>;
-  const data = overview.data;
+  const refresh = () => {
+    const next = Date.now();
+    if (next === cutoff) void overview.refetch();
+    else setCutoff(next);
+  };
+  return <PageContainer><PageHeader title="Agent 运行质量" subtitle={`统计范围 · ${projectName ?? (projectId ? `项目 #${projectId}` : '全部项目')}`} />
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Card size="small">
+        <Space wrap>
+          <Select aria-label="统计窗口" value={days} onChange={(value) => { setDays(value); setCutoff(Date.now()); }} options={[
+            { value: 7, label: '最近 7 天' }, { value: 30, label: '最近 30 天' }, { value: 90, label: '最近 90 天' },
+          ]} style={{ width: 140 }} />
+          <Select aria-label="运行项目" allowClear showSearch optionFilterProp="label" placeholder="全部项目"
+            style={{ width: 250, maxWidth: '100%' }} value={projectId} loading={projects.isFetching}
+            options={projects.data?.items.map((project) => ({ value: project.id, label: project.name }))}
+            onChange={(value) => { setProjectId(value); setCutoff(Date.now()); }} />
+          <Button loading={overview.isFetching} onClick={refresh}>刷新统计</Button>
+          <Tag color="blue">统计截止 {end.format('YYYY-MM-DD HH:mm:ss')}</Tag>
+        </Space>
+        {projects.isError && <Alert type="error" message="项目列表加载失败" action={<Button onClick={() => projects.refetch()}>重试</Button>} />}
+      </Card>
+      {overview.isPending ? <LoadingState /> : overview.isError ? <ErrorState error={overview.error} onRetry={refresh} /> : <RuntimeReport data={overview.data} />}
+    </Space>
+  </PageContainer>;
+}
+
+function RuntimeReport({ data }: { data: AgentRuntimeOverview }) {
   const s = data.summary;
 
   const providerColumns: ColumnsType<AgentRuntimeOverview['providers'][number]> = [
@@ -68,7 +94,8 @@ export function AdminAgentRuntimePage() {
     { title: '工具', dataIndex: 'tool_key', key: 'tool_key' },
     { title: '调用', dataIndex: 'calls', key: 'calls' },
     { title: '成功', dataIndex: 'succeeded', key: 'succeeded' },
-    { title: '失败', dataIndex: 'failed', key: 'failed' },
+    { title: '执行失败', dataIndex: 'failed', key: 'failed' },
+    { title: '治理拒绝', dataIndex: 'rejected', key: 'rejected', render: (value) => value ?? '未知' },
     { title: '平均延迟', dataIndex: 'avg_latency_ms', key: 'avg_latency_ms', render: (value: number | null) => millis(value) },
   ];
   const skillColumns: ColumnsType<AgentRuntimeOverview['skills'][number]> = [
@@ -80,18 +107,20 @@ export function AdminAgentRuntimePage() {
     { title: '平均耗时', dataIndex: 'avg_latency_ms', key: 'avg_latency_ms', render: (value: number | null) => millis(value) },
   ];
 
-  return <PageContainer><PageHeader title="Agent 运行质量" subtitle="任务、模型、工具、知识检索与上下文的真实运行指标" />
-  <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-    <Card size="small">
-      <Space wrap>
-        <Typography.Text type="secondary">统计窗口</Typography.Text>
-        <Select value={days} onChange={setDays} options={[
-          { value: 7, label: '最近 7 天' }, { value: 30, label: '最近 30 天' }, { value: 90, label: '最近 90 天' },
-        ]} style={{ width: 140 }} />
-        <Typography.Text type="secondary">项目 ID（留空表示全部项目）</Typography.Text>
-        <InputNumber min={1} value={projectId} onChange={(value) => setProjectId(value)} placeholder="全部项目" />
-        <Tag color="blue">{dayjs(data.window.from).format('YYYY-MM-DD HH:mm')} — {dayjs(data.window.to).format('YYYY-MM-DD HH:mm')}</Tag>
-      </Space>
+  return <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+    <Card title="异常运行" size="small">
+      <List size="small" dataSource={data.recent_issues ?? []} locale={{ emptyText: data.recent_issues ? '当前范围暂无异常运行' : '异常运行明细未知' }}
+        renderItem={(row) => {
+          const params = new URLSearchParams({ runId: String(row.run_id), tab: 'events' });
+          if (row.event) params.set('eventId', String(row.event.id));
+          return <List.Item key={row.run_id}><Space direction="vertical" style={{ overflowWrap: 'anywhere' }}>
+            <Space wrap><Typography.Text strong>{row.title}</Typography.Text><Tag color="red">{row.status}</Tag></Space>
+            <Typography.Text type="secondary">{row.project_name} · 运行 #{row.run_id} · {row.error_code ?? '错误码未知'}</Typography.Text>
+            <Link to={`/console/tasks/${row.task_id}?${params}`}>
+              {row.event ? `定位事件 · ${row.event.name} · ${row.event.error_code ?? row.event.status}` : '查看运行记录'}
+            </Link>
+          </Space></List.Item>;
+        }} />
     </Card>
 
     <Alert type="info" showIcon message={`指标按真实运行事实统计（口径 ${data.metric_definition_version}）；没有价格快照的模型调用不会推算成本。`} description={`模型用量已知 ${s.known_usage_calls} / ${s.model_calls} 次；有价格 ${s.priced_model_calls} / ${s.model_calls} 次。数据水位：任务 ${data.data_watermark.task_runs ? dayjs(data.data_watermark.task_runs).format('MM-DD HH:mm:ss') : '暂无'}，模型 ${data.data_watermark.model_calls ? dayjs(data.data_watermark.model_calls).format('MM-DD HH:mm:ss') : '暂无'}，运行事件 ${data.data_watermark.runtime_events ? dayjs(data.data_watermark.runtime_events).format('MM-DD HH:mm:ss') : '暂无'}。${s.cost_by_currency.length ? ` 已计价成本：${s.cost_by_currency.map((item) => `${item.amount.toFixed(6)} ${item.currency ?? '未注明币种'}`).join('、')}` : ''}`} />
@@ -124,21 +153,21 @@ export function AdminAgentRuntimePage() {
     <Card title="Agent 修订运行统计" size="small">
       <Table rowKey={(row) => `${row.agent_definition_id ?? 'deleted'}-${row.revision_id ?? 'unknown'}-${row.cost_currency ?? 'none'}`} size="small" columns={agentColumns} dataSource={data.agents_by_revision} pagination={{ pageSize: 8 }} scroll={{ x: 850 }} />
     </Card>
-    <Card title="供应商健康与成本" size="small" extra={<Typography.Text type="secondary">健康状态来自已终态调用；成本按币种分开。</Typography.Text>}>
+    <Card className="wrapping-card-heading" title="供应商健康与成本" size="small" extra={<Typography.Text type="secondary">健康状态来自已终态调用；成本按币种分开。</Typography.Text>}>
       <Table rowKey="provider" size="small" columns={providerColumns} dataSource={data.providers} pagination={{ pageSize: 8 }} scroll={{ x: 980 }} />
     </Card>
     <Card title="模型调用统计" size="small">
       <Table rowKey={(row) => `${row.model_config_id ?? 'deleted'}-${row.model_name}-${row.model_revision ?? 'unknown'}-${row.cost_currency ?? 'none'}`} size="small" columns={modelColumns} dataSource={data.models} pagination={{ pageSize: 8 }} scroll={{ x: 1150 }} />
     </Card>
-    <Card title="工具调用统计" size="small" extra={<Typography.Text type="secondary">Trace 索引覆盖 {s.traced_tool_calls} 次；持久化业务工具回执 {s.durable_tool_invocations} 次。</Typography.Text>}>
-      <Table rowKey="tool_key" size="small" columns={toolColumns} dataSource={data.tools} pagination={{ pageSize: 8 }} />
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>工具调用成功率 {percent(s.traced_tool_success_rate)}；检索 {s.knowledge_retrievals} 次，上下文装配 {s.context_assemblies} 次。</Typography.Paragraph>
+    <Card className="wrapping-card-heading" title="工具调用统计" size="small" extra={<Typography.Text type="secondary">Trace 索引覆盖 {s.traced_tool_calls} 次；持久化业务工具回执 {s.durable_tool_invocations} 次。</Typography.Text>}>
+      <Table rowKey="tool_key" size="small" columns={toolColumns} dataSource={data.tools} pagination={{ pageSize: 8 }} scroll={{ x: 720 }} />
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>工具执行成功率 {percent(s.traced_tool_success_rate)} · 治理拒绝 {s.traced_tool_rejections ?? '未知'} · 检索 {s.knowledge_retrievals} 次 · 权限检查 {s.knowledge_permission_checks ?? '未知'} 次 · 上下文装配 {s.context_assemblies} 次</Typography.Paragraph>
     </Card>
-    <Card title="Skill 装载统计" size="small" extra={<Typography.Text type="secondary">{s.skill_load_failures} 次装载失败</Typography.Text>}>
-      <Table rowKey={(row) => `${row.skill_key}-${row.skill_version ?? 'unknown'}`} size="small" columns={skillColumns} dataSource={data.skills} pagination={{ pageSize: 8 }} />
+    <Card className="wrapping-card-heading" title="Skill 装载统计" size="small" extra={<Typography.Text type="secondary">{s.skill_load_failures} 次装载失败</Typography.Text>}>
+      <Table rowKey={(row) => `${row.skill_key}-${row.skill_version ?? 'unknown'}`} size="small" columns={skillColumns} dataSource={data.skills} pagination={{ pageSize: 8 }} scroll={{ x: 540 }} />
       <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>此处统计 Skill 文件装载与渲染状态，不代表 Skill 输出的业务正确率。</Typography.Paragraph>
     </Card>
     <Typography.Text type="secondary">人工拒绝率和修改率只基于已有用例草稿审核记录统计，不代表其他 Agent 类型的反馈，也不构成准确率。</Typography.Text>
     <Collapse items={[{ key: 'definitions', label: '统计口径与数据来源', children: <ul>{Object.entries(data.definitions).map(([key, value]) => <li key={key}><strong>{key}：</strong>{value}</li>)}</ul> }]} />
-  </Space></PageContainer>;
+  </Space>;
 }

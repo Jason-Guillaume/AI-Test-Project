@@ -93,3 +93,79 @@ def test_repository_and_callback_credentials_are_host_scoped(tmp_path, monkeypat
         pass
     else:
         raise AssertionError("non-Codeup repository URL was accepted")
+
+
+def test_cached_environment_can_be_used_while_first_run_still_holds_lock(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    runner = _runner_module()
+    monkeypatch.setattr(runner, "CACHE_ROOT", tmp_path / "cache")
+    target = runner.CACHE_ROOT / "venvs" / runner._environment_cache_key(None)
+    (target / "bin").mkdir(parents=True)
+    (target / "bin" / "python").touch()
+    (target / ".ready").touch()
+    _, first = runner._cached_python(tmp_path, tmp_path / "run.log", {})
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        second = pool.submit(runner._cached_python, tmp_path, tmp_path / "run.log", {})
+        try:
+            path, lock = second.result(timeout=2)
+            lock.close()
+            assert path == target / "bin" / "python"
+        finally:
+            first.close()
+
+
+def test_cancelled_run_uploads_and_replays_original_exit_code(tmp_path, monkeypatch):
+    import signal
+
+    runner = _runner_module()
+    script = tmp_path / "callback.py"
+    script.write_text(
+        "import os\nfrom pathlib import Path\n"
+        "with Path('attempts').open('a') as f: f.write(os.environ['AUTOMATION_STATUS'] + '\\n')\n"
+        "raise SystemExit(0 if Path('online').exists() else 1)\n"
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "run.log").touch()
+    (work / ".result.json").write_text(json.dumps({
+        "status": "CANCELLED", "exit_code": 143, "started_ms": 10, "finished_ms": 20, "git_commit": "abc",
+    }))
+    monkeypatch.setattr(runner, "STOP_SIGNAL", signal.SIGTERM)
+    assert runner._deliver_result(work, script, {}) == 143
+    assert not (work / ".callback-ok").exists()
+    (work / "online").touch()
+    assert runner._deliver_result(work, script, {}) == 143
+    assert (work / ".callback-ok").is_file()
+    assert runner._deliver_result(work, script, {}) == 143
+    assert (work / "attempts").read_text().splitlines() == ["CANCELLED", "CANCELLED"]
+
+
+def test_main_retries_upload_without_repeating_failed_checkout(tmp_path, monkeypatch):
+    runner = _runner_module()
+    monkeypatch.setattr(runner, "RUN_ROOT", tmp_path / "runs")
+    monkeypatch.setattr(runner, "_load_helpers", lambda: (None, tmp_path / "callback.py"))
+    monkeypatch.setattr(runner, "_read_callback_credentials", lambda *_: {})
+    monkeypatch.setattr(runner.signal, "signal", lambda *_: None)
+    for key, value in {
+        "AUTOMATION_EXECUTION_ID": "1", "AUTOMATION_PROJECT_ID": "2", "INTEGRATION_CONFIG_ID": "3",
+        "DAG_RUN_ID": "automation-1", "BRANCH_NAME": "main", "TIMEOUT_SECONDS": "60",
+        "AUTOMATION_CALLBACK_ORIGIN": "https://platform.example.com",
+        "REPOSITORY_URL": "https://github.com/team/repo.git", "AUTOMATION_MIN_FREE_BYTES": "0",
+    }.items():
+        monkeypatch.setenv(key, value)
+    commands = []
+    def run(args, **kwargs):
+        commands.append(args)
+        if args[0] == "git":
+            return 42
+        assert args[-1] == "upload"
+        assert kwargs["env"]["AUTOMATION_STATUS"] == "FAILED"
+        assert not kwargs["honor_stop"]
+        return 1 if len(commands) == 2 else 0
+
+    monkeypatch.setattr(runner, "_run_command", run)
+    assert runner.main() == 42
+    assert runner.main() == 42
+    assert runner.main() == 42
+    assert len(commands) == 3

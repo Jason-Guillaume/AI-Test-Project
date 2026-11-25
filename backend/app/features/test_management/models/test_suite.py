@@ -20,7 +20,7 @@ class TestSuite(SoftDeleteBase):
         Index("uq_test_suite_project_name", "project_id", "name", unique=True,
               postgresql_where=text("deleted_at IS NULL"), sqlite_where=text("deleted_at IS NULL")),
         Index("ix_test_suite_project_enabled", "project_id", "enabled"),
-        {"comment": "测试套件：测试用例的集合容器"},
+        {"info": {"is_view": True}, "comment": "测试套件：测试用例的集合容器"},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -56,7 +56,7 @@ class TestSuiteCase(SoftDeleteBase):
             sqlite_where=text("deleted_at IS NULL"),
         ),
         Index("ix_test_suite_case_suite_sort", "suite_id", "sort"),
-        {"comment": "套件-用例关联"},
+        {"info": {"is_view": True}, "comment": "套件-用例关联"},
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

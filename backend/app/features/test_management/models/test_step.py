@@ -21,7 +21,7 @@ class TestStep(SoftDeleteBase):
 
     __test__ = False  # 业务模型，不是 pytest 测试类，测试模块导入时不应被收集。
     __tablename__ = "test_step"
-    __table_args__ = ({"comment": "测试步骤"},)
+    __table_args__ = ({"info": {"is_view": True}, "comment": "测试步骤"},)
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     test_case_id = Column(
