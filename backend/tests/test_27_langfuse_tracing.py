@@ -167,10 +167,24 @@ def test_generation_records_model_input_and_usage(monkeypatch):
     obs = client.observations[0]
     assert obs["as_type"] == "generation"
     assert obs["model"] == "qwen-plus"
-    assert obs["input"] == messages
+    assert obs["input"] == {"redacted": True}
+    assert gen.updates[-1]["output"] == {"redacted": True}
     assert obs["metadata"]["model_config_id"] == 17
     assert gen.updates[-1]["usage_details"] == {"input": 10, "output": 5, "total": 15}
     assert langfuse_tracer.current_generation_span_id.get() is None
+
+
+def test_explicit_development_content_is_sanitized(monkeypatch):
+    _install_fake_langfuse(monkeypatch)
+    _enable(monkeypatch)
+    monkeypatch.setattr(settings, "APP_ENV", "development")
+    monkeypatch.setattr(settings, "LANGFUSE_ENVIRONMENT", "development")
+    monkeypatch.setattr(settings, "LANGFUSE_CAPTURE_CONTENT", True)
+    client = get_langfuse_client()
+    with llm_generation(name="test", model="m", input_messages=[{"content": "password=secret-value"}]) as gen:
+        update_generation(gen, output="password=secret-value")
+    assert "secret-value" not in str(client.observations) + str(gen.updates)
+    assert client.observations[0]["input"] != {"redacted": True}
 
 
 def test_main_flow_exception_marked_error_and_reraised(monkeypatch):

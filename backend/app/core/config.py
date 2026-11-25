@@ -154,6 +154,7 @@ class Settings(BaseSettings):
     # LANGFUSE_ENVIRONMENT 是 trace 上的 environment 标签，供同 project 内过滤。
     # 未启用或 key 不齐时埋点全部为 no-op，不影响主流程。
     LANGFUSE_ENABLED: bool = False
+    LANGFUSE_CAPTURE_CONTENT: bool = False
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = None
     LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"

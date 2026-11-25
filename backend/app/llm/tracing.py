@@ -25,8 +25,35 @@ from functools import lru_cache
 from typing import Any, Iterator
 
 from app.core.config import settings
+from app.core.security.sanitizer import sanitize_context, sanitize_text
 
 logger = logging.getLogger(__name__)
+
+
+def _capture_content() -> bool:
+    return (settings.LANGFUSE_CAPTURE_CONTENT and settings.APP_ENV.lower() == "development"
+            and settings.LANGFUSE_ENVIRONMENT.lower() == "development"
+            and task_trace_metadata.get() is None)
+
+
+def _sanitize_content(value: Any) -> Any:
+    if isinstance(value, str):
+        return sanitize_text(value)
+    if isinstance(value, list):
+        return [_sanitize_content(item) for item in value]
+    if isinstance(value, dict):
+        return {k: _sanitize_content(v) for k, v in sanitize_context(value).items()}
+    return value
+
+
+def _restored_trace_context() -> dict[str, str] | None:
+    from opentelemetry import trace
+
+    if trace.get_current_span().get_span_context().is_valid:
+        return None
+    trace_id = (task_trace_metadata.get() or {}).get("trace_id")
+    parent_id = task_trace_parent_span_id.get()
+    return {"trace_id": trace_id, "parent_span_id": parent_id} if trace_id and parent_id else None
 # 异步生成任务只向追踪服务发送身份元数据，不上传完整敏感 Prompt。
 task_trace_metadata: ContextVar[dict | None] = ContextVar("task_trace_metadata", default=None)
 current_generation_span_id: ContextVar[str | None] = ContextVar("current_generation_span_id", default=None)
@@ -92,7 +119,7 @@ def runtime_attempt_observation(metadata: dict[str, Any]) -> Iterator[str | None
                 pass
         if cm is not None:
             try:
-                cm.__exit__(type(exc), exc, exc.__traceback__)
+                cm.__exit__(None, None, None)
             except Exception:  # noqa: BLE001 —— 保持 no-throw
                 pass
             cm = None
@@ -148,7 +175,8 @@ def runtime_call_observation(*, name: str, metadata: dict[str, Any]) -> Iterator
     span = None
     try:
         cm = client.start_as_current_observation(
-            name=name, as_type="span", metadata={**safe_correlation, **metadata}
+            name=name, as_type="span", metadata={**safe_correlation, **metadata},
+            trace_context=_restored_trace_context(),
         )
         span = cm.__enter__()
     except Exception as exc:  # noqa: BLE001 —— tracing 不可阻断业务
@@ -165,7 +193,7 @@ def runtime_call_observation(*, name: str, metadata: dict[str, Any]) -> Iterator
                 pass
         if cm is not None:
             try:
-                cm.__exit__(type(exc), exc, exc.__traceback__)
+                cm.__exit__(None, None, None)
             except Exception:  # noqa: BLE001
                 pass
             cm = None
@@ -265,7 +293,7 @@ def llm_generation(
         cm = client.start_as_current_observation(
             name=name,
             as_type="generation",
-            input={"redacted": True} if task_trace_metadata.get() else input_messages,
+            input=_sanitize_content(input_messages) if _capture_content() else {"redacted": True},
             metadata={**(task_trace_metadata.get() or {}), **(metadata or {})},
             model=model,
             model_parameters=model_parameters or {},
@@ -285,7 +313,7 @@ def llm_generation(
         except Exception:  # noqa: BLE001
             pass
         try:
-            cm.__exit__(type(exc), exc, exc.__traceback__)
+            cm.__exit__(None, None, None)
         except Exception:  # noqa: BLE001
             pass
         raise
@@ -316,7 +344,7 @@ def update_generation(
         return
     try:
         # metadata-only 同时隐藏输入和输出，不能把完整敏感响应经回写重新上传。
-        kwargs: dict[str, Any] = {"output": {"redacted": True} if task_trace_metadata.get() else output}
+        kwargs: dict[str, Any] = {"output": _sanitize_content(output) if _capture_content() else {"redacted": True}}
         if usage:
             # OpenAI 字段名 → Langfuse usage_details 字段名。
             details = {
