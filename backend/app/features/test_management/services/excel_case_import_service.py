@@ -6,7 +6,7 @@ import hashlib
 import uuid
 from io import BytesIO
 from typing import Any
-from zipfile import BadZipFile
+from zipfile import BadZipFile, ZipFile
 
 from fastapi import HTTPException
 from openpyxl import load_workbook
@@ -33,8 +33,28 @@ CASE_TYPE_LABELS = {
 TARGET_BY_DIRECTION = {"API": "API", "UI": "WEB", "AI": "AI"}
 
 
+def open_workbook(content: bytes):
+    """校验压缩体积后打开工作簿。调用方必须关闭。
+
+    先限制解压条目数和声明体积，再交给 openpyxl。超限或损坏时抛 ValueError，
+    避免把不受信任的 xlsx 直接展开。
+    """
+    with ZipFile(BytesIO(content)) as archive:
+        entries = archive.infolist()
+        if len(entries) > 2000 or sum(entry.file_size for entry in entries) > 50 * 1024 * 1024:
+            raise ValueError("工作簿解压后过大")
+    return load_workbook(BytesIO(content), read_only=True, data_only=False)
+
+
 class ExcelCaseImportService:
-    """Excel 模板、预览校验、单事务确认。"""
+    """Excel 模板、预览校验、单事务确认。
+
+    固定四列表头仍走 parse / confirm。模型建议和人工采纳由
+    excel_case_suggest_service 产生，确认时通过 adoption 写入；
+    未传 adoption 时行为与原来一致。
+
+    未接入：不根据模型结果创建或覆盖接口资产，不生成步骤和预期结果。
+    """
 
     def parse(self, content: bytes, *, project_id: int, direction: str, scope_node_id: int | None, db: Session, actor: User) -> dict[str, Any]:
         require_writable_project(db, project_id, actor)
@@ -45,8 +65,10 @@ class ExcelCaseImportService:
         if direction not in TARGET_BY_DIRECTION:
             errors.append(self._error(0, "测试方向", "测试方向必须是 API、UI 或 AI"))
             return {"source_hash": source_hash, "items": items, "errors": errors, "total_rows": 0}
+        workbook = None
         try:
-            workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
+            # 与建议读取共用解压上限，避免预览和模型步骤各写一套体积判断。
+            workbook = open_workbook(content)
             if not workbook.worksheets:
                 raise ValueError("工作簿没有工作表")
             sheet = workbook.worksheets[0]
@@ -65,6 +87,17 @@ class ExcelCaseImportService:
                     errors.append(self._error(1, "E列", "模板只支持四列", worksheet_name))
                 return {"source_hash": source_hash, "items": items, "errors": errors, "total_rows": 0}
 
+            if sheet.max_column > 256:
+                raise ValueError("工作表列数超过 256，无法安全预览")
+            # Reject unsupported populated cells instead of silently dropping them.
+            for row_number, cells in enumerate(sheet.iter_rows(min_row=2, max_row=1001), start=2):
+                for column_index, cell in enumerate(cells, start=1):
+                    if cell.data_type == "f":
+                        errors.append(self._error(row_number, f"第{column_index}列", "不支持公式，请先转换为值", worksheet_name))
+                    elif column_index > 4 and cell.value is not None and str(cell.value).strip():
+                        errors.append(self._error(row_number, f"第{column_index}列", "模板外的数据不能导入，请先处理", worksheet_name))
+            if errors:
+                return {"source_hash": source_hash, "items": [], "errors": errors, "total_rows": 0}
             seen: dict[str, int] = {}
             existing_names: set[str] = set()
             raw_rows = list(sheet.iter_rows(min_row=2, max_row=1001, values_only=True))
@@ -108,10 +141,14 @@ class ExcelCaseImportService:
             return {"source_hash": source_hash, "items": items, "errors": errors, "total_rows": len(items)}
         except (OSError, ValueError, KeyError, TypeError, BadZipFile, InvalidFileException) as exc:
             return {"source_hash": source_hash, "items": [], "errors": [self._error(0, "工作簿", f"无法读取 Excel：{exc}")], "total_rows": 0}
+        finally:
+            if workbook is not None:
+                workbook.close()
 
     def confirm(
         self, content: bytes, *, project_id: int, direction: str, scope_node_id: int | None,
         request_key: str, expected_source_hash: str, db: Session, actor: User,
+        adoption_json: str | None = None,
     ) -> dict[str, Any]:
         require_writable_project(db, project_id, actor)
         try:
@@ -125,7 +162,13 @@ class ExcelCaseImportService:
         if previous is not None:
             return self._existing_result(previous, project_id, direction, scope_node_id, source_hash, actor.id)
 
-        parsed = self.parse(content, project_id=project_id, direction=direction, scope_node_id=scope_node_id, db=db, actor=actor)
+        # 无采纳载荷时仍只认固定四列表，避免模型建议改动原导入语义。
+        from app.features.test_management.services.excel_case_suggest_service import resolve_confirmed_rows
+
+        parsed, applied = resolve_confirmed_rows(
+            self, content, project_id=project_id, direction=direction, scope_node_id=scope_node_id,
+            db=db, actor=actor, adoption_json=adoption_json,
+        )
         if parsed["errors"] or not parsed["items"]:
             raise HTTPException(status_code=422, detail={
                 "message": "Excel 校验失败，未写入任何用例",
@@ -143,6 +186,7 @@ class ExcelCaseImportService:
                 case = TestCase(
                     project_id=project_id, name=row["name"], description=row["description"] or None,
                     priority=row["priority"], case_type=row["case_type"], target_type=target_type,
+                    api_id=row.get("api_id"),
                     status="DRAFT", enabled=True, source_type="MANUAL", created_by=actor.id,
                 )
                 db.add(case)
@@ -157,6 +201,7 @@ class ExcelCaseImportService:
                 "batch_id": None, "request_key": key, "project_id": project_id,
                 "direction": direction, "scope_node_id": scope_node_id,
                 "source_hash": source_hash, "imported_count": len(case_ids), "case_ids": case_ids,
+                "applied": applied,
             }
             batch = TestCaseImportBatch(
                 request_key=key, project_id=project_id, created_by=actor.id,
@@ -165,7 +210,7 @@ class ExcelCaseImportService:
             )
             db.add(batch)
             db.flush()
-            result["batch_id"] = batch.id
+            result = {**result, "batch_id": batch.id}
             batch.result_json = result
             db.commit()
             return result

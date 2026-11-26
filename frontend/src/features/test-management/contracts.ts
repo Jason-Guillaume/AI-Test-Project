@@ -62,6 +62,61 @@ export interface TestCaseExcelImportResult {
   source_hash: string;
   imported_count: number;
   case_ids: number[];
+  applied?: Array<{ worksheet: string; row: number; case_type?: string; api_id?: number }>;
+}
+
+export interface TestCaseImportSuggestionRow {
+  worksheet: string;
+  row: number;
+  cells: string[];
+  rule_status: 'recommended' | 'ambiguous' | 'unmatched';
+  rule_api_id: number | null;
+  candidates: Array<{ id: number; name: string; method: string; path: string }>;
+  rule_reason: string;
+  model_case_type: string | null;
+  model_api_id: number | null;
+  model_reason: string;
+  model_confidence: number | null;
+}
+
+export interface TestCaseImportSuggestion {
+  source_hash: string;
+  template_compatible: boolean;
+  warnings: string[];
+  errors: TestCaseExcelImportError[];
+  columns: Array<{ column_index: number; field: string; reason: string }>;
+  suggested_mapping: {
+    worksheet: string;
+    header_row: number;
+    name_column: number | null;
+    priority_column: number | null;
+    case_type_column: number | null;
+    description_column: number | null;
+  } | null;
+  sheets: Array<{ name: string; header_row: number; columns: Array<{ index: number; header: string }> }>;
+  rows: TestCaseImportSuggestionRow[];
+  model_status: 'ok' | 'skipped' | 'unavailable';
+  model_error: string;
+  model_calls: number;
+}
+
+export interface TestCaseImportAdoption {
+  mode: 'template' | 'mapping';
+  worksheet?: string;
+  header_row?: number;
+  name_column?: number | null;
+  priority_column?: number | null;
+  case_type_column?: number | null;
+  description_column?: number | null;
+  rows: Array<{
+    worksheet: string;
+    row: number;
+    skip?: boolean;
+    accept_case_type?: boolean;
+    case_type?: string | null;
+    accept_api?: boolean;
+    api_id?: number | null;
+  }>;
 }
 
 export type TestPreconditionType =
