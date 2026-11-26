@@ -26,6 +26,7 @@ from app.core.database.session import get_db
 from app.core.http.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from app.features.test_management.router.dependencies import _CASE
 from app.features.test_management.services.excel_case_import_service import HEADERS, SERVICE as _EXCEL_IMPORT
+from app.features.test_management.services.excel_case_suggest_service import suggest as _EXCEL_SUGGEST
 
 
 router = APIRouter()
@@ -90,6 +91,24 @@ async def preview_case_import(
     )
 
 
+@router.post("/projects/{project_id}/test-cases/import-suggest", summary="生成测试用例 Excel 导入建议")
+async def suggest_case_import(
+    project_id: int,
+    file: UploadFile = File(...),
+    direction: str = Form(...),
+    scope_node_id: int | None = Form(None),
+    use_model: bool = Form(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """读取工作簿并返回列映射、维度和接口建议，不写入用例。"""
+    content = await _read_xlsx(file)
+    return _EXCEL_SUGGEST(
+        content, project_id=project_id, direction=direction, scope_node_id=scope_node_id,
+        db=db, actor=user, use_model=use_model,
+    )
+
+
 @router.post("/projects/{project_id}/test-cases/import-confirm", summary="确认测试用例 Excel 导入")
 async def confirm_case_import(
     project_id: int,
@@ -98,14 +117,19 @@ async def confirm_case_import(
     request_key: str = Form(...),
     source_hash: str = Form(...),
     scope_node_id: int | None = Form(None),
+    adoption: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """重新校验后以单事务写入；同一请求键重试返回原批次结果。"""
+    """重新校验后以单事务写入；同一请求键重试返回原批次结果。
+
+    adoption 只包含用户勾选的维度、接口和列映射。不传时仍按固定四列模板导入。
+    """
     content = await _read_xlsx(file)
     return _EXCEL_IMPORT.confirm(
         content, project_id=project_id, direction=direction, scope_node_id=scope_node_id,
         request_key=request_key, expected_source_hash=source_hash, db=db, actor=user,
+        adoption_json=adoption,
     )
 
 

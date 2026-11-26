@@ -62,6 +62,76 @@ export interface TestCaseExcelImportResult {
   source_hash: string;
   imported_count: number;
   case_ids: number[];
+  applied?: Array<{ worksheet: string; row: number; case_type?: string; api_id?: number }>;
+}
+
+export interface TestCaseImportSuggestionRow {
+  worksheet: string;
+  row: number;
+  cells: string[];
+  rule_status: 'recommended' | 'ambiguous' | 'unmatched';
+  rule_api_id: number | null;
+  candidates: Array<{ id: number; name: string; method: string; path: string }>;
+  rule_reason: string;
+  model_case_type: string | null;
+  model_api_id: number | null;
+  model_reason: string;
+  model_confidence: number | null;
+  draft_steps: Array<{ name: string; expected: string }>;
+  similar_cases: Array<{ id: number; name: string }>;
+  retained: Record<string, string>;
+}
+
+export interface TestCaseImportSuggestion {
+  source_hash: string;
+  template_compatible: boolean;
+  warnings: string[];
+  errors: TestCaseExcelImportError[];
+  columns: Array<{ column_index: number; field: string; reason: string }>;
+  suggested_mapping: {
+    worksheet: string;
+    header_row: number;
+    name_column: number | null;
+    priority_column: number | null;
+    case_type_column: number | null;
+    description_column: number | null;
+  } | null;
+  sheets: Array<{ name: string; header_row: number; columns: Array<{ index: number; header: string }> }>;
+  rows: TestCaseImportSuggestionRow[];
+  model_status: 'ok' | 'skipped' | 'unavailable';
+  model_error: string;
+  model_calls: number;
+  execution_allowed: boolean;
+  priority_choice_required: boolean;
+  coverage_gaps: Array<{
+    api_id: number;
+    present_case_types: string[];
+    missing_case_types: string[];
+    linked_cases: Array<{ id: number; name: string; case_type: string | null }>;
+    interface_version: number | null;
+    review_cases: Array<{ id: number; name: string; case_type: string | null }>;
+  }>;
+}
+
+export interface TestCaseImportAdoption {
+  mode: 'template' | 'mapping';
+  worksheet?: string;
+  header_row?: number;
+  name_column?: number | null;
+  priority_column?: number | null;
+  case_type_column?: number | null;
+  description_column?: number | null;
+  rows: Array<{
+    worksheet: string;
+    row: number;
+    skip?: boolean;
+    accept_case_type?: boolean;
+    case_type?: string | null;
+    accept_api?: boolean;
+    api_id?: number | null;
+    accept_steps?: boolean;
+    steps?: Array<{ name: string; expected: string }>;
+  }>;
 }
 
 export type TestPreconditionType =

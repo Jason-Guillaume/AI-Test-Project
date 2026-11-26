@@ -14,7 +14,7 @@
 // 本文件的返回类型已据此标注，切勿误用 Paginated<T>。
 import { api } from '@/shared/api/client';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
-import type { BatchReviewResponse, CaseExecutionListResponse, GenerationAgentOption, GenerationAudit, GenerationBatch, GenerationTaskStatus, GenerationBatchListResponse, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCaseExcelImportPreview, TestCaseExcelImportResult, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
+import type { BatchReviewResponse, CaseExecutionListResponse, GenerationAgentOption, GenerationAudit, GenerationBatch, GenerationTaskStatus, GenerationBatchListResponse, RunCompareResponse, ScopeCaseList, ScopeNode, ScopeNodeDetail, ScopeStats, ScopeTree, TestCase, TestCaseCoverage, TestCaseData, TestCaseExcelImportPreview, TestCaseExcelImportResult, TestCaseImportAdoption, TestCaseImportSuggestion, TestCasePrecondition, TestAssertion, TestPlan, TestPlanSuiteResponse, TestPoint, TestRun, TestRunListResponse, TestStep, TestStrategy, TestSuite, TestSuiteCaseResponse } from '@/features/test-management/contracts';
 
 import type { TestCaseCreate, TestCaseDataCreate, TestCaseDataUpdate, TestCaseDetail, TestCaseFixture, TestCaseFixtureCreate, TestCasePreconditionCreate, TestCasePreconditionUpdate, TestCaseUpdate, TestAssertionCreate, TestAssertionUpdate, TestPlanCreate, TestPlanSuiteAdd, TestPlanUpdate, TestPointCreate, TestPointUpdate, TestRunCreateRequest, TestStepCreate, TestStepUpdate, TestStrategyCreate, TestStrategyUpdate, TestSuiteCaseAdd, TestSuiteCreate, TestSuiteUpdate } from '../contracts';
 
@@ -98,13 +98,25 @@ export const testManagementApi = {
     if (scopeNodeId != null) form.append('scope_node_id', String(scopeNodeId));
     return api.post<TestCaseExcelImportPreview>(`/projects/${projectId}/test-cases/import-preview`, form);
   },
-  confirmCaseImport: (projectId: number, file: File, direction: string, scopeNodeId: number | null, requestKey: string, sourceHash: string) => {
+  /**
+   * 请求模型辅助识别。失败时由页面保留手动映射，不在这里重试。
+   */
+  suggestCaseImport: (projectId: number, file: File, direction: string, scopeNodeId: number | null, useModel: boolean) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('direction', direction);
+    form.append('use_model', useModel ? 'true' : 'false');
+    if (scopeNodeId != null) form.append('scope_node_id', String(scopeNodeId));
+    return api.post<TestCaseImportSuggestion>(`/projects/${projectId}/test-cases/import-suggest`, form, { timeout: 120000 });
+  },
+  confirmCaseImport: (projectId: number, file: File, direction: string, scopeNodeId: number | null, requestKey: string, sourceHash: string, adoption?: TestCaseImportAdoption) => {
     const form = new FormData();
     form.append('file', file);
     form.append('direction', direction);
     form.append('request_key', requestKey);
     form.append('source_hash', sourceHash);
     if (scopeNodeId != null) form.append('scope_node_id', String(scopeNodeId));
+    if (adoption) form.append('adoption', JSON.stringify(adoption));
     return api.post<TestCaseExcelImportResult>(`/projects/${projectId}/test-cases/import-confirm`, form);
   },
   getCase: (caseId: number) => api.get<TestCase>(`/test-cases/${caseId}`),
