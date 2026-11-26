@@ -2,7 +2,7 @@
 // 固定四列模板仍先预览再确认。模型建议是可选步骤：只展示分类和接口关联，勾选后才随确认写入。
 // 未接入：不生成步骤和预期结果，不创建接口。
 import { useEffect, useRef, useState } from 'react';
-import { Alert, App, Button, Checkbox, Descriptions, Modal, Select, Space, Table, Tag, Typography, Upload } from 'antd';
+import { Alert, App, Button, Checkbox, Descriptions, InputNumber, Modal, Select, Space, Table, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { DownloadOutlined, InboxOutlined } from '@ant-design/icons';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
@@ -38,6 +38,7 @@ export function CaseExcelImportModal({
   const [descriptionColumn, setDescriptionColumn] = useState<number | null>(null);
   const [accepted, setAccepted] = useState<Record<string, { caseType: boolean; api: boolean; steps: boolean }>>({});
   const [sheetName, setSheetName] = useState<string | null>(null);
+  const [headerRow, setHeaderRow] = useState<number>(1);
   const [chosenApi, setChosenApi] = useState<Record<string, number>>({});
   const lastRejectedFile = useRef<{ reason: string; at: number } | null>(null);
 
@@ -114,6 +115,7 @@ export function CaseExcelImportModal({
       setChosenApi({});
       const mapping = result.suggested_mapping;
       setSheetName(mapping?.worksheet ?? result.sheets[0]?.name ?? null);
+      setHeaderRow(mapping?.header_row ?? result.sheets[0]?.header_row ?? 1);
       setNameColumn(mapping?.name_column ?? null);
       setPriorityColumn(mapping?.priority_column ?? null);
       setCaseTypeColumn(mapping?.case_type_column ?? null);
@@ -157,7 +159,7 @@ export function CaseExcelImportModal({
       adoption = {
         mode: 'mapping',
         worksheet: sheetName ?? suggestion.sheets[0]?.name,
-        header_row: suggestion.sheets.find((item) => item.name === sheetName)?.header_row ?? suggestion.sheets[0]?.header_row,
+        header_row: headerRow,
         name_column: nameColumn,
         priority_column: priorityColumn,
         case_type_column: caseTypeColumn,
@@ -288,12 +290,14 @@ export function CaseExcelImportModal({
                 key={gap.api_id}
                 type="info"
                 showIcon
-                message={`接口 #${gap.api_id} 已有维度：${gap.present_case_types.join('、') || '无'}；尚未覆盖：${gap.missing_case_types.join('、') || '无'}`}
-                description={gap.linked_cases.length ? `已关联用例不会被覆盖：${gap.linked_cases.map((item) => item.name).join('、')}` : '该接口还没有关联用例。'}
+                message={`接口 #${gap.api_id}（版本 ${gap.interface_version ?? '未知'}）已有维度：${gap.present_case_types.join('、') || '无'}；尚未覆盖：${gap.missing_case_types.join('、') || '无'}`}
+                description={gap.review_cases.length ? `待复查、不会被本次导入修改：${gap.review_cases.map((item) => item.name).join('、')}` : '该接口还没有关联用例。'}
               />
             ))}
+            {suggestion.priority_choice_required && <Alert type="warning" showIcon message="表中同时有「优先级」和「建议优先级」，请在列映射里选择采用哪一列。未选择时按 P1 导入。" />}
             {!suggestion.template_compatible && suggestion.sheets.length > 0 && (
               <Space wrap>
+                <InputNumber min={1} value={headerRow} onChange={(value) => setHeaderRow(value ?? 1)} addonBefore="表头行" />
                 <Select
                   placeholder="工作表"
                   style={{ width: 160 }}
@@ -349,6 +353,7 @@ export function CaseExcelImportModal({
                 { title: '建议维度', dataIndex: 'model_case_type', width: 120, render: (value: string | null) => value ?? '—' },
                 { title: '建议接口', width: 90, render: (_value, row) => row.rule_api_id ?? row.model_api_id ?? '—' },
                 { title: '草稿', width: 160, render: (_value, row) => row.draft_steps.map((step) => step.name).join('、') || '—' },
+                { title: '保留原文', width: 180, render: (_value, row) => Object.entries(row.retained).map(([key, value]) => `${key}:${value}`).join('；') || '—' },
                 { title: '相似用例', width: 140, render: (_value, row) => row.similar_cases.map((item) => item.name).join('、') || '—' },
                 {
                   title: '采纳',

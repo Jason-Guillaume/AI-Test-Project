@@ -79,6 +79,7 @@ export interface TestCaseImportSuggestionRow {
   model_confidence: number | null;
   draft_steps: Array<{ name: string; expected: string }>;
   similar_cases: Array<{ id: number; name: string }>;
+  retained: Record<string, string>;
 }
 
 export interface TestCaseImportSuggestion {
@@ -101,11 +102,14 @@ export interface TestCaseImportSuggestion {
   model_error: string;
   model_calls: number;
   execution_allowed: boolean;
+  priority_choice_required: boolean;
   coverage_gaps: Array<{
     api_id: number;
     present_case_types: string[];
     missing_case_types: string[];
     linked_cases: Array<{ id: number; name: string; case_type: string | null }>;
+    interface_version: number | null;
+    review_cases: Array<{ id: number; name: string; case_type: string | null }>;
   }>;
 }
 

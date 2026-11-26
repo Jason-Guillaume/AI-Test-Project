@@ -7,7 +7,8 @@
 接口清单只读 api_catalog 的 ApiInterface。模型调用走 llm.LLMProvider.generate_structured。
 
 已知限制：
-- 每个工作表最多读取 16 列、200 行；超出部分只记警告，不把单元格正文送进模型。
+- 每个工作表最多读取 32 列、1000 行。送给模型的内容再截到 12 列、120 行，预览仍保留已读取的单元格。
+- 执行状态、实际结果和建议优先级只保留在建议里，不回写用例状态。同时存在「优先级」和「建议优先级」时不自动替用户选择。
 - 未映射列保留在建议响应里，确认入库时不写入用例字段。
 - 步骤和预期结果只在勾选后写成不可执行草稿，不创建或覆盖接口，也不发出真实请求。
 - 相似用例、覆盖缺口和已关联用例只作提示，不自动合并、删除或覆盖。
@@ -45,9 +46,12 @@ from app.llm.providers.openai_compatible import ProductionLLMProvider
 
 _ENDPOINT_RE = re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)\s+(/[^\s，,；;]+)")
 _MAX_SHEETS = 6
-_MAX_ROWS = 200
-_MAX_COLS = 16
+_MAX_ROWS = 1000
+_MAX_COLS = 32
+_MODEL_ROWS = 120
+_MODEL_COLS = 12
 _BATCH_ROWS = 40
+_RETAINED_HEADERS = ("执行状态", "实际结果", "建议优先级")
 _CELL_LIMIT = 180
 _FIELDS = {
     "name", "priority", "case_type", "description", "api_code",
@@ -139,14 +143,14 @@ def load_project_interfaces(db: Session, project_id: int) -> list[dict[str, Any]
     最多 200 条，避免把整个接口库塞进一次模型请求。确认关联时也用这份归属校验。
     """
     rows = (
-        db.query(ApiInterface.id, ApiInterface.name, ApiInterface.method, ApiInterface.path)
+        db.query(ApiInterface.id, ApiInterface.name, ApiInterface.method, ApiInterface.path, ApiInterface.version)
         .filter(ApiInterface.project_id == project_id, ApiInterface.deleted_at.is_(None))
         .order_by(ApiInterface.id.asc())
         .limit(200)
         .all()
     )
     return [
-        {"id": row.id, "name": row.name or "", "method": row.method or "", "path": row.path or ""}
+        {"id": row.id, "name": row.name or "", "method": row.method or "", "path": row.path or "", "version": row.version}
         for row in rows
     ]
 
@@ -176,7 +180,9 @@ def suggest(
     if use_model and not grid["errors"]:
         # 模型不可用时保留规则结果，避免用户失去手动导入能力。
         try:
-            draft, model_calls = _ask_model(grid, interfaces, db, provider)
+            draft, model_calls, truncated = _ask_model(grid, interfaces, db, provider)
+            if truncated:
+                grid["warnings"].append("送入模型的行或列已截断，预览仍保留已读取的内容")
             draft_columns, draft_sheets = _accept_model_structure(grid, draft)
             _merge_model_rows(rows, draft, {item["id"] for item in interfaces})
             model_status = "ok"
@@ -187,7 +193,8 @@ def suggest(
     return {
         "source_hash": grid["source_hash"],
         "template_compatible": _template_compatible(grid),
-        "sheets": grid["sheets"],
+        "sheets": [{key: value for key, value in sheet.items() if key != "all_rows"} for sheet in grid["sheets"]],
+        "priority_choice_required": _priority_choice_required(grid),
         "warnings": grid["warnings"],
         "errors": grid["errors"],
         "interfaces": [{"id": item["id"], "name": item["name"], "method": item["method"], "path": item["path"]} for item in interfaces],
@@ -195,7 +202,7 @@ def suggest(
         "sheet_roles": draft_sheets,
         "suggested_mapping": _suggested_mapping(grid, draft_sheets, draft_columns),
         "rows": rows,
-        "coverage_gaps": _coverage_gaps(db, project_id, rows) if not grid["errors"] else [],
+        "coverage_gaps": _coverage_gaps(db, project_id, rows, interfaces) if not grid["errors"] else [],
         "execution_allowed": False,
         "model_status": model_status,
         "model_error": model_error,
@@ -267,6 +274,7 @@ def _read_sheet(sheet: Any, warnings: list[str], errors: list[dict[str, Any]]) -
     name = sheet.title
     columns: list[dict[str, Any]] = []
     rows: list[dict[str, Any]] = []
+    all_rows: list[dict[str, Any]] = []
     header_row = 1
     # 只读模式下 max_column 可能还没算出来，固定读取上限列，避免把后面的单元格漏掉。
     width = _MAX_COLS
@@ -285,14 +293,19 @@ def _read_sheet(sheet: Any, warnings: list[str], errors: list[dict[str, Any]]) -
                 continue
             text = "" if cell.value is None else str(cell.value).strip()
             values.append(text[:1000])
+        if any(values):
+            all_rows.append({"row": row_number, "cells": values})
         if not seen_header and any(values):
             header_row = row_number
-            columns = [{"index": index, "header": value} for index, value in enumerate(values, start=1)]
+            columns = [
+                {"index": index, "header": value, "retained": value in _RETAINED_HEADERS}
+                for index, value in enumerate(values, start=1)
+            ]
             seen_header = True
             continue
         if seen_header and any(values):
             rows.append({"row": row_number, "cells": values})
-    return {"name": name, "header_row": header_row, "columns": columns, "rows": rows}
+    return {"name": name, "header_row": header_row, "columns": columns, "rows": rows, "all_rows": all_rows}
 
 
 def _apply_rules(grid: dict[str, Any], interfaces: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -311,13 +324,14 @@ def _apply_rules(grid: dict[str, Any], interfaces: list[dict[str, Any]]) -> list
             if any(token in column["header"] for token in ("接口编号", "接口ID", "接口id"))
         ]
         for row in sheet["rows"]:
-            prepared.append(_match_row(sheet["name"], row, index, by_id, name_hits, code_columns))
+            prepared.append(_match_row(sheet["name"], row, index, by_id, name_hits, code_columns, sheet["columns"]))
     return prepared
 
 
 def _match_row(
     worksheet: str, row: dict[str, Any], index: dict[tuple[str, str], list[int]],
     by_id: dict[int, dict[str, Any]], name_hits: dict[str, list[int]], code_columns: list[int],
+    columns: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """为一行生成规则关联。多条命中时保持歧义，不挑第一条。"""
     cells = row["cells"]
@@ -357,6 +371,11 @@ def _match_row(
         "model_confidence": None,
         "draft_steps": [],
         "similar_cases": [],
+        "retained": {
+            column["header"]: cells[column["index"] - 1]
+            for column in columns
+            if column.get("retained") and column["index"] - 1 < len(cells) and cells[column["index"] - 1]
+        },
     }
 
 
@@ -365,16 +384,21 @@ def _brief(item: dict[str, Any]) -> dict[str, Any]:
     return {"id": item["id"], "name": item["name"], "method": item["method"], "path": item["path"]}
 
 
-def _ask_model(grid: dict[str, Any], interfaces: list[dict[str, Any]], db: Session, provider: Any | None) -> tuple[_ModelDraft, int]:
-    """分批调用文本模型。每批都校验 JSON，失败由调用方降级。"""
+def _ask_model(grid: dict[str, Any], interfaces: list[dict[str, Any]], db: Session, provider: Any | None) -> tuple[_ModelDraft, int, bool]:
+    """分批调用文本模型。每批都校验 JSON，失败由调用方降级。
+
+    返回值第三个标记表示送给模型的行是否少于预览行。截断只影响模型，不影响预览。
+    """
     active = provider if provider is not None else ProductionLLMProvider(db)
     catalog = interfaces[:80]
     merged = _ModelDraft()
     calls = 0
     pending = [
-        (sheet["name"], row["row"], [_clip(value) for value in row["cells"]])
+        (sheet["name"], row["row"], [_clip(value) for value in row["cells"][:_MODEL_COLS]])
         for sheet in grid["sheets"] for row in sheet["rows"]
     ]
+    truncated = len(pending) > _MODEL_ROWS or any(len(row["cells"]) > _MODEL_COLS for sheet in grid["sheets"] for row in sheet["rows"])
+    pending = pending[:_MODEL_ROWS]
     sheets_payload = [
         {"name": sheet["name"], "header_row": sheet["header_row"], "columns": sheet["columns"]}
         for sheet in grid["sheets"]
@@ -408,7 +432,7 @@ def _ask_model(grid: dict[str, Any], interfaces: list[dict[str, Any]], db: Sessi
         calls += 1
         if not pending:
             break
-    return merged, calls
+    return merged, calls, truncated
 
 
 def _redact(value: Any) -> Any:
@@ -514,7 +538,9 @@ def _attach_review_hints(db: Session, project_id: int, grid: dict[str, Any], row
         row["similar_cases"] = similar
 
 
-def _coverage_gaps(db: Session, project_id: int, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _coverage_gaps(
+    db: Session, project_id: int, rows: list[dict[str, Any]], interfaces: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """按已精确关联的接口列出已有维度、缺失维度和已关联用例。
 
     缺失维度来自固定枚举，不是模型判断。已关联用例只展示，导入不会修改它们。
@@ -528,6 +554,7 @@ def _coverage_gaps(db: Session, project_id: int, rows: list[dict[str, Any]]) -> 
         .limit(100)
         .all()
     )
+    versions = {item["id"]: item.get("version") for item in interfaces}
     grouped = {api_id: {"present": set(), "linked": []} for api_id in api_ids}
     for item in found:
         bucket = grouped.get(item.api_id)
@@ -543,6 +570,8 @@ def _coverage_gaps(db: Session, project_id: int, rows: list[dict[str, Any]]) -> 
             "present_case_types": sorted(bucket["present"]),
             "missing_case_types": sorted(CASE_TYPES - bucket["present"]),
             "linked_cases": bucket["linked"],
+            "interface_version": versions.get(api_id),
+            "review_cases": bucket["linked"],
         }
         for api_id, bucket in grouped.items()
     ]
@@ -595,7 +624,34 @@ def _suggested_mapping(
         key = field_to_key.get(column["field"])
         if key and mapping[key] is None:
             mapping[key] = column["column_index"]
+    # 两列优先级同时存在时清空模型选择，交给用户决定采用哪一列。
+    if _priority_choice_required({"sheets": [sheet]}):
+        selected = _header_at(sheet, mapping["priority_column"])
+        if "建议优先级" in selected or selected == "":
+            mapping["priority_column"] = None
+    elif mapping["priority_column"] is None:
+        found = next((column["index"] for column in sheet["columns"] if column["header"] == "优先级"), None)
+        if found is not None:
+            mapping["priority_column"] = found
     return mapping
+
+
+def _header_at(sheet: dict[str, Any], index: int | None) -> str:
+    """按列号取表头。列号为空或不存在时返回空字符串。"""
+    if index is None:
+        return ""
+    for column in sheet["columns"]:
+        if column["index"] == index:
+            return column["header"]
+    return ""
+
+
+def _priority_choice_required(grid: dict[str, Any]) -> bool:
+    """第一张表同时有原始优先级和建议优先级时，不自动决定采用哪一列。"""
+    if not grid["sheets"]:
+        return False
+    headers = {column["header"] for column in grid["sheets"][0]["columns"]}
+    return "优先级" in headers and "建议优先级" in headers
 
 
 def _mapped_preview(
@@ -618,7 +674,8 @@ def _mapped_preview(
         return {"source_hash": grid["source_hash"], "items": [], "errors": errors, "total_rows": 0}
     items = []
     seen: dict[str, int] = {}
-    candidate_names = {_cell(row["cells"], adoption.name_column) for row in sheet["rows"] if row["row"] > adoption.header_row}
+    source_rows = sheet.get("all_rows") or sheet["rows"]
+    candidate_names = {_cell(row["cells"], adoption.name_column) for row in source_rows if row["row"] > adoption.header_row}
     candidate_names.discard("")
     existing_names: set[str] = set()
     if candidate_names:
@@ -626,7 +683,7 @@ def _mapped_preview(
         existing_names = {name for (name,) in db.query(TestCase.name).filter(
             TestCase.project_id == project_id, TestCase.name.in_(candidate_names), TestCase.deleted_at.is_(None),
         ).all()}
-    for row in sheet["rows"]:
+    for row in source_rows:
         if row["row"] <= adoption.header_row:
             continue
         cells = row["cells"]

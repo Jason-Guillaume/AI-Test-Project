@@ -324,10 +324,49 @@ def test_review_hints_do_not_change_existing_cases():
         _HintSession([SimpleNamespace(id=4, name="新增客户")]), 3, grid, rows,
     )
     gaps = suggest._coverage_gaps(
-        _HintSession([SimpleNamespace(api_id=9, case_type="FUNCTIONAL", id=4, name="新增客户")]), 3, rows,
+        _HintSession([SimpleNamespace(api_id=9, case_type="FUNCTIONAL", id=4, name="新增客户")]),
+        3, rows, [{"id": 9, "version": 3}],
     )
 
     assert rows[0]["similar_cases"] == [{"id": 4, "name": "新增客户"}]
     assert gaps[0]["present_case_types"] == ["FUNCTIONAL"]
     assert "BOUNDARY" in gaps[0]["missing_case_types"]
     assert gaps[0]["linked_cases"] == [{"id": 4, "name": "新增客户", "case_type": "FUNCTIONAL"}]
+    assert gaps[0]["interface_version"] == 3
+    assert gaps[0]["review_cases"] == gaps[0]["linked_cases"]
+
+
+def test_priority_and_record_columns_stay_out_of_case_status(monkeypatch):
+    content = _xlsx(
+        ["用例名称", "优先级", "建议优先级", "执行状态", "实际结果"],
+        [["新增客户", "P0", "P3", "失败", "返回 400"]],
+    )
+    provider = FakeLLMProvider()
+    provider.set_response("excel_case_import_suggest", {
+        "columns": [{"column_index": 3, "field": "priority", "reason": "采用建议"}],
+        "rows": [],
+    })
+    _allow(monkeypatch, _interfaces())
+
+    result = suggest.suggest(
+        content, project_id=3, direction="API", scope_node_id=None,
+        db=_Session(), actor=_actor(), provider=provider,
+    )
+
+    assert result["priority_choice_required"] is True
+    assert result["suggested_mapping"]["priority_column"] is None
+    assert result["rows"][0]["retained"] == {"建议优先级": "P3", "执行状态": "失败", "实际结果": "返回 400"}
+    monkeypatch.setattr(importer.ScopeService, "attach_new_case", lambda *_args, **_kwargs: None)
+    session = _Session()
+    importer.SERVICE.confirm(
+        content, project_id=3, direction="API", scope_node_id=None,
+        request_key=str(uuid4()), expected_source_hash=hashlib.sha256(content).hexdigest(),
+        db=session, actor=_actor(),
+        adoption_json=json.dumps({
+            "mode": "mapping", "worksheet": "用例", "header_row": 1,
+            "name_column": 1, "priority_column": 2, "rows": [],
+        }),
+    )
+    cases = [row for row in session.pending if isinstance(row, CaseRow)]
+    assert cases[0].priority == "P0"
+    assert cases[0].status == "DRAFT"
