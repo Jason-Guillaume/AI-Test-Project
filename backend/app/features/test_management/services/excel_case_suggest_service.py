@@ -9,13 +9,15 @@
 已知限制：
 - 每个工作表最多读取 16 列、200 行；超出部分只记警告，不把单元格正文送进模型。
 - 未映射列保留在建议响应里，确认入库时不写入用例字段。
-- 不创建或覆盖接口，不生成步骤、预期结果，也不执行请求。
+- 步骤和预期结果只在勾选后写成不可执行草稿，不创建或覆盖接口，也不发出真实请求。
+- 相似用例、覆盖缺口和已关联用例只作提示，不自动合并、删除或覆盖。
 - 置信度只供展示，不作为自动通过条件。
 """
 
 from __future__ import annotations
 
 import re
+from difflib import SequenceMatcher
 from typing import Any
 
 from zipfile import BadZipFile
@@ -69,8 +71,15 @@ class _ModelSheet(BaseModel):
     header_row: int = 1
 
 
+class _ModelStep(BaseModel):
+    """模型给出的步骤草稿。只保留名称和预期文本。"""
+
+    name: str = ""
+    expected: str = ""
+
+
 class _ModelRow(BaseModel):
-    """模型给出的单行维度和接口建议。"""
+    """模型给出的单行维度、接口和步骤草稿。"""
 
     worksheet: str
     row: int
@@ -78,6 +87,15 @@ class _ModelRow(BaseModel):
     api_id: int | None = None
     reason: str = ""
     confidence: float = 0
+    precondition: str = ""
+    steps: list[_ModelStep] = Field(default_factory=list)
+
+
+class _DraftStep(BaseModel):
+    """用户确认后允许落库的步骤草稿。"""
+
+    name: str
+    expected: str = ""
 
 
 class _ModelDraft(BaseModel):
@@ -98,6 +116,8 @@ class _RowChoice(BaseModel):
     case_type: str | None = None
     accept_api: bool = False
     api_id: int | None = None
+    accept_steps: bool = False
+    steps: list[_DraftStep] = Field(default_factory=list)
 
 
 class _Adoption(BaseModel):
@@ -163,6 +183,7 @@ def suggest(
         except (LLMError, ValidationError, ValueError):
             model_status = "unavailable"
             model_error = "模型建议不可用，可按列手动映射后导入"
+    _attach_review_hints(db, project_id, grid, rows)
     return {
         "source_hash": grid["source_hash"],
         "template_compatible": _template_compatible(grid),
@@ -174,6 +195,8 @@ def suggest(
         "sheet_roles": draft_sheets,
         "suggested_mapping": _suggested_mapping(grid, draft_sheets, draft_columns),
         "rows": rows,
+        "coverage_gaps": _coverage_gaps(db, project_id, rows) if not grid["errors"] else [],
+        "execution_allowed": False,
         "model_status": model_status,
         "model_error": model_error,
         "model_calls": model_calls,
@@ -332,6 +355,8 @@ def _match_row(
         "model_api_id": None,
         "model_reason": "",
         "model_confidence": None,
+        "draft_steps": [],
+        "similar_cases": [],
     }
 
 
@@ -368,6 +393,7 @@ def _ask_model(grid: dict[str, Any], interfaces: list[dict[str, Any]], db: Sessi
             "返回 JSON。列 field 只能是 name、priority、case_type、description、api_code、http_method、path、api_name、test_point、unmapped。"
             "case_type 只能是 FUNCTIONAL、BUSINESS、NEGATIVE、BOUNDARY、PERMISSION、SECURITY、EXCEPTION。"
             "api_id 必须来自接口清单；无法判断时留空。不要编造接口。"
+            "steps 只写步骤名称和预期结果文本，最多 5 条；不要输出请求体、密钥、令牌或可执行调用。"
         )
         raw = active.generate_structured(
             system, json.dumps(_redact(payload), ensure_ascii=False),
@@ -438,6 +464,107 @@ def _merge_model_rows(rows: list[dict[str, Any]], draft: _ModelDraft, allowed_id
         # 歧义行不允许模型替用户选定接口；未匹配才保留建议编号供勾选。
         if target["rule_status"] == "unmatched" and item.api_id in allowed_ids:
             target["model_api_id"] = item.api_id
+        target["draft_steps"] = _clean_steps(item.precondition, item.steps)
+
+
+def _clean_steps(precondition: str, steps: list[Any]) -> list[dict[str, str]]:
+    """把步骤收成名称和预期文本。空名称丢弃，最多保留 5 条。"""
+    cleaned: list[dict[str, str]] = []
+    precondition_text = (precondition or "").strip()
+    if precondition_text:
+        cleaned.append({"name": "前置条件", "expected": precondition_text[:300]})
+    for item in steps:
+        name = str(getattr(item, "name", "") or "").strip()[:80]
+        expected = str(getattr(item, "expected", "") or "").strip()[:300]
+        if not name:
+            continue
+        cleaned.append({"name": name, "expected": expected})
+        if len(cleaned) >= 5:
+            break
+    return cleaned
+
+
+def _attach_review_hints(db: Session, project_id: int, grid: dict[str, Any], rows: list[dict[str, Any]]) -> None:
+    """给每行标出可能重复的已有用例。只提示，不改变能否导入。"""
+    labels: dict[tuple[str, int], str] = {}
+    for sheet in grid["sheets"]:
+        name_index = next((column["index"] - 1 for column in sheet["columns"] if "名称" in column["header"]), 0)
+        for row in sheet["rows"]:
+            cells = row["cells"]
+            label = cells[name_index].strip() if name_index < len(cells) else ""
+            if not label and cells:
+                label = cells[0].strip()
+            labels[(sheet["name"], row["row"])] = label
+    existing = (
+        db.query(TestCase.id, TestCase.name)
+        .filter(TestCase.project_id == project_id, TestCase.deleted_at.is_(None))
+        .limit(300)
+        .all()
+    )
+    known = [(row.id, row.name or "", _compact(row.name or "")) for row in existing]
+    for row in rows:
+        compact = _compact(labels.get((row["worksheet"], row["row"]), ""))
+        similar = []
+        if compact:
+            for case_id, name, other in known:
+                if other and (other == compact or SequenceMatcher(None, compact, other).ratio() >= 0.85):
+                    similar.append({"id": case_id, "name": name})
+                if len(similar) == 3:
+                    break
+        row["similar_cases"] = similar
+
+
+def _coverage_gaps(db: Session, project_id: int, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按已精确关联的接口列出已有维度、缺失维度和已关联用例。
+
+    缺失维度来自固定枚举，不是模型判断。已关联用例只展示，导入不会修改它们。
+    """
+    api_ids = list(dict.fromkeys(row["rule_api_id"] for row in rows if row.get("rule_api_id")))
+    if not api_ids:
+        return []
+    found = (
+        db.query(TestCase.api_id, TestCase.case_type, TestCase.id, TestCase.name)
+        .filter(TestCase.project_id == project_id, TestCase.api_id.in_(api_ids), TestCase.deleted_at.is_(None))
+        .limit(100)
+        .all()
+    )
+    grouped = {api_id: {"present": set(), "linked": []} for api_id in api_ids}
+    for item in found:
+        bucket = grouped.get(item.api_id)
+        if bucket is None:
+            continue
+        if item.case_type:
+            bucket["present"].add(item.case_type)
+        if len(bucket["linked"]) < 5:
+            bucket["linked"].append({"id": item.id, "name": item.name, "case_type": item.case_type})
+    return [
+        {
+            "api_id": api_id,
+            "present_case_types": sorted(bucket["present"]),
+            "missing_case_types": sorted(CASE_TYPES - bucket["present"]),
+            "linked_cases": bucket["linked"],
+        }
+        for api_id, bucket in grouped.items()
+    ]
+
+
+def _compact(value: str) -> str:
+    """去掉空白和标点后再比较标题，避免同一用例因空格被当成不同名称。"""
+    return re.sub(r"[\W_]+", "", value.lower())
+
+
+def write_draft_steps(db: Session, case_id: int, steps: list[dict[str, str]]) -> None:
+    """把已确认的步骤写成 SETUP 草稿。不写断言，也不带请求目标。"""
+    from app.features.test_management.models.test_step import TestStep
+
+    for index, step in enumerate(steps):
+        db.add(TestStep(
+            test_case_id=case_id, name=step["name"][:200], step_type="SETUP", sort=index,
+            config_json={
+                "draft": True, "executable": False, "expected": step.get("expected") or "",
+                "note": "导入草稿，未作为可执行请求",
+            },
+        ))
 
 
 def _template_compatible(grid: dict[str, Any]) -> bool:
@@ -585,6 +712,15 @@ def _apply_choices(
             else:
                 current["api_id"] = choice.api_id
                 record["api_id"] = choice.api_id
+        if choice and choice.accept_steps:
+            # 只接收短文本草稿。请求体、地址和密钥即使出现在步骤里也不进入可执行配置。
+            cleaned = _clean_steps("", choice.steps)
+            if not cleaned:
+                errors.append({"worksheet": row["worksheet"], "row": row["row"], "column": "步骤", "message": "采纳步骤时至少需要一条步骤名称"})
+                current["valid"] = False
+            else:
+                current["steps"] = cleaned
+                record["steps"] = len(cleaned)
         items.append(current)
         if len(record) > 2:
             applied.append(record)

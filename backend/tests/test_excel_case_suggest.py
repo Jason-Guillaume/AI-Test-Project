@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from openpyxl import Workbook
 
 from app.features.test_management.models.test_case import TestCase as CaseRow
+from app.features.test_management.models.test_step import TestStep as StepRow
 from app.features.test_management.services import excel_case_import_service as importer
 from app.features.test_management.services import excel_case_suggest_service as suggest
 from app.llm.contracts import LLMError
@@ -129,6 +130,8 @@ def test_exact_path_wins_over_unknown_model_api(monkeypatch):
     ]
     assert result["model_status"] == "ok"
     assert result["model_calls"] == 1
+    assert result["execution_allowed"] is False
+    assert "BOUNDARY" in result["coverage_gaps"][0]["missing_case_types"]
 
 
 def test_ambiguous_match_is_not_forced_by_model(monkeypatch):
@@ -265,3 +268,66 @@ def test_mapping_confirm_imports_custom_headers(monkeypatch):
     assert cases[0].description == "保留原文"
     assert cases[0].api_id is None
     assert session.committed
+
+
+def test_confirm_writes_step_draft_without_request_target(monkeypatch):
+    content = _xlsx(list(importer.HEADERS), [["新增客户", "P1", "FUNCTIONAL", "说明"]])
+    _allow(monkeypatch, _interfaces())
+    monkeypatch.setattr(importer.ScopeService, "attach_new_case", lambda *_args, **_kwargs: None)
+    session = _Session()
+    adoption = json.dumps({
+        "mode": "template",
+        "rows": [{
+            "worksheet": "用例", "row": 2, "accept_steps": True,
+            "steps": [{"name": "提交空名称", "expected": "返回校验错误"}],
+        }],
+    })
+
+    importer.SERVICE.confirm(
+        content, project_id=3, direction="API", scope_node_id=None,
+        request_key=str(uuid4()), expected_source_hash=hashlib.sha256(content).hexdigest(),
+        db=session, actor=_actor(), adoption_json=adoption,
+    )
+
+    steps = [row for row in session.pending if isinstance(row, StepRow)]
+    assert steps[0].step_type == "SETUP"
+    assert steps[0].target_type is None
+    assert steps[0].config_json["executable"] is False
+    assert steps[0].config_json["expected"] == "返回校验错误"
+
+
+def test_review_hints_do_not_change_existing_cases():
+    grid = {"sheets": [{"name": "用例", "columns": [{"index": 1, "header": "用例名称"}], "rows": [{"row": 2, "cells": ["新增客户"]}]}]}
+    rows = [{"worksheet": "用例", "row": 2, "rule_api_id": 9}]
+
+    class _Chain:
+        def __init__(self, found):
+            self.found = found
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def limit(self, *_args, **_kwargs):
+            return self
+
+        def all(self):
+            return self.found
+
+    class _HintSession:
+        def __init__(self, found):
+            self.found = found
+
+        def query(self, *_args, **_kwargs):
+            return _Chain(self.found)
+
+    suggest._attach_review_hints(
+        _HintSession([SimpleNamespace(id=4, name="新增客户")]), 3, grid, rows,
+    )
+    gaps = suggest._coverage_gaps(
+        _HintSession([SimpleNamespace(api_id=9, case_type="FUNCTIONAL", id=4, name="新增客户")]), 3, rows,
+    )
+
+    assert rows[0]["similar_cases"] == [{"id": 4, "name": "新增客户"}]
+    assert gaps[0]["present_case_types"] == ["FUNCTIONAL"]
+    assert "BOUNDARY" in gaps[0]["missing_case_types"]
+    assert gaps[0]["linked_cases"] == [{"id": 4, "name": "新增客户", "case_type": "FUNCTIONAL"}]

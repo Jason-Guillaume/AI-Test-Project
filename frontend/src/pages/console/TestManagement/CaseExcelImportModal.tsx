@@ -36,7 +36,8 @@ export function CaseExcelImportModal({
   const [priorityColumn, setPriorityColumn] = useState<number | null>(null);
   const [caseTypeColumn, setCaseTypeColumn] = useState<number | null>(null);
   const [descriptionColumn, setDescriptionColumn] = useState<number | null>(null);
-  const [accepted, setAccepted] = useState<Record<string, { caseType: boolean; api: boolean }>>({});
+  const [accepted, setAccepted] = useState<Record<string, { caseType: boolean; api: boolean; steps: boolean }>>({});
+  const [sheetName, setSheetName] = useState<string | null>(null);
   const [chosenApi, setChosenApi] = useState<Record<string, number>>({});
   const lastRejectedFile = useRef<{ reason: string; at: number } | null>(null);
 
@@ -112,6 +113,7 @@ export function CaseExcelImportModal({
       setAccepted({});
       setChosenApi({});
       const mapping = result.suggested_mapping;
+      setSheetName(mapping?.worksheet ?? result.sheets[0]?.name ?? null);
       setNameColumn(mapping?.name_column ?? null);
       setPriorityColumn(mapping?.priority_column ?? null);
       setCaseTypeColumn(mapping?.case_type_column ?? null);
@@ -133,7 +135,7 @@ export function CaseExcelImportModal({
     const acceptedRows = Object.entries(accepted).flatMap(([key, value]) => {
       const [worksheet, rowText] = key.split('::');
       const source = suggestion?.rows.find((item) => item.worksheet === worksheet && item.row === Number(rowText));
-      if (!source || (!value.caseType && !value.api)) return [];
+      if (!source || (!value.caseType && !value.api && !value.steps)) return [];
       const apiId = source.rule_status === 'recommended'
         ? source.rule_api_id
         : source.rule_status === 'ambiguous'
@@ -146,14 +148,16 @@ export function CaseExcelImportModal({
         case_type: source.model_case_type,
         accept_api: value.api && apiId != null,
         api_id: apiId,
+        accept_steps: value.steps && source.draft_steps.length > 0,
+        steps: source.draft_steps,
       }];
     });
     let adoption: TestCaseImportAdoption | undefined;
     if (mappingReady && suggestion) {
       adoption = {
         mode: 'mapping',
-        worksheet: suggestion.sheets[0]?.name,
-        header_row: suggestion.sheets[0]?.header_row,
+        worksheet: sheetName ?? suggestion.sheets[0]?.name,
+        header_row: suggestion.sheets.find((item) => item.name === sheetName)?.header_row ?? suggestion.sheets[0]?.header_row,
         name_column: nameColumn,
         priority_column: priorityColumn,
         case_type_column: caseTypeColumn,
@@ -276,42 +280,62 @@ export function CaseExcelImportModal({
             <Alert
               type={suggestion.model_status === 'ok' ? 'info' : 'warning'}
               showIcon
-              message={suggestion.model_status === 'unavailable' ? suggestion.model_error : `建议已生成，模型调用 ${suggestion.model_calls} 次。勾选后才会写入维度或接口。`}
+              message={suggestion.model_status === 'unavailable' ? suggestion.model_error : `建议已生成，模型调用 ${suggestion.model_calls} 次。勾选后才写入维度、接口或步骤草稿；导入不会执行接口。`}
             />
             {suggestion.warnings.map((warning) => <Alert key={warning} type="warning" showIcon message={warning} />)}
-            {!suggestion.template_compatible && suggestion.sheets[0] && (
+            {suggestion.coverage_gaps.map((gap) => (
+              <Alert
+                key={gap.api_id}
+                type="info"
+                showIcon
+                message={`接口 #${gap.api_id} 已有维度：${gap.present_case_types.join('、') || '无'}；尚未覆盖：${gap.missing_case_types.join('、') || '无'}`}
+                description={gap.linked_cases.length ? `已关联用例不会被覆盖：${gap.linked_cases.map((item) => item.name).join('、')}` : '该接口还没有关联用例。'}
+              />
+            ))}
+            {!suggestion.template_compatible && suggestion.sheets.length > 0 && (
               <Space wrap>
                 <Select
-                  placeholder="用例名称列"
+                  placeholder="工作表"
                   style={{ width: 160 }}
-                  value={nameColumn ?? undefined}
-                  options={suggestion.sheets[0].columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
-                  onChange={setNameColumn}
+                  value={sheetName ?? undefined}
+                  options={suggestion.sheets.map((item) => ({ value: item.name, label: item.name }))}
+                  onChange={setSheetName}
                 />
-                <Select
-                  allowClear
-                  placeholder="优先级列"
-                  style={{ width: 140 }}
-                  value={priorityColumn ?? undefined}
-                  options={suggestion.sheets[0].columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
-                  onChange={(value) => setPriorityColumn(value ?? null)}
-                />
-                <Select
-                  allowClear
-                  placeholder="测试维度列"
-                  style={{ width: 140 }}
-                  value={caseTypeColumn ?? undefined}
-                  options={suggestion.sheets[0].columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
-                  onChange={(value) => setCaseTypeColumn(value ?? null)}
-                />
-                <Select
-                  allowClear
-                  placeholder="描述列"
-                  style={{ width: 140 }}
-                  value={descriptionColumn ?? undefined}
-                  options={suggestion.sheets[0].columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
-                  onChange={(value) => setDescriptionColumn(value ?? null)}
-                />
+                {(suggestion.sheets.find((item) => item.name === sheetName) ?? suggestion.sheets[0]).columns.length > 0 && (
+                  <>
+                    <Select
+                      placeholder="用例名称列"
+                      style={{ width: 160 }}
+                      value={nameColumn ?? undefined}
+                      options={(suggestion.sheets.find((item) => item.name === sheetName) ?? suggestion.sheets[0]).columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
+                      onChange={setNameColumn}
+                    />
+                    <Select
+                      allowClear
+                      placeholder="优先级列"
+                      style={{ width: 140 }}
+                      value={priorityColumn ?? undefined}
+                      options={(suggestion.sheets.find((item) => item.name === sheetName) ?? suggestion.sheets[0]).columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
+                      onChange={(value) => setPriorityColumn(value ?? null)}
+                    />
+                    <Select
+                      allowClear
+                      placeholder="测试维度列"
+                      style={{ width: 140 }}
+                      value={caseTypeColumn ?? undefined}
+                      options={(suggestion.sheets.find((item) => item.name === sheetName) ?? suggestion.sheets[0]).columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
+                      onChange={(value) => setCaseTypeColumn(value ?? null)}
+                    />
+                    <Select
+                      allowClear
+                      placeholder="描述列"
+                      style={{ width: 140 }}
+                      value={descriptionColumn ?? undefined}
+                      options={(suggestion.sheets.find((item) => item.name === sheetName) ?? suggestion.sheets[0]).columns.map((column) => ({ value: column.index, label: column.header || `第${column.index}列` }))}
+                      onChange={(value) => setDescriptionColumn(value ?? null)}
+                    />
+                  </>
+                )}
               </Space>
             )}
             <Table
@@ -324,12 +348,14 @@ export function CaseExcelImportModal({
                 { title: '规则关联', dataIndex: 'rule_status', width: 110, render: (status: string) => status === 'recommended' ? '推荐' : status === 'ambiguous' ? '待选择' : '未匹配' },
                 { title: '建议维度', dataIndex: 'model_case_type', width: 120, render: (value: string | null) => value ?? '—' },
                 { title: '建议接口', width: 90, render: (_value, row) => row.rule_api_id ?? row.model_api_id ?? '—' },
+                { title: '草稿', width: 160, render: (_value, row) => row.draft_steps.map((step) => step.name).join('、') || '—' },
+                { title: '相似用例', width: 140, render: (_value, row) => row.similar_cases.map((item) => item.name).join('、') || '—' },
                 {
                   title: '采纳',
                   width: 180,
                   render: (_value, row) => {
                     const key = `${row.worksheet}::${row.row}`;
-                    const current = accepted[key] ?? { caseType: false, api: false };
+                    const current = accepted[key] ?? { caseType: false, api: false, steps: false };
                     const apiId = row.rule_status === 'recommended'
                       ? row.rule_api_id
                       : row.rule_status === 'ambiguous'
@@ -355,6 +381,11 @@ export function CaseExcelImportModal({
                           disabled={apiId == null}
                           onChange={(event) => setAccepted((previous) => ({ ...previous, [key]: { ...current, api: event.target.checked } }))}
                         >接口</Checkbox>
+                        <Checkbox
+                          checked={current.steps}
+                          disabled={row.draft_steps.length === 0}
+                          onChange={(event) => setAccepted((previous) => ({ ...previous, [key]: { ...current, steps: event.target.checked } }))}
+                        >步骤草稿</Checkbox>
                       </Space>
                     );
                   },

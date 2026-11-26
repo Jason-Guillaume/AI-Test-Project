@@ -163,7 +163,7 @@ class ExcelCaseImportService:
             return self._existing_result(previous, project_id, direction, scope_node_id, source_hash, actor.id)
 
         # 无采纳载荷时仍只认固定四列表，避免模型建议改动原导入语义。
-        from app.features.test_management.services.excel_case_suggest_service import resolve_confirmed_rows
+        from app.features.test_management.services.excel_case_suggest_service import resolve_confirmed_rows, write_draft_steps
 
         parsed, applied = resolve_confirmed_rows(
             self, content, project_id=project_id, direction=direction, scope_node_id=scope_node_id,
@@ -191,6 +191,9 @@ class ExcelCaseImportService:
                 )
                 db.add(case)
                 db.flush()
+                if row.get("steps"):
+                    # 与用例同一事务写入。步骤没有请求目标，后续执行器不能把它当成真实调用。
+                    write_draft_steps(db, case.id, row["steps"])
                 ScopeService().attach_new_case(db, case)
                 if scope_node_id is not None:
                     db.query(TestCaseScope).filter(TestCaseScope.test_case_id == case.id).delete(synchronize_session=False)

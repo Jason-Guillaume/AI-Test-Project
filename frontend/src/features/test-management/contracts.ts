@@ -77,6 +77,8 @@ export interface TestCaseImportSuggestionRow {
   model_api_id: number | null;
   model_reason: string;
   model_confidence: number | null;
+  draft_steps: Array<{ name: string; expected: string }>;
+  similar_cases: Array<{ id: number; name: string }>;
 }
 
 export interface TestCaseImportSuggestion {
@@ -98,6 +100,13 @@ export interface TestCaseImportSuggestion {
   model_status: 'ok' | 'skipped' | 'unavailable';
   model_error: string;
   model_calls: number;
+  execution_allowed: boolean;
+  coverage_gaps: Array<{
+    api_id: number;
+    present_case_types: string[];
+    missing_case_types: string[];
+    linked_cases: Array<{ id: number; name: string; case_type: string | null }>;
+  }>;
 }
 
 export interface TestCaseImportAdoption {
@@ -116,6 +125,8 @@ export interface TestCaseImportAdoption {
     case_type?: string | null;
     accept_api?: boolean;
     api_id?: number | null;
+    accept_steps?: boolean;
+    steps?: Array<{ name: string; expected: string }>;
   }>;
 }
 
