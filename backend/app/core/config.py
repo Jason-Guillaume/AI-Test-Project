@@ -225,6 +225,9 @@ class Settings(BaseSettings):
     # 过期分享自动归档定时任务配置（默认每天扫描一次）。
     DEFECT_SHARE_ARCHIVE_ENABLED: bool = True
     DEFECT_SHARE_ARCHIVE_INTERVAL_SECONDS: int = Field(default=86400, ge=60, le=604800)
+    # 缺陷积压提醒订阅定时任务配置（默认每天汇总一次）。
+    DEFECT_REMINDER_ENABLED: bool = True
+    DEFECT_REMINDER_INTERVAL_SECONDS: int = Field(default=86400, ge=60, le=604800)
 
     # 大小写敏感：环境变量名必须与字段名完全一致，避免 DATABASE_URL / database_url 双写歧义；
     # extra="ignore" 让 .env 里的历史遗留变量不报错，便于从旧项目平滑迁移。

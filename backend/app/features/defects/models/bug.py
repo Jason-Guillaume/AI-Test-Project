@@ -12,7 +12,7 @@
   前端展示时按 username is None 回退到「未知用户」
 """
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.sql import func, text
 
 from app.core.database.soft_delete import SoftDeleteBase
@@ -26,6 +26,8 @@ class Bug(SoftDeleteBase):
         Index("ix_bug_project_status_severity", "project_id", "status", "severity"),
         Index("ix_bug_project_category", "project_id", "category"),
         Index("ix_bug_project_created", "project_id", "created_at"),
+        Index("ix_bug_project_updated", "project_id", "updated_at"),
+        Index("uq_bug_project_request_key", "project_id", "request_key", unique=True),
         {"comment": "测试缺陷及其处理状态"},
     )
     # (project_id, status, severity) 复合索引服务于列表页按状态与严重度过滤：
@@ -73,10 +75,37 @@ class Bug(SoftDeleteBase):
     )
     assignee_id = Column(
         Integer, ForeignKey("user.id", ondelete="SET NULL"), nullable=True,
-        index=True, comment="处理人ID",
+        index=True, comment="历史处理人ID；字段已停用，仅保留存量数据用于溯源",
     )
     # reporter_id / assignee_id 用 SET NULL：用户被删除时保留缺陷行，
     # 前端渲染按 username is None 回退到「未知用户」，不让缺陷数据因人员变动丢失。
+    # assignee_id 不再参与展示、权限或队列计算，新写入一律为空。
+    priority = Column(
+        Integer, nullable=False, default=2, server_default=text("2"),
+        comment="处理优先级 1-4，1 低 2 中 3 高 4 紧急",
+    )
+    affected_version = Column(String(100), nullable=True, comment="影响版本")
+    fix_version = Column(String(200), nullable=True, comment="登记可回归时的版本/构建/环境")
+    record_version = Column(
+        Integer, nullable=False, default=0, server_default=text("0"),
+        comment="记录版本，乐观并发控制",
+    )
+    is_draft = Column(
+        Boolean, nullable=False, default=False, server_default=text("false"),
+        comment="草稿标记，提交后进入待确认队列",
+    )
+    archived_at = Column(DateTime, nullable=True, comment="归档时间")
+    archived_by = Column(
+        Integer, ForeignKey("user.id", name="fk_bug_archived_by_user", ondelete="SET NULL"),
+        nullable=True, comment="归档操作人",
+    )
+    archive_reason = Column(String(500), nullable=True, comment="归档原因")
+    duplicate_of_bug_id = Column(
+        Integer, ForeignKey("bug.id", name="fk_bug_duplicate_of_bug", ondelete="SET NULL"),
+        nullable=True, comment="判重指向的主单",
+    )
+    request_key = Column(String(100), nullable=True, comment="创建幂等请求键")
+    request_digest = Column(String(64), nullable=True, comment="创建请求内容摘要")
     created_at = Column(
         DateTime, nullable=False, server_default=func.now(), comment="创建时间",
     )

@@ -1,10 +1,11 @@
 // 批量创建缺陷弹窗组件。
-// 提供结构化可编辑表格录入全部缺陷字段（标题、前后端划分、严重度、状态、描述、复现步骤、环境、处理人），
+// 提供结构化可编辑表格录入缺陷事实字段（标题、前后端划分、严重度、描述、复现步骤、环境、预期/实际结果），
 // 同时支持顶部统一预设默认值、复制行，以及粘贴多行文本一键拆分为结构化表格行后再微调。
+// 新单统一进入待确认队列，不再选择状态与处理人。
 // 提交走 POST /bugs/batch 原子事务接口，任意一行出错整批不入库并精确高亮出错行号与原因。
 
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   App,
@@ -37,12 +38,9 @@ import type {
   BugBatchRowError,
   BugCategory,
   BugSeverity,
-  BugStatus,
 } from '@/features/defects/contracts';
-import { projectsApi } from '@/features/projects/api/projects';
 import { extractErrorBody, getErrorMessage } from '@/shared/api/client';
-import { collectPages } from '@/shared/api/pagination';
-import { CATEGORY_OPTIONS, SEVERITY_OPTIONS, STATUS_OPTIONS } from './constants';
+import { CATEGORY_OPTIONS, SEVERITY_OPTIONS } from './constants';
 
 interface BatchCreateBugsModalProps {
   initialProjectId?: number;
@@ -55,9 +53,7 @@ interface BatchCreateBugsModalProps {
 /**
  * 批量创建缺陷弹窗（挂载即全新状态，关闭即销毁）。
  *
- * 会发请求：
- *   - useQuery ['project', selectedProjectId, 'members'] 拉当前选定项目的成员列表（供处理人选择）；
- *   - useMutation bugsApi.createBatch 整批原子提交；成功后 invalidate ['bugs']。
+ * 会发请求：useMutation bugsApi.createBatch 整批原子提交；成功后 invalidate ['bugs']。
  * 失败呈现：保留全部当前编辑行，按行号展示校验提示，不丢失用户输入。
  */
 export function BatchCreateBugsModal({
@@ -81,18 +77,14 @@ export function BatchCreateBugsModal({
   const [defaults, setDefaults] = useState<BatchDefectDefaults>({
     category: initialCategory,
     severity: 2,
-    status: '待确认',
     environment: '',
-    assignee_id: null,
   });
   const [rows, setRows] = useState<BatchDefectDraftRow[]>(() => [
     createDraftRow(
       {
         category: initialCategory,
         severity: 2,
-        status: '待确认',
         environment: '',
-        assignee_id: null,
       },
       'batch-bug-1',
     ),
@@ -101,28 +93,6 @@ export function BatchCreateBugsModal({
   const [pastePanelKeys, setPastePanelKeys] = useState<string[]>([]);
   const [rowErrors, setRowErrors] = useState<BugBatchRowError[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // 拉取目标项目的成员列表，用于「默认处理人」与逐行「处理人」下拉。
-  const membersQuery = useQuery({
-    queryKey: ['project', selectedProjectId, 'members'],
-    queryFn: () =>
-      collectPages((page) =>
-        projectsApi.listMembers(selectedProjectId!, { page, page_size: 200 }),
-      ),
-    enabled: selectedProjectId != null,
-  });
-
-  const memberOptions = useMemo(
-    () =>
-      (membersQuery.data?.items ?? []).map((member) => {
-        const item = member as { user_id: number; username?: string };
-        return {
-          label: item.username ?? `用户 ${item.user_id}`,
-          value: item.user_id,
-        };
-      }),
-    [membersQuery.data],
-  );
 
   // 批量创建：成功刷新缺陷列表；失败保留表单并高亮服务端返回的行号错误。
   const batchMutation = useMutation({
@@ -142,11 +112,9 @@ export function BatchCreateBugsModal({
     },
   });
 
-  /** 切换目标项目时清空处理人绑定，防止把旧项目成员带入新项目校验失败。 */
+  /** 切换目标项目时清除历史行级错误。 */
   const handleProjectChange = (nextProjectId: number) => {
     setSelectedProjectId(nextProjectId);
-    setDefaults((prev) => ({ ...prev, assignee_id: null }));
-    setRows((prev) => prev.map((row) => ({ ...row, assignee_id: null })));
     setRowErrors([]);
     setSubmitError(null);
   };
@@ -237,7 +205,7 @@ export function BatchCreateBugsModal({
     setRowErrors([]);
     setSubmitError(null);
     message.success(
-      mode === 'overwrite' ? '已将预设默认值应用到全部行' : '已为未填写归属/环境/处理人的行补齐默认值',
+      mode === 'overwrite' ? '已将预设默认值应用到全部行' : '已为未填写归属/环境的行补齐默认值',
     );
   };
 
@@ -293,13 +261,14 @@ export function BatchCreateBugsModal({
       },
     },
     {
-      title: '前后端 *',
+      title: '前后端',
       key: 'category',
       width: 120,
       render: (_value, row, index) => (
         <Select<BugCategory>
           aria-label={`第 ${index + 1} 行前后端划分`}
-          placeholder="必选"
+          placeholder="待确认"
+          allowClear
           options={CATEGORY_OPTIONS}
           value={row.category}
           status={hasFieldError(index + 1, 'category') ? 'error' : undefined}
@@ -335,20 +304,6 @@ export function BatchCreateBugsModal({
           options={SEVERITY_OPTIONS}
           value={row.severity}
           onChange={(val) => updateRow(row.key, index, 'severity', val)}
-          style={{ width: '100%' }}
-        />
-      ),
-    },
-    {
-      title: '状态',
-      key: 'status',
-      width: 108,
-      render: (_value, row, index) => (
-        <Select<BugStatus>
-          aria-label={`第 ${index + 1} 行状态`}
-          options={STATUS_OPTIONS}
-          value={row.status}
-          onChange={(val) => updateRow(row.key, index, 'status', val)}
           style={{ width: '100%' }}
         />
       ),
@@ -431,28 +386,6 @@ export function BatchCreateBugsModal({
           value={row.actual_result}
           status={hasFieldError(index + 1, 'actual_result') ? 'error' : undefined}
           onChange={(event) => updateRow(row.key, index, 'actual_result', event.target.value)}
-        />
-      ),
-    },
-    {
-      title: '处理人',
-      key: 'assignee_id',
-      width: 140,
-      render: (_value, row, index) => (
-        <Select<number | null>
-          aria-label={`第 ${index + 1} 行处理人`}
-          placeholder="未分配"
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          loading={membersQuery.isPending}
-          options={memberOptions}
-          value={row.assignee_id ?? undefined}
-          status={hasFieldError(index + 1, 'assignee_id') ? 'error' : undefined}
-          onChange={(val) =>
-            updateRow(row.key, index, 'assignee_id', val ?? null)
-          }
-          style={{ width: '100%' }}
         />
       ),
     },
@@ -553,18 +486,6 @@ export function BatchCreateBugsModal({
               />
             </Space>
             <Space size={6}>
-              <Typography.Text type="secondary">默认状态：</Typography.Text>
-              <Select<BugStatus>
-                aria-label="默认状态"
-                options={STATUS_OPTIONS}
-                value={defaults.status}
-                onChange={(val) =>
-                  setDefaults((prev) => ({ ...prev, status: val }))
-                }
-                style={{ width: 106 }}
-              />
-            </Space>
-            <Space size={6}>
               <Typography.Text type="secondary">默认环境：</Typography.Text>
               <Input
                 aria-label="默认环境"
@@ -578,23 +499,6 @@ export function BatchCreateBugsModal({
                   }))
                 }
                 style={{ width: 110 }}
-              />
-            </Space>
-            <Space size={6}>
-              <Typography.Text type="secondary">默认处理人：</Typography.Text>
-              <Select<number | null>
-                aria-label="默认处理人"
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="未分配"
-                loading={membersQuery.isPending}
-                options={memberOptions}
-                value={defaults.assignee_id ?? undefined}
-                onChange={(val) =>
-                  setDefaults((prev) => ({ ...prev, assignee_id: val ?? null }))
-                }
-                style={{ width: 136 }}
               />
             </Space>
             <Space size={6}>

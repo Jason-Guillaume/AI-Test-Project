@@ -28,6 +28,7 @@ EVENT_TITLES: dict[str, str] = {
     "defect.assigned": "有新的缺陷分配给你",
     "defect.status_changed": "你报告的缺陷状态已变更",
     "defect.external_resolved": "缺陷已由免登录分享标记为已修复",
+    "defect.reminder": "项目缺陷积压提醒",
     "task.plan_ready": "任务方案待确认",
     "task.completed": "任务已完成",
     "task.completed_with_issues": "任务完成但有问题",
@@ -48,6 +49,7 @@ EVENT_LABELS: dict[str, str] = {
     "defect.assigned": "缺陷分配",
     "defect.status_changed": "缺陷状态变更",
     "defect.external_resolved": "免登录分享提交已修复",
+    "defect.reminder": "缺陷积压提醒",
     "task.plan_ready": "任务方案待确认",
     "task.completed": "任务完成",
     "task.completed_with_issues": "任务完成但有问题",
@@ -69,6 +71,7 @@ def notify(
     project_id: int | None = None,
     organization_id: int | None = None,
     detail: dict[str, Any] | None = None,
+    strict: bool = False,
 ) -> Notification | None:
     """写一条通知；失败时仅记录告警，不影响主数据事务。
 
@@ -82,9 +85,11 @@ def notify(
         title / body: 展示文案；为空时 title 回退到 EVENT_TITLES，body 回退为「操作人：xxx」。
         project_id / organization_id: 作用域字段，供个人通知列表按项目或组织筛选。
         detail: 附加业务数据，存入 payload.detail 供跳转时读取。
+        strict: 定时任务等需要与去重记录同事务失败时置 True，让写入异常向上抛出；
+            普通业务调用保持默认 False，通知失败不影响主流程。
 
     Returns:
-        Notification | None: 写入成功返回该行对象；失败返回 None（主流程不因此回滚）。
+        Notification | None: 写入成功返回该行对象；失败返回 None（strict=True 时改为抛出）。
     """
     try:
         row = Notification(
@@ -104,4 +109,6 @@ def notify(
         return row
     except Exception:
         logger.warning("通知写入失败，已跳过：%s", event_type)
+        if strict:
+            raise
         return None

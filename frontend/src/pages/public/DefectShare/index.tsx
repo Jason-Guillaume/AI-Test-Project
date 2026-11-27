@@ -256,7 +256,7 @@ function PublicDefectShareView({ shareId, batchId }: { shareId: string; batchId?
             <Typography.Title level={4}>基本信息</Typography.Title>
             <div className="public-defect-grid">
               {Object.entries({
-                所属项目: content.project_name, 创建人: content.reporter_name, 当前处理人: content.assignee_name, 发现环境: content.environment,
+                所属项目: content.project_name, 创建人: content.reporter_name, 发现环境: content.environment,
               }).filter(([, value]) => value !== undefined).map(([label, value]) => <div key={label} style={{ display: 'contents' }}>
                 <Typography.Text type="secondary">{label}</Typography.Text>
                 <Typography.Text>{textOf(value)}</Typography.Text>

@@ -9,13 +9,16 @@ import type { Bug, DefectShareBatchResult, DefectShareField, DefectSharePushResu
 import { notificationChannelsApi } from '@/features/notifications/api/notificationChannels';
 import { getErrorMessage } from '@/shared/api/client';
 
+// 默认勾选事实字段；请求头/请求体含敏感信息，默认不推送，需显式勾选。
 const DEFAULT_FIELDS: DefectShareField[] = [
   'bug_no', 'title', 'severity', 'status', 'project_name', 'description',
   'steps_to_reproduce', 'environment', 'expected_result', 'actual_result',
-  'created_at', 'reporter', 'assignee',
-  'api_method', 'api_url', 'api_request_headers', 'api_request_body', 'api_response', 'attachments',
+  'created_at', 'reporter',
+  'api_method', 'api_url', 'api_response', 'attachments',
 ];
 const OPTIONAL_FIELDS: Array<{ value: DefectShareField; label: string }> = [
+  { value: 'api_request_headers', label: '接口请求头（脱敏，默认不推送）' },
+  { value: 'api_request_body', label: '接口请求体（脱敏，默认不推送）' },
   { value: 'api_execution', label: '关联接口自动化执行' },
   { value: 'agent_execution', label: '关联 Agent 执行记录' },
   { value: 'security_record', label: '关联安全测试记录' },
@@ -28,9 +31,8 @@ const FIELD_LABELS: Record<string, string> = {
   bug_no: '缺陷编号', title: '缺陷标题', severity: '严重度', status: '当前状态',
   project_name: '项目名称', description: '缺陷描述', steps_to_reproduce: '复现步骤',
   environment: '发现环境', expected_result: '预期结果', actual_result: '实际结果',
-  created_at: '创建时间', reporter: '创建人', assignee: '当前处理人',
-  api_method: '接口请求方法', api_url: '接口地址', api_request_headers: '接口请求头（脱敏）',
-  api_request_body: '接口请求体（脱敏）', api_response: '接口响应正文（脱敏）', attachments: '附件',
+  created_at: '创建时间', reporter: '创建人',
+  api_method: '接口请求方法', api_url: '接口地址', api_response: '接口响应正文（脱敏）', attachments: '附件',
 };
 
 interface ShareForm {

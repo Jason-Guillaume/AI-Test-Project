@@ -5,7 +5,6 @@ import type {
   BugBatchRowError,
   BugCategory,
   BugSeverity,
-  BugStatus,
 } from './contracts';
 
 export const MAX_BATCH_BUG_ROWS: number;
@@ -13,9 +12,7 @@ export const MAX_BATCH_BUG_ROWS: number;
 export interface BatchDefectDefaults {
   category?: BugCategory;
   severity: BugSeverity;
-  status: BugStatus;
   environment?: string;
-  assignee_id?: number | null;
 }
 
 export interface BatchDefectDraftRow {
@@ -23,13 +20,11 @@ export interface BatchDefectDraftRow {
   title: string;
   category?: BugCategory;
   severity: BugSeverity;
-  status: BugStatus;
   description: string;
   steps_to_reproduce: string;
   environment: string;
   expected_result: string;
   actual_result: string;
-  assignee_id: number | null;
 }
 
 export function normalizeCategoryToken(raw: unknown): BugCategory | undefined;

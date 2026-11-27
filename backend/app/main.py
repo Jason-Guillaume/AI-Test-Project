@@ -138,6 +138,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         if settings.DEFECT_SHARE_ARCHIVE_ENABLED:
             started_workers.append(defect_share_archive_worker)
             defect_share_archive_worker.start()
+        if settings.DEFECT_REMINDER_ENABLED:
+            from app.features.defects.services.reminder_worker import defect_reminder_worker
+            started_workers.append(defect_reminder_worker)
+            defect_reminder_worker.start()
         from app.knowledge.worker import start as start_knowledge_worker
         knowledge_stop = start_knowledge_worker()
         try:

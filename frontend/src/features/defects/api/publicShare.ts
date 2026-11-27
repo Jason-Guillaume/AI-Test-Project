@@ -22,7 +22,6 @@ export interface PublicDefectContent {
   actual_result?: string | null;
   created_at?: string | null;
   reporter_name?: string | null;
-  assignee_name?: string | null;
   sources?: Array<Record<string, unknown>>;
   agent_executions?: unknown[];
   allure?: string | null;

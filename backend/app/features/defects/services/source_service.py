@@ -4,6 +4,7 @@ import json
 
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 
 from app.features.defects.models.source_link import DefectSourceLink
 from app.features.defects.models.bug import Bug
@@ -49,7 +50,12 @@ class DefectSourceService:
         return (
             db.query(DefectSourceLink)
             .join(Bug, Bug.id == DefectSourceLink.bug_id)
-            .filter(field == source_id, Bug.deleted_at.is_(None))
+            .filter(
+                field == source_id,
+                Bug.deleted_at.is_(None),
+                # 他人的草稿不通过来源关联暴露，与按 ID 读取的 404 口径一致。
+                or_(Bug.is_draft.is_(False), Bug.reporter_id == user.id),
+            )
             .order_by(DefectSourceLink.id.desc())
             .all()
         )

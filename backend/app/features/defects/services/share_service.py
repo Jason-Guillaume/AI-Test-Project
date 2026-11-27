@@ -34,7 +34,7 @@ from app.core.security.roles import (
     project_role_for,
 )
 from app.core.security.sanitizer import sanitize_context, sanitize_text
-from app.core.security.sensitive import is_sensitive_key
+from app.core.security.sensitive import is_sensitive_key, mask_header_text
 from app.features.defects.models.bug import Bug
 from app.features.defects.models.attachment import BugAttachment
 from app.features.defects.models.share import DefectExternalAction, DefectShareBatch, DefectShareLink
@@ -73,12 +73,14 @@ from app.platform.projects.services.access_service import check_writable
 DEFAULT_VISIBLE_FIELDS = (
     "bug_no", "title", "severity", "status", "project_name", "description",
     "steps_to_reproduce", "environment", "expected_result", "actual_result",
-    "created_at", "reporter", "assignee", "api_method", "api_url",
-    "api_request_headers", "api_request_body", "api_response", "attachments",
+    "created_at", "reporter", "api_method", "api_url",
+    "api_response", "attachments",
 )
 OPTIONAL_VISIBLE_FIELDS = (
     "api_execution", "agent_execution", "security_record", "request_response",
     "error_stack", "screenshots", "allure",
+    # 原始请求头/请求体默认排除，显式勾选后才进入公开内容（脱敏后）。
+    "api_request_headers", "api_request_body",
 )
 ALL_VISIBLE_FIELDS = set(DEFAULT_VISIBLE_FIELDS) | set(OPTIONAL_VISIBLE_FIELDS)
 _PATH_PATTERN = re.compile(
@@ -110,6 +112,21 @@ def _clean_share_description(value: str | None) -> str | None:
         return None
     lines = [line for line in text.splitlines() if not _SOURCE_RECORD_LINE.match(line)]
     return "\n".join(lines).strip() or None
+
+
+def _sanitize_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    """读取历史快照时再脱敏一次，防止旧数据里的凭证继续从内部/公开接口露出。
+
+    新快照在创建时已经清理；这里主要兜底修复前落库的记录，
+    请求头同时按 JSON/逐行文本解析，普通头保持可读。
+    """
+    if not snapshot:
+        return {}
+    cleaned = dict(snapshot)
+    headers = cleaned.get("api_request_headers")
+    if isinstance(headers, str):
+        cleaned["api_request_headers"] = sanitize_text(mask_header_text(headers) or "")
+    return sanitize_context(cleaned)
 
 
 def _clean_api_value(value: str | None, limit: int) -> Any:
@@ -554,7 +571,7 @@ class DefectShareService:
         return ShareDetailResponse(
             **summary.model_dump(),
             visible_fields=list(share.visible_fields or []),
-            content_snapshot=dict(share.content_snapshot or {}),
+            content_snapshot=_sanitize_snapshot(share.content_snapshot),
             external_actions=[self._action_response(item) for item in actions],
             notifications=[
                 ShareNotificationResponse(
@@ -709,9 +726,9 @@ class DefectShareService:
             if share.archived_at is not None or (share.expires_at is not None and share.expires_at <= datetime.now()) or not share.allow_view:
                 continue
             bug = db.get(Bug, share.bug_id)
-            if bug is None or getattr(bug, "deleted_at", None) is not None:
+            if bug is None or getattr(bug, "deleted_at", None) is not None or bug.is_draft:
                 continue
-            snapshot = dict(share.content_snapshot or {})
+            snapshot = _sanitize_snapshot(share.content_snapshot)
             items.append(PublicBatchItemResponse(
                 share_id=share.share_id,
                 bug_no=snapshot.get("bug_no") if "bug_no" in set(share.visible_fields or []) else "缺陷",
@@ -889,6 +906,11 @@ class DefectShareService:
             bug = by_id.get(bug_id)
             if bug is None or (visible_ids is not None and bug.project_id not in visible_ids):
                 raise not_found("缺陷不存在")
+            if bug.is_draft:
+                # 草稿仅创建者可见；创建者也不能把未提交草稿公开分享。
+                if bug.reporter_id != actor.id:
+                    raise not_found("缺陷不存在")
+                raise bad_request("草稿尚未提交，不能分享")
             bugs.append(bug)
         projects = {bug.project_id for bug in bugs}
         if len(projects) != 1:
@@ -916,6 +938,9 @@ class DefectShareService:
             return list(DEFAULT_VISIBLE_FIELDS)
         selected: list[str] = []
         for field in fields:
+            # 处理人字段已停用：旧客户端载荷中携带时静默剔除，不再公开。
+            if field == "assignee":
+                continue
             if field not in ALL_VISIBLE_FIELDS:
                 raise bad_request("包含不支持的展示字段")
             if field not in selected:
@@ -948,7 +973,6 @@ class DefectShareService:
         selected = set(fields)
         project = db.get(Project, bug.project_id)
         reporter = db.get(User, bug.reporter_id) if bug.reporter_id else None
-        assignee = db.get(User, bug.assignee_id) if bug.assignee_id else None
         content: dict[str, Any] = {}
         if "bug_no" in selected:
             content["bug_no"] = f"BUG-{bug.id}"
@@ -980,10 +1004,13 @@ class DefectShareService:
                 content[key] = _clean_api_value(getattr(bug, key), 5000)
         if "api_request_headers" in selected:
             raw_headers = bug.api_request_headers
+            # 先按请求头结构脱敏，再走公开 JSON/文本清理；X-API-Key 等
+            # 逐行原始头不会因为不是 JSON 键名而漏掉。
+            masked_headers = mask_header_text(raw_headers)
             try:
-                parsed_headers = json.loads(raw_headers) if raw_headers else None
+                parsed_headers = json.loads(masked_headers) if masked_headers else None
             except (json.JSONDecodeError, TypeError):
-                parsed_headers = raw_headers
+                parsed_headers = masked_headers
             content["api_request_headers"] = _clean_json(parsed_headers) if isinstance(parsed_headers, (dict, list)) else _clean_text(parsed_headers, 2000)
         if "attachments" in selected:
             content["attachments"] = [
@@ -995,8 +1022,6 @@ class DefectShareService:
             content["created_at"] = bug.created_at.isoformat(sep=" ", timespec="seconds")
         if "reporter" in selected:
             content["reporter_name"] = reporter.username if reporter else None
-        if "assignee" in selected:
-            content["assignee_name"] = assignee.username if assignee else None
         if selected & {"source_summary", "api_execution", "security_record", "request_response", "error_stack", "screenshots", "allure"}:
             content["sources"] = self._sources(db, bug, selected)
         if "agent_execution" in selected:
@@ -1133,7 +1158,7 @@ class DefectShareService:
     def _card_item(self, share: DefectShareLink, token: str) -> dict[str, str | None]:
         """从已授权快照提取卡片摘要，不回读未授权字段。"""
         fields = set(share.visible_fields or [])
-        snapshot = share.content_snapshot or {}
+        snapshot = _sanitize_snapshot(share.content_snapshot)
         description = _clean_share_description(snapshot.get("description")) if "description" in fields else None
         steps = snapshot.get("steps_to_reproduce") if "steps_to_reproduce" in fields else None
         return {
@@ -1204,11 +1229,12 @@ class DefectShareService:
         return share.expires_at.isoformat(sep=" ", timespec="minutes")
 
     def _action_response(self, action: DefectExternalAction) -> ExternalActionResponse:
-        """内部详情里的外部处理记录。"""
+        """内部详情里的外部处理记录；历史说明文本在出口再脱敏。"""
         return ExternalActionResponse(
             action_type=action.action_type, old_status=action.old_status, new_status=action.new_status,
             actor_type=action.actor_type, actor_display_name=action.actor_display_name,
-            repair_description=action.repair_description, fix_version=action.fix_version,
+            repair_description=sanitize_text(action.repair_description) or "",
+            fix_version=action.fix_version,
             commit_sha=action.commit_sha, created_at=action.created_at, identity_note=_IDENTITY_NOTE,
         )
 
@@ -1226,7 +1252,7 @@ class DefectShareService:
             "screenshots": "sources",
             "agent_execution": "agent_executions",
         }
-        snapshot = dict(share.content_snapshot or {})
+        snapshot = _sanitize_snapshot(share.content_snapshot)
         content = {
             key: snapshot[key] for field, key in field_keys.items() if field in allowed and key in snapshot
         }
@@ -1251,7 +1277,8 @@ class DefectShareService:
         resolution = None
         if action is not None:
             resolution = PublicResolutionResponse(
-                repair_description=action.repair_description, fix_version=action.fix_version,
+                repair_description=sanitize_text(action.repair_description) or "",
+                fix_version=action.fix_version,
                 commit_sha=action.commit_sha, actor_display_name=action.actor_display_name,
                 actor_type=action.actor_type, old_status=action.old_status, new_status=action.new_status,
                 submitted_at=action.created_at, identity_note=_IDENTITY_NOTE,
@@ -1327,9 +1354,9 @@ class DefectShareService:
             raise forbidden("分享链接不允许查看")
 
     def _public_bug(self, db: Session, share: DefectShareLink) -> Bug:
-        """软删除后的缺陷对公开页显示为已删除，不返回快照。"""
+        """软删除后的缺陷对公开页显示为已删除，不返回快照；历史草稿分享同样不可见。"""
         bug = db.get(Bug, share.bug_id)
-        if bug is None or getattr(bug, "deleted_at", None) is not None:
+        if bug is None or getattr(bug, "deleted_at", None) is not None or bug.is_draft:
             raise not_found("缺陷已删除")
         return bug
 
@@ -1355,9 +1382,9 @@ class DefectShareService:
         return share
 
     def _bug_of(self, db: Session, share: DefectShareLink) -> Bug:
-        """重试时取回缺陷，确认它仍然可见。"""
+        """重试时取回缺陷，确认它仍然可见；历史草稿分享不允许重试。"""
         bug = db.get(Bug, share.bug_id)
-        if bug is None or getattr(bug, "deleted_at", None) is not None:
+        if bug is None or getattr(bug, "deleted_at", None) is not None or bug.is_draft:
             raise not_found("缺陷已删除")
         return bug
 

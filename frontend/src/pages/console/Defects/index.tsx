@@ -1,166 +1,160 @@
-import { collectPages } from '@/shared/api/pagination';
-// 缺陷管理（用户视角）。
-// 本模块导出 ConsoleDefectsPage，由路由 /console/defects 挂载。
+// 缺陷工作台（测试团队视角，无处理人）。
+// 路由 /console/defects 挂载 ConsoleDefectsPage。
 //
 // 功能：
-//   - 列表：按前后端划分页签（全部 / 前端 / 前后端 / 接口 / 未划分）与项目/状态/严重度/关键字过滤；
-//   - 新建：弹窗收集所属项目、前后端划分（必填）、标题、严重度、状态、复现步骤、环境、处理人；
-//   - 批量创建：结构化可编辑表格批量录入全部字段，支持统一预设默认值与多行文本快速拆分；
-//   - 编辑：与新建共用同一弹窗，处理人可为空表示「未分配」，历史未划分缺陷允许补充前后端划分；
-//   - 删除：Modal.confirm 二次确认。
+//   - 队列工作台：默认当前项目「未关闭」，快捷队列计数与列表 total 同口径；
+//   - 过滤：项目 / 前后端划分 / 严重度 / 优先级 / 关键字（处理人筛选已停用）；
+//   - 新建 / 编辑：禅道式弹窗（DefectFormModal），批量创建（BatchCreateBugsModal）；
+//   - 批量治理：调优先级 / 归档 / 撤销归档 / 删除 / 飞书推送，逐项回执；
+//   - 详情：DefectDetailModal 聚合证据、验证、外部反馈与活动时间线；
+//   - 质量统计与项目设置（灰度开关、提醒、模板）。
 //
-// 权限（服务端为准，前端隐藏只是辅助）：
-//   - 读 = 项目可见（viewer+）；
-//   - 写 = 项目成员（member+），viewer 无法新建/编辑/删除；
-//   - 跨项目越权按 404 返回，前端不会展示；
-//   - 处理人必须是项目成员。
-//
-// 飞书推送和免登录分享已接入。回归关联、趋势看板、修复时长统计仍未接入。
+// 权限（服务端为准）：读 = viewer+；写 = member+；归档/设置/模板 = editor+。
+import { collectPages } from '@/shared/api/pagination';
 import {
-  App,
-  Alert,
-  Button,
-  Checkbox,
-  Form,
-  Input,
-  Modal,
-  Radio,
-  Select,
-  Space,
-  Tabs,
-  Tag,
-  Typography,
-  Upload,
+  App, Alert, Button, Checkbox, Input, Modal, Select, Space, Statistic, Tabs, Tag, Typography,
 } from 'antd';
-import { ExclamationCircleOutlined, InboxOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { bugsApi } from '@/features/defects/api/defects';
-import { DefectShareHistory } from '@/features/defects/components/DefectShareHistory';
 import { DefectShareModal } from '@/features/defects/components/DefectShareModal';
 import type {
-  ApiMethod,
-  Bug,
-  BugCategory,
-  BugCategoryFilter,
-  BugCreate,
-  BugSeverity,
-  BugStatus,
-  BugUpdate,
+  Bug, BugBatchActionRequest, BugBatchActionReceipt, BugCategory, BugCategoryFilter,
+  BugListQuery, BugPriority, BugSeverity, BugStatus,
 } from '@/features/defects/contracts';
 import { projectsApi } from '@/features/projects/api/projects';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { getErrorMessage } from '@/shared/api/client';
-import { DefectOrigins } from '@/widgets/execution-detail/DefectOrigins';
-import { tasksApi } from '@/features/tasks/api/tasks';
-import { clearTaskCreateUncertainty, readTaskCreateUncertainty, rememberTaskCreateUncertainty, type TaskCreateUncertainty } from '@/features/tasks/createUncertainty';
-import { isAxiosError } from 'axios';
 import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 import type { Paginated } from '@/shared/api/contracts';
 import { BatchCreateBugsModal } from './BatchCreateBugsModal';
+import { DefectDetailModal } from './DefectDetailModal';
+import { DefectFormModal } from './DefectFormModal';
+import { DefectSettingsDrawer } from './DefectSettingsDrawer';
 import {
-  API_METHOD_OPTIONS,
-  BUG_CATEGORIES,
-  BUG_STATUSES,
-  CATEGORY_COLOR,
-  CATEGORY_OPTIONS,
-  SEVERITY_COLOR,
-  SEVERITY_OPTIONS,
-  STATUS_COLOR,
+  CATEGORY_COLOR, PRIORITY_COLOR, PRIORITY_LABELS, PRIORITY_OPTIONS,
+  SEVERITY_COLOR, SEVERITY_OPTIONS, STATUS_COLOR, STATUS_DISPLAY, STATUS_OPTIONS,
 } from './constants';
 
-// 新建/编辑弹窗的表单值。severity 与 status 都有默认值，减少空态。
-interface BugFormValues {
-  project_id?: number;
-  title: string;
-  category?: BugCategory;
-  description?: string;
-  expected_result?: string;
-  actual_result?: string;
-  api_method?: ApiMethod;
-  api_url?: string;
-  api_request_headers?: string;
-  api_request_body?: string;
-  api_response?: string;
-  severity: BugSeverity;
-  status: BugStatus;
-  steps_to_reproduce?: string;
-  environment?: string;
-  assignee_id?: number | null;
-}
-
 type ShareTarget = Pick<Bug, 'id' | 'project_id'>;
+type QueueKey = 'unclosed' | 'pending_confirm' | 'in_progress' | 'pending_verify'
+  | 'reported_by_me' | 'closed' | 'rejected' | 'archived' | 'drafts' | 'all';
+
+const QUEUE_LABELS: Record<QueueKey, string> = {
+  unclosed: '未关闭', pending_confirm: '待确认', in_progress: '处理中', pending_verify: '待验证',
+  reported_by_me: '我提交的', closed: '已关闭', rejected: '已拒绝', archived: '已归档', drafts: '我的草稿', all: '全部',
+};
+const QUEUE_QUERY: Record<QueueKey, Partial<BugListQuery>> = {
+  unclosed: { status_group: 'unclosed' },
+  pending_confirm: { status: '待确认' },
+  in_progress: { status: '处理中' },
+  pending_verify: { status: '已修复' },
+  reported_by_me: { mine: true },
+  closed: { status: '已关闭' },
+  rejected: { status: '已拒绝' },
+  archived: { view: 'archived' },
+  drafts: { view: 'drafts' },
+  all: {},
+};
+const QUEUE_COUNT_KEY: Partial<Record<QueueKey, keyof import('@/features/defects/contracts').BugQueueCounts>> = {
+  unclosed: 'unclosed', pending_confirm: 'pending_confirm', in_progress: 'in_progress',
+  pending_verify: 'pending_verify', reported_by_me: 'reported_by_me', closed: 'closed',
+  rejected: 'rejected', archived: 'archived', drafts: 'drafts',
+};
 
 /**
- * 控制台缺陷列表页。
- *
- * 会发请求：
- *   - useQuery ['bugs', query] 拉缺陷列表；
- *   - useQuery ['projects', { page: 1, page_size: 100 }] 拉可见项目列表（供过滤与新建弹窗下拉）；
- *   - useQuery ['bugs/projects', projectId] 拉某项目的成员列表（供新建/编辑弹窗「处理人」下拉）。
- * mutation：create / update / remove，成功后统一 invalidate ['bugs']。
- * 失败呈现：列表失败整页 ErrorState；mutation 失败 message.error 折叠展示。
+ * 缺陷工作台页面。
+ * 会发请求：['bugs', query] 列表、['projects'] 项目下拉、['defect-queues'] 队列计数、
+ * ['defect-stats'] 质量统计、['defect-project-setting'] 灰度开关（均按项目惰性启用）。
+ * mutation：删除 / 批量删除 / 批量治理，成功后统一失效列表与队列统计。
+ * 失败呈现：列表失败整页 ErrorState；mutation 失败 message.error，部分失败弹逐项回执。
  */
 export function ConsoleDefectsPage() {
   const { message, modal } = App.useApp();
   const { isPlatformAdmin } = useAuth();
-  const [shareBugs, setShareBugs] = useState<ShareTarget[] | null>(null);
-  const [selectAllLoading, setSelectAllLoading] = useState(false);
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedBugId = Number(searchParams.get('bugId'));
-  const bugDetail = useQuery({ queryKey: ['bug-detail', requestedBugId], queryFn: () => bugsApi.get(requestedBugId), enabled: Number.isSafeInteger(requestedBugId) && requestedBugId > 0 });
-  // antd Form 实例：必须在使用 useForm 的组件内创建；
-  // 每次弹窗打开用 key 强制重建以重置值，无需手工 resetFields。
-  const [bugForm] = Form.useForm<BugFormValues>();
-  // 监听前后端划分：选择「接口」时展开请求方法/地址/请求头/请求体等接口专属字段。
-  const selectedCategory = Form.useWatch<BugFormValues['category']>('category', bugForm);
+  const detailOpen = Number.isSafeInteger(requestedBugId) && requestedBugId > 0;
 
-  // 分页：默认第一页、每页 10 条
-  const [pagination, setPagination] = useState<PaginationState>({
-    page: 1,
-    page_size: 10,
-  });
-  // 过滤：project_id / category / status / severity / keyword；空串归一为 undefined
+  const [pagination, setPagination] = useState<PaginationState>({ page: 1, page_size: 10 });
   const [projectId, setProjectId] = useState<number | undefined>(undefined);
+  const [queue, setQueue] = useState<QueueKey>('unclosed');
   const [categoryFilter, setCategoryFilter] = useState<BugCategoryFilter | undefined>(undefined);
   const [status, setStatus] = useState<BugStatus | undefined>(undefined);
   const [severity, setSeverity] = useState<BugSeverity | undefined>(undefined);
+  const [priority, setPriority] = useState<BugPriority | undefined>(undefined);
   const [keyword, setKeyword] = useState('');
   const [selectedBugIds, setSelectedBugIds] = useState<number[]>([]);
-
-  // 弹窗状态：null 表示关闭；mode='create' 新建，mode='edit' 编辑已有 bug
-  const [modalState, setModalState] = useState<
-    { mode: 'create' } | { mode: 'edit'; bug: Bug } | null
-  >(null);
+  const [selectAllLoading, setSelectAllLoading] = useState(false);
+  const [shareBugs, setShareBugs] = useState<ShareTarget[] | null>(null);
+  const [formModal, setFormModal] = useState<{ mode: 'create' } | { mode: 'edit'; bugId: number } | null>(null);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
-  // 编辑时把 bug 值回填进 form；用 key 触发 antd Form 的 resetFields
-  const [formKey, setFormKey] = useState(0);
-  const [files, setFiles] = useState<File[]>([]);
-  const [createdPendingUpload, setCreatedPendingUpload] = useState<Bug | null>(null);
-  const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [batchPriority, setBatchPriority] = useState<BugPriority | undefined>(undefined);
+  const [batchArchiveOpen, setBatchArchiveOpen] = useState(false);
+  const [batchArchiveReason, setBatchArchiveReason] = useState('');
 
-  // 拼装查询参数
-  const query = useMemo(
-    () => ({
-      page: pagination.page,
-      page_size: pagination.page_size,
-      project_id: projectId,
-      category: categoryFilter,
-      status,
-      severity,
-      keyword: keyword || undefined,
-    }),
-    [pagination, projectId, categoryFilter, status, severity, keyword],
-  );
+  const projectsQuery = useQuery({
+    queryKey: ['projects', { page: 1, page_size: 100 }],
+    queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 100 })),
+  });
+  const projectOptions = (projectsQuery.data?.items ?? []).map((p) => ({ label: p.name, value: p.id }));
+  // 工作台默认进入第一个可见项目的未关闭队列。
+  useEffect(() => {
+    if (projectId == null && projectOptions.length > 0) setProjectId(projectOptions[0].value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectsQuery.data]);
+
+  const settingQuery = useQuery({
+    queryKey: ['defect-project-setting', projectId],
+    queryFn: () => bugsApi.projectSetting(projectId!),
+    enabled: projectId != null,
+  });
+  const queueMode = projectId != null && (settingQuery.data?.queue_enabled ?? true);
+  const queuesQuery = useQuery({
+    queryKey: ['defect-queues', projectId],
+    queryFn: () => bugsApi.queues(projectId!),
+    enabled: queueMode,
+  });
+  const statsQuery = useQuery({
+    queryKey: ['defect-stats', projectId],
+    queryFn: () => bugsApi.stats(projectId!),
+    enabled: queueMode,
+  });
+
+  const query = useMemo<BugListQuery>(() => ({
+    page: pagination.page,
+    page_size: pagination.page_size,
+    project_id: projectId,
+    category: categoryFilter,
+    severity,
+    priority,
+    keyword: keyword || undefined,
+    ...(queueMode
+      ? { ...QUEUE_QUERY[queue], sort: 'updated' as const, ...(queue === 'all' ? { status } : {}) }
+      : { status }),
+  }), [pagination, projectId, categoryFilter, severity, priority, keyword, queueMode, queue, status]);
 
   const listQuery = useQuery<Paginated<Bug>>({
     queryKey: ['bugs', query],
     queryFn: () => bugsApi.list(query),
   });
+
+  const projectRole = (id: number) => (projectsQuery.data?.items ?? []).find((item) => item.id === id)?.my_role;
+  const canManage = (id: number) => isPlatformAdmin || ['member', 'editor', 'owner'].includes(projectRole(id) || '');
+  const canPermanent = (id: number) => isPlatformAdmin || ['editor', 'owner'].includes(projectRole(id) || '');
+
+  const refreshLists = () => {
+    queryClient.invalidateQueries({ queryKey: ['bugs'] });
+    queryClient.invalidateQueries({ queryKey: ['defect-queues'] });
+    queryClient.invalidateQueries({ queryKey: ['defect-stats'] });
+  };
 
   async function selectAllFilteredResults() {
     setSelectAllLoading(true);
@@ -175,81 +169,53 @@ export function ConsoleDefectsPage() {
     }
   }
 
-  // 项目下拉数据源：拉当前用户全部可见项目（page_size=100 兜底）
-  const projectsQuery = useQuery({
-    queryKey: ['projects', { page: 1, page_size: 100 }],
-    queryFn: () =>
-      collectPages((page) => projectsApi.list({ page, page_size: 100 })),
-  });
-
-  // 弹窗内需要展示「某项目的成员列表」作为「处理人」下拉；
-  // 新建时跟随表单内选定的项目，编辑时固定为缺陷所属项目。
-  const createFormProjectId = Form.useWatch('project_id', bugForm);
-  const modalProjectId =
-    modalState?.mode === 'edit'
-      ? modalState.bug.project_id
-      : (createFormProjectId ?? projectId ?? projectsQuery.data?.items?.[0]?.id);
-  const membersQuery = useQuery({
-    queryKey: ['project', modalProjectId, 'members'],
-    queryFn: () =>
-      collectPages((page) => projectsApi.listMembers(modalProjectId!, { page, page_size: 200 })),
-    enabled: modalState != null && modalProjectId != null,
-  });
-
-  // 建缺陷
-  const createMutation = useMutation({
-    mutationFn: (body: BugCreate) => bugsApi.create(body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bugs'] });
-    },
-    onError: (e) => message.error(getErrorMessage(e, '创建失败')),
-  });
-
-  // 改缺陷
-  const updateMutation = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: BugUpdate }) =>
-      bugsApi.update(id, body),
-    onSuccess: () => {
-      message.success('缺陷已更新');
-      queryClient.invalidateQueries({ queryKey: ['bugs'] });
-      queryClient.invalidateQueries({ queryKey: ['bug-detail'] });
-      setModalState(null);
-    },
-    onError: (e) => message.error(getErrorMessage(e, '更新失败')),
-  });
-
-  // 删缺陷
   const removeMutation = useMutation({
     mutationFn: (id: number) => bugsApi.remove(id),
     onSuccess: () => {
       message.success('缺陷已删除');
-      queryClient.invalidateQueries({ queryKey: ['bugs'] });
+      refreshLists();
       queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
     },
     onError: (e) => message.error(getErrorMessage(e, '删除失败')),
   });
 
+  const showReceipt = (title: string, succeeded: number, failed: number, items: Array<{ id: number; succeeded: boolean; error?: string | null }>, okText: string) => {
+    if (failed === 0) { message.success(`${okText} ${succeeded} 个缺陷`); return; }
+    message.warning(`${okText} ${succeeded} 个缺陷，${failed} 个未处理`);
+    modal.info({
+      title,
+      width: 620,
+      content: <Space direction="vertical" style={{ width: '100%' }}>
+        {items.filter((item) => !item.succeeded).map((item) => (
+          <Alert key={item.id} type="error" showIcon message={`缺陷 #${item.id}`} description={item.error ?? '处理失败'} />
+        ))}
+      </Space>,
+    });
+  };
+
   const batchRemoveMutation = useMutation({
     mutationFn: (ids: number[]) => bugsApi.removeMany(projectId!, ids),
     onSuccess: (receipt: BatchLifecycleReceipt) => {
       setSelectedBugIds([]);
-      queryClient.invalidateQueries({ queryKey: ['bugs'] });
+      refreshLists();
       queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
-      if (receipt.failed === 0) message.success(`已删除 ${receipt.succeeded} 个缺陷，记录已移入回收站`);
-      else {
-        message.warning(`已删除 ${receipt.succeeded} 个缺陷，${receipt.failed} 个未删除`);
-        modal.info({
-          title: '批量删除结果',
-          width: 620,
-          content: <Space direction="vertical" style={{ width: '100%' }}>
-            {receipt.items.filter((item) => !item.succeeded).map((item) => (
-              <Alert key={item.id} type="error" showIcon message={`缺陷 #${item.id}`} description={item.error ?? '删除失败'} />
-            ))}
-          </Space>,
-        });
-      }
+      showReceipt('批量删除结果', receipt.succeeded, receipt.failed, receipt.items, '已删除');
     },
     onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
+  });
+
+  const batchActionMutation = useMutation({
+    mutationFn: (body: BugBatchActionRequest) => bugsApi.batchAction(body),
+    onSuccess: (receipt: BugBatchActionReceipt, body) => {
+      setSelectedBugIds([]);
+      setBatchArchiveOpen(false);
+      setBatchArchiveReason('');
+      refreshLists();
+      queryClient.invalidateQueries({ queryKey: ['bug-detail'] });
+      const label = body.action === 'set_priority' ? '已调整优先级' : body.action === 'archive' ? '已归档' : '已撤销归档';
+      showReceipt('批量处理结果', receipt.succeeded, receipt.failed, receipt.items, label);
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量处理失败')),
   });
 
   const confirmDelete = (bug: Bug) => {
@@ -264,74 +230,52 @@ export function ConsoleDefectsPage() {
     });
   };
 
-  const openCreate = () => {
-    setFormKey((k) => k + 1);
-    setFiles([]);
-    setCreatedPendingUpload(null);
-    setModalState({ mode: 'create' });
-  };
-  const openEdit = (bug: Bug) => {
-    setFormKey((k) => k + 1);
-    setModalState({ mode: 'edit', bug });
-  };
-
-  const projectOptions = (projectsQuery.data?.items ?? []).map((p) => ({
-    label: p.name,
-    value: p.id,
-  }));
-  const memberOptions = (membersQuery.data?.items ?? []).map((m) => {
-    const item = m as { user_id: number; username?: string };
-    return { label: item.username ?? `用户 ${item.user_id}`, value: item.user_id };
-  });
-  const projectRole = (id: number) => (projectsQuery.data?.items ?? []).find((item) => item.id === id)?.my_role;
-  /** 推送按钮只给项目成员及以上；服务端仍会再次校验。 */
-  const canManage = (id: number) => isPlatformAdmin || ['member', 'editor', 'owner'].includes(projectRole(id) || '');
-  const canPermanent = (id: number) => isPlatformAdmin || ['editor', 'owner'].includes(projectRole(id) || '');
-
-  const activeTabCategory: BugCategory | undefined =
-    categoryFilter && BUG_CATEGORIES.includes(categoryFilter as BugCategory)
-      ? (categoryFilter as BugCategory)
-      : undefined;
-
-  // 加载中 / 失败：整页占位，不渲染空表格
   if (listQuery.isPending) return <LoadingState />;
-  if (listQuery.isError)
-    return (
-      <PageContainer>
-        <ErrorState error={listQuery.error} onRetry={listQuery.refetch} />
-      </PageContainer>
-    );
-
+  if (listQuery.isError) {
+    return <PageContainer><ErrorState error={listQuery.error} onRetry={listQuery.refetch} /></PageContainer>;
+  }
   const data = listQuery.data;
+  const counts = queuesQuery.data;
+  const stats = statsQuery.data;
+  const resetPage = () => setPagination((p) => ({ ...p, page: 1 }));
+  const batchDisabled = projectId == null || selectedBugIds.length === 0 || !canManage(projectId);
 
   return (
     <PageContainer>
-      <Tabs
-        activeKey={categoryFilter ?? 'ALL'}
-        onChange={(key) => {
-          setCategoryFilter(key === 'ALL' ? undefined : (key as BugCategoryFilter));
-          setSelectedBugIds([]);
-          setPagination((p) => ({ ...p, page: 1 }));
-        }}
-        items={[
-          { key: 'ALL', label: '全部缺陷' },
-          { key: '前端', label: '前端缺陷' },
-          { key: '前后端', label: '前后端缺陷' },
-          { key: '接口', label: '接口缺陷' },
-          { key: '未划分', label: '未划分' },
-        ]}
-      />
+      {queueMode && (
+        <Tabs
+          activeKey={queue}
+          onChange={(key) => { setQueue(key as QueueKey); setSelectedBugIds([]); setStatus(undefined); resetPage(); }}
+          items={(Object.keys(QUEUE_LABELS) as QueueKey[]).map((key) => {
+            const countKey = QUEUE_COUNT_KEY[key];
+            const count = countKey && counts ? counts[countKey] : undefined;
+            return { key, label: count != null ? `${QUEUE_LABELS[key]}（${count}）` : QUEUE_LABELS[key] };
+          })}
+        />
+      )}
+
+      {queueMode && stats && (
+        <Space wrap size="large" style={{ marginBottom: 12 }}>
+          <Statistic title="未关闭积压" value={Object.entries(stats.backlog).filter(([s]) => !['已关闭', '已拒绝'].includes(s)).reduce((sum, [, n]) => sum + n, 0)} />
+          <Statistic title="平均首次确认耗时（小时）" value={stats.first_confirm_hours_avg ?? '-'} precision={1} suffix={<Typography.Text type="secondary">样本 {stats.first_confirm_sample}</Typography.Text>} />
+          <Statistic title="平均待验证时长（小时）" value={stats.pending_verify_hours_avg ?? '-'} precision={1} suffix={<Typography.Text type="secondary">样本 {stats.pending_verify_sample}</Typography.Text>} />
+          <Statistic
+            title="回归失败率"
+            value={stats.regression_failure_rate != null ? stats.regression_failure_rate * 100 : '-'}
+            precision={1}
+            suffix={stats.regression_failure_rate != null ? `%（${stats.regression_failed}/${stats.regression_total}）` : `样本 ${stats.regression_total}`}
+          />
+          <Typography.Text type="secondary">统计窗口 {stats.period_days} 天</Typography.Text>
+        </Space>
+      )}
 
       <div className="console-toolbar">
         <Input.Search
-          placeholder="按标题或描述搜索"
+          placeholder="按标题搜索"
           allowClear
           enterButton
-          style={{ maxWidth: 260 }}
-          onSearch={(v) => {
-            setKeyword(v);
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
+          style={{ maxWidth: 240 }}
+          onSearch={(v) => { setKeyword(v); resetPage(); }}
         />
         <Select
           placeholder="全部项目"
@@ -340,41 +284,34 @@ export function ConsoleDefectsPage() {
           optionFilterProp="label"
           options={projectOptions}
           value={projectId}
-          onChange={(v) => {
-            setProjectId(v);
-            setSelectedBugIds([]);
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
+          onChange={(v) => { setProjectId(v); setSelectedBugIds([]); setQueue('unclosed'); setStatus(undefined); resetPage(); }}
           style={{ minWidth: 180 }}
         />
         <Select
-          placeholder="全部状态"
+          placeholder="全部划分"
           allowClear
-          options={BUG_STATUSES.map((s) => ({ label: s, value: s }))}
-          value={status}
-          onChange={(v) => {
-            setStatus(v);
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
-          style={{ minWidth: 140 }}
+          options={[{ label: '前端', value: '前端' }, { label: '前后端', value: '前后端' }, { label: '接口', value: '接口' }, { label: '未划分', value: '未划分' }]}
+          value={categoryFilter}
+          onChange={(v) => { setCategoryFilter(v); setSelectedBugIds([]); resetPage(); }}
+          style={{ minWidth: 120 }}
         />
-        <Select
-          placeholder="全部严重度"
-          allowClear
-          options={SEVERITY_OPTIONS}
-          value={severity}
-          onChange={(v) => {
-            setSeverity(v);
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
-          style={{ minWidth: 140 }}
-        />
-        <Button type="primary" onClick={openCreate} loading={createMutation.isPending}>
-          新建缺陷
-        </Button>
-        <Button onClick={() => setBatchModalOpen(true)} disabled={projectOptions.length === 0}>
-          批量创建
-        </Button>
+        {(!queueMode || queue === 'all') && (
+          <Select
+            placeholder="全部状态"
+            allowClear
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={(v) => { setStatus(v); resetPage(); }}
+            style={{ minWidth: 120 }}
+          />
+        )}
+        <Select placeholder="全部严重度" allowClear options={SEVERITY_OPTIONS} value={severity} onChange={(v) => { setSeverity(v); resetPage(); }} style={{ minWidth: 120 }} />
+        <Select placeholder="全部优先级" allowClear options={PRIORITY_OPTIONS} value={priority} onChange={(v) => { setPriority(v); resetPage(); }} style={{ minWidth: 120 }} />
+        <Button type="primary" onClick={() => setFormModal({ mode: 'create' })}>新建缺陷</Button>
+        <Button onClick={() => setBatchModalOpen(true)} disabled={projectOptions.length === 0}>批量创建</Button>
+        {projectId != null && (
+          <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>缺陷设置</Button>
+        )}
       </div>
 
       <div className="console-toolbar">
@@ -391,15 +328,42 @@ export function ConsoleDefectsPage() {
         >
           全选当前页（{data.items.length}）
         </Checkbox>
-        <Button
-          loading={selectAllLoading}
-          disabled={projectId == null || data.total === 0 || !canManage(projectId)}
-          onClick={selectAllFilteredResults}
-        >
+        <Button loading={selectAllLoading} disabled={projectId == null || data.total === 0 || !canManage(projectId)} onClick={selectAllFilteredResults}>
           全选全部筛选结果（{data.total}）
         </Button>
         {selectedBugIds.length > 0 && <Button onClick={() => setSelectedBugIds([])}>清空选择（{selectedBugIds.length}）</Button>}
-        <Button danger disabled={projectId == null || selectedBugIds.length === 0 || batchRemoveMutation.isPending}
+        <Select
+          placeholder="批量优先级"
+          allowClear
+          options={PRIORITY_OPTIONS}
+          value={batchPriority}
+          onChange={setBatchPriority}
+          style={{ minWidth: 120 }}
+          disabled={batchDisabled}
+        />
+        <Button
+          disabled={batchDisabled || batchPriority == null || batchActionMutation.isPending}
+          onClick={() => modal.confirm({
+            title: `将选中的 ${selectedBugIds.length} 个缺陷优先级调整为「${PRIORITY_LABELS[batchPriority!]}」？`,
+            content: '逐个校验并返回处理结果；不影响缺陷状态。',
+            onOk: () => batchActionMutation.mutateAsync({ project_id: projectId!, ids: selectedBugIds, action: 'set_priority', priority: batchPriority }),
+          })}
+        >调整优先级</Button>
+        <Button
+          disabled={batchDisabled || !canPermanent(projectId!) || batchActionMutation.isPending}
+          onClick={() => setBatchArchiveOpen(true)}
+        >批量归档</Button>
+        {queueMode && queue === 'archived' && (
+          <Button
+            disabled={batchDisabled || !canPermanent(projectId!) || batchActionMutation.isPending}
+            onClick={() => modal.confirm({
+              title: `撤销选中 ${selectedBugIds.length} 个缺陷的归档？`,
+              content: '缺陷恢复列表可见；已撤销的分享不会自动恢复。',
+              onOk: () => batchActionMutation.mutateAsync({ project_id: projectId!, ids: selectedBugIds, action: 'restore' }),
+            })}
+          >撤销归档</Button>
+        )}
+        <Button danger disabled={batchDisabled || batchRemoveMutation.isPending}
           loading={batchRemoveMutation.isPending}
           onClick={() => modal.confirm({
             title: `删除选中的 ${selectedBugIds.length} 个缺陷？`,
@@ -410,92 +374,53 @@ export function ConsoleDefectsPage() {
           批量删除（{selectedBugIds.length}）
         </Button>
         <Button
-          disabled={selectedBugIds.length === 0 || projectId == null || !canManage(projectId)}
+          disabled={batchDisabled}
           onClick={() => setShareBugs([...new Set(selectedBugIds)].map((id) => ({ id, project_id: projectId! })))}
         >
           批量推送到飞书（{selectedBugIds.length}）
         </Button>
-        {projectId == null && <Typography.Text type="secondary">请先选择项目，再批量删除缺陷。</Typography.Text>}
+        {projectId == null && <Typography.Text type="secondary">请先选择项目，再进行批量操作。</Typography.Text>}
       </div>
 
       <ResourceTable
         rowKey={(r) => r.id}
         scroll={{ x: 1360 }}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
+          sequenceColumn<Bug>({ page: pagination.page, pageSize: pagination.page_size }),
+          { title: '项目', dataIndex: 'project_name', render: (v: string | null) => v ?? '-' },
           {
-            title: '项目',
-            dataIndex: 'project_name',
-            render: (v: string | null) => v ?? '-',
-          },
-          {
-            title: '前后端',
-            dataIndex: 'category',
-            width: 96,
-            render: (v: BugCategory | null) =>
-              v ? <Tag color={CATEGORY_COLOR[v]}>{v}</Tag> : <Tag>未划分</Tag>,
+            title: '前后端', dataIndex: 'category', width: 96,
+            render: (v: BugCategory | null) => v ? <Tag color={CATEGORY_COLOR[v]}>{v}</Tag> : <Tag>未划分</Tag>,
           },
           { title: '标题', dataIndex: 'title' },
+          { title: '严重度', dataIndex: 'severity', width: 80, render: (v: BugSeverity) => <Tag color={SEVERITY_COLOR[v]}>{v}</Tag> },
+          { title: '优先级', dataIndex: 'priority', width: 90, render: (v: BugPriority) => <Tag color={PRIORITY_COLOR[v]}>{PRIORITY_LABELS[v]}</Tag> },
           {
-            title: '严重度',
-            dataIndex: 'severity',
-            width: 90,
-            render: (v: BugSeverity) => (
-              <Tag color={SEVERITY_COLOR[v]}>{v}</Tag>
+            title: '状态', dataIndex: 'status', width: 100,
+            render: (v: BugStatus, row: Bug) => (
+              <Space size={4}>
+                <Tag color={STATUS_COLOR[v]}>{row.status_display ?? STATUS_DISPLAY[v]}</Tag>
+                {row.is_draft && <Tag>草稿</Tag>}
+                {row.archived_at && <Tag>归档</Tag>}
+              </Space>
             ),
           },
           {
-            title: '状态',
-            dataIndex: 'status',
-            width: 90,
-            render: (v: BugStatus) => (
-              <Tag color={STATUS_COLOR[v]}>{v}</Tag>
-            ),
-          },
-          {
-            title: '推送',
-            dataIndex: 'active_share_count',
-            width: 90,
+            title: '推送', dataIndex: 'active_share_count', width: 90,
             render: (value: number | undefined) => (value && value > 0 ? <Tag color="green">已推送</Tag> : <Tag>未推送</Tag>),
           },
+          { title: '报告人', dataIndex: 'reporter_username', width: 110, render: (v: string | null) => v ?? '-' },
+          { title: '更新时间', dataIndex: 'updated_at', width: 170, render: (v: string) => new Date(v).toLocaleString() },
           {
-            title: '报告人',
-            dataIndex: 'reporter_username',
-            width: 120,
-            render: (v: string | null) => v ?? '-',
-          },
-          {
-            title: '处理人',
-            dataIndex: 'assignee_username',
-            width: 120,
-            render: (v: string | null) =>
-              v ? <Typography.Text>{v}</Typography.Text> : <Typography.Text type="secondary">未分配</Typography.Text>,
-          },
-          {
-            title: '创建时间',
-            dataIndex: 'created_at',
-            width: 180,
-            render: (v: string) => new Date(v).toLocaleString(),
-          },
-          {
-            title: '操作',
-            key: 'actions',
-            width: 210,
+            title: '操作', key: 'actions', width: 210,
             render: (_: unknown, row: Bug) => (
               <Space size={4} wrap={false}>
                 <Button size="small" onClick={() => setSearchParams({ bugId: String(row.id) })}>详情</Button>
                 {canManage(row.project_id) && <Button size="small" onClick={() => setShareBugs([row])}>推送到飞书</Button>}
-                <Button size="small" onClick={() => openEdit(row)}>
-                  编辑
-                </Button>
-                <Button
-                  size="small"
-                  danger
-                  disabled={removeMutation.isPending}
-                  onClick={() => confirmDelete(row)}
-                >
-                  删除
-                </Button>
+                {canManage(row.project_id) && <Button size="small" onClick={() => setFormModal({ mode: 'edit', bugId: row.id })}>编辑</Button>}
+                {canManage(row.project_id) && (
+                  <Button size="small" danger disabled={removeMutation.isPending} onClick={() => confirmDelete(row)}>删除</Button>
+                )}
               </Space>
             ),
           },
@@ -513,64 +438,33 @@ export function ConsoleDefectsPage() {
         }}
       />
 
-      <Modal title={bugDetail.data ? `缺陷 #${bugDetail.data.id}：${bugDetail.data.title}` : '缺陷详情'} open={Number.isSafeInteger(requestedBugId) && requestedBugId > 0} onCancel={() => setSearchParams({})} footer={null} destroyOnHidden>
-        {bugDetail.isLoading ? <LoadingState /> : bugDetail.isError || !bugDetail.data ? <ErrorState error={bugDetail.error} onRetry={bugDetail.refetch} /> : <Space direction="vertical" style={{ width: '100%' }}>
-          <Space wrap>
-            {bugDetail.data.category ? (
-              <Tag color={CATEGORY_COLOR[bugDetail.data.category]}>{bugDetail.data.category}</Tag>
-            ) : (
-              <Tag>未划分</Tag>
-            )}
-            <Tag color={SEVERITY_COLOR[bugDetail.data.severity]}>严重度 {bugDetail.data.severity}</Tag>
-            <Tag color={STATUS_COLOR[bugDetail.data.status]}>{bugDetail.data.status}</Tag>
-            {bugDetail.data.environment && <Tag>{bugDetail.data.environment}</Tag>}
-          </Space>
-          <Typography.Text>{bugDetail.data.description || '暂无描述'}</Typography.Text>
-          <Typography.Text strong>复现步骤</Typography.Text>
-          <pre className="bug-api-pre">{bugDetail.data.steps_to_reproduce || '未填写'}</pre>
-          <Typography.Text strong>预期结果</Typography.Text>
-          <pre className="bug-api-pre">{bugDetail.data.expected_result || '未填写'}</pre>
-          <Typography.Text strong>实际结果</Typography.Text>
-          <pre className="bug-api-pre">{bugDetail.data.actual_result || '未填写'}</pre>
-          {(bugDetail.data.api_url || bugDetail.data.api_method || bugDetail.data.api_request_headers || bugDetail.data.api_request_body || bugDetail.data.api_response) && (
-            <>
-              <Typography.Text strong>接口信息</Typography.Text>
-              <Typography.Paragraph copyable={false} style={{ marginBottom: 0 }}>
-                {bugDetail.data.api_method && <Tag color="geekblue">{bugDetail.data.api_method}</Tag>}
-                <Typography.Text code>{bugDetail.data.api_url || '未填写请求地址'}</Typography.Text>
-              </Typography.Paragraph>
-              {bugDetail.data.api_request_headers && (
-                <>
-                  <Typography.Text type="secondary">请求头</Typography.Text>
-                  <pre className="bug-api-pre">{bugDetail.data.api_request_headers}</pre>
-                </>
-              )}
-              {bugDetail.data.api_request_body && (
-                <>
-                  <Typography.Text type="secondary">请求体</Typography.Text>
-                  <pre className="bug-api-pre">{bugDetail.data.api_request_body}</pre>
-                </>
-              )}
-              {bugDetail.data.api_response && (
-                <>
-                  <Typography.Text type="secondary">实际响应</Typography.Text>
-                  <pre className="bug-api-pre">{bugDetail.data.api_response}</pre>
-                </>
-              )}
-            </>
-          )}
-          <BugAttachments bugId={bugDetail.data.id} />
-          <Typography.Text strong>关联来源</Typography.Text>
-          <DefectOrigins bugId={bugDetail.data.id} />
-          <BugVerificationPanel bug={bugDetail.data} />
-          <DefectShareHistory bug={bugDetail.data} canManage={canManage(bugDetail.data.project_id)} />
-          {bugDetail.data.status === '已修复' && canManage(bugDetail.data.project_id) && <Space wrap>
-            <Button type="primary" onClick={() => updateMutation.mutate({ id: bugDetail.data!.id, body: { status: '已关闭' } })}>验证通过，关闭缺陷</Button>
-            <Button onClick={() => updateMutation.mutate({ id: bugDetail.data!.id, body: { status: '处理中' } })}>验证失败，重新处理</Button>
-          </Space>}
-          {canManage(bugDetail.data.project_id) && <Button onClick={() => setShareBugs([bugDetail.data!])}>推送到飞书</Button>}
-        </Space>}
-      </Modal>
+      {detailOpen && (
+        <DefectDetailModal
+          bugId={requestedBugId}
+          canManage={canManage}
+          canArchive={canPermanent}
+          onClose={() => setSearchParams({})}
+          onEdit={(bug) => setFormModal({ mode: 'edit', bugId: bug.id })}
+          onShare={(bug) => setShareBugs([bug])}
+        />
+      )}
+
+      {formModal && (
+        <DefectFormModal
+          mode={formModal.mode}
+          bugId={formModal.mode === 'edit' ? formModal.bugId : undefined}
+          initialProjectId={projectId ?? projectOptions[0]?.value}
+          initialCategory={categoryFilter && categoryFilter !== '未划分' ? categoryFilter as BugCategory : undefined}
+          projectOptions={projectOptions}
+          onClose={() => setFormModal(null)}
+          onSaved={(_bug, continueCreating) => {
+            if (!continueCreating) setFormModal(null);
+            resetPage();
+            refreshLists();
+          }}
+        />
+      )}
+
       {shareBugs && shareBugs.length > 0 && (
         <DefectShareModal bugs={shareBugs} canPermanent={canPermanent(shareBugs[0].project_id)} onClose={() => { setShareBugs(null); queryClient.invalidateQueries({ queryKey: ['bugs'] }); queryClient.invalidateQueries({ queryKey: ['bug-shares'] }); }} />
       )}
@@ -578,412 +472,39 @@ export function ConsoleDefectsPage() {
       {batchModalOpen && (
         <BatchCreateBugsModal
           initialProjectId={projectId ?? projectOptions[0]?.value}
-          initialCategory={activeTabCategory}
+          initialCategory={categoryFilter && categoryFilter !== '未划分' ? categoryFilter as BugCategory : undefined}
           projectOptions={projectOptions}
           onClose={() => setBatchModalOpen(false)}
-          onCreated={() => {
-            setBatchModalOpen(false);
-            setPagination((p) => ({ ...p, page: 1 }));
-          }}
+          onCreated={() => { setBatchModalOpen(false); resetPage(); refreshLists(); }}
         />
       )}
 
-      {/* 新建 / 编辑弹窗 */}
+      {settingsOpen && projectId != null && (
+        <DefectSettingsDrawer
+          projectId={projectId}
+          projectName={projectOptions.find((p) => p.value === projectId)?.label}
+          canEdit={canPermanent(projectId)}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
       <Modal
-        title={
-          modalState?.mode === 'edit'
-            ? `编辑缺陷 #${modalState.bug.id}`
-            : '新建缺陷'
-        }
-        open={modalState != null}
-        onCancel={() => { if (!attachmentUploadPending) setModalState(null); }}
-        onOk={async () => {
-          if (modalState == null) return;
-          const values = await bugForm.validateFields();
-          // 接口专属字段仅在选择「接口」时提交；切换到其他类别时显式置空以清除旧值。
-          const isApiBug = values.category === '接口';
-          const basePayload = {
-            title: values.title,
-            category: values.category,
-            description: values.description,
-            expected_result: values.expected_result ?? null,
-            actual_result: values.actual_result ?? null,
-            api_method: isApiBug ? (values.api_method ?? null) : null,
-            api_url: isApiBug ? (values.api_url ?? null) : null,
-            api_request_headers: isApiBug ? (values.api_request_headers ?? null) : null,
-            api_request_body: isApiBug ? (values.api_request_body ?? null) : null,
-            api_response: isApiBug ? (values.api_response ?? null) : null,
-            severity: values.severity,
-            status: values.status,
-            steps_to_reproduce: values.steps_to_reproduce,
-            environment: values.environment,
-            assignee_id: values.assignee_id,
-          };
-          if (modalState.mode === 'create') {
-            const projectIdForCreate =
-              values.project_id ?? projectId ?? projectOptions[0]?.value;
-            if (projectIdForCreate == null) {
-              message.error('请先选择一个项目，或先创建项目');
-              return;
-            }
-            const created = createdPendingUpload ?? await createMutation.mutateAsync({
-              ...basePayload,
-              project_id: projectIdForCreate,
-            });
-            if (!createdPendingUpload) setCreatedPendingUpload(created);
-            if (files.length) {
-              setAttachmentUploadPending(true);
-              const results = await Promise.allSettled(files.map((file) => bugsApi.uploadAttachment(created.id, file)));
-              const failedFiles = files.filter((_file, index) => results[index]?.status === 'rejected');
-              setAttachmentUploadPending(false);
-              setFiles(failedFiles);
-              if (failedFiles.length) {
-                message.warning(`缺陷 #${created.id} 已创建，${failedFiles.length} 个附件未上传；再次保存可重试`);
-                return;
-              }
-            }
-            setFiles([]);
-            setCreatedPendingUpload(null);
-            message.success(createdPendingUpload ? '附件已补传' : '缺陷及附件已保存');
-            setModalState(null);
-          } else {
-            await updateMutation.mutateAsync({
-              id: modalState.bug.id,
-              body: basePayload,
-            });
-          }
+        open={batchArchiveOpen}
+        title={`归档选中的 ${selectedBugIds.length} 个缺陷`}
+        onCancel={() => setBatchArchiveOpen(false)}
+        onOk={() => {
+          if (!batchArchiveReason.trim()) { message.warning('请填写归档原因'); return; }
+          batchActionMutation.mutate({ project_id: projectId!, ids: selectedBugIds, action: 'archive', reason: batchArchiveReason.trim() });
         }}
-        confirmLoading={createMutation.isPending || updateMutation.isPending || attachmentUploadPending}
-        okText="保存"
-        cancelText="取消"
+        confirmLoading={batchActionMutation.isPending}
+        okText="确认归档"
         destroyOnHidden
-        width={620}
       >
-        <Form<BugFormValues>
-          key={formKey}
-          form={bugForm}
-          layout="vertical"
-          initialValues={
-            modalState?.mode === 'edit'
-              ? {
-                  title: modalState.bug.title,
-                  category: modalState.bug.category ?? undefined,
-                  description: modalState.bug.description ?? undefined,
-                  expected_result: modalState.bug.expected_result ?? undefined,
-                  actual_result: modalState.bug.actual_result ?? undefined,
-                  api_method: modalState.bug.api_method ?? undefined,
-                  api_url: modalState.bug.api_url ?? undefined,
-                  api_request_headers: modalState.bug.api_request_headers ?? undefined,
-                  api_request_body: modalState.bug.api_request_body ?? undefined,
-                  api_response: modalState.bug.api_response ?? undefined,
-                  severity: modalState.bug.severity,
-                  status: modalState.bug.status,
-                  steps_to_reproduce: modalState.bug.steps_to_reproduce ?? undefined,
-                  environment: modalState.bug.environment ?? undefined,
-                  assignee_id: modalState.bug.assignee_id ?? undefined,
-                }
-              : {
-                  project_id: projectId ?? projectOptions[0]?.value,
-                  category: activeTabCategory,
-                  severity: 2,
-                  status: '待确认',
-                }
-          }
-        >
-          {modalState?.mode === 'create' && (
-            <Form.Item
-              name="project_id"
-              label="所属项目"
-              rules={[{ required: true, message: '请选择所属项目' }]}
-            >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                options={projectOptions}
-                placeholder="请选择所属项目"
-                onChange={() => {
-                  // 切换所属项目时清空已选处理人，避免带入原项目成员 ID。
-                  bugForm.setFieldValue('assignee_id', undefined);
-                }}
-              />
-            </Form.Item>
-          )}
-          <Form.Item
-            name="category"
-            label="前后端划分"
-            rules={
-              modalState?.mode === 'create' || modalState?.bug.category != null
-                ? [{ required: true, message: '请选择前后端划分' }]
-                : []
-            }
-            tooltip={
-              modalState?.mode === 'edit' && modalState.bug.category == null
-                ? '历史存量缺陷暂未划分，可补充选择前端、前后端或接口'
-                : '区分缺陷归属前端、前后端联合处理或接口层'
-            }
-          >
-            <Radio.Group
-              options={CATEGORY_OPTIONS}
-              optionType="button"
-              buttonStyle="solid"
-            />
-          </Form.Item>
-          {selectedCategory === '接口' && (
-            <>
-              <Typography.Title level={5} style={{ marginTop: 8, marginBottom: 8 }}>
-                接口信息
-              </Typography.Title>
-              <div className="form-field-row">
-                <Form.Item
-                  name="api_method"
-                  label="请求方法"
-                  style={{ width: 160, flex: 'none', margin: 0 }}
-                >
-                  <Select placeholder="GET" options={API_METHOD_OPTIONS} allowClear />
-                </Form.Item>
-                <Form.Item
-                  name="api_url"
-                  label="请求地址"
-                  style={{ flex: 1, margin: 0 }}
-                >
-                  <Input placeholder="如 https://api.example.com/v1/orders 或 /v1/orders" maxLength={500} />
-                </Form.Item>
-              </div>
-              <Form.Item
-                name="api_request_headers"
-                label="请求头"
-                tooltip="JSON 或原始文本；请勿填写真实密钥，敏感值请脱敏"
-              >
-                <Input.TextArea
-                  rows={2}
-                  placeholder={'{"Authorization": "Bearer ***", "Content-Type": "application/json"}'}
-                  maxLength={2000}
-                />
-              </Form.Item>
-              <Form.Item name="api_request_body" label="请求体">
-                <Input.TextArea
-                  rows={3}
-                  placeholder='{"order_no": "SO-12345"}'
-                  maxLength={5000}
-                />
-              </Form.Item>
-              <Form.Item
-                name="api_response"
-                label="实际响应"
-                tooltip="接口返回的错误响应或异常报文；请脱敏后填写"
-              >
-                <Input.TextArea rows={3} placeholder='{"code": 500, "message": "internal error"}' maxLength={5000} />
-              </Form.Item>
-            </>
-          )}
-          <Form.Item
-            name="title"
-            label="标题"
-            rules={[{ required: true, whitespace: true, message: '请输入缺陷标题' }]}
-          >
-            <Input placeholder="一句话描述问题" maxLength={200} />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea placeholder="详细描述问题现象" rows={3} maxLength={1000} />
-          </Form.Item>
-          <Form.Item name="expected_result" label="预期结果">
-            <Input.TextArea placeholder="填写预期表现" rows={3} maxLength={4000} />
-          </Form.Item>
-          <Form.Item name="actual_result" label="实际结果">
-            <Input.TextArea placeholder="填写实际表现" rows={3} maxLength={4000} />
-          </Form.Item>
-          <div className="form-field-row">
-            <Form.Item
-              name="severity"
-              label="严重度"
-              style={{ flex: 1, margin: 0 }}
-              rules={[{ required: true, message: '请选择严重度' }]}
-            >
-              <Select options={SEVERITY_OPTIONS} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item
-              name="status"
-              label="状态"
-              style={{ flex: 1, margin: 0 }}
-              rules={[{ required: true, message: '请选择状态' }]}
-            >
-              <Select
-                options={BUG_STATUSES.map((s) => ({ label: s, value: s }))}
-                style={{ width: '100%' }}
-              />
-            </Form.Item>
-          </div>
-          <Form.Item name="environment" label="环境">
-            <Input placeholder="如 dev / test / prod" maxLength={200} />
-          </Form.Item>
-          <Form.Item
-            name="steps_to_reproduce"
-            label="复现步骤"
-            tooltip="多行文本，编号或换行均可"
-          >
-            <Input.TextArea rows={4} placeholder={'1. 打开登录页\n2. 输入错误密码\n3. 点击登录'} />
-          </Form.Item>
-          {modalState?.mode === 'create' && <Form.Item label="附件" extra="每个文件不超过 10 MB；保存时上传，失败文件可再次保存重试">
-            {createdPendingUpload && files.length > 0 && <Alert style={{ marginBottom: 8 }} type="warning" showIcon message={`缺陷 #${createdPendingUpload.id} 已创建，保存会重试附件上传`} />}
-            <Upload.Dragger disabled={attachmentUploadPending} multiple beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } setFiles((previous) => [...previous, file]); return false; }} onRemove={(file) => { setFiles((previous) => previous.filter((item) => item !== file.originFileObj)); }}>
-              <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-              <p className="ant-upload-text">点击或拖拽文件到此处</p>
-              <p className="ant-upload-hint">支持同时选择多个文件</p>
-            </Upload.Dragger>
-          </Form.Item>}
-          <Form.Item
-            name="assignee_id"
-            label="处理人"
-            tooltip="必须是项目成员；留空表示未分配"
-          >
-            <Select
-              placeholder="未分配"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={memberOptions}
-              loading={membersQuery.isPending}
-              notFoundContent={
-                membersQuery.isPending
-                  ? '加载中...'
-                  : modalProjectId == null
-                    ? '请先选择一个所属项目'
-                    : '该项目下暂无其他成员'
-              }
-            />
-          </Form.Item>
-        </Form>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Alert type="warning" showIcon message="归档会撤销每个缺陷的全部有效分享，并从默认列表隐藏；逐个校验并返回处理结果。" />
+          <Input.TextArea rows={3} maxLength={500} placeholder="归档原因（必填）" value={batchArchiveReason} onChange={(event) => setBatchArchiveReason(event.target.value)} />
+        </Space>
       </Modal>
     </PageContainer>
   );
-}
-
-function BugVerificationPanel({ bug }: { bug: Bug }) {
-  const { message } = App.useApp();
-  const queryClient = useQueryClient();
-  const navigate = useNavigate();
-  const [environmentId, setEnvironmentId] = useState<number>();
-  const [sourceExecutionId, setSourceExecutionId] = useState<number>();
-  const intent = useRef<{ fingerprint: string; requestKey: string } | null>(null);
-  const currentBugId = useRef(bug.id);
-  const currentFingerprint = JSON.stringify({ bug_id: bug.id, sourceExecutionId, environmentId });
-  currentBugId.current = bug.id;
-  const currentFingerprintRef = useRef(currentFingerprint);
-  currentFingerprintRef.current = currentFingerprint;
-  const [unknownCreate, setUnknownCreate] = useState<TaskCreateUncertainty | null>(null);
-  useEffect(() => {
-    intent.current = null;
-    setSourceExecutionId(undefined);
-    setEnvironmentId(undefined);
-    setUnknownCreate(null);
-  }, [bug.id]);
-  const sourcesQuery = useQuery({
-    queryKey: ['bug-sources', bug.id],
-    queryFn: () => bugsApi.bugSources(bug.id),
-  });
-  const environmentsQuery = useQuery({
-    queryKey: ['project-environments', bug.project_id],
-    queryFn: () => projectsApi.listEnvironments(bug.project_id),
-  });
-  const taskRefsQuery = useQuery({
-    queryKey: ['task-resource-sources', 'BUG', bug.id, bug.project_id],
-    queryFn: () => tasksApi.sources('BUG', String(bug.id), bug.project_id),
-  });
-  const verifyMutation = useMutation({
-    mutationFn: (submission: { bugId: number; sourceExecutionId: number; environmentId: number; requestKey: string; fingerprint: string }) => tasksApi.verifyBug(submission.bugId, {
-      source_case_execution_id: submission.sourceExecutionId,
-      environment_id: submission.environmentId,
-      request_key: submission.requestKey,
-    }),
-    onSuccess: async (task, submission) => {
-      clearTaskCreateUncertainty(submission.requestKey);
-      if (intent.current?.requestKey === submission.requestKey) intent.current = null;
-      setUnknownCreate((previous) => previous?.request_key === submission.requestKey ? null : previous);
-      message.success('验证任务已创建；任务结果不会自动关闭缺陷');
-      await queryClient.invalidateQueries({ queryKey: ['task-resource-sources', 'BUG', submission.bugId] });
-      if (currentBugId.current === submission.bugId && currentFingerprintRef.current === submission.fingerprint) {
-        navigate(`/console/tasks/${task.id}`);
-      }
-    },
-    onError: (error, submission) => {
-      message.error(getErrorMessage(error, '验证任务创建失败'));
-      if (!isAxiosError(error) || !error.response || error.response.status >= 500) {
-        const marker = { kind: 'verification' as const, project_id: bug.project_id, request_key: submission.requestKey, recorded_at: Date.now() };
-        rememberTaskCreateUncertainty(marker);
-        setUnknownCreate(marker);
-      } else clearTaskCreateUncertainty(submission.requestKey);
-    },
-  });
-  const failedSources = (sourcesQuery.data ?? []).filter((source) => source.case_execution_id != null);
-  const environments = (environmentsQuery.data?.items ?? []).filter((environment) => environment.is_active && environment.id != null);
-
-  return (
-    <div>
-      <Typography.Text strong>修复验证</Typography.Text>
-      {bug.status !== '已修复' ? <Typography.Paragraph type="secondary">将缺陷状态改为“已修复”后，可以选择原失败用例创建新的验证任务。</Typography.Paragraph> : (
-        <Space direction="vertical" style={{ width: '100%', marginTop: 8 }}>
-          {sourcesQuery.isError || environmentsQuery.isError ? <Typography.Text type="danger">来源或执行环境读取失败，无法创建验证任务。</Typography.Text> : null}
-          <Select
-            aria-label="原失败执行"
-            value={sourceExecutionId}
-            onChange={(value) => { setSourceExecutionId(value); setUnknownCreate(null); }}
-            loading={sourcesQuery.isLoading}
-            options={failedSources.map((source) => ({ value: source.case_execution_id!, label: `原失败用例执行 #${source.case_execution_id}` }))}
-            placeholder={failedSources.length ? '选择关联的原失败执行' : '缺陷没有可用的用例失败来源'}
-          />
-          <Select
-            aria-label="验证环境"
-            value={environmentId}
-            onChange={(value) => { setEnvironmentId(value); setUnknownCreate(null); }}
-            loading={environmentsQuery.isLoading}
-            options={environments.map((environment) => ({ value: environment.id!, label: environment.display_name || environment.name }))}
-            placeholder={environments.length ? '重新确认验证环境' : '当前项目没有可用环境'}
-          />
-          <Button
-            type="primary"
-            loading={verifyMutation.isPending}
-            disabled={sourceExecutionId == null || environmentId == null || sourcesQuery.isError || environmentsQuery.isError}
-            onClick={() => {
-              if (verifyMutation.isPending) return;
-              if (sourceExecutionId == null || environmentId == null) return;
-              const fingerprint = JSON.stringify({ bug_id: bug.id, sourceExecutionId, environmentId });
-              const retryingIntent = intent.current?.fingerprint === fingerprint ? intent.current : null;
-              const previousUnknown = readTaskCreateUncertainty();
-              if (previousUnknown && retryingIntent?.requestKey !== previousUnknown.request_key) {
-                message.warning('请先到任务列表核对上一条结果未知的请求，再提交新的验证配置');
-                return;
-              }
-              const submissionIntent = retryingIntent ?? { fingerprint, requestKey: `bug-verify-${crypto.randomUUID()}` };
-              intent.current = submissionIntent;
-              rememberTaskCreateUncertainty({ kind: 'verification', project_id: bug.project_id, request_key: submissionIntent.requestKey, recorded_at: Date.now() });
-              verifyMutation.mutate({ bugId: bug.id, sourceExecutionId, environmentId, ...submissionIntent });
-            }}
-          >创建新的验证任务</Button>
-          {unknownCreate && <Alert type="warning" showIcon message="验证任务创建结果未知" description="请检查关联任务记录后再决定是否重试；切换环境或来源会建立新的提交意图。" action={<Button size="small" onClick={() => navigate('/console/tasks')}>查看任务列表</Button>} />}
-          {taskRefsQuery.isError ? <Typography.Text type="secondary">无法读取相关任务结果。</Typography.Text> : taskRefsQuery.data?.map((ref) => (
-            <Typography.Link key={`${ref.task_run_id}-${ref.id}`} onClick={() => navigate(`/console/tasks/${ref.task_id}?runId=${ref.task_run_id}`)}>
-              {ref.task_title ?? `验证任务 #${ref.task_id}`} · 运行 #{ref.run_number}
-            </Typography.Link>
-          ))}
-        </Space>
-      )}
-    </div>
-  );
-}
-
-
-function BugAttachments({ bugId }: { bugId: number }) {
-  const { message, modal } = App.useApp();
-  const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['bug-attachments', bugId], queryFn: () => bugsApi.attachments(bugId) });
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['bug-attachments', bugId] });
-  return <Space direction="vertical" style={{ width: '100%' }}><Typography.Text strong>附件</Typography.Text>
-    {query.isError ? <Typography.Text type="danger">附件读取失败</Typography.Text> : query.data?.map((attachment) => <Space key={attachment.id}>
-      <Button type="link" onClick={() => bugsApi.downloadAttachment(bugId, attachment).catch((error) => message.error(getErrorMessage(error, '下载失败')))}>{attachment.filename}</Button><Typography.Text type="secondary">{(attachment.size / 1024).toFixed(1)} KB</Typography.Text>
-      <Button size="small" danger onClick={() => modal.confirm({ title: '删除此附件？', onOk: async () => { try { await bugsApi.deleteAttachment(bugId, attachment.id); await refresh(); } catch (error) { message.error(getErrorMessage(error, '删除失败')); } } })}>删除</Button></Space>)}
-    <Upload.Dragger multiple showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { await bugsApi.uploadAttachment(bugId, file as File); await refresh(); onSuccess?.({}); message.success('附件已上传'); } catch (error) { onError?.(error as Error); message.error(getErrorMessage(error, '上传失败')); } }} beforeUpload={(file) => { if (!file.size || file.size > 10 * 1024 * 1024) { message.error('附件不能为空且不能超过 10 MB'); return Upload.LIST_IGNORE; } return true; }}>
-      <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-      <p className="ant-upload-text">点击或拖拽文件到此处上传</p>
-      <p className="ant-upload-hint">支持多个文件，单个文件不超过 10 MB</p>
-    </Upload.Dragger></Space>;
 }
