@@ -397,3 +397,117 @@ export interface BugListQuery {
   sort?: 'updated'; // 按更新时间排序
   keyword?: string; // 关键字：命中 title / description
 }
+
+/** Excel 导入单行校验错误，保留原始 Excel 行号与列名。 */
+export interface DefectImportRowError {
+  row: number; // 原始 Excel 行号（工作簿/表头错误为 0/1）
+  column: string; // 出错列名或位置
+  message: string; // 中文错误说明
+}
+
+/** Excel 文件内重复标题或重复内容提示（不阻断导入）。 */
+export interface DefectImportDuplicateWarning {
+  kind: 'same_title' | 'same_content'; // 重复类型
+  title: string; // 重复标题
+  rows: number[]; // 涉及的 Excel 行号
+  message: string; // 提示文案
+}
+
+/** 同项目下最近一次相同内容的成功导入批次。 */
+export interface DefectImportRecentBatch {
+  batch_id: number; // 批次编号
+  committed_at: string | null; // 提交时间
+  created_count: number; // 新建条数
+  created_by_username: string | null; // 提交人
+  file_name: string; // 原始文件名
+}
+
+/** 预览中的单条待创建缺陷（明确标注新建动作）。 */
+export interface DefectImportPreviewItem extends BugApiFields {
+  excel_row: number; // 原始 Excel 行号
+  action: 'create'; // 动作：首版仅新建
+  title: string; // 标题
+  category: BugCategory | null; // 前后端划分
+  description: string | null; // 描述
+  steps_to_reproduce: string | null; // 复现步骤
+  expected_result: string | null; // 预期结果
+  actual_result: string | null; // 实际结果
+  severity: BugSeverity; // 严重度 1-4
+  priority: BugPriority; // 优先级 1-4
+  environment: string | null; // 发现环境
+  affected_version: string | null; // 影响版本
+  valid: boolean; // 当前行是否通过校验
+}
+
+/** 缺陷 Excel 导入预览响应。 */
+export interface DefectImportPreviewResponse {
+  project_id: number; // 目标项目 ID
+  template_version: string; // 模板版本
+  file_name: string; // 上传文件名
+  file_hash: string; // 原始文件 SHA-256
+  content_digest: string; // 标准化数据摘要
+  preview_token: string | null; // 有效预览标识，存在错误时为空
+  expires_at: string | null; // 预览有效期
+  total_rows: number; // 有效非空数据行数
+  valid_rows: number; // 通过校验的行数
+  unknown_columns: string[]; // 未识别列
+  ignored_system_columns: string[]; // 忽略的只读导出系统列
+  warnings: string[]; // 非阻断提示信息
+  duplicate_warnings: DefectImportDuplicateWarning[]; // 文件内重复提示
+  recent_matching_batch: DefectImportRecentBatch | null; // 最近同内容成功批次
+  errors: DefectImportRowError[]; // 阻断错误列表
+  items: DefectImportPreviewItem[]; // 预览明细
+}
+
+/** 确认导入请求体。 */
+export interface DefectImportConfirmRequest {
+  project_id: number; // 目标项目 ID
+  preview_token: string; // 预览标识
+  confirm_duplicate?: boolean; // 与历史同内容批次重复时的显式确认
+}
+
+/** 确认导入回执中的单行结果。 */
+export interface DefectImportCreatedItem {
+  excel_row: number; // 原始 Excel 行号
+  bug_id: number; // 新建缺陷 ID
+  title: string; // 缺陷标题
+}
+
+/** 确认导入回执。 */
+export interface DefectImportConfirmResponse {
+  batch_id: number; // 导入批次编号
+  preview_token: string; // 预览标识
+  project_id: number; // 目标项目 ID
+  created_count: number; // 新建条数
+  replayed: boolean; // 是否为同一预览的重试回放
+  items: DefectImportCreatedItem[]; // 逐行新建结果
+}
+
+/** 缺陷 Excel 导出请求体。 */
+export interface DefectExportRequest {
+  project_id: number; // 目标项目 ID
+  mode: 'filtered' | 'selected'; // 导出范围：当前项目筛选结果 / 已勾选缺陷
+  bug_ids?: number[]; // 已勾选缺陷 ID 列表
+  include_api_details?: boolean; // 是否包含脱敏后的接口详情（默认 false）
+  category?: BugCategoryFilter; // 前后端划分
+  status?: BugStatus; // 状态
+  severity?: BugSeverity; // 严重度
+  priority?: BugPriority; // 优先级
+  affected_version?: string; // 影响版本
+  status_group?: 'unclosed'; // 状态分组
+  mine?: boolean; // 我提交的
+  include_archived?: boolean; // 含已归档
+  include_drafts?: boolean; // 含我的草稿
+  view?: 'archived' | 'drafts'; // 归档/草稿视图
+  updated_after?: string; // 更新时间起
+  updated_before?: string; // 更新时间止
+  keyword?: string; // 关键字
+  sort?: 'updated'; // 排序方式
+}
+
+/** 导出文件下载结果。 */
+export interface DefectExportFileResult {
+  blob: Blob; // 工作簿二进制内容
+  filename: string; // 服务端返回的文件名
+  count: number; // 导出缺陷条数
+}
