@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.core.http.errors import not_found
 from app.core.models.identity import User
 from app.features.asr_evaluation.models import AsrComparison, AsrJob
-from app.features.asr_evaluation.services import comparison_service, job_service
 from app.platform.projects.services.access_service import get_project_or_404
 from app.tools.registry import register_handler
 
@@ -94,21 +93,21 @@ def check_output(output: str, expected: str | None = None, required_phrases: lis
 
 
 def get_job_summary(db: Session, project_id: int, actor: User, job_id: int) -> dict:
+    """读取历史任务状态；旧任务链路已退役，这里只回查既有记录，不创建或重跑任务。"""
     get_project_or_404(db, project_id, actor)
     row = db.get(AsrJob, job_id)
     if row is None or row.project_id != project_id:
         raise not_found("评测任务不存在")
-    result = job_service.get_job(db, job_id, actor, summary_only=True, include_text=False)
-    return {key: result[key] for key in ("id", "project_id", "status", "cancel_requested", "created_at", "finished_at")}
+    return {key: getattr(row, key) for key in ("id", "project_id", "status", "cancel_requested", "created_at", "finished_at")}
 
 
 def get_comparison_summary(db: Session, project_id: int, actor: User, comparison_id: int) -> dict:
+    """读取历史对比摘要；不提供逐段差异、复核或实验入口。"""
     get_project_or_404(db, project_id, actor)
     row = db.get(AsrComparison, comparison_id)
     if row is None or row.project_id != project_id:
         raise not_found("识别结果对比不存在")
-    result = comparison_service.get_comparison(db, comparison_id, actor)
-    return {key: result[key] for key in ("id", "project_id", "job_id", "version", "status", "degraded", "summary")}
+    return {key: getattr(row, key) for key in ("id", "project_id", "job_id", "version", "status", "degraded", "summary")}
 
 
 EVALUATION_INPUTS = {

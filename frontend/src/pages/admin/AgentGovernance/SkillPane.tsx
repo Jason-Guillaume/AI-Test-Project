@@ -374,7 +374,7 @@ export function SkillPane() {
             <Row gutter={[16, 16]}>
               <Col xs={24} xl={14}>
                 <Card title="Skill 概览" extra={<Switch checked={draft.is_enabled} checkedChildren="启用" unCheckedChildren="停用" onChange={(checked) => updateDraft({ is_enabled: checked })} />}>
-                  <Form layout="vertical">
+                  <Form className="form-reading-width" layout="vertical">
                     <Form.Item label="Skill 名称" required><Input value={draft.name} maxLength={120} onChange={(event) => updateDraft({ name: event.target.value })} /></Form.Item>
                     <Form.Item label="用途说明"><Input.TextArea value={draft.description} rows={4} maxLength={2000} showCount onChange={(event) => updateDraft({ description: event.target.value })} /></Form.Item>
                     <Form.Item label="关联的 MCP 工具">

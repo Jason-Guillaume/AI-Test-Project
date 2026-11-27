@@ -71,7 +71,7 @@
 .dashboard-donut-segment { stroke-linecap: round; }
 .dashboard-donut-total { fill: #25334a; font-size: 27px; font-weight: 700; }
 .dashboard-donut-caption { fill: #617087; font-size: 15px; }
-.dashboard-severity-legend { display: flex; min-width: 112px; flex: 1; flex-direction: column; gap: 12px; }
+.dashboard-severity-legend { display: flex; min-width: 112px; max-width: 240px; flex: 1; flex-direction: column; gap: 12px; }
 .dashboard-severity-row { display: grid; grid-template-columns: minmax(0, 1fr) 28px 34px; align-items: center; gap: 8px; color: #617087; font-size: 11px; }
 .dashboard-severity-row strong { color: #25334a; font-size: 12px; font-weight: 650; text-align: right; }
 .dashboard-severity-row small { color: #9aa5b4; font-size: 10px; text-align: right; }

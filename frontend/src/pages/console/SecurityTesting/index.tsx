@@ -226,11 +226,11 @@ function OverviewTab({ projectId }: { projectId: number }) {
             {findings.slice(0, 6).map((f) => (
               <Col key={f.id} xs={24} md={12} lg={8}>
                 <Card size="small">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <Typography.Text ellipsis style={{ maxWidth: '70%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <Typography.Text ellipsis={{ tooltip: f.title }} style={{ minWidth: 0, flex: 1 }}>
                       {f.title}
                     </Typography.Text>
-                    <Tag color={severityColor(f.severity)}>{severityLabel(f.severity)}</Tag>
+                    <Tag color={severityColor(f.severity)} style={{ marginInlineEnd: 0, flex: 'none' }}>{severityLabel(f.severity)}</Tag>
                   </div>
                 </Card>
               </Col>

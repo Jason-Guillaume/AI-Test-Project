@@ -225,7 +225,7 @@ export function TestAssetWorkspace() {
   };
 
   const strategyColumns: TableColumnsType<TestStrategy> = [
-    { title: '策略', dataIndex: 'name', width: 200, className: 'table-record-name' },
+    { title: '策略', dataIndex: 'name', width: '24%', className: 'table-record-name' },
     { title: '类别', dataIndex: 'category', width: 160, render: (value: string) => <Tag>{value}</Tag> },
     { title: '启用', dataIndex: 'enabled', width: 80, render: (value: boolean) => value ? <Tag color="green">是</Tag> : <Tag>否</Tag> },
     { title: '说明', dataIndex: 'description', ellipsis: true, render: (value: string | null) => value || '-' },
@@ -243,7 +243,7 @@ export function TestAssetWorkspace() {
   ];
   const pointColumns: TableColumnsType<TestPoint> = [
     { title: '测试点', dataIndex: 'name', className: 'table-record-name' },
-    { title: '策略', width: 220, ellipsis: true, render: (_, row) => strategyName.get(row.strategy_id ?? -1) || '-' },
+    { title: '策略', width: '22%', ellipsis: true, render: (_, row) => strategyName.get(row.strategy_id ?? -1) || '-' },
     { title: '优先级', dataIndex: 'priority', width: 90 },
     { title: '对象', dataIndex: 'target_type', width: 140 },
     { title: '状态', dataIndex: 'status', width: 110, render: (value: string) => <Tag>{value}</Tag> },

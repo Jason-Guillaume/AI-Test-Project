@@ -58,8 +58,8 @@ function LegacyModelEntry() {
   return <Result
     status="info"
     title="模型配置由平台管理员维护"
-    subTitle="此旧入口不提供模型管理权限。你仍可在 ASR 评测页查看任务和可用模型；如需新增或授权模型，请联系平台管理员。"
-    extra={<Button type="primary" href="/console/asr/jobs">返回 ASR 评测任务</Button>}
+    subTitle="此旧入口不提供模型管理权限。你仍可在 ASR 调优页选择可用模型；如需新增或授权模型，请联系平台管理员。"
+    extra={<Button type="primary" href="/console/asr/funasr">返回 ASR 调优</Button>}
   />;
 }
 
@@ -115,14 +115,7 @@ const ConsoleTaskDetailPage = lazyNamedPage(() => import('@/pages/console/Tasks/
 const ConsoleTaskInboxPage = lazyNamedPage(() => import('@/pages/console/Tasks/TaskInboxPage'), 'ConsoleTaskInboxPage');
 const ConsoleTaskTemplatesPage = lazyNamedPage(() => import('@/pages/console/Tasks/TaskTemplatesPage'), 'ConsoleTaskTemplatesPage');
 const AsrAudioPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/AudioPage'), 'AudioPage');
-const AsrJobsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/JobsPage'), 'JobsPage');
-const AsrJobDetailPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/JobsPage'), 'JobDetailPage');
-const AsrComparisonsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ComparisonsPage'), 'ComparisonsPage');
-const AsrComparisonDetailPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ComparisonsPage'), 'ComparisonDetailPage');
-const AsrExperimentsPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/ExperimentsPage'), 'ExperimentsPage');
 const FunAsrTuningPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/FunAsrTuningPage'), 'FunAsrTuningPage');
-const AsrRunWorkbenchPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/RunWorkbenchPage'), 'RunWorkbenchPage');
-const AsrRunListenPage = lazyNamedPage(() => import('@/pages/console/ASREvaluation/RunWorkbenchPage'), 'RunListenPage');
 
 /**
  * 认证外壳：把整棵路由树包在 AuthProvider 里，并注入统一的令牌失效回调。
@@ -283,14 +276,15 @@ function AppRoutes() {
           <Route path="asr/audio" element={<AsrAudioPage />} />
           {/* 兼容旧书签；模型中心现在仅由管理后台提供。 */}
           <Route path="model-center" element={<LegacyModelEntry />} />
-          <Route path="asr/connections" element={<LegacyModelEntry />} />
-          <Route path="asr/jobs" element={<AsrJobsPage />} />
-          <Route path="asr/jobs/:jobId" element={<AsrJobDetailPage />} />
-          <Route path="asr/runs/:runId" element={<AsrRunWorkbenchPage />} />
-          <Route path="asr/runs/:runId/listen" element={<AsrRunListenPage />} />
-          <Route path="asr/comparisons" element={<AsrComparisonsPage />} />
-          <Route path="asr/comparisons/:comparisonId" element={<AsrComparisonDetailPage />} />
-          <Route path="asr/experiments" element={<AsrExperimentsPage />} />
+          <Route path="asr/connections" element={<Navigate to="/console/asr/funasr" replace />} />
+          {/* 旧评测任务、工作台、对比与实验入口已退役，统一导向调优页且不再创建任务。 */}
+          <Route path="asr/jobs" element={<Navigate to="/console/asr/funasr" replace />} />
+          <Route path="asr/jobs/:jobId" element={<Navigate to="/console/asr/funasr" replace />} />
+          <Route path="asr/runs/:runId" element={<Navigate to="/console/asr/funasr" replace />} />
+          <Route path="asr/runs/:runId/listen" element={<Navigate to="/console/asr/funasr" replace />} />
+          <Route path="asr/comparisons" element={<Navigate to="/console/asr/funasr" replace />} />
+          <Route path="asr/comparisons/:comparisonId" element={<Navigate to="/console/asr/funasr" replace />} />
+          <Route path="asr/experiments" element={<Navigate to="/console/asr/funasr" replace />} />
           <Route path="asr/funasr" element={<FunAsrTuningPage />} />
           <Route path="tasks" element={<ConsoleTasksPage />} />
           <Route path="tasks/inbox" element={<ConsoleTaskInboxPage />} />

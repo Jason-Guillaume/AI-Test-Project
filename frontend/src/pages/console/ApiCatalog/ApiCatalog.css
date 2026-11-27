@@ -205,6 +205,9 @@
 }
 
 .api-module-interfaces { min-width: 0; }
+/* 路径文本占满所在单元格可用宽度，随侧栏开关与视口缩放重新测量，保留原生省略提示与复制按钮。 */
+.api-module-path-text.ant-typography { display: block; width: 100%; max-width: 100%; }
+.api-module-name-text { overflow-wrap: anywhere; }
 .api-module-interfaces .ant-table-selection-column {
   width: 56px;
   min-width: 56px;
@@ -260,7 +263,7 @@
   .api-module-actions { opacity: 1; }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 991.98px) {
   .api-catalog-layout { display: block; }
   .api-catalog-sidebar { display: none; }
   .api-catalog-detail { max-width: 100%; }

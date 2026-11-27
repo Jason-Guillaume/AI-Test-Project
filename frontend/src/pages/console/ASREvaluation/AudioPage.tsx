@@ -12,7 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
 import { asrEvaluationApi, asrQueryKeys } from '@/features/asr-evaluation/api/asrEvaluation';
-import { formatAudioDuration, groundTruthUiState, parsePastedAudioRecords, recentRunUiState } from '@/features/asr-evaluation/audioAssetUi.mjs';
+import { formatAudioDuration, groundTruthUiState, parsePastedAudioRecords } from '@/features/asr-evaluation/audioAssetUi.mjs';
 import { funasrTuningApi } from '@/features/asr-evaluation/api/funasrTuning';
 import type { FunAsrGroundTruth } from '@/features/asr-evaluation/api/funasrTuning';
 import type { AsrAudio, JsonValue } from '@/features/asr-evaluation/contracts';
@@ -27,16 +27,6 @@ interface AudioFormValues {
 }
 type AudioFormMode = 'CREATE' | 'IMPORT' | 'EDIT';
 type GroundTruthStatus = 'ALL' | 'BOUND' | 'UNBOUND';
-type RecentRun = {
-  audio_id: number;
-  run_id: number;
-  job_id: number;
-  audio_version_id: number | null;
-  audio_version: number | null;
-  status: string;
-  run_status: string;
-  created_at: string;
-};
 type BatchCheckResult =
   | { audioId: number; ok: true; availability: string; audioSource: string; platformAccess: string; httpStatus: number | null }
   | { audioId: number; ok: false; error: string };
@@ -97,23 +87,6 @@ function availabilityLabel(value: string): { label: string; color: string } {
   if (value === 'PLATFORM_DENIED') return { label: '出站未授权', color: 'error' };
   if (value === 'UNREACHABLE') return { label: '源不可达', color: 'error' };
   return { label: '待检查', color: 'default' };
-}
-
-function runStatusLabel(value: string): { label: string; color: string } {
-  const statuses: Record<string, { label: string; color: string }> = {
-    QUEUED: { label: '排队中', color: 'processing' },
-    RUNNING: { label: '运行中', color: 'processing' },
-    PENDING: { label: '排队中', color: 'processing' },
-    SUBMITTING: { label: '提交中', color: 'processing' },
-    REMOTE_RUNNING: { label: '运行中', color: 'processing' },
-    SUCCEEDED: { label: '成功', color: 'success' },
-    COMPLETED: { label: '完成', color: 'success' },
-    PARTIAL_FAILED: { label: '部分失败', color: 'warning' },
-    FAILED: { label: '失败', color: 'error' },
-    CANCELLED: { label: '已取消', color: 'default' },
-    RECONCILIATION_REQUIRED: { label: '状态待核实', color: 'warning' },
-  };
-  return statuses[value] ?? { label: value || '状态未知', color: 'default' };
 }
 
 function checkResultLabel(result: BatchCheckResult): string {
@@ -188,15 +161,6 @@ export function AudioPage() {
     });
   }, [location.pathname, location.search, location.state, navigate]);
 
-  const audioListReturnTo = useCallback(() => {
-    const params = new URLSearchParams(location.search);
-    const pendingKeyword = keywordInput.trim();
-    if (pendingKeyword) params.set('q', pendingKeyword);
-    else params.delete('q');
-    const search = params.toString();
-    return location.pathname + (search ? '?' + search : '');
-  }, [keywordInput, location.pathname, location.search]);
-
   const batchPreview = useMemo(() => {
     if (!batchInput.trim()) return { records: [] as Array<{ name: string; url: string }>, error: '' };
     try { return { records: parsePastedAudioRecords(batchInput), error: '' }; }
@@ -259,18 +223,6 @@ export function AudioPage() {
     ),
   });
   const audioRows = audioQuery.data?.items ?? [];
-  const audioIds = audioRows.map((item) => item.id);
-  const recentRunsQuery = useQuery({
-    queryKey: currentProjectId
-      ? asrQueryKeys.project(currentProjectId, 'audio-recent-runs', audioIds)
-      : ['asr', 'audio-recent-runs', null],
-    enabled: Boolean(currentProjectId && audioIds.length),
-    queryFn: ({ signal }) => asrEvaluationApi.getRecentAudioRuns(currentProjectId!, audioIds, signal),
-  });
-  const recentRuns = useMemo(
-    () => new Map((recentRunsQuery.data?.items ?? []).map((item) => [item.audio_id, item as RecentRun])),
-    [recentRunsQuery.data?.items],
-  );
   const groundTruthQuery = useQuery({
     queryKey: currentProjectId
       ? asrQueryKeys.project(currentProjectId, 'funasr-ground-truth')
@@ -470,16 +422,6 @@ export function AudioPage() {
     }
   };
 
-  const navigateToJobWizard = (ids: number[]) => {
-    if (!ids.length || ids.length > 200) {
-      message.warning(ids.length > 200 ? '一次最多创建 200 条音频的评测任务' : '请先选择音频');
-      return;
-    }
-    navigate('/console/asr/jobs?project_id=' + currentProjectId + '&audio_ids=' + ids.join(','), {
-      state: { returnTo: audioListReturnTo() },
-    });
-  };
-
   const checkRow = (audioId: number) => {
     if (currentProjectId && !checkMutation.isPending && !batchChecking) {
       checkMutation.mutate({ audioId, projectId: currentProjectId });
@@ -557,48 +499,11 @@ export function AudioPage() {
       },
     },
     {
-      title: '最近评测',
-      key: 'recent_run',
-      width: 210,
-      render: (_: unknown, row: AsrAudio) => {
-        const recent = recentRuns.get(row.id);
-        const recentState = recentRunUiState(recent, recentRunsQuery.status, Boolean(recentRunsQuery.data));
-        if (recentState === 'loading') return <Tag color="processing">读取中</Tag>;
-        if (recentState === 'error') return (
-          <Space direction="vertical" size={4}>
-            <Tag color="error">读取失败</Tag>
-            <Button size="small" type="link" onClick={() => void recentRunsQuery.refetch()}>重试读取</Button>
-          </Space>
-        );
-        if (recentState === 'unassessed') return <Tag>未评测</Tag>;
-        if (!recent) return <Tag color="warning">结果状态未知</Tag>;
-        const state = runStatusLabel(recent.status);
-        const versionWarning = recent.audio_version != null && recent.audio_version !== row.content_version;
-        return (
-          <Space direction="vertical" size={2}>
-            <Tag color={state.color}>{state.label}</Tag>
-            <Typography.Text type="secondary">
-              任务 #{recent.job_id} · {versionWarning ? '历史音频 v' + recent.audio_version : '音频 v' + (recent.audio_version ?? '未知')}
-            </Typography.Text>
-            <Typography.Text type="secondary">{new Date(recent.created_at).toLocaleString()}</Typography.Text>
-          </Space>
-        );
-      },
-    },
-    {
       title: '操作',
       key: 'actions',
       width: 280,
       render: (_: unknown, row: AsrAudio) => {
-        const recent = recentRuns.get(row.id);
-        const canOpenRecent = Boolean(recent && recentRunsQuery.isSuccess);
         const items = [
-          { key: 'create', label: '再次创建评测' },
-          ...(canOpenRecent ? [
-            { key: 'result', label: '查看最近结果' },
-            { key: 'job', label: '查看最近任务' },
-          ] : []),
-          { type: 'divider' as const },
           { key: 'answer', label: '管理标准答案（JSON）' },
           { key: 'edit', label: '编辑音频信息' },
           { key: 'check', label: '检查链接', disabled: checkMutation.isPending || batchChecking },
@@ -608,24 +513,9 @@ export function AudioPage() {
             <Button aria-label={'试听 ' + row.name} icon={<PlayCircleOutlined />} onClick={() => { setMediaError(false); setMediaWaiting(false); setSelectedAudio(row); }}>
               试听
             </Button>
-            <Button
-              type="primary"
-              onClick={() => canOpenRecent && recent ? navigate('/console/asr/runs/' + recent.run_id, {
-                state: { returnTo: audioListReturnTo() },
-              }) : navigateToJobWizard([row.id])}
-            >
-              {canOpenRecent && recent ? '查看结果' : '创建评测'}
-            </Button>
             <Dropdown menu={{
               items,
               onClick: ({ key }) => {
-                if (key === 'create') navigateToJobWizard([row.id]);
-                if (key === 'result' && recent) navigate('/console/asr/runs/' + recent.run_id, {
-                  state: { returnTo: audioListReturnTo() },
-                });
-                if (key === 'job' && recent) navigate('/console/asr/jobs/' + recent.job_id, {
-                  state: { returnTo: audioListReturnTo() },
-                });
                 if (key === 'answer') beginGroundTruthUpload(row);
                 if (key === 'edit') openForm('EDIT', row);
                 if (key === 'check') checkRow(row.id);
@@ -726,16 +616,6 @@ export function AudioPage() {
             action={<Button size="small" onClick={() => void groundTruthQuery.refetch()}>重试</Button>}
           />
         )}
-        {recentRunsQuery.isError && (
-          <Alert
-            type="warning"
-            showIcon
-            message="最近评测摘要读取失败"
-            description="当前不能判断音频是否评测过；可重试或进入评测任务列表查看。"
-            action={<Button size="small" onClick={() => void recentRunsQuery.refetch()}>重试</Button>}
-          />
-        )}
-
         {selectedAudioIds.length > 0 && (
           <Flex className="asr-audio-selection-toolbar" justify="space-between" wrap="wrap" gap="small" align="center">
             <Space direction="vertical" size={2} style={{ minWidth: 180 }}>
@@ -746,9 +626,6 @@ export function AudioPage() {
               </>}
             </Space>
             <Space wrap>
-              <Button type="primary" onClick={() => navigateToJobWizard(selectedAudioIds)} disabled={selectedAudioIds.length > 200}>
-                创建评测
-              </Button>
               <Button loading={batchChecking} disabled={checkMutation.isPending} onClick={() => void runBatchCheck()}>
                 检查链接
               </Button>
@@ -782,7 +659,7 @@ export function AudioPage() {
               ? <Empty description="列表未能加载，请检查上方错误信息并重试" />
               : <Empty description={keyword || availabilityFilter || groundTruthFilter !== 'ALL'
                 ? '没有符合当前筛选条件的音频'
-                : '还没有音频链接；添加链接后即可试听或创建评测'} />,
+                : '还没有音频链接；添加链接后即可试听或上传标准答案'} />,
           }}
           pagination={{
             current: page,
@@ -973,13 +850,6 @@ export function AudioPage() {
               <Descriptions.Item label="音频版本">v{selectedAudio.content_version}</Descriptions.Item>
               <Descriptions.Item label="时长">{formatAudioDuration(selectedAudio.duration_seconds)}</Descriptions.Item>
               <Descriptions.Item label="可用性">{availabilityLabel(selectedAudio.availability).label}</Descriptions.Item>
-              <Descriptions.Item label="最近评测">{(() => {
-                const recent = recentRuns.get(selectedAudio.id);
-                if (recentRunsQuery.status === 'pending' && !recentRunsQuery.data) return '读取中';
-                if (recentRunsQuery.status === 'error' && !recentRunsQuery.data) return '读取失败';
-                return recent ? '任务 #' + recent.job_id + ' · ' + runStatusLabel(recent.status).label
-                  + ' · 音频 v' + (recent.audio_version ?? '未知') : '未评测';
-              })()}</Descriptions.Item>
               <Descriptions.Item label="脱敏地址">
                 <Typography.Text copyable={false} className="asr-safe-url">{selectedAudio.url_display}</Typography.Text>
               </Descriptions.Item>
@@ -1017,7 +887,6 @@ export function AudioPage() {
               />
             )}
             <Space wrap>
-              <Button type="primary" onClick={() => navigateToJobWizard([selectedAudio.id])}>创建评测</Button>
               <Button disabled={checkMutation.isPending || batchChecking} loading={audioCheckId?.projectId === currentProjectId && audioCheckId.audioId === selectedAudio.id} onClick={() => checkRow(selectedAudio.id)}>检查链接</Button>
               <Button onClick={() => beginGroundTruthUpload(selectedAudio)}>管理标准答案（JSON）</Button>
             </Space>

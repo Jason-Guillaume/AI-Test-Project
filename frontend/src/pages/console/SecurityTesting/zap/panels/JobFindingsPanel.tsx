@@ -70,7 +70,7 @@ export function JobFindingsPanel({ projectId, jobId, running = false }: { projec
   const columns: TableColumnsType<ScanFindingLink> = [
     {
       title: '疑似问题',
-      width: 150,
+      width: '22%',
       render: (_, r) => (
         <Space direction="vertical" size={0}>
           <Typography.Text strong>#{r.finding_id}</Typography.Text>
@@ -99,12 +99,15 @@ export function JobFindingsPanel({ projectId, jobId, running = false }: { projec
     },
     {
       title: '命中',
-      width: 200,
-      render: (_, r) => (
-        <Typography.Text style={{ fontSize: 12 }}>
-          {r.method ?? ''} {r.url ?? ''}
-        </Typography.Text>
-      ),
+      ellipsis: { showTitle: false },
+      render: (_, r) => {
+        const target = `${r.method ?? ''} ${r.url ?? ''}`.trim();
+        return (
+          <Typography.Text className="table-code-path" ellipsis={{ tooltip: target }} style={{ fontSize: 12 }}>
+            {target || '-'}
+          </Typography.Text>
+        );
+      },
     },
     {
       title: '首次 / 重复',
@@ -151,7 +154,7 @@ export function JobFindingsPanel({ projectId, jobId, running = false }: { projec
           </Typography.Text>
         </Space>
       </Card>
-      <Table<ScanFindingLink> scroll={{ x: 'max-content' }}
+      <Table<ScanFindingLink> scroll={{ x: 1060 }}
         rowKey="id"
         size="small"
         columns={columns}

@@ -189,18 +189,11 @@ class Settings(BaseSettings):
     ZAP_PASSIVE_WAIT_SECONDS: int = 300
     ZAP_REQUEST_BUDGET: int = 5000
 
-    # 独立 ASR Worker 运行参数。Compose 可覆写；本机脚本从同一 .env 读取。
-    ASR_WORKER_ID: str = "asr-worker"
-    ASR_WORKER_POLL_SECONDS: float = 1.0
+    # 调优会话本地请求并发上限；由应用内 FunAsrTuningWorker 共用。
     ASR_WORKER_CONCURRENCY: int = 2
-    ASR_DIARIZATION_CONCURRENCY: int = 1
-    ASR_WORKER_LEASE_SECONDS: int = 90
-    ASR_WORKER_HEARTBEAT_TIMEOUT_SECONDS: int = 90
-    # API 与 Worker 必须指向同一持久卷；大于上限时明确拒绝而非截断。
+    # API 与调优 Worker 必须指向同一持久卷；大于上限时明确拒绝而非截断。
     ASR_ARTIFACT_DIR: str = "./var/asr-artifacts"
     ASR_ARTIFACT_MAX_BYTES: int = 20000000
-    ASR_ARTIFACT_RECOVERY_GRACE_SECONDS: int = 900
-    ASR_CONTENT_REVIEW_ENABLED: bool = True
 
     # 云效自动化报告落在服务器持久目录，不进数据库。API 与轮询进程必须指向同一目录。
     AUTOMATION_REPORT_DIR: str = "./var/automation-reports"

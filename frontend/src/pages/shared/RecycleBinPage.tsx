@@ -204,10 +204,10 @@ function RecycleBinContent({ adminMode, projectId }: { adminMode: boolean; proje
     { title: '项目', dataIndex: 'project_id', width: 90, render: (value: number | null) => value ?? '平台级' },
     { title: '删除人', dataIndex: 'deleted_by_name', width: 120, render: (value: string | null, row) => value || (row.deleted_by ? `用户 #${row.deleted_by}` : '系统') },
     { title: '删除时间', dataIndex: 'deleted_at', width: 170, render: (value: string) => value.replace('T', ' ').slice(0, 19) },
-    { title: '删除原因', dataIndex: 'deletion_reason', width: 180, ellipsis: true, render: (value: string | null) => value || '未填写' },
+    { title: '删除原因', dataIndex: 'deletion_reason', width: '12%', ellipsis: true, render: (value: string | null) => value || '未填写' },
     { title: '原始 ID', dataIndex: 'resource_id', width: 90 },
     {
-      title: '恢复冲突', dataIndex: 'restore_conflict', width: 220,
+      title: '恢复冲突', dataIndex: 'restore_conflict', width: '13%', ellipsis: true,
       render: (value: string | null) => value ? <Tag color="orange">{value}</Tag> : <Tag color="green">可恢复</Tag>,
     },
     { title: '保留状态', dataIndex: 'deletion_status', width: 110, render: () => <Tag>保留中 · 自动清理关闭</Tag> },
@@ -274,7 +274,7 @@ function RecycleBinContent({ adminMode, projectId }: { adminMode: boolean; proje
                 preserveSelectedRowKeys: true,
                 onChange: (keys) => setSelectedIds(keys.map(Number)),
               }}
-              scroll={{ x: 1450 }}
+              scroll={{ x: 1620 }}
               pagination={{
                 current: page, pageSize: 20, total: listQuery.data?.total ?? 0,
                 showSizeChanger: false, onChange: (nextPage) => setPage(nextPage),

@@ -60,31 +60,6 @@ services:
       retries: 5
       start_period: 30s
 
-  asr-worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    env_file:
-      - ./backend/.env
-    environment:
-      RUN_MIGRATIONS: "false"
-      ASR_WORKER_ID: asr-worker
-      ASR_ARTIFACT_DIR: /var/lib/testplatform/asr-artifacts
-      DATABASE_URL: ${DATABASE_URL}
-    volumes:
-      - asr-artifacts:/var/lib/testplatform/asr-artifacts
-    command: ["python", "-m", "scripts.run_asr_worker"]
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "/usr/local/bin/testplatform-entrypoint", "python", "-m", "scripts.check_asr_worker"]
-      interval: 20s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-
   frontend:
     build:
       context: .

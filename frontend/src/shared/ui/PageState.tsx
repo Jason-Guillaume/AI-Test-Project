@@ -63,8 +63,15 @@ export function ErrorState({
 /**
  * 页面容器。
  *
- * 纯排版组件，不发请求：统一各页面的内边距，保证视觉一致。
+ * 纯排版组件，不发请求：填满侧栏之外的可用工作区宽度，并与面包屑共享同一水平边距，
+ * 同时保留 `page` 容器查询供局部栅格与分栏按可用宽度适配。
  */
-export function PageContainer({ children }: { children: ReactNode }) {
-  return <div className="page-container">{children}</div>;
+export function PageContainer({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={className ? `page-container ${className}` : 'page-container'}>{children}</div>;
 }

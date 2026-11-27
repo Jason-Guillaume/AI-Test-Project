@@ -38,7 +38,7 @@ from app.features.asr_evaluation.services.funasr_analysis import (
     select_best_round, validate_candidate,
 )
 from app.features.asr_evaluation.services.evaluation_markdown_service import render_markdown
-from app.features.asr_evaluation.services.comparison_service import _model_access
+from app.features.asr_evaluation.services.model_access import list_accessible_models, require_model_access
 from app.platform.environment_configuration.services.environment_service import (
     list_project_environment_options, resolve_project_environment_by_name,
 )
@@ -320,7 +320,7 @@ def create_tuning_session(db: Session, body: FunAsrTuningCreate, actor: User) ->
     if body.mode == "AUTO_TUNE" and not body.allowed_parameters:
         raise bad_request("自动调优至少要启用一个允许搜索的参数；否则请选择单轮分析")
     _validate_search_policies(body.parameters, body.allowed_parameters)
-    _model_access(db, body.project_id, actor, body.model_config_id)
+    require_model_access(db, body.project_id, actor, body.model_config_id)
     model = db.get(ModelConfiguration, body.model_config_id)
     if model is None:
         raise not_found("文本分析模型不存在")
@@ -583,8 +583,7 @@ def retry_tuning_analysis(db: Session, session_id: int, actor: User) -> dict[str
 
 
 def get_models_for_project(db: Session, project_id: int, actor: User) -> dict[str, Any]:
-    from app.features.asr_evaluation.services.content_review_service import list_review_models
-    return list_review_models(db, project_id, actor)
+    return list_accessible_models(db, project_id, actor)
 
 
 def _next_window_start(now: datetime, start: str) -> datetime:

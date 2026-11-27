@@ -74,7 +74,7 @@ export function RulePanel({
     actionId == null ? '流程级' : actions.find((a) => a.id === actionId)?.name ?? `#${actionId}`;
 
   const columns = [
-    { title: '规则名', dataIndex: 'name', width: 160 },
+    { title: '规则名', dataIndex: 'name', width: '22%', className: 'table-record-name' },
     {
       title: '类型',
       dataIndex: 'rule_type',
@@ -160,7 +160,7 @@ export function RulePanel({
       ) : isError ? (
         <div role="alert">规则加载失败 <Button onClick={() => void refetch()}>重试</Button></div>
       ) : rules.length > 0 ? (
-        <Table rowKey="id" columns={columns} dataSource={rules} pagination={false} size="small" />
+        <Table rowKey="id" columns={columns} dataSource={rules} pagination={false} size="small" scroll={{ x: 760 }} />
       ) : (
         <Empty description="暂无业务规则" />
       )}

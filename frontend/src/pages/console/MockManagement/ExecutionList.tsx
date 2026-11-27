@@ -86,7 +86,7 @@ export function ConsoleMockExecutionListPage() {
     },
     {
       title: '服务 / 接口',
-      width: 240,
+      width: '20%',
       render: (_, r) => (
         <Space direction="vertical" size={0}>
           <span>
@@ -98,12 +98,15 @@ export function ConsoleMockExecutionListPage() {
     },
     {
       title: '请求',
-      width: 140,
-      render: (_, r) => (
-        <Tag color="blue">
-          {r.method} {r.path}
-        </Tag>
-      ),
+      ellipsis: { showTitle: false },
+      render: (_, r) => {
+        const label = `${r.method} ${r.path}`;
+        return (
+          <Typography.Text className="table-code-path" code ellipsis={{ tooltip: label }}>
+            {label}
+          </Typography.Text>
+        );
+      },
     },
     {
       title: '状态码',
@@ -277,7 +280,7 @@ export function ConsoleMockExecutionListPage() {
         size="small"
         columns={columns}
         dataSource={rows}
-        scroll={{ x: 1400 }}
+        scroll={{ x: 1520 }}
         loading={execQuery.isLoading}
         pagination={{
           current: page,

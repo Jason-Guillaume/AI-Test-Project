@@ -1,18 +1,18 @@
 @media (max-width: 1100px) {
-  .page-container { padding-inline: 24px; }
-  .app-breadcrumb-wrap { padding-inline: 24px; }
+  :root { --page-gutter: 24px; }
   .app-topbar.ant-layout-header { padding-inline: 20px; }
 }
 
 @media (max-width: 760px) {
+  :root { --page-gutter: 16px; }
   .app-topbar.ant-layout-header { height: auto; min-height: 64px; flex-wrap: wrap; gap: 8px; padding: 10px 14px; }
   .app-topbar .app-topbar-left { flex: 1 1 0; gap: 6px; }
   .app-topbar .app-topbar-actions { flex-wrap: nowrap; gap: 4px; margin-left: auto; }
   .app-scope-select { flex: 1 1 120px; width: auto !important; }
   .app-topbar .app-user-trigger { padding-inline: 2px; }
   .app-topbar .app-user-name, .app-topbar .app-user-role { display: none; }
-  .app-breadcrumb-wrap { padding: 14px 16px 0; }
-  .page-container { padding: 18px 16px 28px; }
+  .app-breadcrumb-wrap { padding: 14px var(--page-gutter) 0; }
+  .page-container { padding: 18px var(--page-gutter) 28px; }
   .admin-list-toolbar { align-items: stretch; }
   .admin-list-toolbar .ant-input-search { width: 100% !important; }
   .resource-list-toolbar > .ant-space-item { max-width: 100%; }

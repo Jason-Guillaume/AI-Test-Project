@@ -4,18 +4,35 @@ import hashlib
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.core.config import settings
+from app.core.database.base import Base
 from app.core.security.crypto import encrypt_secret
-from app.features.asr_evaluation.models import AsrAudioVersion
+from app.features.asr_evaluation.models import AsrAudio, AsrAudioVersion
 from app.features.asr_evaluation.providers import audio_transcriptions
-from app.features.asr_evaluation.providers.generic_json import AsrProviderError, GenericJsonProvider
+from app.features.asr_evaluation.providers.generic_json import AsrProviderError
 from .test_audio_transcriptions import execution
-from .test_regressions import sandbox
 
 
-def test_managed_audio_upload_enforces_project_and_size(sandbox, tmp_path, monkeypatch):
-    db, _, _, audio, _, _, _ = sandbox
+@pytest.fixture
+def managed_sandbox():
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    tables = [Base.metadata.tables["asr_audio"], Base.metadata.tables["asr_audio_version"]]
+    Base.metadata.create_all(engine, tables=tables)
+    db = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+    audio = AsrAudio(project_id=1, name="managed synthetic", url_ciphertext="cipher", url_display="managed synthetic")
+    db.add(audio)
+    db.flush()
+    yield db, audio
+    db.close()
+    engine.dispose()
+
+
+def test_managed_audio_upload_enforces_project_and_size(managed_sandbox, tmp_path, monkeypatch):
+    db, audio = managed_sandbox
     content = b"synthetic managed recording"
     digest = hashlib.sha256(content).hexdigest()
     key = digest + ".m4a"

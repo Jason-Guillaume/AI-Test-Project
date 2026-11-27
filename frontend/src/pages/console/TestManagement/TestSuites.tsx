@@ -174,7 +174,7 @@ export function ConsoleTestSuitesPage() {
 
   const columns: TableColumnsType<TestSuite> = [
     sequenceColumn<TestSuite>(),
-    { title: '名称', dataIndex: 'name', width: 200, className: 'table-record-name' },
+    { title: '名称', dataIndex: 'name', width: '20%', className: 'table-record-name' },
     {
       title: '类型',
       dataIndex: 'suite_type',
@@ -249,7 +249,7 @@ export function ConsoleTestSuitesPage() {
       ) : suites.length === 0 ? (
         <EmptyState description="暂无测试套件" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={suites} scroll={{ x: 970 }} pagination={false} size="middle"
+        <Table rowKey="id" columns={columns} dataSource={suites} scroll={{ x: 1040 }} pagination={false} size="middle"
           rowSelection={{ selectedRowKeys: selectedSuiteIds, onChange: (keys) => setSelectedSuiteIds(keys.map(Number)) }} />
       )}
 

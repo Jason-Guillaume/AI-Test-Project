@@ -28,7 +28,6 @@ import {
   ProfileOutlined,
   ExperimentOutlined,
   HistoryOutlined,
-  AudioOutlined,
   LogoutOutlined,
   MenuOutlined,
   PartitionOutlined,
@@ -95,7 +94,7 @@ const BASE_MENU_ITEMS: MenuSection[] = [
       { key: '/console/business-management', icon: <PartitionOutlined />, label: '业务管理' },
       { key: '/console/test-asset', icon: <FileTextOutlined />, label: '测试资产' },
       { key: '/console/test-cases', icon: <ProfileOutlined />, label: '测试用例' },
-      { key: '/console/asr/audio', icon: <AudioOutlined />, label: 'ASR 评测' },
+      { key: '/console/asr/funasr', icon: <ExperimentOutlined />, label: 'ASR 调优' },
       { key: '/console/test-suites', icon: <BlockOutlined />, label: '测试套件' },
       { key: '/console/test-plans', icon: <ScheduleOutlined />, label: '测试计划' },
       { key: '/console/web-ui', icon: <ChromeOutlined />, label: 'Web UI 工作区' },
@@ -168,14 +167,6 @@ const ROUTE_TITLES: Record<string, string> = {
   '/console/web-ui-agent': '浏览器智能编写',
   '/console/security-testing': '安全测试工作区',
   '/console/asr/audio': '音频资产',
-  '/console/asr/connections': '接口配置',
-  '/console/asr/jobs': '评测任务',
-  '/console/asr/jobs/:jobId': '任务详情',
-  '/console/asr/runs/:runId': '单模型音频工作台',
-  '/console/asr/runs/:runId/listen': '单模型音频工作台',
-  '/console/asr/comparisons': '识别结果对比',
-  '/console/asr/comparisons/:comparisonId': '识别结果对比',
-  '/console/asr/experiments': '参数实验',
   '/console/asr/funasr': 'AI 分析与调优',
   '/console/test-data': '测试数据', // 测试数据
   '/console/agent': 'AI 助手',
@@ -257,7 +248,7 @@ export function ConsoleLayout() {
 
   const selectedMenuKey = useMemo(() => {
     if (location.pathname === '/console/web-ui-agent') return '/console/web-ui';
-    if (location.pathname.startsWith('/console/asr/')) return '/console/asr/audio';
+    if (location.pathname.startsWith('/console/asr/')) return '/console/asr/funasr';
     if (allMenuKeys.includes(location.pathname)) return location.pathname;
     const prefixes = allMenuKeys.filter((key) => location.pathname.startsWith(`${key}/`));
     if (prefixes.length > 0) return prefixes.reduce((a, b) => b.length > a.length ? b : a);

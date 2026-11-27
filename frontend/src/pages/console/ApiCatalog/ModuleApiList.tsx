@@ -147,30 +147,31 @@ export function ModuleApiList({
   if (query.isPending) return <LoadingState tip={`正在加载「${module.name}」接口...`} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={query.refetch} />;
 
+  // 固定列只保留紧凑宽度，接口名称与路径吸收宽屏剩余空间；列宽不足时由表格内部横向滚动承接。
   const columns = [
     sequenceColumn<ApiInterface>({ page: pagination.page, pageSize: pagination.page_size }),
     {
       title: '方法',
       dataIndex: 'method',
-      width: 100,
+      width: 92,
       render: (value: string) => <Tag color={METHOD_COLOR[value] ?? 'default'}>{value}</Tag>,
     },
     {
       title: '接口名称',
       dataIndex: 'name',
-      width: 220,
-      render: (value: string) => <Typography.Text strong>{value}</Typography.Text>,
+      width: '20%',
+      render: (value: string) => <Typography.Text strong className="api-module-name-text">{value}</Typography.Text>,
     },
     {
       title: '路径',
       dataIndex: 'path',
-      width: 320,
+      ellipsis: { showTitle: false },
       render: (value: string) => (
         <Typography.Text
+          className="api-module-path-text"
           code
           copyable={{ text: value, tooltips: ['复制路径', '已复制'] }}
           ellipsis={{ tooltip: value }}
-          style={{ maxWidth: 290 }}
         >
           {value}
         </Typography.Text>
@@ -179,20 +180,20 @@ export function ModuleApiList({
     {
       title: '状态',
       dataIndex: 'status',
-      width: 110,
+      width: 108,
       render: (value: ApiStatus) => <Tag color={API_STATUS_COLOR[value]}>{value}</Tag>,
     },
-    { title: '版本', dataIndex: 'version', width: 80, render: (value: number) => `v${value}` },
+    { title: '版本', dataIndex: 'version', width: 72, render: (value: number) => `v${value}` },
     {
       title: '更新时间',
       dataIndex: 'updated_at',
-      width: 170,
+      width: 168,
       render: (value: string) => new Date(value).toLocaleString(),
     },
     {
       title: '',
       key: 'open',
-      width: 88,
+      width: 84,
       align: 'right' as const,
       render: (_value: unknown, row: ApiInterface) => (
         <Button type="link" size="small" onClick={(event) => {
@@ -283,9 +284,11 @@ export function ModuleApiList({
         pagination={pagination}
         onPaginationChange={changePagination}
         emptyText={emptyText}
+        scroll={{ x: 1220 }}
         onRowClick={(row) => onSelectApi(row.id)}
         rowStyle={{ cursor: 'pointer' }}
         rowSelection={{
+          columnWidth: 56,
           selectedRowKeys: selectedIds,
           onChange: (keys) => onSelectionChange(keys.map(Number)),
         }}

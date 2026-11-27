@@ -95,7 +95,7 @@ export function ConsoleAutomationRunsPage() {
     <PageContainer>
       <ProjectRequired projectId={currentProjectId} />
       <Card title="触发 CI 执行">
-        <Form form={form} layout="vertical" onFinish={(values) => {
+        <Form className="form-reading-width" form={form} layout="vertical" onFinish={(values) => {
           if (submitting.current || trigger.isPending) return;
           submitting.current = true;
           trigger.mutate(values, { onSettled: () => { submitting.current = false; } });
