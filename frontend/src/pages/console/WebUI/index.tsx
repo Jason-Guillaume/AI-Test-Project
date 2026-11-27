@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { webUIApi } from '@/features/web-testing/api/webUI';
 import { reportsApi } from '@/features/reports/api/reports';
 import { businessApi } from '@/features/business/api/business';
@@ -200,6 +201,7 @@ function Workspace({ projectId }: { projectId: number }) {
         {history.isError && <ErrorState error={history.error} onRetry={history.refetch} />}
         <Table rowKey="id" loading={history.isPending} dataSource={history.data?.items ?? []}
           pagination={{ current: historyPage, pageSize: 20, total: history.data?.total, onChange: setHistoryPage }} columns={[
+            sequenceColumn<WebExecution>({ page: historyPage, pageSize: 20 }),
             { title: '执行 ID', dataIndex: 'id' }, { title: '用例 ID', dataIndex: 'test_case_id' }, { title: '状态', dataIndex: 'status' },
             { title: '错误定位', dataIndex: 'error_message' }, { title: '耗时(ms)', dataIndex: 'duration_ms' },
             { title: '操作', render: (_, row) => <Space><Button onClick={() => setSelectedExecution(row)}>日志 / 截图 / Trace</Button>

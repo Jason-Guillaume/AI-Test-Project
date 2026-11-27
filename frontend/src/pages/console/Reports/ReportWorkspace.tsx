@@ -5,6 +5,7 @@ import { ErrorState } from '@/shared/ui/PageState';
 import { FilterToolbar } from '@/shared/ui/FilterToolbar';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { fmtTime } from '@/shared/lib/format';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { CASE_EXECUTION_STATUS_OPTIONS, TEST_PRIORITY_OPTIONS } from '@/pages/console/TestManagement/constants';
 import { SendOutlined } from '@ant-design/icons';
 import { AiSummaryPanel } from './ReportSummaryPanels';
@@ -189,7 +190,7 @@ export function ReportWorkspace({
                       rowKey="id"
                       size="small"
                       columns={[
-                        { title: '记录ID', dataIndex: 'id', width: 90 },
+                        sequenceColumn<NotificationRecord>({ page: notificationPage, pageSize: 20 }),
                         { title: '渠道ID', dataIndex: 'channel_id', width: 100 },
                         {
                           title: '状态',

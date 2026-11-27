@@ -21,6 +21,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import { mockManagementApi } from '@/features/mocking/api/mockManagement';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { fmtTime } from '@/shared/lib/format';
 import type { CreateMockFromApiRequest, MockService, MockServiceUpdate } from '@/features/mocking/contracts';
@@ -171,7 +172,7 @@ export function ConsoleMockManagementPage() {
   };
 
   const columns: TableColumnsType<MockService> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    sequenceColumn<MockService>(),
     {
       title: '服务键',
       dataIndex: 'service_key',

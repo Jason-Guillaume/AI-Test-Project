@@ -41,6 +41,7 @@ import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { buildRuntimeUrl, mockManagementApi } from '@/features/mocking/api/mockManagement';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { fmtTime } from '@/shared/lib/format';
 import type { ApiInterface } from '@/features/api-catalog/contracts';
@@ -298,7 +299,7 @@ export function ConsoleMockServiceDetailPage() {
   };
 
   const columns: TableColumnsType<MockEndpoint> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    sequenceColumn<MockEndpoint>(),
     {
       title: '方法',
       dataIndex: 'method',

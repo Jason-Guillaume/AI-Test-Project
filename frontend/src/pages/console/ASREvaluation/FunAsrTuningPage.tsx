@@ -13,6 +13,7 @@ import type {
   FunAsrParameterDefinition, FunAsrTuningSession,
 } from '@/features/asr-evaluation/api/funasrTuning';
 import type { AsrAudio, JsonValue } from '@/features/asr-evaluation/contracts';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 const { Text, Paragraph, Title } = Typography;
 const EMPTY_MAPPING = JSON.stringify({ text_source: 'full', text_pointer: '' }, null, 2);
@@ -342,6 +343,7 @@ export function FunAsrTuningPage() {
   ];
 
   const sessionColumns: TableColumnsType<FunAsrTuningSession> = [
+    sequenceColumn<FunAsrTuningSession>({ rows: sessions }),
     { title: '任务', dataIndex: 'id', key: 'id', width: 80, render: (value) => `#${value}` },
     { title: '状态', dataIndex: 'status', key: 'status', render: statusTag },
     { title: '轮次', dataIndex: 'current_round', key: 'round', width: 90, render: (value, row) => `${value} / ${row.total_rounds || '—'}` },

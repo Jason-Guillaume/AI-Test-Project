@@ -27,6 +27,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { securityApi } from '@/features/security-testing/api/securityTesting';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { DefectSourceLinks } from '@/widgets/execution-detail/DefectSourceLinks';
 import {
   FINDING_STATUS_OPTIONS,
@@ -81,6 +82,7 @@ export function FindingsTab({ projectId }: { projectId: number }) {
   });
 
   const columns: TableColumnsType<SecurityFinding> = [
+    sequenceColumn<SecurityFinding>(),
     {
       title: '疑似问题',
       dataIndex: 'title',

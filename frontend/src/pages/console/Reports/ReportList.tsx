@@ -18,6 +18,7 @@ import { EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { fmtDuration, fmtTime } from '@/shared/lib/format';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { REPORT_RISK_COLOR, REPORT_STATUS_COLOR } from '@/features/reports/status';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { REPORT_RISK_OPTIONS, REPORT_STATUS_OPTIONS } from './constants';
@@ -114,6 +115,7 @@ export function ConsoleReportListPage() {
 
   const columns: TableColumnsType<TestReportListItem> = useMemo(
     () => [
+      sequenceColumn<TestReportListItem>({ page: currentPage, pageSize }),
       { title: '报告编号', dataIndex: 'report_no', width: 170 },
       { title: '标题', dataIndex: 'title', ellipsis: true },
       {
@@ -182,7 +184,7 @@ export function ConsoleReportListPage() {
         ),
       },
     ],
-    [navigate, token, modal, isRemovingReport, removeReport],
+    [navigate, token, modal, isRemovingReport, removeReport, currentPage, pageSize],
   );
 
   if (currentProjectId == null) {

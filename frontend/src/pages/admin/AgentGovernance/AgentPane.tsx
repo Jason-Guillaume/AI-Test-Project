@@ -12,6 +12,7 @@ import { modelConfigsApi } from '@/features/model-configuration/api/modelConfigs
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { DetailDrawer } from '@/shared/ui/DetailDrawer';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { DefinitionHistoryModal } from './SkillPane';
 
 import { CaseGenerationModal } from './CaseGenerationModal';
@@ -134,6 +135,7 @@ export function AgentPane() {
   };
 
   const agentTableColumns = [
+    sequenceColumn<AgentDefinition>(),
     { title: 'Agent', dataIndex: 'name', render: (_: string, row: AgentDefinition) => <Button type="link" onClick={() => setEditing(row)}>{row.name}</Button> },
     { title: '工作流', dataIndex: 'workflow_template', render: (value: string) => WORKFLOW_LABELS[value] ?? value },
     { title: '用途', dataIndex: 'purpose' },

@@ -10,6 +10,7 @@ import { projectsApi } from '@/features/projects/api/projects';
 import { api, getErrorMessage } from '@/shared/api/client';
 import { collectPages } from '@/shared/api/pagination';
 import { PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { useNavigate } from 'react-router-dom';
@@ -306,8 +307,8 @@ export function AdminKnowledgePage() {
               loading={versions.isLoading}
               dataSource={versions.data?.items || []}
               columns={[
+                sequenceColumn<Version>({ rows: versions.data?.items ?? [] }),
                 { title: '版本', dataIndex: 'version' },
-                { title: '版本 ID', dataIndex: 'id' },
                 { title: '解析状态', dataIndex: 'status' },
                 { title: '分块策略', dataIndex: 'chunking_version', render: (value) => value ?? '未知' },
                 { title: '错误', dataIndex: 'error' },

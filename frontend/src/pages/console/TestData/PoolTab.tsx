@@ -8,6 +8,7 @@ import { testDataApi } from '@/features/test-data/api/testData';
 import { getErrorMessage } from '@/shared/api/client';
 import { collectPages } from '@/shared/api/pagination';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import type { DataPool, DataPoolCreate } from '@/features/test-data/contracts';
 
 const KEY_PATTERN = /^[A-Z][A-Z0-9_]{0,99}$/;
@@ -97,6 +98,7 @@ export function PoolTab({ projectId }: { projectId: number }) {
         pagination={false}
         rowSelection={{ selectedRowKeys: selectedPoolIds, onChange: (keys) => setSelectedPoolIds(keys.map(Number)) }}
         columns={[
+          sequenceColumn<DataPool>(),
           { title: '名称', dataIndex: 'name' },
           { title: '键', dataIndex: 'pool_key' },
           { title: '条目', dataIndex: 'item_count', width: 80 },
@@ -125,7 +127,7 @@ export function PoolTab({ projectId }: { projectId: number }) {
             pagination={false}
             rowSelection={{ selectedRowKeys: selectedItemIds, onChange: (keys) => setSelectedItemIds(keys.map(Number)) }}
             columns={[
-              { title: 'ID', dataIndex: 'id', width: 80 },
+              sequenceColumn<{ id: number }>(),
               { title: '状态', dataIndex: 'status', width: 120 },
               { title: '占用次数', dataIndex: 'occupied_count', width: 100 },
               {

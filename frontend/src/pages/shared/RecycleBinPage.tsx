@@ -28,6 +28,7 @@ import {
 import { getErrorMessage } from '@/shared/api/client';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 const RESOURCE_LABELS: Record<string, string> = {
   user: '用户账号',
@@ -194,6 +195,7 @@ function RecycleBinContent({ adminMode, projectId }: { adminMode: boolean; proje
   });
 
   const columns: TableColumnsType<RecycleBinItem> = useMemo(() => [
+    sequenceColumn<RecycleBinItem>({ page, pageSize: 20 }),
     {
       title: '数据名称', dataIndex: 'display_name', ellipsis: true,
       render: (value: string, row) => <Button type="link" style={{ padding: 0 }} onClick={() => setDetailId(row.id)}>{value || `#${row.resource_id}`}</Button>,
@@ -226,7 +228,7 @@ function RecycleBinContent({ adminMode, projectId }: { adminMode: boolean; proje
         </Space>
       ),
     },
-  ], [adminMode, message, restoreManyMutation, isRestorePending]);
+  ], [adminMode, message, restoreManyMutation, isRestorePending, page]);
 
   const rows = listQuery.data?.items ?? [];
   return (

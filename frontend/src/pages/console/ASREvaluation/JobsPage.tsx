@@ -12,6 +12,7 @@ import type { AsrAudio, AsrJob, AsrJobAudioGroup, AsrPage, AsrSchedule } from '@
 import { modelCenterApi, modelCenterQueryKeys, type ModelAvailableResource } from '@/features/model-configuration/api/modelCenter';
 import { AsrFrame } from './AsrFrame';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { enteredTerminalJobState, shouldPollBatchSummary } from '@/features/asr-evaluation/batchRefresh.mjs';
 
 interface JobFormValues {
@@ -366,6 +367,7 @@ export function JobsPage() {
 
   /** 任务列表列出运行状态、音频范围和取消入口。 */
   const columns = [
+    sequenceColumn<AsrJob>({ page: jobsPage, pageSize: jobsQuery.data?.page_size ?? 20 }),
     { title: '任务编号', dataIndex: 'id', key: 'id', width: 110, render: (id: number) => <Link to={'/console/asr/jobs/' + id}>ASR-{id}</Link> },
     { title: '状态', dataIndex: 'status', key: 'status', render: jobStatusTag },
     { title: '模型', key: 'models', render: (_: unknown, row: AsrJob) => {

@@ -42,6 +42,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import { mockManagementApi } from '@/features/mocking/api/mockManagement';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import type { MockScenario } from '@/features/mocking/contracts';
 
 import { ScenarioEditor } from './ScenarioEditor';
@@ -141,7 +142,7 @@ export function ConsoleMockEndpointPage() {
   }
 
   const columns: TableColumnsType<MockScenario> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    sequenceColumn<MockScenario>(),
     {
       title: '场景',
       dataIndex: 'name',

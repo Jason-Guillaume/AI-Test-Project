@@ -33,6 +33,7 @@ import { PlatformRoleTag, PLATFORM_ROLE_LABELS } from '@/features/identity/compo
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 // 平台角色下拉选项：admin > test > dev 三级
 const ROLE_OPTIONS: { label: string; value: PlatformRole }[] =
@@ -148,9 +149,10 @@ export function AdminUsersPage() {
     },
   });
 
-  // 表格列：memo 依赖为空数组（columns 内不引用闭包外状态），仅首次构建
+  // 表格列：序号随分页变化，其余列只依赖编辑/删除回调。
   const columns = useMemo(
     () => [
+      sequenceColumn<User>({ page: pagination.page, pageSize: pagination.page_size }),
       {
         title: '用户账号',
         dataIndex: 'username',
@@ -204,7 +206,7 @@ export function AdminUsersPage() {
         ),
       },
     ],
-    [currentUser?.id, deleteUser],
+    [currentUser?.id, deleteUser, pagination.page, pagination.page_size],
   );
 
   // 加载中：整页 LoadingState；失败：整页 ErrorState + 重试

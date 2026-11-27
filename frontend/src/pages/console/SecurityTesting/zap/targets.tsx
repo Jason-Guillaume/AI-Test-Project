@@ -29,6 +29,7 @@ import { zapApi } from '@/features/security-testing/zap/api';
 import type { ScanTarget, ScanTargetCreate, ScanTargetUpdate } from '@/features/security-testing/zap/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import {
   AUTHORIZATION_STATUS_OPTIONS,
   authStatusLabel,
@@ -108,6 +109,7 @@ export function TargetsSubTab({ projectId }: { projectId: number }) {
   });
 
   const columns: TableColumnsType<ScanTarget> = [
+    sequenceColumn<ScanTarget>({ page, pageSize: PAGE_SIZE }),
     {
       title: '目标',
       dataIndex: 'name',

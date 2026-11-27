@@ -39,7 +39,7 @@ export function ResourceTable<T>({
   total: number; // 后端返回的总条数，用于计算总页数
   pagination: PaginationState; // 当前分页状态，驱动 current/pageSize
   onPaginationChange: (next: PaginationState) => void; // 翻页或改每页条数时的回调
-  emptyText?: string; // 空态文案
+  emptyText?: ReactNode; // 空态文案或节点
   expandedRowRender?: (row: T) => ReactNode; // 可选的展开行渲染函数
   onRowClick?: (row: T) => void; // 可选的行点击回调（打开详情抽屉等）
   rowStyle?: CSSProperties; // 可选的行样式（如 cursor: pointer）

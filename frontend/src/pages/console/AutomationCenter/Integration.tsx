@@ -8,6 +8,7 @@ import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ProjectRequired } from '@/pages/console/AutomationCenter/shared';
 
 function isPrivateHttpHost(hostname: string): boolean {
@@ -137,6 +138,7 @@ export function ConsoleAutomationIntegrationPage() {
         pagination={{ page: 1, page_size: 100 }}
         onPaginationChange={() => undefined}
         columns={[
+          sequenceColumn<AutomationIntegration>({ page: 1, pageSize: 100 }),
           { title: '名称', dataIndex: 'name' },
           { title: '平台', dataIndex: 'provider_type', render: providerLabel },
           { title: '地址 / 企业', render: (_value, row: AutomationIntegration) => row.provider_type === 'DAGU' ? row.dagu_base_url : row.organization_id || row.api_base_url },

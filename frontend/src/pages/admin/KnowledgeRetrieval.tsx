@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Alert, App, Button, Card, Form, Input, InputNumber, Select, Space, Switch, Table } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getErrorMessage } from '@/shared/api/client';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { modelCenterApi } from '@/features/model-configuration/api/modelCenter';
 
 type Config = { enabled: boolean; active_generation_id: number | null; rerank_revision_id: number | null;
@@ -79,6 +80,7 @@ export function KnowledgeRetrieval({ projectId }: { projectId: number }) {
     <Table<Generation> style={{ marginTop: 16 }} rowKey="id" size="small" pagination={false} scroll={{ x: 'max-content' }}
       loading={state.isLoading} dataSource={state.data?.generations || []}
       columns={[
+        sequenceColumn<Generation>(),
         { title: '索引代', dataIndex: 'id' }, { title: '模型修订', dataIndex: 'embedding_revision_id' },
         { title: '维度', dataIndex: 'dimension' }, { title: '距离', dataIndex: 'distance' },
         { title: '编码版本', dataIndex: 'encoding_version' }, { title: '状态', dataIndex: 'state' },

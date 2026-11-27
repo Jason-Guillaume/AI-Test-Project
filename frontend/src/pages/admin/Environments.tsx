@@ -35,6 +35,7 @@ import {
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageHeader } from '@/shared/ui/PageHeader';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 /**
  * 环境与目标服务配置页。
@@ -131,6 +132,7 @@ function ProjectEnvironmentsTab() {
   });
 
   const columns = [
+    sequenceColumn<Environment>({ page: pagination.page, pageSize: pagination.page_size }),
     { title: '环境标识', dataIndex: 'name' },
     { title: '展示名称', dataIndex: 'display_name' },
     { title: 'base_url', dataIndex: 'base_url' },
@@ -306,6 +308,7 @@ function EnvironmentCatalogTab() {
     });
   };
   const columns = [
+    sequenceColumn<Environment>({ page, pageSize }),
     { title: '环境标识', dataIndex: 'name' },
     { title: '展示名称', dataIndex: 'display_name' },
     { title: '目标地址', dataIndex: 'base_url', ellipsis: true },

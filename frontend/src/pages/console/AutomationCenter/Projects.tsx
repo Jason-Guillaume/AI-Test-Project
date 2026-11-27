@@ -8,6 +8,7 @@ import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ProjectRequired, StatusTag } from '@/pages/console/AutomationCenter/shared';
 
 interface ProjectForm {
@@ -134,6 +135,7 @@ export function ConsoleAutomationProjectsPage() {
         pagination={{ page: 1, page_size: 100 }}
         onPaginationChange={() => undefined}
         columns={[
+          sequenceColumn<AutomationProject>({ page: 1, pageSize: 100 }),
           { title: '名称', dataIndex: 'name' },
           { title: 'CI 平台', dataIndex: 'provider_type', render: (value: string) => value === 'DAGU' ? <Tag color="blue">Dagu</Tag> : <Tag>{providerLabel(value)}</Tag> },
           { title: '仓库', dataIndex: 'repository_url', ellipsis: true },

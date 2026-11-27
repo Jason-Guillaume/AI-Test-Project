@@ -16,6 +16,7 @@ import { testManagementApi } from '@/features/test-management/api/testManagement
 import { CaseExecutionDetail } from '@/widgets/execution-detail/CaseExecutionDetail';
 import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { TaskSourceLinks } from '@/features/tasks/components/TaskSourceLinks';
 import { fmtDuration, fmtTime } from '@/shared/lib/format';
@@ -189,7 +190,6 @@ export function ConsoleExecutionHistoryPage() {
           title: defectTitle.trim(),
           description: defectDescription.trim() || `运行对比发现新失败，候选执行 #${item.candidate_execution_id}。请从执行详情查看脱敏证据。`,
           severity: 2,
-          status: '待确认',
           steps_to_reproduce: `测试运行 #${candidateRunId} 中用例 #${item.test_case_id} 执行失败。`,
           environment: `环境 #${comparison.candidate.environment_id ?? '未知'}`,
         },
@@ -228,7 +228,7 @@ export function ConsoleExecutionHistoryPage() {
   const currentPage = runsQuery.data?.page ?? page;
 
   const columns: TableColumnsType<TestRun> = [
-    { title: 'ID', dataIndex: 'id', width: 64 },
+    sequenceColumn<TestRun>({ page: currentPage, pageSize }),
     {
       title: '状态',
       dataIndex: 'status',
@@ -327,6 +327,7 @@ export function ConsoleExecutionHistoryPage() {
               dataSource={comparisonQuery.data.items}
               pagination={{ current: comparePage, pageSize: 50, total: comparisonQuery.data.total, onChange: setComparePage, showSizeChanger: false }}
               columns={[
+                sequenceColumn<RunCompareItem>({ page: comparePage, pageSize: 50 }),
                 { title: '用例', dataIndex: 'case_name' },
                 { title: '结论', dataIndex: 'state', render: (value: RunCompareItem['state']) => <Tag color={value === 'new_failure' || value === 'persistent_failure' ? 'red' : value === 'restored' || value === 'passed' ? 'green' : 'default'}>{({ new_failure: '新增失败', restored: '已恢复', persistent_failure: '持续失败', passed: '通过', added: '新增用例', removed: '已移除', unresolved: '无法判定', unalignable: '无法对齐' } as Record<string, string>)[value]}</Tag> },
                 { title: '基准', render: (_, item) => item.baseline_execution_id ? <Link to={`/console/execution-history?runId=${comparisonQuery.data?.baseline.id}&caseExecutionId=${item.baseline_execution_id}&projectId=${currentProjectId}`}>{item.baseline_status}</Link> : item.baseline_status ?? '—' },
@@ -427,6 +428,7 @@ function RunDetailDrawer({
   const items: CaseExecution[] = caseExecQuery.data?.items ?? [];
 
   const columns: TableColumnsType<CaseExecution> = [
+    sequenceColumn<CaseExecution>({ page: casePage, pageSize: 20 }),
     { title: '用例ID', dataIndex: 'test_case_id', width: 80, render: (v: number | null) => v ?? '-' },
     {
       title: '状态',

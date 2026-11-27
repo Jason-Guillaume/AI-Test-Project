@@ -29,6 +29,7 @@ import type { TableColumnsType } from 'antd';
 import { testManagementApi } from '@/features/test-management/api/testManagement';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_SUITE_TYPE_OPTIONS } from './constants';
 import { ManagementRowActions } from './ManagementRowActions';
@@ -172,7 +173,7 @@ export function ConsoleTestSuitesPage() {
   const suites = suitesQuery.data ?? [];
 
   const columns: TableColumnsType<TestSuite> = [
-    { title: 'ID', dataIndex: 'id', width: 64 },
+    sequenceColumn<TestSuite>(),
     { title: '名称', dataIndex: 'name', width: 200, className: 'table-record-name' },
     {
       title: '类型',
@@ -355,7 +356,7 @@ function SuiteCasesDrawer({
   const allCases = allCasesQuery.data ?? [];
 
   const columns: TableColumnsType<TestSuiteCaseResponse> = [
-    { title: '用例ID', dataIndex: 'test_case_id', width: 80 },
+    sequenceColumn<TestSuiteCaseResponse>(),
     {
       title: '用例名称',
       dataIndex: 'case_name',

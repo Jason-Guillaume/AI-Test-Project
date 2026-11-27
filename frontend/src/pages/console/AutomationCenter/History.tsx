@@ -6,7 +6,9 @@ import { automationApi } from '@/features/automation/api/automation';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ProjectRequired, ReportLink, StatusTag } from '@/pages/console/AutomationCenter/shared';
+import type { AutomationExecution } from '@/features/automation/contracts';
 
 /** 执行历史列表。 */
 export function ConsoleAutomationHistoryPage() {
@@ -50,7 +52,7 @@ export function ConsoleAutomationHistoryPage() {
         pagination={pagination}
         onPaginationChange={setPagination}
         columns={[
-          { title: '执行', dataIndex: 'id' },
+          sequenceColumn<AutomationExecution>({ page: pagination.page, pageSize: pagination.page_size }),
           { title: '项目', dataIndex: 'automation_project_name' },
           { title: 'CI 平台', dataIndex: 'provider_type', render: (value: string) => value === 'DAGU' ? <Tag color="blue">Dagu</Tag> : value === 'LEGACY' ? '历史执行平台' : '云效 Flow' },
           { title: '流水线 / DAG', dataIndex: 'pipeline_id', ellipsis: true },

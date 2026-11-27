@@ -1,7 +1,7 @@
-// 接口管理顶部工具条：关键字 / 方法 / 状态过滤 + 新建接口 + 导入 + 导入记录。
+// 接口管理顶部工具条：关键字 / 方法 / 状态过滤 + 重置 + 新建接口 + 导入 + 导入记录。
 // 纯受控组件，状态由页面持有；按钮回调触发页面级动作。
 import { Button, Input, Select, Space } from 'antd';
-import { DownloadOutlined, HistoryOutlined, PlusOutlined } from '@ant-design/icons';
+import { DownloadOutlined, HistoryOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { API_STATUS_OPTIONS, METHOD_OPTIONS } from './constants';
 import type { ApiStatus } from '@/features/api-catalog/contracts';
 
@@ -10,6 +10,7 @@ import type { ApiStatus } from '@/features/api-catalog/contracts';
  * 工具条。
  *
  * 所有过滤态与按钮回调由父级控制，本组件不持有状态、不发请求。
+ * onReset 同时清空关键词、方法和状态，供桌面与窄屏共用。
  */
 export function ApiToolbar({
   keyword,
@@ -18,6 +19,7 @@ export function ApiToolbar({
   setMethod,
   status,
   setStatus,
+  onReset,
   onCreate,
   onImport,
   onShowRecords,
@@ -28,10 +30,12 @@ export function ApiToolbar({
   setMethod: (v: string | undefined) => void;
   status: ApiStatus | undefined;
   setStatus: (v: ApiStatus | undefined) => void;
+  onReset: () => void;
   onCreate: () => void;
   onImport: () => void;
   onShowRecords: () => void;
 }) {
+  const hasFilters = Boolean(keyword || method || status);
   return (
     <Space wrap align="center" style={{ marginBottom: 12 }}>
       <Input.Search
@@ -59,6 +63,9 @@ export function ApiToolbar({
         onChange={(v: ApiStatus | undefined) => setStatus(v)}
         style={{ minWidth: 140 }}
       />
+      <Button icon={<ReloadOutlined />} disabled={!hasFilters} onClick={onReset}>
+        重置
+      </Button>
       <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>
         新建接口
       </Button>

@@ -29,6 +29,7 @@ import { securityApi } from '@/features/security-testing/api/securityTesting';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { StrategyModal, RuleModal } from './StrategyFormModals';
 import { SettingModal } from './SecuritySettingModal';
 import {
@@ -139,6 +140,7 @@ export function StrategyTab({ projectId }: { projectId: number }) {
   });
 
   const columns: TableColumnsType<SecurityStrategy> = [
+    sequenceColumn<SecurityStrategy>(),
     {
       title: '策略',
       dataIndex: 'name',
@@ -362,6 +364,7 @@ function RulesTable({
   };
 
   const columns: TableColumnsType<MutationRule> = [
+    sequenceColumn<MutationRule>(),
     { title: '规则名', dataIndex: 'name' },
     { title: '变异类型', dataIndex: 'mutation_type', width: 160 },
     {
