@@ -79,13 +79,17 @@ export const dataLifecycleApi = {
   audit: (itemId: number) => api.get<LifecycleAuditEvent[]>(`/recycle-bin/${itemId}/audit`),
   restore: (itemId: number) => api.post<LifecycleReceipt>(`/recycle-bin/${itemId}/restore`),
   restoreMany: (itemIds: number[]) =>
-    api.post<BatchLifecycleReceipt>('/recycle-bin/batch-restore', { item_ids: itemIds }),
+    api.post<BatchLifecycleReceipt>('/recycle-bin/batch-restore', { item_ids: itemIds }, { timeout: 120000 }),
   deleteMany: (resourceType: string, projectId: number | null, ids: number[], reason?: string) =>
-    api.post<BatchLifecycleReceipt>(`/resources/${resourceType}/batch-delete`, {
-      project_id: projectId,
-      ids,
-      reason,
-    }),
+    api.post<BatchLifecycleReceipt>(
+      `/resources/${resourceType}/batch-delete`,
+      {
+        project_id: projectId,
+        ids,
+        reason,
+      },
+      { timeout: 120000 },
+    ),
   purgePreview: (itemId: number) => api.get<PurgePreview>(`/recycle-bin/${itemId}/purge-preview`),
   purge: (itemId: number, confirmation: string, reason: string) =>
     api.delete<LifecycleReceipt>(`/recycle-bin/${itemId}/permanent`, {

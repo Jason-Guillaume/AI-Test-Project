@@ -218,3 +218,14 @@ def test_viewer_denied_and_cross_project_scope_isolated():
         assert _active_scope(db, scope_a.id) is None
         assert _active_scope(db, scope_b.id) is not None
     engine.dispose()
+
+
+def test_batch_delete_schema_accepts_over_100_scopes():
+    """批量删除与恢复契约支持一次提交超过 100 个目录，不再因 100 条上限拦截全选删除。"""
+    from app.lifecycle.schemas import BatchDeleteRequest, BatchRestoreRequest
+
+    ids = list(range(1, 251))
+    delete_req = BatchDeleteRequest(project_id=1, ids=ids)
+    restore_req = BatchRestoreRequest(item_ids=ids)
+    assert len(delete_req.ids) == 250
+    assert len(restore_req.item_ids) == 250

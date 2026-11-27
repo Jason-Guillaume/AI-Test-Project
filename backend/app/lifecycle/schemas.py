@@ -8,12 +8,13 @@ from pydantic import BaseModel, Field
 
 class BatchDeleteRequest(BaseModel):
     project_id: int | None = Field(default=None, gt=0)
-    ids: list[int] = Field(min_length=1, max_length=100)
+    # 放宽单批上限以支持全选数百级树形目录一次提交，保持服务端全局子先父后排序语义。
+    ids: list[int] = Field(min_length=1, max_length=5000)
     reason: str | None = Field(default=None, max_length=500)
 
 
 class BatchRestoreRequest(BaseModel):
-    item_ids: list[int] = Field(min_length=1, max_length=100)
+    item_ids: list[int] = Field(min_length=1, max_length=5000)
 
 
 class PurgeRequest(BaseModel):

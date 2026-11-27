@@ -79,7 +79,7 @@ export function ModuleApiList({
   };
 
   const deleteMany = useMutation({
-    mutationFn: () => dataLifecycleApi.deleteMany('api_interface', projectId, selectedIds),
+    mutationFn: (ids: number[]) => dataLifecycleApi.deleteMany('api_interface', projectId, ids),
     onSuccess: (receipt: BatchLifecycleReceipt) => {
       const failedIds = receipt.items.filter((item) => !item.succeeded).map((item) => item.id);
       const succeededIds = receipt.items.filter((item) => item.succeeded).map((item) => item.id);
@@ -98,31 +98,44 @@ export function ModuleApiList({
 
       if (receipt.failed > 0) {
         const rowById = new Map((query.data?.items ?? []).map((row) => [row.id, row]));
-        modal.info({
-          title: `批量删除完成：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
-          width: 640,
-          content: (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {receipt.items.filter((item) => !item.succeeded).map((item) => {
-                const row = rowById.get(item.id);
-                const label = row ? `${row.method} ${row.path} · ${row.name}` : `接口 #${item.id}`;
-                return (
-                  <Typography.Text key={item.id} type="danger">
-                    {label}：{item.error ?? '删除失败'}
-                  </Typography.Text>
-                );
-              })}
-            </Space>
-          ),
-          okText: '关闭',
-        });
+        const firstReason = receipt.items.find((item) => !item.succeeded)?.error ?? '存在依赖保护';
+        message.warning(
+          receipt.succeeded === 0
+            ? `未能删除所选的 ${receipt.failed} 条接口：${firstReason}`
+            : `已删除 ${receipt.succeeded} 条，${receipt.failed} 条因依赖被保留`,
+        );
+        // 延迟到确认框卸载后再打开结果弹窗，并为多条失败项提供可滚动列表避免撑出视口。
+        window.setTimeout(() => {
+          modal.info({
+            title: `批量删除完成：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
+            width: 640,
+            content: (
+              <div style={{ maxHeight: 320, overflowY: 'auto', paddingRight: 4 }}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {receipt.items.filter((item) => !item.succeeded).map((item) => {
+                    const row = rowById.get(item.id);
+                    const label = row ? `${row.method} ${row.path} · ${row.name}` : `接口 #${item.id}`;
+                    return (
+                      <Typography.Text key={item.id} type="danger">
+                        {label}：{item.error ?? '删除失败'}
+                      </Typography.Text>
+                    );
+                  })}
+                </Space>
+              </div>
+            ),
+            okText: '关闭',
+          });
+        }, 0);
       } else {
-        modal.success({
-          title: `已将 ${receipt.succeeded} 个接口移入回收站`,
-          content: '请求参数、响应定义和变更历史保留在原始接口记录中。',
-          okText: '查看回收站',
-          onOk: () => navigate('/console/recycle-bin'),
-        });
+        window.setTimeout(() => {
+          modal.success({
+            title: `已将 ${receipt.succeeded} 个接口移入回收站`,
+            content: '请求参数、响应定义和变更历史保留在原始接口记录中。',
+            okText: '查看回收站',
+            onOk: () => navigate('/console/recycle-bin'),
+          });
+        }, 0);
       }
     },
     onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
@@ -255,12 +268,13 @@ export function ModuleApiList({
             loading={deleteMany.isPending}
             onClick={() => {
               if (deleteMany.isPending) return;
+              const ids = [...selectedIds];
               modal.confirm({
-                title: `删除选中的 ${selectedIds.length} 个接口？`,
-                content: '仍被测试用例引用的接口会逐条拒绝删除，其余接口可部分成功；失败项会保留勾选。',
+                title: `删除选中的 ${ids.length} 个接口？`,
+                content: '仍被测试用例或接口关联引用的接口会逐条拒绝删除，其余接口可部分成功；失败项会保留勾选。',
                 okButtonProps: { danger: true },
-                okText: `删除 ${selectedIds.length} 个`,
-                onOk: () => deleteMany.mutateAsync(),
+                okText: `删除 ${ids.length} 个`,
+                onOk: () => deleteMany.mutateAsync(ids),
               });
             }}
           >删除选中</Button>

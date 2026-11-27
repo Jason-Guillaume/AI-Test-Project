@@ -70,4 +70,4 @@ class ApiModuleDeleteResponse(ApiModuleDeletePreview):
 
 
 class ApiModuleDeleteRequest(BaseModel):
-    module_ids: list[int] = Field(..., min_length=1, max_length=100)
+    module_ids: list[int] = Field(..., min_length=1, max_length=5000)

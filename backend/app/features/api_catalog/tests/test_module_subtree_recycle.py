@@ -163,3 +163,69 @@ def test_ungrouped_interface_batch_delete_only_removes_selected_rows():
         assert db.get(ApiInterface, selected.id).deleted_at is not None
         assert db.get(ApiInterface, untouched.id).deleted_at is None
     engine.dispose()
+
+
+def test_unclassified_module_batch_delete_clears_null_and_default_apis_and_restores():
+    """勾选未分类删除时，清空 module_id=None 与 module_id=default 的全部接口且保留系统未分类行。"""
+    engine = _database()
+    with Session(engine) as db:
+        admin, project, _root, _child, _interface, _relation = _module_fixture(db)
+        default_module = ApiModule(project_id=project.id, name="未分类", is_default=True)
+        db.add(default_module)
+        db.flush()
+        null_api = ApiInterface(
+            project_id=project.id, module_id=None, name="null module api",
+            method="GET", path="/unclassified/null",
+        )
+        default_api = ApiInterface(
+            project_id=project.id, module_id=default_module.id, name="default module api",
+            method="POST", path="/unclassified/default",
+        )
+        db.add_all([null_api, default_api])
+        db.commit()
+
+        preview = preview_module_delete(db, project.id, [default_module.id], actor=admin)
+        assert preview.root_names == ["未分类"]
+        assert (preview.module_count, preview.interface_count) == (0, 2)
+
+        deleted = delete_modules(db, project.id, [default_module.id], actor=admin)
+        assert deleted.deleted_module_ids == []
+        assert set(deleted.deleted_interface_ids) == {null_api.id, default_api.id}
+        assert db.get(ApiModule, default_module.id).deleted_at is None
+        assert db.get(ApiInterface, null_api.id).deleted_at is not None
+        assert db.get(ApiInterface, default_api.id).deleted_at is not None
+
+        restored = batch_restore(db, deleted.recycle_bin_item_ids, admin)
+        assert restored["failed"] == 0, restored
+        assert db.get(ApiInterface, null_api.id).deleted_at is None
+        assert db.get(ApiInterface, default_api.id).deleted_at is None
+    engine.dispose()
+
+
+def test_unclassified_delete_reports_referencing_test_cases_clearly():
+    """未分类下存在被测试用例引用的接口时，拒绝删除并明确提示受影响接口和用例数。"""
+    from fastapi import HTTPException
+    import pytest
+
+    engine = _database()
+    with Session(engine) as db:
+        admin, project, _root, _child, _interface, _relation = _module_fixture(db)
+        default_module = ApiModule(project_id=project.id, name="未分类", is_default=True)
+        db.add(default_module)
+        db.flush()
+        referenced_api = ApiInterface(
+            project_id=project.id, module_id=None, name="登录接口",
+            method="POST", path="/auth/login",
+        )
+        db.add(referenced_api)
+        db.flush()
+        db.add(CaseModel(project_id=project.id, name="登录用例", api_id=referenced_api.id))
+        db.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            delete_modules(db, project.id, [default_module.id], actor=admin)
+        assert exc_info.value.status_code == 409
+        assert "1 个接口正被 1 条测试用例引用" in str(exc_info.value.detail)
+        assert "登录接口" in str(exc_info.value.detail)
+        assert db.get(ApiInterface, referenced_api.id).deleted_at is None
+    engine.dispose()
