@@ -27,7 +27,7 @@ from app.features.asr_evaluation.models import (
 )
 from app.features.asr_evaluation.providers.response_redaction import execution_secrets, redact_response
 from app.features.asr_evaluation.runtime.request_slots import asr_request_slot
-from app.features.asr_evaluation.services.comparison_service import _model_access
+from app.features.asr_evaluation.services.model_access import require_model_access
 from app.features.asr_evaluation.services.funasr_analysis import (
     FUNASR_DEFINITIONS, aggregate_cer, build_request, character_error_counts, effective_parameter_hash,
     is_in_night_window, normalize_text, select_best_round, validate_candidate,
@@ -36,7 +36,6 @@ from app.features.asr_evaluation.services.evaluation_markdown_service import ren
 from app.features.asr_evaluation.services.funasr_tuning_service import (
     _dump_round, _metrics_for_round, _new_round, _next_window_start, _validate_decision, _validate_finding_report,
 )
-from app.features.asr_evaluation.services.content_review_planning import INPUT_VERSION
 from app.platform.model_configuration.services.model_config_service import model_configuration_revision
 from app.platform.projects.services.access_service import require_writable_project
 
@@ -429,7 +428,7 @@ class FunAsrTuningWorker:
                     self._finish_session(session_row, "STOPPED", "AI 调用预算不足以完成逐条分析及整轮汇总。")
                     db.commit()
                     return False
-                _model_access(db, session_row.project_id, actor, session_row.model_config_id)
+                require_model_access(db, session_row.project_id, actor, session_row.model_config_id)
                 session_row.ai_calls_used += 1
                 item.review_status = "ANALYZING"
                 db.commit()
@@ -548,7 +547,7 @@ class FunAsrTuningWorker:
             if actor is None or not actor.is_active:
                 self._fail_round(db, session_row, round_row, "任务发起人不可用。")
                 return False
-            _model_access(db, session_row.project_id, actor, session_row.model_config_id)
+            require_model_access(db, session_row.project_id, actor, session_row.model_config_id)
             model = db.get(ModelConfiguration, session_row.model_config_id)
             if model is None or model_configuration_revision(model) != (session_row.config_snapshot or {}).get("model_revision"):
                 self._fail_round(db, session_row, round_row, "文本分析模型配置已变化。")

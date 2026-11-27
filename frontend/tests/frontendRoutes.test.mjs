@@ -142,6 +142,21 @@ test('every route added after the baseline is declared explicitly', () => {
   assert.equal(flat.length, baseline.length + ADDITIVE_ROUTES.length);
 });
 
+test('retired ASR bookmarks redirect to tuning without loading old pages', () => {
+  for (const path of [
+    '/console/asr/jobs', '/console/asr/jobs/:jobId', '/console/asr/runs/:runId', '/console/asr/runs/:runId/listen',
+    '/console/asr/comparisons', '/console/asr/comparisons/:comparisonId', '/console/asr/experiments',
+    '/console/asr/connections',
+  ]) {
+    const route = byPath.get(path);
+    assert.ok(route, `${path} must stay registered for old bookmarks`);
+    assert.match(route.element, /Navigate to="\/console\/asr\/funasr" replace/, `${path} must redirect to tuning`);
+  }
+  assert.doesNotMatch(app, /ASREvaluation\/(JobsPage|ComparisonsPage|ExperimentsPage|RunWorkbenchPage)/);
+  // 旧入口只做前端重定向，不再挂载能创建任务的工作台页面。
+  assert.doesNotMatch(app, /asr\/audio\/recent-runs|\/asr\/jobs\/wizard/);
+});
+
 test('route guards: admin requires admin, console requires login, auth pages are guest-only', () => {
   const admin = byPath.get('/admin');
   const consoleRoot = byPath.get('/console');

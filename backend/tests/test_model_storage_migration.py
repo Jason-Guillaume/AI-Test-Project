@@ -281,17 +281,4 @@ def test_native_revision_changes_fingerprint_and_preserves_canonical_default_ord
         engine.dispose()
 
 
-def test_project_connection_endpoint_keeps_existing_worker_admission(api,admin,db):
-    from app.features.asr_evaluation.runtime.worker import _connection_available
 
-    project = api.post("/projects",username=admin,json={"name":"b2-private-connection-management"})
-    assert project.status_code == 201
-    project_id = project.json()["id"]
-    created = api.post("/asr/connections",username=admin,json={
-        "project_id": project_id, "name": "Private ASR", "role":"TEST", "model_id":"recognizer",
-        "endpoint":"https://asr.invalid/transcribe",
-        "request_template":{"audio":"{{audio.url}}","options":"{{experiment.parameters}}"},
-        "response_mapping":{"text_pointer":"/text"},
-    })
-    assert created.status_code == 201, created.text
-    assert not _connection_available(db, created.json()["id"], project_id, task_type="TRANSCRIPTION")

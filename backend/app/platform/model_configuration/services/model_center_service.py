@@ -1292,7 +1292,7 @@ def copy_resource(db: Session, resource_id: int, project_id: int, actor: User) -
 def create_diagnostic(db: Session, resource_id: int, body, actor: User) -> dict:
     """持久化一次已明确确认的模型在线诊断；仅用户主动触发后才入队。"""
     from app.features.asr_evaluation.models import AsrAudio
-    from app.features.asr_evaluation.schemas import ModelTaskSlotInput
+    from app.platform.model_configuration.center_schemas import ModelTaskSlotInput
 
     resource = db.get(ModelResource, resource_id)
     if resource is None:

@@ -66,15 +66,14 @@ def test_invocation_requires_enabled_grant_and_schema():
             invoke_evaluation(db, None, 1, 10, 'asr.score_transcript', {})
 
 
-@pytest.mark.parametrize('handler,service_name', [(get_job_summary,'job_service'), (get_comparison_summary,'comparison_service')])
-def test_cross_project_resource_rejected(handler, service_name):
+@pytest.mark.parametrize('handler', [get_job_summary, get_comparison_summary])
+def test_cross_project_resource_rejected(handler):
     db = Mock()
     db.get.return_value = SimpleNamespace(project_id=99)
-    with patch('app.tools.builtin.ai_evaluation.evaluation_tools.get_project_or_404'), patch(f'app.tools.builtin.ai_evaluation.evaluation_tools.{service_name}') as service:
+    with patch('app.tools.builtin.ai_evaluation.evaluation_tools.get_project_or_404'):
         with pytest.raises(HTTPException) as error:
             handler(db, 10, SimpleNamespace(id=1), 123)
         assert error.value.status_code == 404
-        assert not service.mock_calls
 
 
 def test_seed_preserves_edits_and_has_valid_links():

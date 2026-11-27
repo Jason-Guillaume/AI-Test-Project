@@ -58,15 +58,3 @@ export function groundTruthUiState(answer, contentVersion, queryStatus) {
   return answer.audio_content_version === contentVersion ? 'current' : 'mismatch';
 }
 
-/**
- * @param {object | null | undefined} recentRun
- * @param {'pending' | 'error' | 'success'} queryStatus
- * @param {boolean} hasData
- * @returns {'loading' | 'error' | 'unassessed' | 'assessed'}
- */
-export function recentRunUiState(recentRun, queryStatus, hasData) {
-  if (queryStatus === 'pending' && !hasData) return 'loading';
-  if (queryStatus === 'error' && !hasData) return 'error';
-  return recentRun ? 'assessed' : 'unassessed';
-}
-

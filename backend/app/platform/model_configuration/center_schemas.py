@@ -137,8 +137,17 @@ class ModelConnectionTestInput(ModelCenterInput):
         return self
 
 
+class ModelTaskSlotInput(ModelCenterInput):
+    """把某模型修订与参数方案绑定到单个任务角色，而不写入模型永久属性。"""
+
+    slot: Literal["TEST", "REFERENCE_A", "REFERENCE_B", "DIARIZATION"]
+    resource_id: int = Field(gt=0)
+    revision_id: int = Field(gt=0)
+    profile_id: int = Field(gt=0)
+
+
 __all__ = [
     "ModelAvailableQuery", "ModelConnectionTestInput", "ModelDefaultInput", "ModelDiagnosticInput", "ModelGrantInput",
     "ModelImportPreview", "ModelProfileCreate", "ModelProfileInput", "ModelResourceCreate",
-    "ModelRevisionInput",
+    "ModelRevisionInput", "ModelTaskSlotInput",
 ]

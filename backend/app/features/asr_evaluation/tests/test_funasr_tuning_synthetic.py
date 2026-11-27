@@ -157,12 +157,32 @@ def test_three_audio_serial_batch_keeps_one_parameter_set(monkeypatch):
     assert db.query(AsrTuningSession).filter_by(id=session_id).one().status == "QUEUED"
     assert worker.tick() == 1
     db.expire_all()
-    final = get_tuning_session(db, session_id, actor)
+    # 模拟页面刷新：新开数据库会话，只通过读接口取回两轮参数、逐条结果与 CER。
+    refreshed = Session()
+    try:
+        final = get_tuning_session(refreshed, session_id, actor)
+    finally:
+        refreshed.close()
     assert final["status"] == "COMPLETED"
     assert final["asr_requests_used"] == 6 and final["ai_calls_used"] == 8
     assert len(final["rounds"]) == 2
+    assert [round_row["ordinal"] for round_row in final["rounds"]] == [1, 2]
+    assert final["rounds"][0]["parameters"]["noise_reduction_db"] == 0
+    assert final["rounds"][1]["parameters"]["noise_reduction_db"] == 6
     assert final["rounds"][0]["metrics"]["successful_samples"] == 3
     assert final["rounds"][0]["metrics"]["planned_samples"] == 3
+    assert len(final["rounds"][0]["items"]) == len(final["rounds"][1]["items"]) == 3
+    assert all(item["metrics"]["cer"] == 0 for item in final["rounds"][0]["items"])
+    assert all(item["metrics"]["cer"] > 0 for item in final["rounds"][1]["items"])
+    assert final["rounds"][0]["metrics"]["micro_cer"] == 0
+    assert final["rounds"][1]["metrics"]["micro_cer"] > 1
+    assert final["best_micro_cer"] == final["rounds"][0]["metrics"]["micro_cer"]
+    second_read = Session()
+    try:
+        reread = get_tuning_session(second_read, session_id, actor)
+    finally:
+        second_read.close()
+    assert reread["rounds"] == final["rounds"] and reread["best_micro_cer"] == final["best_micro_cer"]
     assert final["best_round_id"] == final["rounds"][0]["id"]
     assert final["rounds"][1]["accepted"] is False
     assert final["config_snapshot"]["binding"]["mapping_revisions"]

@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -106,93 +105,3 @@ def test_typed_asr_migration_round_trips_leases_review_subjects_and_allocators(a
             migration.upgrade()
             assert read("asr_work_item")[-1].id == 3
 
-
-def test_workers_skip_locked_items_and_fence_old_claims_on_postgres(asr_history, monkeypatch):
-    from app.features.asr_evaluation.runtime import worker as runtime
-
-    with asr_history.begin() as conn:
-        with Operations.context(MigrationContext.configure(conn)):
-            _revision("0102").upgrade()
-        conn.exec_driver_sql(
-            "INSERT INTO asr_work_item(id,run_id,available_at) VALUES (20,1,'2000-01-01'),(10,2,'2000-01-01')"
-        )
-        conn.exec_driver_sql("INSERT INTO asr_processing_work_item(processing_run_id) VALUES (1),(2)")
-    factory = sessionmaker(asr_history, expire_on_commit=False, autoflush=False)
-    monkeypatch.setattr(runtime, "SessionLocal", factory)
-    first = runtime.AsrWorker(worker_id="one")
-    second = runtime.AsrWorker(worker_id="two")
-    with asr_history.begin() as locker:
-        # The oldest public ID is locked by another connection; the worker must skip it.
-        locker.exec_driver_sql("SELECT id FROM asr_queue_item WHERE kind='MODEL_RUN' AND public_id=10 FOR UPDATE")
-        claim = first._claim_next()
-        assert claim and claim[1] == 1
-        assert second._claim_next() is None
-        processing = second._claim_next_processing("DIARIZATION")
-        media = first._claim_next_processing("MEDIA_ANALYSIS")
-        assert (processing[1], media[1]) == (1, 2)
-        assert second._claim_next_processing("DIARIZATION") is None
-    assert second._claim_next()[1] == 2
-    item_id, run_id, owner, generation, _ = claim
-    with asr_history.begin() as conn:
-        conn.exec_driver_sql("UPDATE asr_model_run SET remote_task_id='receipt' WHERE id=1")
-        conn.exec_driver_sql("UPDATE asr_queue_item SET lease_expires_at=now() WHERE kind='MODEL_RUN' AND run_id=1")
-    takeover = second._claim_next()
-    assert takeover[:2] == (item_id, run_id)
-    assert takeover[3:] == (generation + 1, False)
-    first._finish(run_id, item_id, owner, generation, "FAILED", "stale")
-    first._reschedule(item_id, run_id, owner, generation, delay_seconds=1, reset_submit=True)
-    # A processing claim with the right token still cannot finish a different processing run.
-    second._finish_processing(processing[0], media[1], processing[2], processing[3], "FAILED", "wrong run")
-    with asr_history.begin() as conn:
-        assert conn.exec_driver_sql("SELECT status FROM asr_model_run WHERE id=1").scalar() == "REMOTE_RUNNING"
-        assert conn.exec_driver_sql("SELECT lease_owner FROM asr_queue_item WHERE run_id=1").scalar() == takeover[2]
-        assert conn.exec_driver_sql("SELECT status FROM asr_processing_run ORDER BY id").scalars().all() == [
-            "SUBMITTING", "SUBMITTING",
-        ]
-
-
-def test_claim_that_expires_while_waiting_for_the_row_lock_is_rejected(asr_history, monkeypatch):
-    from concurrent.futures import ThreadPoolExecutor
-    from datetime import datetime, timedelta, timezone
-    from threading import Event
-
-    from sqlalchemy import event
-    from app.features.asr_evaluation.runtime import worker
-
-    before = datetime(2030, 1, 1, tzinfo=timezone.utc)
-    deadline = before + timedelta(seconds=1)
-    waiting, expired = Event(), Event()
-
-    class ControlledClock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return deadline + timedelta(seconds=1) if expired.is_set() else before
-
-    with asr_history.begin() as c:
-        with Operations.context(MigrationContext.configure(c)):
-            _revision("0102").upgrade()
-        item_id = c.exec_driver_sql(
-            "INSERT INTO asr_queue_item(kind,run_id,lease_owner,lease_generation,lease_expires_at) "
-            "VALUES ('MODEL_RUN',1,'worker',4,%s) RETURNING id", (deadline,),
-        ).scalar_one()
-
-    def observe_sql(conn, cursor, statement, parameters, context, executemany):
-        if "FOR UPDATE" in statement:
-            waiting.set()
-
-    def check_lease():
-        with sessionmaker(bind=asr_history)() as db:
-            return worker._owned_item(db, worker.AsrWorkItem, item_id, 1, "worker", 4) is None
-
-    monkeypatch.setattr(worker, "datetime", ControlledClock)
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        with asr_history.begin() as locker:
-            locker.exec_driver_sql("SELECT id FROM asr_queue_item WHERE id=%s FOR UPDATE", (item_id,))
-            event.listen(asr_history, "before_cursor_execute", observe_sql)
-            try:
-                result = pool.submit(check_lease)
-                assert waiting.wait(5)
-                expired.set()
-            finally:
-                event.remove(asr_history, "before_cursor_execute", observe_sql)
-        assert result.result(timeout=5)

@@ -18,9 +18,11 @@ from app.core.database.base import Base
 from app.core.models.identity import User
 from app.core.models.project import Project
 from app.features.asr_evaluation.models import AsrConnection
-from app.features.asr_evaluation.schemas import AudioItemInput, ModelTaskSlotInput
+from app.features.asr_evaluation.schemas import AudioItemInput
 from app.features.asr_evaluation.services.assets_service import create_audio
-from app.platform.model_configuration.center_schemas import ModelDiagnosticInput, ModelProfileCreate, ModelResourceCreate
+from app.platform.model_configuration.center_schemas import (
+    ModelDiagnosticInput, ModelProfileCreate, ModelResourceCreate, ModelTaskSlotInput,
+)
 from app.platform.model_configuration.models import ModelCredential, ModelResource, ModelValidationRun
 from app.platform.model_configuration.services.model_center_service import (
     create_diagnostic, create_profile, create_resource, list_available_models, preview_import, resolve_task_slots,
@@ -149,6 +151,44 @@ def test_audio_diagnostic_enforces_project_audio_ownership_and_editor_access(cen
     assert wrong_project.value.status_code == 404
 
 
+def test_shared_model_access_requires_current_membership_and_domain_grant(center_sandbox):
+    """调优服务共享的模型授权只认当前组织成员与明确域名授权。"""
+    from app.core.models.configuration import ModelConfiguration
+    from app.core.models.identity import Organization, OrganizationMember
+    from app.features.asr_evaluation.services.model_access import list_accessible_models, require_model_access
+
+    db, admin, owner_a, owner_b, project_a, project_b = center_sandbox
+    organization = Organization(name="center-org", owner_id=owner_a.id)
+    db.add(organization)
+    db.flush()
+    project_a.organization_id = organization.id
+    membership = OrganizationMember(organization_id=organization.id, user_id=owner_a.id, agent_enabled=True)
+    db.add(membership)
+    db.commit()
+    resource = db.get(ModelResource, create_resource(db, _text_resource(), admin)["id"])
+    legacy = db.get(ModelConfiguration, resource.legacy_model_id)
+
+    assert list_accessible_models(db, project_a.id, owner_a)["items"] == []
+    with pytest.raises(HTTPException) as denied:
+        require_model_access(db, project_a.id, owner_a, legacy.id)
+    assert denied.value.status_code == 404
+
+    membership.allowed_model_ids = [legacy.domain_id]
+    db.commit()
+    assert [item["id"] for item in list_accessible_models(db, project_a.id, owner_a)["items"]] == [legacy.id]
+    require_model_access(db, project_a.id, owner_a, legacy.id)
+    require_model_access(db, project_a.id, admin, legacy.id)
+
+    with pytest.raises(HTTPException) as cross_project:
+        require_model_access(db, project_b.id, owner_b, legacy.id)
+    assert cross_project.value.status_code == 404
+
+    membership.agent_enabled = False
+    db.commit()
+    with pytest.raises(HTTPException):
+        require_model_access(db, project_a.id, owner_a, legacy.id)
+
+
 def test_platform_models_need_no_grant_and_role_is_a_task_slot(center_sandbox):
     """共享 ASR 启用即全项目可用；实验角色仍是任务槽位。"""
     db, admin, owner_a, owner_b, project_a, project_b = center_sandbox
@@ -228,28 +268,7 @@ def test_siliconflow_resource_projects_multipart_config_and_encrypted_credential
     assert selected["connection"].secret_ciphertext != "synthetic-key"
 
 
-def test_model_center_connection_can_queue_single_model_transcription(center_sandbox):
-    from app.features.asr_evaluation.models import AsrAudio, AsrModelRun, AsrWorkItem
-    from app.features.asr_evaluation.schemas import ConnectionCheck
-    from app.features.asr_evaluation.services.assets_service import create_audio
-    from app.features.asr_evaluation.schemas import AudioItemInput
-    from app.features.asr_evaluation.services.job_service import create_connection_check
 
-    db, admin, owner, _, project, _ = center_sandbox
-    body = _asr_resource([])
-    created = create_resource(db, body, admin)
-    revision = created['current_revision']
-    connection = resolve_task_slots(db, project.id, [ModelTaskSlotInput(
-        slot='TEST', resource_id=created['id'], revision_id=revision['id'], profile_id=revision['profiles'][0]['id'],
-    )], owner)[0]['connection']
-    assert connection.role is None
-    audio = create_audio(db, project.id, AudioItemInput(name="识别音频", url="https://audio.example.test/probe.wav"), owner)
-    job = create_connection_check(db, connection.id, ConnectionCheck(audio_id=audio["id"]), owner)
-    run = db.query(AsrModelRun).filter_by(job_id=job["id"]).one()
-    assert run.role == "TEST" and run.status == "PENDING"
-    assert run.request_snapshot["role"] == "TEST"
-    assert connection.role is None
-    assert db.query(AsrWorkItem).filter_by(run_id=run.id).count() == 1
 
 
 def test_import_preview_rejects_nested_secret_fields_without_echoing_values(center_sandbox):
