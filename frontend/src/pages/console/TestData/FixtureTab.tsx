@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { testDataApi } from '@/features/test-data/api/testData';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
+import { collectPages } from '@/shared/api/pagination';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { FIXTURE_SCOPE_OPTIONS, FIXTURE_STATUS_OPTIONS } from './constants';
 import { FixtureTree } from './FixtureTree';
@@ -53,6 +54,7 @@ export function FixtureTab({
   const [keyword, setKeyword] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [checkedIds, setCheckedIds] = useState<number[]>([]);
+  const [deleting, setDeleting] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   // 运行时结果：作为详情抽屉的 seed，省一次回读。
   const [detail, setDetail] = useState<DataExecutionDetail | null>(null);
@@ -60,7 +62,8 @@ export function FixtureTab({
 
   const listQuery = useQuery({
     queryKey: ['test-data', 'fixtures', projectId],
-    queryFn: () => testDataApi.listFixtures(projectId, { page_size: 500 }),
+    // 后端分页上限为 200，用 collectPages 分页拉取避免 422 校验错误。
+    queryFn: () => collectPages((page) => testDataApi.listFixtures(projectId, { page, page_size: 200 })),
     enabled: projectId != null,
   });
 
@@ -82,36 +85,53 @@ export function FixtureTab({
   );
 
   const deleteFixtures = (ids: number[]) => {
-    if (!ids.length) return;
+    if (!ids.length || deleting) return;
     if (ids.length > 100) {
       void message.warning('每批最多删除 100 个 Fixture，请分批操作');
       return;
     }
+    const nameById = new Map(briefs.map((item) => [item.id, `${item.name}（${item.fixture_key}）`]));
     modal.confirm({
-      title: ids.length === 1 ? '将这个 Fixture 移入回收站？' : `将选中的 ${ids.length} 个 Fixture 移入回收站？`,
-      content: '仍被用例或其它 Fixture 依赖的记录会逐条拒绝，成功项可从回收站恢复。',
-      okText: '移入回收站',
+      title: `将选中的 ${ids.length} 个 Fixture 移入回收站？`,
+      content: '按实体类型分组勾选仅选中该分组下的 Fixture 条目；仍被用例或其它 Fixture 依赖的记录会逐条拒绝并保留勾选，成功项可从回收站恢复。',
+      okText: `删除 ${ids.length} 个 Fixture`,
       okType: 'danger',
       cancelText: '取消',
       onOk: async () => {
-        const receipt = await dataLifecycleApi.deleteMany('fixture', projectId, ids);
-        setCheckedIds([]);
-        if (selectedId != null && ids.includes(selectedId)) setSelectedId(null);
-        await queryClient.invalidateQueries({ queryKey: ['test-data', 'fixtures'] });
-        await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
-        const failures = receipt.items.filter((item) => !item.succeeded);
-        modal.info({
-          title: `删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
-          content: failures.length ? (
-            <Space direction="vertical">
-              {failures.map((item) => (
-                <Alert key={item.id} type="error" showIcon message={`Fixture #${item.id}`} description={item.error ?? '删除失败'} />
-              ))}
-            </Space>
-          ) : '成功项已进入回收站。',
-          okText: '查看回收站',
-          onOk: () => navigate('/console/recycle-bin'),
-        });
+        setDeleting(true);
+        try {
+          const receipt = await dataLifecycleApi.deleteMany('fixture', projectId, ids);
+          const succeededIds = new Set(receipt.items.filter((item) => item.succeeded).map((item) => item.id));
+          const failedIds = receipt.items.filter((item) => !item.succeeded).map((item) => item.id);
+          // 仅移除成功删除的勾选，失败项保留勾选便于排查依赖。
+          setCheckedIds((current) => [...new Set([...current.filter((id) => !succeededIds.has(id)), ...failedIds])]);
+          if (selectedId != null && succeededIds.has(selectedId)) setSelectedId(null);
+          await queryClient.invalidateQueries({ queryKey: ['test-data', 'fixtures'] });
+          await queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+          const failures = receipt.items.filter((item) => !item.succeeded);
+          modal.info({
+            title: `删除完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+            content: failures.length ? (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {failures.map((item) => (
+                  <Alert
+                    key={item.id}
+                    type="error"
+                    showIcon
+                    message={nameById.get(item.id) ?? `Fixture #${item.id}`}
+                    description={item.error ?? '删除失败'}
+                  />
+                ))}
+              </Space>
+            ) : '成功项已进入回收站。',
+            okText: '查看回收站',
+            onOk: () => navigate('/console/recycle-bin'),
+          });
+        } catch (error) {
+          message.error(getErrorMessage(error, '批量删除 Fixture 失败'));
+        } finally {
+          setDeleting(false);
+        }
       },
     });
   };
@@ -200,10 +220,10 @@ export function FixtureTab({
               >
                 新增 Fixture
               </Button>
-              <Button danger disabled={!checkedIds.length} onClick={() => deleteFixtures(checkedIds)}>
+              <Button danger disabled={!checkedIds.length || deleting} loading={deleting} onClick={() => deleteFixtures(checkedIds)}>
                 批量删除（{checkedIds.length}）
               </Button>
-              <Button onClick={() => setCheckedIds([])} disabled={!checkedIds.length}>取消选择</Button>
+              <Button onClick={() => setCheckedIds([])} disabled={!checkedIds.length || deleting}>取消选择</Button>
               <Button onClick={() => navigate('/console/recycle-bin')}>回收站</Button>
             </Space>
             <FixtureTree

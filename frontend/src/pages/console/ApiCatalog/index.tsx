@@ -20,8 +20,8 @@ import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { API_STATUS_OPTIONS, METHOD_OPTIONS } from './constants';
 import { ApiToolbar } from './ApiToolbar';
-import { ModuleTree, type UnclassifiedSelectionState } from './ModuleTree';
-import { ModuleApiList, type ModulePageMeta } from './ModuleApiList';
+import { ModuleTree } from './ModuleTree';
+import { ModuleApiList } from './ModuleApiList';
 import { ApiDetail } from './ApiDetail';
 import { ImportDialog } from './ImportDialog';
 import './ApiCatalog.css';
@@ -64,8 +64,6 @@ function ApiCatalogWorkspace() {
   // 模块与接口两类选择互斥，统一由页面持有，便于切换时集中确认。
   const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
   const [selectedApiIds, setSelectedApiIds] = useState<number[]>([]);
-  const [pageMeta, setPageMeta] = useState<ModulePageMeta>({ loading: false, ids: [] });
-  const [pendingUnclassifiedSelect, setPendingUnclassifiedSelect] = useState(false);
   const [dirOpen, setDirOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -79,26 +77,7 @@ function ApiCatalogWorkspace() {
     enabled: currentProjectId != null,
   });
   const modules: ApiModule[] = modulesQuery.data ?? [];
-  const defaultModule = modules.find((module) => module.is_default) ?? null;
   const selectedModule = modules.find((module) => module.id === selectedModuleId) ?? null;
-
-  // 切换模块或筛选后先清空当前页元信息，等列表重新加载后再回填。
-  useEffect(() => {
-    setPageMeta({ loading: selectedModuleId != null, ids: [] });
-  }, [selectedModuleId, keyword, method, status]);
-
-  const handlePageMeta = useCallback((meta: ModulePageMeta) => setPageMeta(meta), []);
-
-  // 未分类复选框：未打开时先打开列表，加载完成后再勾选当前筛选下的本页接口。
-  useEffect(() => {
-    if (!pendingUnclassifiedSelect) return;
-    if (defaultModule == null || selectedModuleId !== defaultModule.id) return;
-    if (pageMeta.loading) return;
-    setPendingUnclassifiedSelect(false);
-    if (pageMeta.ids.length) {
-      setSelectedApiIds((ids) => [...new Set([...ids, ...pageMeta.ids])]);
-    }
-  }, [pendingUnclassifiedSelect, defaultModule, selectedModuleId, pageMeta]);
 
   useEffect(() => {
     if (
@@ -161,39 +140,6 @@ function ApiCatalogWorkspace() {
     });
   }, [modal, selectedApiIds.length, selectedModuleIds.length]);
 
-  const toggleUnclassified = useCallback(() => {
-    if (defaultModule == null) return;
-    const apply = () => {
-      if (selectedModuleId !== defaultModule.id) {
-        // 先打开未分类列表；当前页数据到达后由上面的 effect 完成本页勾选。
-        setPendingUnclassifiedSelect(true);
-        setSelectedModuleId(defaultModule.id);
-        setSelectedApiId(null);
-        return;
-      }
-      if (pageMeta.loading || pageMeta.ids.length === 0) return;
-      const pageIds = pageMeta.ids;
-      const allSelected = pageIds.every((id) => selectedApiIds.includes(id));
-      setSelectedApiIds(allSelected
-        ? selectedApiIds.filter((id) => !pageIds.includes(id))
-        : [...new Set([...selectedApiIds, ...pageIds])]);
-    };
-    if (selectedModuleIds.length > 0) {
-      modal.confirm({
-        title: '切换为选择接口？',
-        content: `已选择 ${selectedModuleIds.length} 个模块，继续会清空这些模块勾选。`,
-        okText: '继续',
-        cancelText: '取消',
-        onOk: () => {
-          setSelectedModuleIds([]);
-          apply();
-        },
-      });
-      return;
-    }
-    apply();
-  }, [defaultModule, modal, pageMeta, selectedApiIds, selectedModuleId, selectedModuleIds.length]);
-
   const handleDeletedModules = useCallback((result: ApiModuleDeleteResult) => {
     setSelectedModuleIds((ids) => ids.filter((id) => !result.deleted_module_ids.includes(id)));
     setSelectedApiIds((ids) => ids.filter((id) => !result.deleted_interface_ids.includes(id)));
@@ -235,23 +181,6 @@ function ApiCatalogWorkspace() {
     if (id != null) setSelectedApiId(null);
   };
 
-  const unclassifiedPage = selectedModuleId != null && defaultModule?.id === selectedModuleId
-    ? pageMeta
-    : { loading: false, ids: [] };
-  const unclassifiedChecked = selectedModuleId === defaultModule?.id
-    && unclassifiedPage.ids.length > 0
-    && unclassifiedPage.ids.every((id) => selectedApiIds.includes(id));
-  const unclassifiedIndeterminate = selectedModuleId === defaultModule?.id
-    && !unclassifiedChecked
-    && unclassifiedPage.ids.some((id) => selectedApiIds.includes(id));
-  const unclassified: UnclassifiedSelectionState = {
-    checked: unclassifiedChecked,
-    indeterminate: unclassifiedIndeterminate,
-    disabled: selectedModuleId === defaultModule?.id
-      && (unclassifiedPage.loading || unclassifiedPage.ids.length === 0),
-    onToggle: toggleUnclassified,
-  };
-
   const openCreate = (moduleId: number | null) => {
     createForm.resetFields();
     createForm.setFieldsValue({ module_id: moduleId ?? undefined });
@@ -268,7 +197,6 @@ function ApiCatalogWorkspace() {
       selectedModuleId={selectedModuleId}
       selectedModuleIds={selectedModuleIds}
       onModuleSelectionChange={requestModuleSelection}
-      unclassified={unclassified}
       onSelectApi={(id) => {
         selectApi(id);
         setDirOpen(false);
@@ -294,7 +222,6 @@ function ApiCatalogWorkspace() {
       onSelectApi={selectApi}
       selectedIds={selectedApiIds}
       onSelectionChange={requestApiSelection}
-      onPageMeta={handlePageMeta}
       onClearFilters={resetFilters}
       onCreate={() => openCreate(selectedModule.is_default ? null : selectedModule.id)}
       onImport={() => setImportOpen(true)}

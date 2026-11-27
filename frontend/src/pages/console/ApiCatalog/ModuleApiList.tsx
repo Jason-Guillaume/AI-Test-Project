@@ -1,7 +1,7 @@
 // 选中模块后展示模块内的接口清单；点击接口行切换到接口详情。
 // 批量选择只作用于当前筛选下的本页数据；删除允许部分成功，失败项保留勾选并给出名称、路径和原因。
 import { useEffect, useRef, useState } from 'react';
-import { App, Button, Space, Tag, Typography } from 'antd';
+import { App, Button, Checkbox, Space, Tag, Typography } from 'antd';
 import { FolderOpenOutlined, RightOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -15,12 +15,6 @@ import { API_STATUS_COLOR, METHOD_COLOR } from './constants';
 import type { ApiInterface, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
 
 
-/** 当前页元信息，供未分类复选框判断本页是否已全部选中。 */
-export interface ModulePageMeta {
-  loading: boolean;
-  ids: number[];
-}
-
 export function ModuleApiList({
   projectId,
   module,
@@ -32,7 +26,6 @@ export function ModuleApiList({
   onSelectApi,
   selectedIds,
   onSelectionChange,
-  onPageMeta,
   onClearFilters,
   onCreate,
   onImport,
@@ -47,7 +40,6 @@ export function ModuleApiList({
   onSelectApi: (id: number | null) => void;
   selectedIds: number[];
   onSelectionChange: (ids: number[]) => void;
-  onPageMeta: (meta: ModulePageMeta) => void;
   onClearFilters: () => void;
   onCreate: () => void;
   onImport: () => void;
@@ -79,14 +71,6 @@ export function ModuleApiList({
       status,
     }),
   });
-
-  // 把当前页 ID 交给父级，未分类复选框据此判断勾选与半选状态。
-  useEffect(() => {
-    onPageMeta({
-      loading: query.isPending || query.isFetching,
-      ids: (query.data?.items ?? []).map((row) => row.id),
-    });
-  }, [query.data, query.isPending, query.isFetching, onPageMeta]);
 
   /** 翻页属于显式切换范围，直接清空本页勾选，不弹确认。 */
   const changePagination = (next: PaginationState) => {
@@ -146,6 +130,11 @@ export function ModuleApiList({
 
   if (query.isPending) return <LoadingState tip={`正在加载「${module.name}」接口...`} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={query.refetch} />;
+
+  const pageIds = query.data.items.map((row) => row.id);
+  const selectedOnPage = pageIds.filter((id) => selectedIds.includes(id)).length;
+  const allPageSelected = pageIds.length > 0 && selectedOnPage === pageIds.length;
+  const indeterminatePage = selectedOnPage > 0 && selectedOnPage < pageIds.length;
 
   // 固定列只保留紧凑宽度，接口名称与路径吸收宽屏剩余空间；列宽不足时由表格内部横向滚动承接。
   const columns = [
@@ -238,6 +227,22 @@ export function ModuleApiList({
         </div>
         <Space wrap>
           <Tag color="blue" className="api-module-interfaces-count">{query.data.total} 个接口</Tag>
+          {module.is_default && (
+            <Checkbox
+              aria-label="选择本页未分类接口"
+              checked={allPageSelected}
+              indeterminate={indeterminatePage}
+              disabled={query.isFetching || pageIds.length === 0 || deleteMany.isPending}
+              onChange={(event) => {
+                const next = event.target.checked
+                  ? [...new Set([...selectedIds, ...pageIds])]
+                  : selectedIds.filter((id) => !pageIds.includes(id));
+                onSelectionChange(next);
+              }}
+            >
+              选择本页未分类接口（{pageIds.length}）
+            </Checkbox>
+          )}
           {selectedIds.length > 0 && (
             <Typography.Text type="secondary">已选 {selectedIds.length} 个接口</Typography.Text>
           )}

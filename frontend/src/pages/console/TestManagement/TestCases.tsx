@@ -96,7 +96,7 @@ function filterNodes(nodes: ScopeNode[], keyword: string): ScopeNode[] {
   return nodes.filter((node) => keep.has(node.id));
 }
 
-/** 把扁平节点收成 antd Tree。 */
+/** 把扁平节点收成 antd Tree；系统待整理节点禁选复选框，仅保留点击浏览。 */
 function toTreeData(nodes: ScopeNode[]): DataNode[] {
   const byParent = new Map<number | null, ScopeNode[]>();
   for (const node of nodes) {
@@ -106,18 +106,43 @@ function toTreeData(nodes: ScopeNode[]): DataNode[] {
   }
   const build = (parentId: number | null): DataNode[] => (byParent.get(parentId) ?? [])
     .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
-    .map((node) => ({
-      key: String(node.id),
-      icon: nodeIcon(node),
-      title: (
-        <span className="scope-tree-title" title={`${node.name} · ${node.case_count} 用例 / ${node.point_count} 测试点`}>
-          <span className="scope-tree-name">{node.name}</span>
-          <span className="scope-tree-count">{node.case_count} 用例</span>
-        </span>
-      ),
-      children: build(node.id),
-    }));
+    .map((node) => {
+      const isSystem = node.is_system || node.node_type === 'INBOX';
+      return {
+        key: String(node.id),
+        icon: nodeIcon(node),
+        disableCheckbox: isSystem,
+        title: (
+          <span
+            className="scope-tree-title"
+            title={isSystem ? `${node.name}（系统目录，不可删除） · ${node.case_count} 用例` : `${node.name} · ${node.case_count} 用例 / ${node.point_count} 测试点`}
+          >
+            <span className="scope-tree-name">{node.name}</span>
+            <span className="scope-tree-count">{node.case_count} 用例</span>
+          </span>
+        ),
+        children: build(node.id),
+      };
+    });
   return build(null);
+}
+
+/** 计算删除当前浏览目录后的回退目标：向上找同方向仍存在的最近父目录，否则回根视图。 */
+function resolveFallbackScopeId(
+  currentScopeId: number | undefined,
+  deletedIds: Set<number>,
+  nodesSnapshot: ScopeNode[],
+): number | undefined {
+  if (currentScopeId == null || !deletedIds.has(currentScopeId)) return currentScopeId;
+  const byId = new Map(nodesSnapshot.map((node) => [node.id, node]));
+  const visited = new Set<number>();
+  let cursor = byId.get(currentScopeId)?.parent_id ?? null;
+  while (cursor != null && !visited.has(cursor)) {
+    visited.add(cursor);
+    if (!deletedIds.has(cursor) && byId.has(cursor)) return cursor;
+    cursor = byId.get(cursor)?.parent_id ?? null;
+  }
+  return undefined;
 }
 
 function QueryError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
@@ -151,6 +176,14 @@ export function ConsoleTestCasesPage() {
   const selectedCaseIds = selection.key === selectionKey ? selection.ids : [];
   const setSelectedCaseIds = useCallback((ids: number[]) => setSelection({ key: selectionKey, ids }), [selectionKey]);
   useEffect(() => { setSelection({ key: selectionKey, ids: [] }); }, [selectionKey]);
+  // 范围目录勾选按「项目 + 测试方向」隔离；切换项目或方向时自动清空，避免跨上下文误删。
+  const scopeSelectionKey = JSON.stringify([currentProjectId, direction]);
+  const [scopeSelection, setScopeSelection] = useState<{ key: string; ids: number[] }>({ key: scopeSelectionKey, ids: [] });
+  const selectedScopeIds = scopeSelection.key === scopeSelectionKey ? scopeSelection.ids : [];
+  const setSelectedScopeIds = useCallback((ids: number[]) => setScopeSelection({ key: scopeSelectionKey, ids }), [scopeSelectionKey]);
+  useEffect(() => { setScopeSelection({ key: scopeSelectionKey, ids: [] }); }, [scopeSelectionKey]);
+  const scopeContextRef = useRef({ key: scopeSelectionKey, selectedNodeId });
+  useEffect(() => { scopeContextRef.current = { key: scopeSelectionKey, selectedNodeId }; }, [scopeSelectionKey, selectedNodeId]);
   const [treeKeyword, setTreeKeyword] = useState('');
   const [onlyWithCases, setOnlyWithCases] = useState(false);
   const [targetScopeId, setTargetScopeId] = useState<number>();
@@ -171,9 +204,10 @@ export function ConsoleTestCasesPage() {
       const next = new URLSearchParams();
       if (globalProjectId != null) next.set('projectId', String(globalProjectId));
       setSelectedCaseIds([]);
+      setSelectedScopeIds([]);
       setSearchParams(next);
     }
-  }, [globalProjectId, setSearchParams, setSelectedCaseIds]);
+  }, [globalProjectId, setSearchParams, setSelectedCaseIds, setSelectedScopeIds]);
   useEffect(() => {
     if (globalChange.current) { globalChange.current = false; return; }
     if (requestedProjectId && requestedProjectId !== globalProjectId) {
@@ -239,6 +273,14 @@ export function ConsoleTestCasesPage() {
   const nodes = useMemo(() => treeQuery.data?.items ?? [], [treeQuery.data?.items]);
   const visible = useMemo(() => { const named = filterNodes(nodes, treeKeyword); return onlyWithCases ? named.filter((node) => node.case_count > 0) : named; }, [nodes, treeKeyword, onlyWithCases]);
   const treeData = useMemo(() => toTreeData(visible), [visible]);
+  const checkableVisibleScopeIds = useMemo(
+    () => visible.filter((node) => !node.is_system && node.node_type !== 'INBOX').map((node) => node.id),
+    [visible],
+  );
+  const visibleSelectedScopeCount = checkableVisibleScopeIds.filter((id) => selectedScopeIds.includes(id)).length;
+  const allVisibleScopesSelected = checkableVisibleScopeIds.length > 0 && visibleSelectedScopeCount === checkableVisibleScopeIds.length;
+  const indeterminateVisibleScopes = visibleSelectedScopeCount > 0 && visibleSelectedScopeCount < checkableVisibleScopeIds.length;
+  const isScopeTreeFiltered = Boolean(treeKeyword.trim() || onlyWithCases);
 
   useEffect(() => {
     const brief = requestedCaseQuery.data;
@@ -311,6 +353,85 @@ export function ConsoleTestCasesPage() {
     },
     onError: (error) => message.error(getErrorMessage(error, '批量删除失败')),
   });
+  const deleteScopes = useMutation({
+    mutationFn: (payload: { projectId: number; ids: number[]; contextKey: string; nodesSnapshot: ScopeNode[] }) =>
+      dataLifecycleApi.deleteMany('test_scope', payload.projectId, payload.ids),
+    onSuccess: (receipt, variables) => {
+      refresh();
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      // 防止切换项目或测试方向后，旧请求的回执覆盖新上下文的勾选与当前浏览目录。
+      if (scopeContextRef.current.key !== variables.contextKey) return;
+      const succeededIds = new Set(receipt.items.filter((item) => item.succeeded).map((item) => item.id));
+      const failedIds = receipt.items.filter((item) => !item.succeeded).map((item) => item.id);
+      const nameById = new Map(variables.nodesSnapshot.map((node) => [node.id, node.name]));
+      setSelectedScopeIds(failedIds);
+      const activeScopeId = scopeContextRef.current.selectedNodeId;
+      if (activeScopeId != null && succeededIds.has(activeScopeId)) {
+        const fallbackScopeId = resolveFallbackScopeId(activeScopeId, succeededIds, variables.nodesSnapshot);
+        changeParams({ scope: fallbackScopeId }, false);
+      }
+      if (receipt.failed > 0) {
+        modal.info({
+          title: `批量删除目录完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+          width: 620,
+          content: (
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {receipt.items.filter((item) => !item.succeeded).map((item) => (
+                <Alert
+                  key={item.id}
+                  type="error"
+                  showIcon
+                  message={nameById.get(item.id) ?? `目录 #${item.id}`}
+                  description={item.error ?? '删除失败'}
+                />
+              ))}
+            </Space>
+          ),
+          okText: '关闭',
+        });
+      } else {
+        modal.success({
+          title: `已将 ${receipt.succeeded} 个目录移入回收站`,
+          content: '成功删除的目录可在回收站按原层级恢复。',
+          okText: '查看回收站',
+          onOk: () => navigate('/console/recycle-bin'),
+        });
+      }
+    },
+    onError: (error) => message.error(getErrorMessage(error, '批量删除目录失败')),
+  });
+  const requestBatchDeleteScopes = () => {
+    if (!currentProjectId || selectedScopeIds.length === 0 || deleteScopes.isPending) return;
+    if (selectedScopeIds.length > 100) {
+      message.warning('每批最多删除 100 个目录，请分批操作');
+      return;
+    }
+    const ids = [...selectedScopeIds];
+    const nodesSnapshot = [...nodes];
+    const nameById = new Map(nodesSnapshot.map((node) => [node.id, node.name]));
+    const previewNames = ids.slice(0, 5).map((id) => nameById.get(id) ?? `#${id}`).join('、');
+    const summaryLabel = ids.length > 5 ? `${previewNames} 等 ${ids.length} 个目录` : previewNames;
+    modal.confirm({
+      title: `删除选中的 ${ids.length} 个测试目录？`,
+      content: (
+        <Space direction="vertical" size={6}>
+          <Typography.Text>待删除目录：{summaryLabel}</Typography.Text>
+          <Typography.Text type="secondary">
+            只删除明确勾选的目录，父子同选时会先处理子目录；仍含未选子目录或关联用例的目录将被保留，失败项会保持勾选并说明原因。成功项会移入当前项目回收站，可随时恢复。
+          </Typography.Text>
+        </Space>
+      ),
+      okText: `删除 ${ids.length} 个目录`,
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => deleteScopes.mutateAsync({
+        projectId: currentProjectId,
+        ids,
+        contextKey: scopeSelectionKey,
+        nodesSnapshot,
+      }),
+    });
+  };
   const createCase = useMutation({
     mutationFn: (values: { name: string; priority: 'P0' | 'P1' | 'P2' | 'P3'; case_type: string }) => testManagementApi.createCase(currentProjectId!, {
       name: values.name,
@@ -381,16 +502,72 @@ export function ConsoleTestCasesPage() {
             </Space>
             <Button type={selectedNodeId == null ? 'primary' : 'default'} onClick={() => changeParams({ scope: undefined })}>全部用例</Button>
             <Checkbox checked={onlyWithCases} onChange={(event) => setOnlyWithCases(event.target.checked)}>仅看有用例的目录</Checkbox>
-            <Input.Search allowClear placeholder="搜索范围" onSearch={setTreeKeyword} style={{ marginBottom: 8 }} />
+            <Input.Search
+              allowClear
+              value={treeKeyword}
+              placeholder="搜索范围"
+              onChange={(event) => setTreeKeyword(event.target.value)}
+              onSearch={setTreeKeyword}
+              style={{ marginBottom: 8 }}
+            />
+            <div className="scope-tree-bulk-bar">
+              <Checkbox
+                checked={allVisibleScopesSelected}
+                indeterminate={indeterminateVisibleScopes}
+                disabled={checkableVisibleScopeIds.length === 0 || deleteScopes.isPending}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    setSelectedScopeIds([...new Set([...selectedScopeIds, ...checkableVisibleScopeIds])]);
+                  } else {
+                    const visibleSet = new Set(checkableVisibleScopeIds);
+                    setSelectedScopeIds(selectedScopeIds.filter((id) => !visibleSet.has(id)));
+                  }
+                }}
+              >
+                {isScopeTreeFiltered ? '全选筛选结果' : '全选可见目录'}（{checkableVisibleScopeIds.length}）
+              </Checkbox>
+              <Space size={4} wrap>
+                <Typography.Text type="secondary">已选 {selectedScopeIds.length} 个</Typography.Text>
+                <Button
+                  size="small"
+                  type="link"
+                  disabled={selectedScopeIds.length === 0 || deleteScopes.isPending}
+                  onClick={() => setSelectedScopeIds([])}
+                >
+                  清空
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  disabled={selectedScopeIds.length === 0 || deleteScopes.isPending}
+                  loading={deleteScopes.isPending}
+                  onClick={requestBatchDeleteScopes}
+                >
+                  删除目录
+                </Button>
+              </Space>
+            </div>
             <div style={{ overflow: 'auto', flex: 1 }}>
               {treeQuery.isPending ? <LoadingState /> : treeQuery.isError ? <QueryError error={treeQuery.error} onRetry={treeQuery.refetch} /> : (
                 <Tree
                   className="scope-tree"
                   showIcon
                   blockNode
+                  checkable
+                  checkStrictly
                   draggable
+                  checkedKeys={{ checked: selectedScopeIds.map(String), halfChecked: [] }}
                   selectedKeys={selectedNodeId == null ? [] : [String(selectedNodeId)]}
                   treeData={treeData}
+                  onCheck={(checkedKeys) => {
+                    // 仅更新当前可见节点集合中的勾选态，保留当前搜索或筛选范围之外的已选目录。
+                    const raw = Array.isArray(checkedKeys) ? checkedKeys : checkedKeys.checked;
+                    const checkableSet = new Set(checkableVisibleScopeIds);
+                    const visibleSet = new Set(visible.map((node) => node.id));
+                    const nextVisible = raw.map(Number).filter((id) => checkableSet.has(id));
+                    const preserved = selectedScopeIds.filter((id) => !visibleSet.has(id));
+                    setSelectedScopeIds([...new Set([...preserved, ...nextVisible])]);
+                  }}
                   onSelect={(keys) => changeParams({ scope: keys[0] == null ? undefined : Number(keys[0]) })}
                   onDrop={onDrop}
                 />

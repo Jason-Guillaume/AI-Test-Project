@@ -91,6 +91,7 @@ export function ConsoleTestDataPage() {
             label: 'Fixture',
             children: (
               <FixtureTab
+                key={currentProjectId}
                 projectId={currentProjectId}
                 environmentId={environmentId}
                 environmentName={currentEnv ? currentEnv.display_name || currentEnv.name : null}
