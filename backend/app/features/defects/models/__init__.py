@@ -7,6 +7,7 @@ Bug 是缺陷管理的核心实体，回归关联（DefectRegressionLink / TestP
 from app.features.defects.models.activity import BugActivity
 from app.features.defects.models.attachment import BugAttachment
 from app.features.defects.models.bug import Bug
+from app.features.defects.models.import_batch import DefectImportBatch
 from app.features.defects.models.project_setting import DefectProjectSetting
 from app.features.defects.models.reminder_dispatch import DefectReminderDispatch
 from app.features.defects.models.share import DefectExternalAction, DefectShareBatch, DefectShareLink
@@ -18,6 +19,7 @@ __all__ = [
     "BugActivity",
     "BugAttachment",
     "DefectExternalAction",
+    "DefectImportBatch",
     "DefectProjectSetting",
     "DefectReminderDispatch",
     "DefectShareBatch",

@@ -14,7 +14,7 @@ import { collectPages } from '@/shared/api/pagination';
 import {
   App, Alert, Button, Checkbox, Input, Modal, Select, Space, Statistic, Tabs, Tag, Typography,
 } from 'antd';
-import { ExclamationCircleOutlined, SettingOutlined } from '@ant-design/icons';
+import { DownloadOutlined, ExclamationCircleOutlined, SettingOutlined, UploadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -35,6 +35,8 @@ import type { BatchLifecycleReceipt } from '@/features/data-lifecycle/api';
 import type { Paginated } from '@/shared/api/contracts';
 import { BatchCreateBugsModal } from './BatchCreateBugsModal';
 import { DefectDetailModal } from './DefectDetailModal';
+import { DefectExcelImportModal } from './DefectExcelImportModal';
+import { DefectExportModal } from './DefectExportModal';
 import { DefectFormModal } from './DefectFormModal';
 import { DefectSettingsDrawer } from './DefectSettingsDrawer';
 import {
@@ -97,6 +99,8 @@ export function ConsoleDefectsPage() {
   const [shareBugs, setShareBugs] = useState<ShareTarget[] | null>(null);
   const [formModal, setFormModal] = useState<{ mode: 'create' } | { mode: 'edit'; bugId: number } | null>(null);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [batchPriority, setBatchPriority] = useState<BugPriority | undefined>(undefined);
   const [batchArchiveOpen, setBatchArchiveOpen] = useState(false);
@@ -302,7 +306,22 @@ export function ConsoleDefectsPage() {
         <Button type="primary" onClick={() => setFormModal({ mode: 'create' })}>新建缺陷</Button>
         <Button onClick={() => setBatchModalOpen(true)} disabled={projectOptions.length === 0}>批量创建</Button>
         {projectId != null && (
-          <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>缺陷设置</Button>
+          <>
+            <Button
+              icon={<UploadOutlined />}
+              disabled={!canManage(projectId)}
+              onClick={() => setImportModalOpen(true)}
+            >
+              导入
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => setExportModalOpen(true)}
+            >
+              导出
+            </Button>
+            <Button icon={<SettingOutlined />} onClick={() => setSettingsOpen(true)}>缺陷设置</Button>
+          </>
         )}
       </div>
 
@@ -467,6 +486,40 @@ export function ConsoleDefectsPage() {
           projectOptions={projectOptions}
           onClose={() => setBatchModalOpen(false)}
           onCreated={() => { setBatchModalOpen(false); resetPage(); refreshLists(); }}
+        />
+      )}
+
+      {projectId != null && (
+        <DefectExcelImportModal
+          open={importModalOpen}
+          projectId={projectId}
+          projectName={projectOptions.find((p) => p.value === projectId)?.label}
+          onClose={() => setImportModalOpen(false)}
+          onImported={() => { resetPage(); refreshLists(); }}
+        />
+      )}
+
+      {projectId != null && (
+        <DefectExportModal
+          open={exportModalOpen}
+          projectId={projectId}
+          projectName={projectOptions.find((p) => p.value === projectId)?.label}
+          filteredTotal={data.total}
+          selectedBugIds={selectedBugIds}
+          filterQuery={query}
+          filterSummary={[
+            queueMode ? `队列：${QUEUE_LABELS[queue]}` : '全部缺陷',
+            categoryFilter ? `划分：${categoryFilter}` : null,
+            status ? `状态：${STATUS_DISPLAY[status]}` : null,
+            severity ? `严重度：${severity}` : null,
+            priority ? `优先级：${PRIORITY_LABELS[priority]}` : null,
+            keyword ? `关键字：${keyword}` : null,
+          ].filter(Boolean).join(' · ')}
+          onClose={() => setExportModalOpen(false)}
+          onStaleSelectionRefresh={() => {
+            setSelectedBugIds([]);
+            refreshLists();
+          }}
         />
       )}
 

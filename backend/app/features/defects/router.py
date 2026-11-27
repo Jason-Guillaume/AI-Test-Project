@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from fastapi.responses import Response
 from urllib.parse import quote
 
@@ -41,6 +41,10 @@ from app.features.defects.schemas import (
     BugResponse,
     BugStatsResponse,
     BugUpdate,
+    DefectExportRequest,
+    DefectImportConfirmRequest,
+    DefectImportConfirmResponse,
+    DefectImportPreviewResponse,
     DefectProjectSettingResponse,
     DefectProjectSettingUpdate,
     DefectSourceRequest,
@@ -51,6 +55,7 @@ from app.features.defects.schemas import (
     DefectTemplateResponse,
 )
 from app.features.defects.services.defect_service import DefectService, status_display
+from app.features.defects.services.excel_io_service import EXCEL_IO_SERVICE, MAX_UPLOAD_BYTES
 from app.features.defects.services.project_config_service import DefectProjectConfigService
 from app.features.defects.services.share_service import DefectShareService
 from app.features.defects.services.source_service import DefectSourceService
@@ -375,6 +380,86 @@ def batch_create_bugs(
     # 新建缺陷尚未分享，直接传空映射避免无谓查询分享表。
     items = _responses(db, bugs, counts={})
     return BugBatchCreateResponse(items=items, created_count=len(items))
+
+
+@router.get("/import-template", summary="下载缺陷 Excel 导入模板")
+def download_defect_import_template(
+    project_id: int = Query(..., ge=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """生成包含「缺陷明细」「填写说明」两张表的无宏 .xlsx 模板；至少 member 权限。"""
+    content, filename = EXCEL_IO_SERVICE.build_template_workbook(
+        db, project_id=project_id, actor=user,
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/import-preview", response_model=DefectImportPreviewResponse, summary="上传并预览缺陷 Excel")
+async def preview_defect_import(
+    project_id: int = Form(..., ge=1),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """校验无宏 .xlsx 工作簿并返回逐行错误、重复提示与待确认预览标识，不写入缺陷。"""
+    # 限制读取上限（5 MiB + 1），超限时由服务端提前拒绝，避免把超大文件全部读入内存。
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if not content:
+        raise bad_request("上传文件不能为空")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise bad_request("文件超过 5 MiB 上限，请精简后重新上传")
+    return EXCEL_IO_SERVICE.preview_import(
+        db,
+        project_id=project_id,
+        file_name=file.filename or "defects.xlsx",
+        content=content,
+        actor=user,
+    )
+
+
+@router.post(
+    "/import-confirm",
+    response_model=DefectImportConfirmResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="确认导入缺陷 Excel",
+)
+def confirm_defect_import(
+    body: DefectImportConfirmRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """按预览标识单事务创建缺陷、活动与通知；重试同一预览返回同一回执。"""
+    return EXCEL_IO_SERVICE.confirm_import(db, body=body, actor=user)
+
+
+@router.post("/export", summary="导出缺陷 Excel 工作簿")
+def export_defects_excel(
+    body: DefectExportRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """按当前用户权限导出当前项目筛选结果（全部页）或已勾选缺陷为无宏 .xlsx。"""
+    content, filename, count = EXCEL_IO_SERVICE.export_bugs(db, body=body, actor=user)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+            "X-Export-Count": str(count),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+            "Access-Control-Expose-Headers": "Content-Disposition, X-Export-Count",
+        },
+    )
 
 
 def _attachment_response(row: BugAttachment):

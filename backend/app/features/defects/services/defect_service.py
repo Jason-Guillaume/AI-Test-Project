@@ -130,13 +130,11 @@ class DefectService:
             query = query.filter(Bug.project_id == project_id)
         return query
 
-    def list_bugs(
+    def build_list_query(
         self,
         db: Session,
         *,
         user: User,
-        page: int,
-        page_size: int,
         project_id: int | None = None,
         category: str | None = None,
         status: str | None = None,
@@ -151,9 +149,8 @@ class DefectService:
         updated_after: datetime | None = None,
         updated_before: datetime | None = None,
         keyword: str | None = None,
-        sort: str | None = None,
-    ) -> tuple[list[Bug], int]:
-        """按可见范围与过滤条件分页查询；默认排除已归档与草稿。"""
+    ):
+        """构造列表与导出共用的权限+筛选查询（不附带排序，便于 count 与分页复用）。"""
         query = self._base_query(db, user, project_id)
 
         if category:
@@ -207,11 +204,59 @@ class DefectService:
             keyword = keyword.strip()
             if keyword:
                 query = query.filter(Bug.title.ilike(f"%{keyword}%"))
+        return query
 
+    @staticmethod
+    def list_order_columns(sort: str | None):
+        """返回列表与导出共用的稳定排序字段，保证跨页顺序一致。"""
+        primary = Bug.updated_at.desc() if sort == "updated" else Bug.id.desc()
+        return (primary, Bug.id.desc())
+
+    def list_bugs(
+        self,
+        db: Session,
+        *,
+        user: User,
+        page: int,
+        page_size: int,
+        project_id: int | None = None,
+        category: str | None = None,
+        status: str | None = None,
+        severity: int | None = None,
+        priority: int | None = None,
+        affected_version: str | None = None,
+        status_group: str | None = None,
+        mine: bool = False,
+        include_archived: bool = False,
+        include_drafts: bool = False,
+        view: str | None = None,
+        updated_after: datetime | None = None,
+        updated_before: datetime | None = None,
+        keyword: str | None = None,
+        sort: str | None = None,
+    ) -> tuple[list[Bug], int]:
+        """按可见范围与过滤条件分页查询；默认排除已归档与草稿。"""
+        query = self.build_list_query(
+            db,
+            user=user,
+            project_id=project_id,
+            category=category,
+            status=status,
+            severity=severity,
+            priority=priority,
+            affected_version=affected_version,
+            status_group=status_group,
+            mine=mine,
+            include_archived=include_archived,
+            include_drafts=include_drafts,
+            view=view,
+            updated_after=updated_after,
+            updated_before=updated_before,
+            keyword=keyword,
+        )
         total = int(query.count())
-        order = Bug.updated_at.desc() if sort == "updated" else Bug.id.desc()
         items = (
-            query.order_by(order, Bug.id.desc())
+            query.order_by(*self.list_order_columns(sort))
             .offset((page - 1) * page_size)
             .limit(page_size)
             .all()
@@ -545,15 +590,22 @@ class DefectService:
         db.refresh(bug)
         return bug
 
-    def batch_create_bugs(
-        self, db: Session, body: BugBatchCreate, *, actor: User
+    def create_bugs_in_transaction(
+        self,
+        db: Session,
+        *,
+        project: Project,
+        items: list[BugBase],
+        actor: User,
+        activity_detail: dict | None = None,
     ) -> list[Bug]:
-        """同一项目下原子批量创建；任意一行失败整批不落库并返回行号定位。"""
-        project = get_project_or_404(db, body.project_id, actor)
-        check_writable(db, project, actor)
+        """在调用方事务中批量写入缺陷、活动事件与站内通知（不自行 commit）。
 
+        用于批量创建接口和 Excel 导入确认共用同一套建单与校验逻辑；
+        调用方负责在同事务中提交回执或在失败时整体回滚。
+        """
         row_errors: list[dict[str, object]] = []
-        for row_no, item in enumerate(body.items, start=1):
+        for row_no, item in enumerate(items, start=1):
             if not item.title.strip():
                 row_errors.append({
                     "row": row_no,
@@ -584,13 +636,32 @@ class DefectService:
 
         bugs = [
             self._build_bug(project_id=project.id, actor=actor, item=item)
-            for item in body.items
+            for item in items
         ]
         db.add_all(bugs)
+        # 事务边界：先 flush 分配缺陷主键，再写入同事务的活动事件与通知。
         db.flush()
         for bug in bugs:
-            self._record_activity(db, bug=bug, action="created", actor=actor, new_status=bug.status)
+            self._record_activity(
+                db,
+                bug=bug,
+                action="created",
+                actor=actor,
+                new_status=bug.status,
+                detail=activity_detail,
+            )
             self._notify_created(db, bug=bug, project_id=project.id, actor=actor)
+        return bugs
+
+    def batch_create_bugs(
+        self, db: Session, body: BugBatchCreate, *, actor: User
+    ) -> list[Bug]:
+        """同一项目下原子批量创建；任意一行失败整批不落库并返回行号定位。"""
+        # 权限判定：校验目标项目可见且当前用户至少具备 member 写权限。
+        project = get_project_or_404(db, body.project_id, actor)
+        check_writable(db, project, actor)
+        bugs = self.create_bugs_in_transaction(db, project=project, items=body.items, actor=actor)
+        # 事务边界：保留原批量创建 API 的独立提交行为。
         db.commit()
         for bug in bugs:
             db.refresh(bug)

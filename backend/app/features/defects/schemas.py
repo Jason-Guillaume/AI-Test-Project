@@ -464,6 +464,137 @@ class DefectSourceResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DefectImportRowError(BaseModel):
+    """Excel 导入单行校验错误，保留原始 Excel 行号与列名。"""
+
+    row: int = Field(..., ge=0, description="原始 Excel 行号（表头或工作簿级错误为 0/1）")
+    column: str = Field(..., description="出错列名或工作簿位置")
+    message: str = Field(..., description="中文错误说明")
+
+
+class DefectImportDuplicateWarning(BaseModel):
+    """Excel 文件内部重复标题或重复内容提示（不阻断导入，由用户决定）。"""
+
+    kind: Literal["same_title", "same_content"]
+    title: str
+    rows: list[int]
+    message: str
+
+
+class DefectImportRecentBatch(BaseModel):
+    """同项目下最近一次相同标准化数据摘要的成功导入批次。"""
+
+    batch_id: int
+    committed_at: datetime | None = None
+    created_count: int
+    created_by_username: str | None = None
+    file_name: str
+
+
+class DefectImportPreviewItem(BaseModel):
+    """预览展示的单条待创建缺陷（明确标注新建动作与原始 Excel 行号）。"""
+
+    excel_row: int = Field(..., ge=2, description="原始 Excel 行号")
+    action: Literal["create"] = "create"
+    title: str
+    category: BugCategory | None = None
+    description: str | None = None
+    steps_to_reproduce: str | None = None
+    expected_result: str | None = None
+    actual_result: str | None = None
+    severity: BugSeverity = 2
+    priority: BugPriority = 2
+    environment: str | None = None
+    affected_version: str | None = None
+    api_method: ApiMethod | None = None
+    api_url: str | None = None
+    api_request_headers: str | None = None
+    api_request_body: str | None = None
+    api_response: str | None = None
+    valid: bool = True
+
+
+class DefectImportPreviewResponse(BaseModel):
+    """缺陷 Excel 导入预览响应。存在任何错误时 preview_token 为空，阻止确认提交。"""
+
+    project_id: int
+    template_version: str
+    file_name: str
+    file_hash: str
+    content_digest: str
+    preview_token: str | None = None
+    expires_at: datetime | None = None
+    total_rows: int = 0
+    valid_rows: int = 0
+    unknown_columns: list[str] = Field(default_factory=list)
+    ignored_system_columns: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    duplicate_warnings: list[DefectImportDuplicateWarning] = Field(default_factory=list)
+    recent_matching_batch: DefectImportRecentBatch | None = None
+    errors: list[DefectImportRowError] = Field(default_factory=list)
+    items: list[DefectImportPreviewItem] = Field(default_factory=list)
+
+
+class DefectImportConfirmRequest(BaseModel):
+    """缺陷 Excel 确认导入入参。"""
+
+    project_id: int = Field(..., gt=0, description="目标项目ID")
+    preview_token: str = Field(..., min_length=1, max_length=36, description="预览标识")
+    confirm_duplicate: bool = Field(
+        default=False,
+        description="当文件与历史成功批次内容相同时，用户是否已显式确认再次新建",
+    )
+
+
+class DefectImportCreatedItem(BaseModel):
+    """确认导入回执中的单行结果。"""
+
+    excel_row: int
+    bug_id: int
+    title: str
+
+
+class DefectImportConfirmResponse(BaseModel):
+    """缺陷 Excel 确认导入回执，支持同一预览重试返回相同结果。"""
+
+    batch_id: int
+    preview_token: str
+    project_id: int
+    created_count: int
+    replayed: bool = False
+    items: list[DefectImportCreatedItem] = Field(default_factory=list)
+
+
+class DefectExportRequest(BaseModel):
+    """缺陷 Excel 导出入参：支持当前项目筛选结果（全部页）或已勾选缺陷。"""
+
+    project_id: int = Field(..., gt=0, description="目标项目ID")
+    mode: Literal["filtered", "selected"] = Field(
+        default="filtered",
+        description="导出范围：filtered 当前项目筛选结果 / selected 已勾选缺陷",
+    )
+    bug_ids: list[int] = Field(default_factory=list, description="mode=selected 时必填的缺陷 ID 列表")
+    include_api_details: bool = Field(
+        default=False,
+        description="是否包含脱敏后的接口详情（请求头、请求体、实际响应结果），默认排除",
+    )
+    # mode=filtered 时沿用列表查询口径。
+    category: str | None = None
+    status: str | None = None
+    severity: int | None = Field(None, ge=1, le=4)
+    priority: int | None = Field(None, ge=1, le=4)
+    affected_version: str | None = Field(None, max_length=100)
+    status_group: Literal["unclosed"] | None = None
+    mine: bool = False
+    include_archived: bool = False
+    include_drafts: bool = False
+    view: Literal["archived", "drafts"] | None = None
+    updated_after: datetime | None = None
+    updated_before: datetime | None = None
+    keyword: str | None = None
+    sort: Literal["updated"] | None = None
+
+
 __all__ = [
     "ACTION_LABELS",
     "ACTION_TRANSITIONS",
@@ -497,6 +628,15 @@ __all__ = [
     "BugStatsResponse",
     "BugStatus",
     "BugUpdate",
+    "DefectExportRequest",
+    "DefectImportConfirmRequest",
+    "DefectImportConfirmResponse",
+    "DefectImportCreatedItem",
+    "DefectImportDuplicateWarning",
+    "DefectImportPreviewItem",
+    "DefectImportPreviewResponse",
+    "DefectImportRecentBatch",
+    "DefectImportRowError",
     "DefectProjectSettingResponse",
     "DefectProjectSettingUpdate",
     "DefectSourceRequest",
