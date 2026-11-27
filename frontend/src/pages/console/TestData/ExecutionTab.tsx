@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { testDataApi } from '@/features/test-data/api/testData';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import {
   CLEANUP_STATUS_COLOR,
   DATA_EXECUTION_STATUS_COLOR,
@@ -53,7 +54,7 @@ export function ExecutionTab({ projectId }: { projectId: number }) {
         onRowClick={(r) => setDetailId(r.id)}
         rowStyle={{ cursor: 'pointer' }}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
+          sequenceColumn<DataExecution>({ page: pagination.page, pageSize: pagination.page_size }),
           {
             title: 'TestRun',
             dataIndex: 'test_run_id',

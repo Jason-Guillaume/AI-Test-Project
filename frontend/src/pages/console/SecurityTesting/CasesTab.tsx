@@ -33,6 +33,7 @@ import { securityApi } from '@/features/security-testing/api/securityTesting';
 import { projectsApi } from '@/features/projects/api/projects';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { PlanPreviewModal } from './PlanPreviewModal';
 import {
   RESULT_OPTIONS,
@@ -115,6 +116,7 @@ export function CasesTab({ projectId }: { projectId: number }) {
   };
 
   const columns: TableColumnsType<SecurityCaseDetail> = [
+    sequenceColumn<SecurityCaseDetail>(),
     {
       title: '用例',
       dataIndex: 'case_name',

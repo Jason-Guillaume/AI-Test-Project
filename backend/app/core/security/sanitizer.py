@@ -30,6 +30,7 @@ _AUTH_PLACEHOLDER = r"\1Bearer ${token}"
 # 仅覆盖 = 分隔符且关键词不全的缺陷）。
 _SENSITIVE_TEXT_PATTERN = re.compile(
     r"(authorization|token|access_token|refresh_token|id_token|auth_token|"
+    r"x[-_\s]?auth[-_\s]?token|x[-_\s]?api[-_\s]?key|x[-_\s]?access[-_\s]?key|"
     r"cookie|set_cookie|password|passwd|secret|secret_key|api_key|apikey|"
     r"access_key|private_key|signature|client_secret|sessionid|session_id|jsessionid)"
     r"[\"']?\s*([=:：])\s*(\"[^\"]*\"|'[^']*'|[^\",;\s]+)",
@@ -97,11 +98,22 @@ def mask_secret_values(text: str) -> str:
 def _walk_mask_values(value: Any) -> Any:
     """递归对字符串值做值形态掩码；非字符串原样返回。"""
     if isinstance(value, dict):
+        # HTTP 头常用 {"name": "X-API-Key", "value": "..."} 表达，按键名脱敏
+        # 看不到 name 里的凭证类型，需要单独识别这一种结构。
+        if (
+            isinstance(value.get("name"), str)
+            and is_sensitive_key(value["name"])
+            and isinstance(value.get("value"), str)
+        ):
+            value = dict(value)
+            value["value"] = _TEXT_MASKED
         return {k: _walk_mask_values(v) for k, v in value.items()}
     if isinstance(value, list):
         return [_walk_mask_values(v) for v in value]
     if isinstance(value, str):
-        return mask_secret_values(value)
+        # 字符串值同时叠加 key:value 形态覆盖，避免嵌套文本里的
+        # X-API-Key: ... 因键名不是独立字段而漏脱敏。
+        return sanitize_text(value)
     return value
 
 

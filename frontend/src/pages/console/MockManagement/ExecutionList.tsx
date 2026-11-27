@@ -7,6 +7,7 @@ import type { TableColumnsType } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { mockManagementApi } from '@/features/mocking/api/mockManagement';
 import { EmptyState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import type { MockExecution } from '@/features/mocking/contracts';
 import { statusCodeColor } from './constants';
@@ -76,7 +77,7 @@ export function ConsoleMockExecutionListPage() {
   const pageSize = execQuery.data?.page_size ?? 50;
 
   const columns: TableColumnsType<MockExecution> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    sequenceColumn<MockExecution>({ page, pageSize }),
     {
       title: '时间',
       dataIndex: 'created_at',

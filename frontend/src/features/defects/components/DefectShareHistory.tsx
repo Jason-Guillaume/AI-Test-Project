@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { bugsApi } from '@/features/defects/api/defects';
 import type { Bug, DefectSharePushResult, DefectShareSummary, DefectShareBatchResult } from '@/features/defects/contracts';
 import { getErrorMessage } from '@/shared/api/client';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 async function tryWriteClipboard(text: string): Promise<boolean> {
   if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
@@ -128,6 +129,7 @@ export function DefectShareHistory({ bug, canManage }: { bug: Bug; canManage: bo
         pagination={false}
         locale={{ emptyText: '还没有推送记录' }}
         columns={[
+          sequenceColumn<DefectShareSummary>(),
           { title: '推送渠道', dataIndex: 'channel_name' },
           { title: '推送人', dataIndex: 'pushed_by_username', render: (value) => value || '-' },
           { title: '推送时间', dataIndex: 'pushed_at', render: (value: string) => new Date(value).toLocaleString() },

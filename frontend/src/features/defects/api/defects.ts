@@ -5,7 +5,7 @@ import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import type { Bug, BugListQuery } from '@/features/defects/contracts';
 import type { Paginated } from '@/shared/api/contracts';
 
-import type { BugBatchCreate, BugBatchCreateResponse, BugCreate, BugUpdate, DefectShareDetail, DefectShareOptions, DefectSharePreview, DefectSharePushResult, DefectShareSummary, DefectShareBatchResult, DefectSourceType, DefectSourceLink, DefectSourceContext } from '../contracts';
+import type { BugBatchCreate, BugBatchCreateResponse, BugCreate, BugUpdate, DefectShareDetail, DefectShareOptions, DefectSharePreview, DefectSharePushResult, DefectShareSummary, DefectShareBatchResult, DefectSourceType, DefectSourceLink, DefectSourceContext, BugActionRequest, BugActionResponse, BugActivity, BugQueueCounts, BugStats, BugBatchActionRequest, BugBatchActionReceipt, DefectProjectSetting, DefectTemplate, DefectTemplateConfig, DefectTemplatePreview } from '../contracts';
 
 
 
@@ -44,6 +44,33 @@ export const bugsApi = {
   remove: (id: number) => api.delete<void>(`/bugs/${id}`),
   removeMany: (projectId: number, ids: number[]) =>
     dataLifecycleApi.deleteMany('bug', projectId, ids),
+
+  /** 项目队列计数；与同条件列表 total 一致。 */
+  queues: (projectId: number) => api.get<BugQueueCounts>('/bugs/queues', { params: { project_id: projectId } }),
+  /** 质量统计：积压、首次确认耗时、待验证时长、回归失败率。 */
+  stats: (projectId: number, periodDays = 30) => api.get<BugStats>('/bugs/stats', { params: { project_id: projectId, period_days: periodDays } }),
+  /** 批量治理：调优先级/归档/撤销归档，部分失败返回逐项结果。 */
+  batchAction: (body: BugBatchActionRequest) => api.post<BugBatchActionReceipt>('/bugs/batch-actions', body),
+  /** 活动事件时间线（新→旧）。 */
+  activities: (id: number) => api.get<BugActivity[]>(`/bugs/${id}/activities`),
+  /** 队列动作：确认/登记可回归/回归通过/回归失败/拒绝/判重/重开。 */
+  action: (id: number, body: BugActionRequest) => api.post<BugActionResponse>(`/bugs/${id}/actions`, body),
+  /** 提交草稿进入待确认队列。 */
+  submitDraft: (id: number) => api.post<Bug>(`/bugs/${id}/submit-draft`),
+  /** 归档（editor+）：撤销全部有效分享。 */
+  archive: (id: number, reason: string) => api.post<Bug>(`/bugs/${id}/archive`, { reason }),
+  /** 撤销归档（editor+）。 */
+  restore: (id: number) => api.post<Bug>(`/bugs/${id}/restore`),
+
+  /** 项目级缺陷开关。 */
+  projectSetting: (projectId: number) => api.get<DefectProjectSetting>('/bugs/project-setting', { params: { project_id: projectId } }),
+  updateProjectSetting: (projectId: number, body: Partial<Pick<DefectProjectSetting, 'queue_enabled' | 'reminder_enabled' | 'stale_reminder_days'>>) =>
+    api.put<DefectProjectSetting>('/bugs/project-setting', body, { params: { project_id: projectId } }),
+  /** 项目模板：草稿、预览、发布与版本列表。 */
+  templates: (projectId: number) => api.get<DefectTemplate[]>('/bugs/templates', { params: { project_id: projectId } }),
+  createTemplate: (projectId: number, config: DefectTemplateConfig) => api.post<DefectTemplate>('/bugs/templates', { config }, { params: { project_id: projectId } }),
+  previewTemplate: (config: DefectTemplateConfig) => api.post<DefectTemplatePreview>('/bugs/templates/preview', { config }),
+  publishTemplate: (templateId: number) => api.post<DefectTemplate>(`/bugs/templates/${templateId}/publish`),
   /** 预览飞书推送，不创建分享。 */
   previewShare: (body: DefectShareOptions & { bug_ids: number[] }) =>
     api.post<DefectSharePreview>('/bugs/shares/preview', body),

@@ -6,6 +6,7 @@ import { zapApi } from '@/features/security-testing/zap/api';
 import type { ScanMode, ScanProfile, ScanProfileCreate, ScanProfileUpdate } from '@/features/security-testing/zap/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ACTIVE_SCAN_MODES, SCAN_MODE_OPTIONS, authModeLabel, scanModeLabel } from './constants';
 import { PAGE_SIZE, joinCsv, splitCsv } from './policyUtils';
 
@@ -66,6 +67,7 @@ export function ProfilesBlock({ projectId }: { projectId: number }) {
   });
 
   const columns: TableColumnsType<ScanProfile> = [
+    sequenceColumn<ScanProfile>(),
     {
       title: '策略',
       dataIndex: 'name',

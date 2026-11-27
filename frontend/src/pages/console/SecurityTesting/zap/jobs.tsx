@@ -24,6 +24,7 @@ import { zapApi } from '@/features/security-testing/zap/api';
 import type { ScanJob } from '@/features/security-testing/zap/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import {
   authModeLabel,
   isRunningJob,
@@ -96,6 +97,7 @@ export function JobsSubTab({ projectId, initialJobId, scanAvailable = false }: {
   });
 
   const columns: TableColumnsType<ScanJob> = [
+    sequenceColumn<ScanJob>({ page, pageSize: PAGE_SIZE }),
     {
       title: '任务',
       width: 90,

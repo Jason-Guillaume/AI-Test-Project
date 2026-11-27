@@ -15,6 +15,7 @@ import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { DetailDrawer } from '@/shared/ui/DetailDrawer';
 import { collectPages } from '@/shared/api/pagination';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { projectsApi } from '@/features/projects/api/projects';
 
 interface ResourceFormValues {
@@ -502,6 +503,7 @@ export function ModelCenterPage() {
 
   /** 表格按类别展示能力、当前修订和明确触发的诊断状态。 */
   const columns = [
+    sequenceColumn<ModelResource>({ rows: visibleRows }),
     { title: '模型资源', key: 'name', render: (_: unknown, row: ModelResource) => <Space direction="vertical" size={0}>
       <Typography.Text strong>{row.display_name}</Typography.Text>
       <Typography.Text type="secondary">{row.visibility === 'PLATFORM' ? '平台共享' : `项目私有 · #${row.project_id}`}</Typography.Text>

@@ -32,6 +32,7 @@ import type {
   GenerationBatchListItem,
 } from '@/features/test-management/contracts';
 import { getErrorMessage, userStore } from '@/shared/api/client';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { buildReviewBody, formatMetric, hasFailedModule, isGenerationActive, generationStorageKey, pendingModules } from '@/pages/console/TestManagement/generationReview.mjs';
 
 const DRAFT_STATUS: Record<string, { label: string; color: string }> = {
@@ -493,6 +494,7 @@ export function BatchHistory({ projectId, onSelect }: { projectId: number; onSel
           onChange: (page, pageSize) => setPagination({ page, page_size: pageSize }),
         }}
         columns={[
+          sequenceColumn<GenerationBatchListItem>({ page: pagination.page, pageSize: pagination.page_size }),
           { title: '批次', dataIndex: 'id', width: 70, render: (value: number) => `#${value}` },
           { title: '方向', dataIndex: 'direction', width: 70 },
           {

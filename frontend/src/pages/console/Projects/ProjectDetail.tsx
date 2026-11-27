@@ -12,6 +12,7 @@ import {
   canManageProjectMembers,
 } from '@/features/identity/hooks/useCapabilities';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
 import { getErrorMessage } from '@/shared/api/client';
 
@@ -108,6 +109,7 @@ export function ConsoleProjectDetailPage() {
             dataSource={project.members ?? []}
             locale={{ emptyText: '暂无成员' }}
             columns={[
+              sequenceColumn<ProjectMember>(),
               { title: '用户ID', dataIndex: 'user_id', width: 80 },
               { title: '用户名', dataIndex: 'username' },
               { title: '角色', dataIndex: 'role', render: (v: string) => <ProjectRoleTag role={v} /> },

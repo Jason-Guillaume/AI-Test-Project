@@ -29,6 +29,7 @@ import { testManagementApi } from '@/features/test-management/api/testManagement
 import { projectsApi } from '@/features/projects/api/projects';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { TEST_EXECUTION_MODE_OPTIONS, TEST_PLAN_STATUS_OPTIONS } from './constants';
 import { ManagementRowActions } from './ManagementRowActions';
@@ -178,7 +179,7 @@ export function ConsoleTestPlansPage() {
   const plans = plansQuery.data ?? [];
 
   const columns: TableColumnsType<TestPlan> = [
-    { title: 'ID', dataIndex: 'id', width: 64 },
+    sequenceColumn<TestPlan>(),
     { title: '名称', dataIndex: 'name', width: 200, className: 'table-record-name' },
     {
       title: '状态',
@@ -359,7 +360,7 @@ function PlanSuitesDrawer({
     allSuites.find((s) => s.id === sid)?.name ?? `套件#${sid}`;
 
   const columns: TableColumnsType<TestPlanSuiteResponse> = [
-    { title: '套件ID', dataIndex: 'suite_id', width: 80 },
+    sequenceColumn<TestPlanSuiteResponse>(),
     { title: '套件名称', dataIndex: 'suite_id', render: (sid: number) => suiteName(sid) },
     { title: '排序', dataIndex: 'sort', width: 80 },
     {

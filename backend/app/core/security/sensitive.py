@@ -11,6 +11,9 @@ signature, client_secret, sessionid, session_id, jsessionid
 
 from __future__ import annotations
 
+import json
+import re
+
 # 敏感字段名集合（小写，精确匹配）。刻意不做「含 session / 含 token 就命中」的
 # 子串匹配：session_count、token_type 这类非秘密字段会被一起掩掉。需要新凭证名时
 # 显式加到集合里，行为可预期、可 review。
@@ -74,6 +77,79 @@ def mask_headers(headers: dict[str, str] | None) -> dict[str, str]:
     return result
 
 
+# 已经脱敏的占位值：再次脱敏时保持原样，避免把「******」换成另一种占位。
+_MASKED_VALUE_PATTERN = re.compile(
+    r"(?i)^(?:(?:bearer|basic|token)\s+)?(?:\*{3,}|\$\{token\}|<[^>]+>)$"
+)
+# 原始请求头的 name: value / name=value 行；请求行（GET /path）没有分隔符会被跳过。
+_HEADER_LINE_PATTERN = re.compile(r"^(\s*)([^:=\r\n]+?)(\s*[:=]\s*)(.*)$")
+
+
+def _is_masked_value(value: str) -> bool:
+    """判断请求头值是否已经是占位符，避免重复改写用户已脱敏的样本。"""
+    return bool(_MASKED_VALUE_PATTERN.match((value or "").strip()))
+
+
+def _mask_header_node(node: object, state: list[bool]) -> object:
+    """递归脱敏 JSON 形式的请求头，支持字典与 Playwright 的 name/value 数组。"""
+    if isinstance(node, dict):
+        name = node.get("name")
+        if isinstance(name, str) and is_sensitive_key(name) and "value" in node:
+            value = node["value"]
+            if isinstance(value, str) and not _is_masked_value(value):
+                node["value"] = _MASKED
+                state[0] = True
+        for key, value in list(node.items()):
+            if isinstance(value, str):
+                if is_sensitive_key(str(key)) and not _is_masked_value(value):
+                    node[key] = _MASKED
+                    state[0] = True
+            elif isinstance(value, (dict, list)):
+                _mask_header_node(value, state)
+        return node
+    if isinstance(node, list):
+        for item in node:
+            _mask_header_node(item, state)
+        return node
+    return node
+
+
+def mask_header_text(text: str | None) -> str | None:
+    """脱敏 JSON 或逐行原始文本形式的请求头，保留普通头供排查。
+
+    识别不区分大小写，并覆盖 ``X-API-Key`` / ``X-Auth-Token`` 等 ``x-`` 变体；
+    Authorization、Cookie 等敏感值整体替换为占位符，Content-Type 等普通头原样保留。
+    已经是占位符的输入不会被再次改写。
+    """
+    if not text:
+        return text
+    stripped = text.strip()
+    if not stripped:
+        return text
+    state = [False]
+    try:
+        parsed = json.loads(stripped)
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    if isinstance(parsed, (dict, list)):
+        masked = _mask_header_node(parsed, state)
+        return json.dumps(masked, ensure_ascii=False) if state[0] else text
+    lines = text.splitlines()
+    output: list[str] = []
+    for line in lines:
+        match = _HEADER_LINE_PATTERN.match(line)
+        if match is None:
+            output.append(line)
+            continue
+        indent, name, separator, value = match.groups()
+        if is_sensitive_key(name) and not _is_masked_value(value):
+            output.append(f"{indent}{name}{separator}{_MASKED}")
+            state[0] = True
+        else:
+            output.append(line)
+    return "\n".join(output) if state[0] else text
+
+
 def mask_body(body: object) -> object:
     """脱敏请求体/响应体中的敏感值。
 
@@ -100,7 +176,6 @@ def mask_text(text: str | None) -> str | None:
     if not text:
         return text
     result = text
-    import re
     # 替换 key=value 模式中的敏感值。
     result = re.sub(
         r"(authorization|token|access_token|refresh_token|password|secret|api_key|apikey)"

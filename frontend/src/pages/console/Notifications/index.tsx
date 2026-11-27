@@ -9,6 +9,7 @@ import { getErrorMessage } from '@/shared/api/client';
 import type { Notification, NotificationList } from '@/features/notifications/contracts';
 
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 
 /**
@@ -147,6 +148,7 @@ export function ConsoleNotificationsPage() {
       <ResourceTable
         rowKey={(r) => r.id}
         columns={[
+          sequenceColumn<Notification>({ page: pagination.page, pageSize: pagination.page_size }),
           { title: '标题', dataIndex: 'title' },
           { title: '事件类型', dataIndex: 'event_type' },
           { title: '正文', dataIndex: 'body', ellipsis: true },

@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { projectsApi } from '@/features/projects/api/projects';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
@@ -109,7 +110,7 @@ export function ConsoleProjectsPage() {
       <ResourceTable
         rowKey={(r) => r.id}
         columns={[
-          { title: 'ID', dataIndex: 'id', width: 70 },
+          sequenceColumn<{ id: number; name: string; my_role?: string | null }>({ page: pagination.page, pageSize: pagination.page_size }),
           { title: '项目名称', dataIndex: 'name' },
           // 未挂到任何组织时 organization_name 为 null，展示 '-' 占位
           { title: '组织', dataIndex: 'organization_name', render: (v: string | null) => v ?? '-' },

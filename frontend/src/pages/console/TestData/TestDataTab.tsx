@@ -13,6 +13,7 @@ import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import {
   ASSET_SOURCE_OPTIONS,
   ASSET_STATUS_COLOR,
@@ -173,6 +174,7 @@ export function TestDataTab({ projectId }: { projectId: number }) {
           }}
           onPaginationChange={setPagination}
           columns={[
+            sequenceColumn<TestDataAsset>({ page: pagination.page, pageSize: pagination.page_size }),
             { title: '名称', dataIndex: 'name' },
             { title: '实体类型', dataIndex: 'entity_type', width: 120 },
             {

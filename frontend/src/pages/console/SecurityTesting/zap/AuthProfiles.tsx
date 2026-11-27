@@ -6,6 +6,7 @@ import { zapApi } from '@/features/security-testing/zap/api';
 import type { ScanAuthProfile, ScanAuthProfileCreate, ScanAuthProfileUpdate } from '@/features/security-testing/zap/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { AUTH_MODE_OPTIONS, authModeLabel } from './constants';
 import { PAGE_SIZE } from './policyUtils';
 
@@ -60,6 +61,7 @@ export function AuthProfilesBlock({ projectId }: { projectId: number }) {
   });
 
   const columns: TableColumnsType<ScanAuthProfile> = [
+    sequenceColumn<ScanAuthProfile>(),
     {
       title: '认证配置',
       dataIndex: 'name',

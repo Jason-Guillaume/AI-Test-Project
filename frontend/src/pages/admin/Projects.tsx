@@ -29,6 +29,7 @@ import {
 } from '@/shared/ui/PageState';
 import { ProjectRoleTag } from '@/features/identity/components/RoleTag';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { getErrorMessage } from '@/shared/api/client';
 import { PageHeader } from '@/shared/ui/PageHeader';
 
@@ -104,7 +105,7 @@ export function AdminProjectsPage() {
   // 表格列只依赖删除确认回调，状态 setter 本身保持稳定。
   const columns = useMemo(
     () => [
-      { title: 'ID', dataIndex: 'id', width: 70 },
+      sequenceColumn<Project>({ page: pagination.page, pageSize: pagination.page_size }),
       { title: '项目名称', dataIndex: 'name' },
       { title: '组织', dataIndex: 'organization_name', render: (v: string | null) => v ?? '-' },
       { title: '负责人', dataIndex: 'owner_username' },
@@ -129,7 +130,7 @@ export function AdminProjectsPage() {
         ),
       },
     ],
-    [confirmDeleteProject],
+    [confirmDeleteProject, pagination.page, pagination.page_size],
   );
 
   const createMutation = useMutation({

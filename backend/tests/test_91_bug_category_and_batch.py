@@ -144,8 +144,8 @@ def test_bug_category_crud_and_filtering(api, admin):
     bad_filter = api.get("/bugs", username=admin, params={"project_id": project_id, "category": "移动端"})
     assert bad_filter.status_code == 400
 
-    # 4. 更新状态时不传 category 保持原归属不变；显式传 category 可切换归属
-    keep_cat = api.put(f"/bugs/{fe_bug['id']}", username=admin, json={"status": "处理中"})
+    # 4. 普通编辑不传 category 保持原归属不变；显式传 category 可切换归属
+    keep_cat = api.put(f"/bugs/{fe_bug['id']}", username=admin, json={"description": "补充说明"})
     assert keep_cat.status_code == 200
     assert keep_cat.json()["category"] == "前端"
 
@@ -184,9 +184,6 @@ def test_bug_category_crud_and_filtering(api, admin):
 def test_batch_create_bugs_success_and_notifications(api, admin, db):
     """批量创建支持完整字段并写入缺陷及创建通知。"""
     project_id = _create_project(api, admin)
-    dev_name = unique("dev")
-    dev_id = _register_and_login(api, dev_name)
-    _add_member(api, admin, project_id, dev_id, role="member")
 
     payload = {
         "project_id": project_id,
@@ -199,7 +196,6 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
                 "status": "待确认",
                 "steps_to_reproduce": "1. 打开弹窗\n2. 直接点保存",
                 "environment": "test",
-                "assignee_id": dev_id,
             },
             {
                 "title": "批量导出接口偶发 500",
@@ -226,12 +222,12 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
     assert body["created_count"] == 3
     assert len(body["items"]) == 3
     assert body["items"][0]["category"] == "前端"
-    assert body["items"][0]["assignee_id"] == dev_id
-    assert body["items"][0]["assignee_username"] == dev_name
+    assert "assignee_id" not in body["items"][0]
     assert body["items"][0]["environment"] == "test"
     assert body["items"][1]["category"] == "接口"
     assert body["items"][1]["severity"] == 4
-    assert body["items"][1]["status"] == "处理中"
+    # 旧格式携带的状态被忽略：新缺陷统一进入待确认队列
+    assert all(item["status"] == "待确认" for item in body["items"])
     assert body["items"][2]["category"] == "前后端"
 
     # 数据库落库数量核对
@@ -252,8 +248,6 @@ def test_batch_create_bugs_success_and_notifications(api, admin, db):
 def test_batch_create_bugs_is_atomic_and_reports_row_errors(api, admin, db):
     """批量创建中任一行不合法时，整批回滚并精确返回出错行号和原因。"""
     project_id = _create_project(api, admin)
-    stranger_name = unique("stranger")
-    stranger_id = _register_and_login(api, stranger_name)
 
     response = api.post(
         "/bugs/batch",
@@ -262,7 +256,7 @@ def test_batch_create_bugs_is_atomic_and_reports_row_errors(api, admin, db):
             "project_id": project_id,
             "items": [
                 {"title": "第一条合法缺陷", "category": "前端", "severity": 2},
-                {"title": "   ", "category": "接口", "assignee_id": stranger_id},
+                {"title": "   ", "category": "接口"},
             ],
         },
     )
@@ -271,18 +265,28 @@ def test_batch_create_bugs_is_atomic_and_reports_row_errors(api, admin, db):
     assert "第 2 行" in err["message"]
     row_errors = err["meta"]["errors"]
     assert all(item["row"] == 2 for item in row_errors)
-    assert {item["field"] for item in row_errors} == {"title", "assignee_id"}
+    assert {item["field"] for item in row_errors} == {"title"}
 
     # 原子性验证：第一条合法缺陷也不能入库
     assert db.query(Bug).filter(Bug.project_id == project_id).count() == 0
 
-    # 缺少 category 或超过上限 / 空列表走 422
+    # 批量入参显式指派处理人：契约层 422 停用提示
+    retired = api.post(
+        "/bugs/batch",
+        username=admin,
+        json={"project_id": project_id, "items": [{"title": "旧指派", "assignee_id": 1}]},
+    )
+    assert retired.status_code == 422
+    assert "处理人字段已停用" in retired.text
+
+    # 分类可省略（待确认时补齐）；空列表走 422
     missing_cat = api.post(
         "/bugs/batch",
         username=admin,
         json={"project_id": project_id, "items": [{"title": "缺少分类"}]},
     )
-    assert missing_cat.status_code == 422
+    assert missing_cat.status_code == 201, missing_cat.text
+    assert missing_cat.json()["items"][0]["category"] is None
 
     empty_items = api.post(
         "/bugs/batch",

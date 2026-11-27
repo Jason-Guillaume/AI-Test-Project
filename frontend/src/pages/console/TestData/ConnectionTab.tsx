@@ -9,6 +9,7 @@ import type { Environment } from '@/features/environments/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { collectPages } from '@/shared/api/pagination';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import type { TargetDbConnection, TargetDbConnectionCreate } from '@/features/test-data/contracts';
 
 /**
@@ -86,6 +87,7 @@ export function ConnectionTab({ projectId, environments }: { projectId: number; 
         pagination={false}
         rowSelection={{ selectedRowKeys: selectedIds, onChange: (keys) => setSelectedIds(keys.map(Number)) }}
         columns={[
+          sequenceColumn<TargetDbConnection>(),
           { title: '名称', dataIndex: 'name' },
           { title: '环境', dataIndex: 'environment_name' },
           { title: '主机', dataIndex: 'host' },

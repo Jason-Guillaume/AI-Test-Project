@@ -6,6 +6,7 @@ import { useParams } from 'react-router-dom';
 import { automationApi } from '@/features/automation/api/automation';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 /** 单次 Allure 报告、趋势和批次对比。 */
 export function ConsoleAutomationReportPage() {
@@ -66,6 +67,7 @@ export function ConsoleAutomationReportPage() {
           pagination={false}
           dataSource={report.suite_summary}
           columns={[
+            sequenceColumn<{ name: string }>(),
             { title: '套件', dataIndex: 'name', className: 'table-record-name' },
             { title: '总数', dataIndex: 'total', width: 72 },
             { title: '成功', dataIndex: 'passed', width: 72 },
@@ -82,6 +84,7 @@ export function ConsoleAutomationReportPage() {
           pagination={false}
           dataSource={trendQuery.data || []}
           columns={[
+            sequenceColumn<{ id: number }>(),
             { title: '时间', dataIndex: 'created_at', render: (value: string) => new Date(value).toLocaleString() },
             { title: '分支', dataIndex: 'branch' },
             { title: '环境', dataIndex: 'environment_name' },

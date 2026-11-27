@@ -41,6 +41,7 @@ import { CaseExcelImportModal } from '@/pages/console/TestManagement/CaseExcelIm
 import type { GenerationBatch, ScopeNode, TestCaseDetail } from '@/features/test-management/contracts';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 
 const DIRECTIONS = [
@@ -435,7 +436,7 @@ export function ConsoleTestCasesPage() {
                   pagination={{ current: page, pageSize, total: casesQuery.data?.total ?? 0, showSizeChanger: true, pageSizeOptions: [10, 25, 50], onChange: (nextPage, size) => changeParams({ page: nextPage, page_size: size, projectId: currentProjectId }, false) }}
                   locale={{ emptyText: casesQuery.isPending ? '正在加载用例…' : <Space direction="vertical"><span>{keyword || priority || caseStatus || dimension !== 'ALL' ? '当前筛选无结果' : '此范围暂无用例'}</span>{keyword || priority || caseStatus || dimension !== 'ALL' ? <Button onClick={clearFilters}>清除筛选</Button> : <Space><Button onClick={() => changeParams({scope: undefined})}>查看当前方向全部用例</Button><Button onClick={() => launch('create')}>新建用例</Button></Space>}</Space> }}
                   columns={[
-                    { title: '编号', dataIndex: 'id', width: 72 },
+                    sequenceColumn<{ id: number }>({ page, pageSize }),
                     { title: '用例名称', dataIndex: 'name', width: 260, ellipsis: true, render: (name: string, row: {id: number}) => <Button type="link" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', textAlign: 'left' }} title={name} onClick={() => changeParams({caseId: row.id, projectId: currentProjectId}, false)}>{name}</Button> },
                     { title: '优先级', dataIndex: 'priority', width: 80 },
                     { title: '维度', dataIndex: 'case_type', width: 100, render: (value: string) => DIMENSIONS.find((item) => item.value === value)?.label ?? value },

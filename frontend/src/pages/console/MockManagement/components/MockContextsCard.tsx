@@ -6,6 +6,7 @@ import type { TableColumnsType } from 'antd';
 import { mockManagementApi } from '@/features/mocking/api/mockManagement';
 import type { MockContext, MockContextStatus } from '@/features/mocking/contracts';
 import { EmptyState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { STATUS_OPTIONS, fmtTs } from './contextPresentation';
 
 export /** 作用域行：状态 + 过期时间 + 覆盖数 + 手动关闭。 */
@@ -30,6 +31,7 @@ function MockContextsCard({
   const rows = (ctxQuery.data ?? []) as unknown as MockContext[];
 
   const columns: TableColumnsType<MockContext> = [
+    sequenceColumn<MockContext>(),
     {
       title: 'Context ID',
       dataIndex: 'context_id',

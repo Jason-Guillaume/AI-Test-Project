@@ -1,26 +1,29 @@
 // 接口管理页（用户视角）。
 // 左右布局：左侧模块树（模块+接口），右侧接口详情 6 Tab。
-// 顶部工具条：搜索/方法/状态过滤 + 新建接口 + 导入 + 导入记录。
+// 顶部工具条：搜索/方法/状态过滤 + 重置 + 新建接口 + 导入 + 导入记录。
+// 窄屏隐藏固定侧栏，通过「切换目录」抽屉浏览模块，选中后回到接口列表/详情。
 //
 // 权限（服务端为准，前端隐藏只是辅助）：
 //   - 读 = 项目可见（viewer+）；写 = 项目成员（member+）；调试 = 平台管理员。
 //   - 跨项目越权按 404 返回，前端不展示。
 //
 // Mock 服务由独立的 Mock 管理工作区提供。
-import { useEffect, useState } from 'react';
-import { App, Button, Col, Form, Input, Modal, Row, Select, Space, Tag } from 'antd';
+import { useCallback, useEffect, useState } from 'react';
+import { App, Button, Col, Drawer, Form, Grid, Input, Modal, Row, Select, Space, Tag, Typography } from 'antd';
+import { MenuOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiCatalogApi } from '@/features/api-catalog/api/apiCatalog';
+import { apiCatalogApi, type ApiModuleDeleteResult } from '@/features/api-catalog/api/apiCatalog';
 import { getErrorMessage } from '@/shared/api/client';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { API_STATUS_OPTIONS, METHOD_OPTIONS } from './constants';
 import { ApiToolbar } from './ApiToolbar';
-import { ModuleTree } from './ModuleTree';
+import { ModuleTree, type UnclassifiedSelectionState } from './ModuleTree';
+import { ModuleApiList, type ModulePageMeta } from './ModuleApiList';
 import { ApiDetail } from './ApiDetail';
 import { ImportDialog } from './ImportDialog';
-import { ModuleApiList } from './ModuleApiList';
 import './ApiCatalog.css';
 import type { ApiImportRecord, ApiInterfaceCreate, ApiModule, ApiStatus } from '@/features/api-catalog/contracts';
 
@@ -47,15 +50,23 @@ export function ConsoleApiCatalogPage() {
 }
 
 function ApiCatalogWorkspace() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
   const { currentProjectId } = useConsoleScope();
+  const screens = Grid.useBreakpoint();
+  const isNarrow = screens.lg === false;
 
   const [keyword, setKeyword] = useState('');
   const [method, setMethod] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<ApiStatus | undefined>(undefined);
   const [selectedApiId, setSelectedApiId] = useState<number | null>(null);
   const [selectedModuleId, setSelectedModuleId] = useState<number | null>(null);
+  // 模块与接口两类选择互斥，统一由页面持有，便于切换时集中确认。
+  const [selectedModuleIds, setSelectedModuleIds] = useState<number[]>([]);
+  const [selectedApiIds, setSelectedApiIds] = useState<number[]>([]);
+  const [pageMeta, setPageMeta] = useState<ModulePageMeta>({ loading: false, ids: [] });
+  const [pendingUnclassifiedSelect, setPendingUnclassifiedSelect] = useState(false);
+  const [dirOpen, setDirOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
@@ -68,6 +79,26 @@ function ApiCatalogWorkspace() {
     enabled: currentProjectId != null,
   });
   const modules: ApiModule[] = modulesQuery.data ?? [];
+  const defaultModule = modules.find((module) => module.is_default) ?? null;
+  const selectedModule = modules.find((module) => module.id === selectedModuleId) ?? null;
+
+  // 切换模块或筛选后先清空当前页元信息，等列表重新加载后再回填。
+  useEffect(() => {
+    setPageMeta({ loading: selectedModuleId != null, ids: [] });
+  }, [selectedModuleId, keyword, method, status]);
+
+  const handlePageMeta = useCallback((meta: ModulePageMeta) => setPageMeta(meta), []);
+
+  // 未分类复选框：未打开时先打开列表，加载完成后再勾选当前筛选下的本页接口。
+  useEffect(() => {
+    if (!pendingUnclassifiedSelect) return;
+    if (defaultModule == null || selectedModuleId !== defaultModule.id) return;
+    if (pageMeta.loading) return;
+    setPendingUnclassifiedSelect(false);
+    if (pageMeta.ids.length) {
+      setSelectedApiIds((ids) => [...new Set([...ids, ...pageMeta.ids])]);
+    }
+  }, [pendingUnclassifiedSelect, defaultModule, selectedModuleId, pageMeta]);
 
   useEffect(() => {
     if (
@@ -92,6 +123,90 @@ function ApiCatalogWorkspace() {
     onError: (e) => message.error(getErrorMessage(e, '创建失败')),
   });
 
+  const requestModuleSelection = useCallback((nextIds: number[]) => {
+    const adding = nextIds.length > selectedModuleIds.length;
+    const apply = () => setSelectedModuleIds(nextIds);
+    if (!adding || selectedApiIds.length === 0) {
+      apply();
+      return;
+    }
+    modal.confirm({
+      title: '切换为选择模块？',
+      content: `已选择 ${selectedApiIds.length} 个接口，继续会清空这些接口勾选。`,
+      okText: '继续',
+      cancelText: '取消',
+      onOk: () => {
+        setSelectedApiIds([]);
+        apply();
+      },
+    });
+  }, [modal, selectedApiIds.length, selectedModuleIds.length]);
+
+  const requestApiSelection = useCallback((nextIds: number[]) => {
+    const adding = nextIds.length > selectedApiIds.length;
+    const apply = () => setSelectedApiIds(nextIds);
+    if (!adding || selectedModuleIds.length === 0) {
+      apply();
+      return;
+    }
+    modal.confirm({
+      title: '切换为选择接口？',
+      content: `已选择 ${selectedModuleIds.length} 个模块，继续会清空这些模块勾选。`,
+      okText: '继续',
+      cancelText: '取消',
+      onOk: () => {
+        setSelectedModuleIds([]);
+        apply();
+      },
+    });
+  }, [modal, selectedApiIds.length, selectedModuleIds.length]);
+
+  const toggleUnclassified = useCallback(() => {
+    if (defaultModule == null) return;
+    const apply = () => {
+      if (selectedModuleId !== defaultModule.id) {
+        // 先打开未分类列表；当前页数据到达后由上面的 effect 完成本页勾选。
+        setPendingUnclassifiedSelect(true);
+        setSelectedModuleId(defaultModule.id);
+        setSelectedApiId(null);
+        return;
+      }
+      if (pageMeta.loading || pageMeta.ids.length === 0) return;
+      const pageIds = pageMeta.ids;
+      const allSelected = pageIds.every((id) => selectedApiIds.includes(id));
+      setSelectedApiIds(allSelected
+        ? selectedApiIds.filter((id) => !pageIds.includes(id))
+        : [...new Set([...selectedApiIds, ...pageIds])]);
+    };
+    if (selectedModuleIds.length > 0) {
+      modal.confirm({
+        title: '切换为选择接口？',
+        content: `已选择 ${selectedModuleIds.length} 个模块，继续会清空这些模块勾选。`,
+        okText: '继续',
+        cancelText: '取消',
+        onOk: () => {
+          setSelectedModuleIds([]);
+          apply();
+        },
+      });
+      return;
+    }
+    apply();
+  }, [defaultModule, modal, pageMeta, selectedApiIds, selectedModuleId, selectedModuleIds.length]);
+
+  const handleDeletedModules = useCallback((result: ApiModuleDeleteResult) => {
+    setSelectedModuleIds((ids) => ids.filter((id) => !result.deleted_module_ids.includes(id)));
+    setSelectedApiIds((ids) => ids.filter((id) => !result.deleted_interface_ids.includes(id)));
+    setSelectedModuleId((current) => current != null && result.deleted_module_ids.includes(current) ? null : current);
+    setSelectedApiId((current) => current != null && result.deleted_interface_ids.includes(current) ? null : current);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setKeyword('');
+    setMethod(undefined);
+    setStatus(undefined);
+  }, []);
+
   if (currentProjectId == null) {
     return (
       <PageContainer>
@@ -100,87 +215,146 @@ function ApiCatalogWorkspace() {
     );
   }
 
-  const moduleOptions = modules.map((m) => ({
-    label: m.is_default ? `${m.name}（默认）` : m.name,
-    value: m.id,
+  const moduleOptions = modules.map((module) => ({
+    label: module.is_default ? `${module.name}（默认）` : module.name,
+    value: module.id,
   }));
-  const selectedModule = modules.find((module) => module.id === selectedModuleId) ?? null;
+  const selectedModulePath = (() => {
+    if (!selectedModule) return '接口详情';
+    const byId = new Map(modules.map((module) => [module.id, module]));
+    const parent = selectedModule.parent_id != null ? byId.get(selectedModule.parent_id) : null;
+    return parent ? `${parent.name} / ${selectedModule.name}` : selectedModule.name;
+  })();
+
   const selectApi = (id: number | null) => {
     setSelectedApiId(id);
     if (id != null) setSelectedModuleId(null);
   };
+  const selectModule = (id: number | null) => {
+    setSelectedModuleId(id);
+    if (id != null) setSelectedApiId(null);
+  };
+
+  const unclassifiedPage = selectedModuleId != null && defaultModule?.id === selectedModuleId
+    ? pageMeta
+    : { loading: false, ids: [] };
+  const unclassifiedChecked = selectedModuleId === defaultModule?.id
+    && unclassifiedPage.ids.length > 0
+    && unclassifiedPage.ids.every((id) => selectedApiIds.includes(id));
+  const unclassifiedIndeterminate = selectedModuleId === defaultModule?.id
+    && !unclassifiedChecked
+    && unclassifiedPage.ids.some((id) => selectedApiIds.includes(id));
+  const unclassified: UnclassifiedSelectionState = {
+    checked: unclassifiedChecked,
+    indeterminate: unclassifiedIndeterminate,
+    disabled: selectedModuleId === defaultModule?.id
+      && (unclassifiedPage.loading || unclassifiedPage.ids.length === 0),
+    onToggle: toggleUnclassified,
+  };
+
+  const openCreate = (moduleId: number | null) => {
+    createForm.resetFields();
+    createForm.setFieldsValue({ module_id: moduleId ?? undefined });
+    setCreateOpen(true);
+  };
+
+  const moduleTree = (
+    <ModuleTree
+      projectId={currentProjectId}
+      keyword={keyword}
+      method={method}
+      status={status}
+      selectedApiId={selectedApiId}
+      selectedModuleId={selectedModuleId}
+      selectedModuleIds={selectedModuleIds}
+      onModuleSelectionChange={requestModuleSelection}
+      unclassified={unclassified}
+      onSelectApi={(id) => {
+        selectApi(id);
+        setDirOpen(false);
+      }}
+      onSelectModule={(id) => {
+        selectModule(id);
+        setDirOpen(false);
+      }}
+      onDeletedModules={handleDeletedModules}
+    />
+  );
+
+  const detailContent = selectedModule ? (
+    <ModuleApiList
+      key={selectedModule.id}
+      projectId={currentProjectId}
+      module={selectedModule}
+      modulePath={selectedModulePath}
+      keyword={keyword}
+      method={method}
+      status={status}
+      selectedApiId={selectedApiId}
+      onSelectApi={selectApi}
+      selectedIds={selectedApiIds}
+      onSelectionChange={requestApiSelection}
+      onPageMeta={handlePageMeta}
+      onClearFilters={resetFilters}
+      onCreate={() => openCreate(selectedModule.is_default ? null : selectedModule.id)}
+      onImport={() => setImportOpen(true)}
+    />
+  ) : (
+    <ApiDetail
+      apiId={selectedApiId}
+      modules={modules}
+      projectId={currentProjectId}
+    />
+  );
 
   return (
     <PageContainer>
-      <ApiToolbar
-        keyword={keyword}
-        setKeyword={(v) => setKeyword(v)}
-        method={method}
-        setMethod={setMethod}
-        status={status}
-        setStatus={setStatus}
-        onCreate={() => {
-          createForm.resetFields();
-          setCreateOpen(true);
-        }}
-        onImport={() => setImportOpen(true)}
-        onShowRecords={() => setRecordsOpen(true)}
-      />
+      <div className="api-catalog-page">
+        <ApiToolbar
+          keyword={keyword}
+          setKeyword={(value) => setKeyword(value)}
+          method={method}
+          setMethod={setMethod}
+          status={status}
+          setStatus={setStatus}
+          onReset={resetFilters}
+          onCreate={() => openCreate(null)}
+          onImport={() => setImportOpen(true)}
+          onShowRecords={() => setRecordsOpen(true)}
+        />
 
-      <Row gutter={16} wrap={false} className="api-catalog-layout">
-        <Col flex="320px" className="api-catalog-sidebar">
-          <div
-            style={{
-              border: '1px solid #f0f0f0',
-              borderRadius: 8,
-              padding: 8,
-              height: 'calc(100vh - 200px)',
-              minHeight: 400,
-              overflow: 'hidden',
-            }}
-          >
-            <ModuleTree
-              projectId={currentProjectId}
-              keyword={keyword}
-              method={method}
-              status={status}
-              selectedApiId={selectedApiId}
-              selectedModuleId={selectedModuleId}
-              onSelectApi={selectApi}
-              onSelectModule={setSelectedModuleId}
-            />
-          </div>
-        </Col>
-        <Col flex="1 1 0" style={{ minWidth: 0 }} className="api-catalog-detail">
-          <div
-            style={{
-              border: '1px solid #f0f0f0',
-              borderRadius: 8,
-              padding: 16,
-              height: 'calc(100vh - 200px)',
-              minHeight: 400,
-              overflow: 'auto',
-            }}
-          >
-            {selectedModule ? (
-              <ModuleApiList
-                projectId={currentProjectId}
-                module={selectedModule}
-                keyword={keyword}
-                method={method}
-                status={status}
-                onSelectApi={(id) => selectApi(id)}
-              />
-            ) : (
-              <ApiDetail
-                apiId={selectedApiId}
-                modules={modules}
-                projectId={currentProjectId}
-              />
-            )}
-          </div>
-        </Col>
-      </Row>
+        {isNarrow ? (
+          <>
+            <div className="api-catalog-mobile-bar">
+              <Button icon={<MenuOutlined />} onClick={() => setDirOpen(true)}>切换目录</Button>
+              <Typography.Text type="secondary" ellipsis style={{ minWidth: 0 }}>
+                当前：{selectedModulePath}
+              </Typography.Text>
+            </div>
+            <div className="api-catalog-panel detail-panel">{detailContent}</div>
+            <Drawer
+              title="接口目录"
+              placement="left"
+              width={320}
+              open={dirOpen}
+              onClose={() => setDirOpen(false)}
+              className="api-catalog-drawer"
+              destroyOnHidden
+            >
+              {moduleTree}
+            </Drawer>
+          </>
+        ) : (
+          <Row gutter={16} wrap={false} className="api-catalog-layout">
+            <Col flex="320px" className="api-catalog-sidebar">
+              <div className="api-catalog-panel">{moduleTree}</div>
+            </Col>
+            <Col flex="1 1 0" style={{ minWidth: 0 }} className="api-catalog-detail">
+              <div className="api-catalog-panel detail-panel">{detailContent}</div>
+            </Col>
+          </Row>
+        )}
+      </div>
 
       {/* 新建接口弹窗 */}
       <Modal
@@ -302,25 +476,26 @@ function ImportRecordsModal({
         <ErrorState error={query.error} onRetry={query.refetch} />
       ) : (
         <ResourceTable<ApiImportRecord>
-          rowKey={(r) => r.id}
+          rowKey={(row) => row.id}
           columns={[
+            sequenceColumn<ApiImportRecord>({ page: pagination.page, pageSize: pagination.page_size }),
             {
               title: '来源',
               dataIndex: 'source_type',
               width: 90,
-              render: (v: string) => <Tag>{v}</Tag>,
+              render: (value: string) => <Tag>{value}</Tag>,
             },
-            { title: '文件名', dataIndex: 'file_name', render: (v: string | null) => v ?? '-' },
+            { title: '文件名', dataIndex: 'file_name', render: (value: string | null) => value ?? '-' },
             { title: '总数', dataIndex: 'total', width: 70 },
             {
               title: '新建/更新/跳过',
               key: 'counts',
               width: 150,
-              render: (_: unknown, r: ApiImportRecord) => (
+              render: (_: unknown, row: ApiImportRecord) => (
                 <Space size={4}>
-                  <Tag color="green">{r.created_count}</Tag>
-                  <Tag color="orange">{r.updated_count}</Tag>
-                  <Tag>{r.skipped_count}</Tag>
+                  <Tag color="green">{row.created_count}</Tag>
+                  <Tag color="orange">{row.updated_count}</Tag>
+                  <Tag>{row.skipped_count}</Tag>
                 </Space>
               ),
             },
@@ -328,7 +503,7 @@ function ImportRecordsModal({
               title: '时间',
               dataIndex: 'created_at',
               width: 180,
-              render: (v: string) => new Date(v).toLocaleString(),
+              render: (value: string) => new Date(value).toLocaleString(),
             },
           ]}
           dataSource={query.data.items}

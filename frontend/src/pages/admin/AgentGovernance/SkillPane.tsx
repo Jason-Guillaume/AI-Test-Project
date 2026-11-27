@@ -11,6 +11,7 @@ import type { AgentDefinition, DefinitionVersion, SkillDefinition, SkillInput } 
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 
 function skillCategory(name: string) {
   return name.includes(' · ') ? name.split(' · ')[0] : '通用';
@@ -475,7 +476,7 @@ export function DefinitionHistoryModal({ target, onClose, onRestored }: {
         dataSource={versions.data}
         pagination={false}
         onRow={(row) => ({ onClick: () => setSelectedVersion(row.version), style: { cursor: 'pointer', background: selected?.version === row.version ? 'rgba(82, 112, 255, 0.08)' : undefined } })}
-        columns={[{ title: '版本', dataIndex: 'version', render: (value: number) => `v${value}` }, { title: '保存时间', dataIndex: 'created_at', render: (value: string) => new Date(value).toLocaleString() }]}
+        columns={[sequenceColumn<DefinitionVersion>(), { title: '版本', dataIndex: 'version', render: (value: number) => `v${value}` }, { title: '保存时间', dataIndex: 'created_at', render: (value: string) => new Date(value).toLocaleString() }]}
       />
       <Typography.Text type="secondary">恢复会保留此历史快照，并将当前配置另存为新的版本号。</Typography.Text>
       <Card size="small" title={`与当前版本 v${latest?.version ?? '-' } 的差异`} style={{ marginTop: 12 }}>

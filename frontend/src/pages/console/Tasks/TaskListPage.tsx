@@ -12,6 +12,7 @@ import type { Task } from '@/features/tasks/contracts';
 import { TaskCreateModal } from '@/widgets/task-assistant/TaskCreateModal';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { fmtTime } from '@/shared/lib/format';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { STATUS_LABEL } from './taskLabels';
 import { clearTaskCreateUncertainty, readTaskCreateUncertainty, type TaskCreateUncertainty } from '@/features/tasks/createUncertainty';
@@ -45,6 +46,7 @@ export function ConsoleTasksPage() {
   });
   const tasks = tasksQuery.data?.items ?? [];
   const columns: TableColumnsType<Task> = [
+    sequenceColumn<Task>({ page: taskPage, pageSize: taskPageSize }),
     { title: '任务', dataIndex: 'title', render: (_, task) => <Link to={`/console/tasks/${task.id}`}>{task.title}</Link> },
     { title: '目标', dataIndex: 'goal', ellipsis: true },
     { title: '状态', dataIndex: 'status', width: 140, render: (_, task) => <Tag>{STATUS_LABEL[task.latest_run?.status ?? task.status] ?? task.status}</Tag> },

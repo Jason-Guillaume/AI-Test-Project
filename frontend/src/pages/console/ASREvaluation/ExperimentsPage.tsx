@@ -9,6 +9,7 @@ import type { AsrComparison, AsrExperiment, AsrJob, JsonValue } from '@/features
 import { AsrFrame } from './AsrFrame';
 import { ErrorState, LoadingState } from '@/shared/ui/PageState';
 import { getErrorMessage } from '@/shared/api/client';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { ContentReviewPanel } from './ContentReviewPanel';
 import { experimentStatusLabel, parameterChangeSummary, parameterDiffs } from '@/features/asr-evaluation/experimentPresentation.mjs';
 
@@ -105,6 +106,7 @@ export function ExperimentsPage() {
     onError: (error) => message.error(getErrorMessage(error, '候选复跑启动失败；候选和原基线均保留，可修正原因后重试。')),
   });
   const columns = [
+    sequenceColumn<AsrExperiment>({ rows: experimentsQuery.data ?? [] }),
     { title: '实验', dataIndex: 'id', key: 'id', render: (value: number) => `EXP-${value}` },
     { title: '音频 / 基线对比', key: 'baseline', render: (_: unknown, row: AsrExperiment) => <Space direction="vertical" size={0}>
       <Typography.Text ellipsis style={{ maxWidth: 220 }}>{row.audio_name ?? '音频名称未报告'}</Typography.Text>

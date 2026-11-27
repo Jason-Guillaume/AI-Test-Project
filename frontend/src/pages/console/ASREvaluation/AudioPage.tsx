@@ -16,6 +16,7 @@ import { formatAudioDuration, groundTruthUiState, parsePastedAudioRecords, recen
 import { funasrTuningApi } from '@/features/asr-evaluation/api/funasrTuning';
 import type { FunAsrGroundTruth } from '@/features/asr-evaluation/api/funasrTuning';
 import type { AsrAudio, JsonValue } from '@/features/asr-evaluation/contracts';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { AsrFrame } from './AsrFrame';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -486,6 +487,7 @@ export function AudioPage() {
   };
 
   const columns = [
+    sequenceColumn<AsrAudio>({ page, pageSize }),
     {
       title: '音频名称',
       dataIndex: 'name',

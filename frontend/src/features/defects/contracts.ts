@@ -18,33 +18,35 @@ export interface BugApiFields {
   api_response?: string | null; // 实际响应结果（脱敏后填写）
 }
 
-/** 新建缺陷的请求体。 */
+/** 新建缺陷的请求体。新单统一进入待确认队列，不再选择处理人。 */
 export interface BugCreate extends BugApiFields {
   project_id: number; // 所属项目 ID
   title: string; // 缺陷标题（必填）
-  category?: BugCategory; // 前后端划分；缺陷控制台表单必填，历史来源关联允许暂不传
+  category?: BugCategory; // 前后端划分；可待确认时补齐
   description?: string; // 描述
   expected_result?: string | null;
   actual_result?: string | null;
-  severity?: 1 | 2 | 3 | 4; // 严重度 1-4，默认 2
-  status?: BugStatus; // 状态，默认 '待确认'
+  severity?: BugSeverity; // 严重度 1-4，缺省按模板默认值或 2
+  priority?: BugPriority; // 处理优先级 1-4
   steps_to_reproduce?: string; // 复现步骤
-  environment?: string; // 环境标识
-  assignee_id?: number | null; // 处理人；必须是项目成员；null 表示清空
+  environment?: string; // 环境标识，支持「待确认」
+  affected_version?: string; // 影响版本，支持「待确认」
+  is_draft?: boolean; // 保存草稿；草稿不进入队列
+  request_key?: string; // 创建幂等键（8-100 字符），避免超时重试重复建单
 }
 
-/** 批量创建中的单条缺陷入参（标题与前后端划分均必填）。 */
+/** 批量创建中的单条缺陷入参；信息较少的记录进入待确认队列后再补齐。 */
 export interface BugBatchCreateItem {
   title: string; // 缺陷标题（必填）
-  category: BugCategory; // 前后端划分（必填）
+  category?: BugCategory; // 前后端划分；可待确认时补齐
   description?: string; // 描述
   expected_result?: string | null;
   actual_result?: string | null;
   severity?: BugSeverity; // 严重度 1-4，默认 2
-  status?: BugStatus; // 状态，默认 '待确认'
+  priority?: BugPriority; // 处理优先级 1-4
   steps_to_reproduce?: string; // 复现步骤
   environment?: string; // 发现环境
-  assignee_id?: number | null; // 处理人；必须是项目成员
+  affected_version?: string; // 影响版本
 }
 
 /** 批量创建缺陷请求体。 */
@@ -66,18 +68,19 @@ export interface BugBatchRowError {
   message: string; // 错误原因
 }
 
-/** 修改缺陷的请求体；全部字段可选，只提交要改的项。 */
+/** 修改缺陷的请求体；只改事实字段，状态通过队列动作变更。 */
 export interface BugUpdate extends BugApiFields {
   title?: string;
   category?: BugCategory | null;
   description?: string;
   expected_result?: string | null;
   actual_result?: string | null;
-  severity?: 1 | 2 | 3 | 4;
-  status?: BugStatus;
+  severity?: BugSeverity;
+  priority?: BugPriority;
   steps_to_reproduce?: string;
   environment?: string;
-  assignee_id?: number | null;
+  affected_version?: string;
+  expected_version?: number; // 乐观并发：基于读取时的记录版本提交
 }
 
 export type DefectSourceType = 'CASE_EXECUTION' | 'SECURITY_FINDING';
@@ -104,6 +107,9 @@ export type BugStatus = '待确认' | '处理中' | '已修复' | '已关闭' | 
 
 export type BugSeverity = 1 | 2 | 3 | 4;
 
+/** 处理优先级 1-4，与严重度独立。 */
+export type BugPriority = 1 | 2 | 3 | 4;
+
 export interface Bug extends BugApiFields {
   id: number; // 缺陷主键
   project_id: number; // 所属项目 ID
@@ -113,24 +119,155 @@ export interface Bug extends BugApiFields {
   description: string | null; // 描述
   expected_result: string | null;
   actual_result: string | null;
-  severity: BugSeverity; // 严重度 1-4（1=致命，4=轻微）
-  status: BugStatus; // 状态
+  severity: BugSeverity; // 严重度 1-4
+  priority: BugPriority; // 处理优先级 1-4
+  status: BugStatus; // 状态（存储值）
+  status_display: string; // 展示状态：已修复展示为「待验证」
   steps_to_reproduce: string | null; // 复现步骤
   environment: string | null; // 环境
-  reporter_id: number; // 报告人用户 ID
+  affected_version: string | null; // 影响版本
+  fix_version: string | null; // 可回归的版本/构建/环境
+  record_version: number; // 记录版本，乐观并发用
+  is_draft: boolean; // 草稿未进入队列
+  archived_at: string | null; // 归档时间
+  archive_reason: string | null; // 归档原因
+  duplicate_of_bug_id: number | null; // 判重指向的主单
+  reporter_id: number; // 报告人用户 ID（仅追溯）
   reporter_username: string | null; // 报告人用户名
-  assignee_id: number | null; // 处理人用户 ID；未分配为 null
-  assignee_username: string | null; // 处理人用户名
   created_at: string; // 创建时间
   updated_at: string; // 最后更新时间
   active_share_count?: number; // 仍有效的分享数量
+}
+
+/** 队列动作。 */
+export type BugAction =
+  | 'confirm' | 'ready_for_regression' | 'regression_pass' | 'regression_fail'
+  | 'reject' | 'mark_duplicate' | 'reopen';
+
+/** 队列动作入参。 */
+export interface BugActionRequest {
+  action: BugAction;
+  note?: string;
+  expected_version?: number;
+  fix_version?: string;
+  feedback_source?: string;
+  verification_execution_id?: number;
+  verification_environment?: string;
+  duplicate_of_bug_id?: number;
+  severity?: BugSeverity;
+  priority?: BugPriority;
+  steps_to_reproduce?: string;
+  expected_result?: string;
+  actual_result?: string;
+  environment?: string;
+  affected_version?: string;
+}
+
+/** 缺陷活动事件。 */
+export interface BugActivity {
+  id: number;
+  bug_id: number;
+  action: string;
+  action_label: string;
+  actor_id: number | null;
+  actor_name: string | null;
+  actor_type: 'INTERNAL' | 'EXTERNAL_SHARE' | 'SYSTEM';
+  old_status: string | null;
+  new_status: string | null;
+  note: string | null;
+  detail: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface BugActionResponse {
+  bug: Bug;
+  activity: BugActivity;
+}
+
+/** 项目队列计数；与同条件列表总数一致。 */
+export interface BugQueueCounts {
+  project_id: number;
+  unclosed: number;
+  pending_confirm: number;
+  in_progress: number;
+  pending_verify: number;
+  reported_by_me: number;
+  closed: number;
+  rejected: number;
+  archived: number;
+  drafts: number;
+}
+
+/** 质量统计。 */
+export interface BugStats {
+  project_id: number;
+  period_days: number;
+  backlog: Record<string, number>;
+  first_confirm_hours_avg: number | null;
+  first_confirm_sample: number;
+  pending_verify_hours_avg: number | null;
+  pending_verify_sample: number;
+  regression_total: number;
+  regression_failed: number;
+  regression_failure_rate: number | null;
+}
+
+/** 批量治理动作。 */
+export interface BugBatchActionRequest {
+  project_id: number;
+  ids: number[];
+  action: 'set_priority' | 'archive' | 'restore';
+  priority?: BugPriority;
+  reason?: string;
+}
+
+export interface BugBatchActionReceipt {
+  succeeded: number;
+  failed: number;
+  items: Array<{ id: number; succeeded: boolean; error: string | null }>;
+}
+
+/** 项目级缺陷开关。 */
+export interface DefectProjectSetting {
+  project_id: number;
+  queue_enabled: boolean;
+  reminder_enabled: boolean;
+  stale_reminder_days: number;
+}
+
+/** 项目模板配置：字段显隐、默认值与分阶段必填；不含人员指派。 */
+export interface DefectTemplateConfig {
+  hidden_fields: string[];
+  defaults: Record<string, unknown>;
+  required_on_create: string[];
+  required_on_confirm: string[];
+  required_on_regression: string[];
+}
+
+export interface DefectTemplate {
+  id: number;
+  project_id: number;
+  version: number;
+  status: 'draft' | 'published' | 'retired';
+  config: DefectTemplateConfig;
+  created_by_username: string | null;
+  created_at: string;
+  published_at: string | null;
+}
+
+export interface DefectTemplatePreview {
+  sample: Record<string, unknown>;
+  hidden_fields: string[];
+  required_on_create: string[];
+  required_on_confirm: string[];
+  required_on_regression: string[];
 }
 
 /** 推送时可选的展示字段。未勾选的字段不会进入公开页面。 */
 export type DefectShareField =
   | 'bug_no' | 'title' | 'severity' | 'status' | 'project_name' | 'description'
   | 'steps_to_reproduce' | 'environment' | 'expected_result' | 'actual_result'
-  | 'created_at' | 'reporter' | 'assignee'
+  | 'created_at' | 'reporter'
   | 'api_execution' | 'agent_execution' | 'security_record' | 'request_response'
   | 'error_stack' | 'screenshots' | 'allure' | 'api_method' | 'api_url'
   | 'api_request_headers' | 'api_request_body' | 'api_response' | 'attachments';
@@ -250,6 +387,13 @@ export interface BugListQuery {
   category?: BugCategoryFilter; // 按前后端划分过滤
   status?: BugStatus; // 按状态过滤
   severity?: BugSeverity; // 按严重度过滤
-  assignee_id?: number; // 按处理人过滤
+  priority?: BugPriority; // 按优先级过滤
+  affected_version?: string; // 按影响版本过滤
+  status_group?: 'unclosed'; // 未关闭队列
+  mine?: boolean; // 我提交的
+  include_archived?: boolean; // 含已归档
+  include_drafts?: boolean; // 含我的草稿
+  view?: 'archived' | 'drafts'; // 归档视图 / 我的草稿视图（与队列计数同口径）
+  sort?: 'updated'; // 按更新时间排序
   keyword?: string; // 关键字：命中 title / description
 }

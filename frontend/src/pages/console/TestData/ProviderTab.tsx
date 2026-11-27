@@ -13,6 +13,7 @@ import { testDataApi } from '@/features/test-data/api/testData';
 import { dataLifecycleApi } from '@/features/data-lifecycle/api';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import {
   PROVIDER_EXECUTION_STATUS_COLOR,
   PROVIDER_TYPE_OPTIONS,
@@ -159,6 +160,7 @@ export function ProviderTab({
           pagination={false}
           size="middle"
           columns={[
+            sequenceColumn<DataProvider>(),
             { title: '名称', dataIndex: 'name' },
             {
               title: '类型',

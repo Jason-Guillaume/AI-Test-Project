@@ -385,8 +385,8 @@ def test_resolve_updates_status_once_and_notifies_reporter(api, admin, db, monke
     detail = api.get(f"/bugs/{bug['id']}/shares/{created['share_id']}", username=admin)
     assert detail.status_code == 200
     assert "已经修复登录接口" in detail.text
-    closed = api.put(f"/bugs/{bug['id']}", username=admin, json={"status": "已关闭"})
-    assert closed.status_code == 200
+    closed = api.post(f"/bugs/{bug['id']}/actions", username=admin, json={"action": "regression_pass", "note": "回归通过，关闭缺陷"})
+    assert closed.status_code == 200, closed.text
     blocked = _public_post(api, created["share_id"], token, "/resolve", payload)
     assert blocked.status_code == 409
 
@@ -400,13 +400,13 @@ def test_resolve_rejects_closed_readonly_and_script(api, admin, db, monkeypatch)
     readonly = _share(api, admin, bug["id"], channel_id, allow_resolve=False)
     denied = _public_post(api, readonly["share_id"], _token(readonly["share_url"]), "/resolve", {"repair_description": "不应该成功"})
     assert denied.status_code == 403
-    rejected = api.put(f"/bugs/{bug['id']}", username=admin, json={"status": "已拒绝"})
-    assert rejected.status_code == 200
+    rejected = api.post(f"/bugs/{bug['id']}/actions", username=admin, json={"action": "reject", "note": "非缺陷，拒绝"})
+    assert rejected.status_code == 200, rejected.text
     writable = _share(api, admin, bug["id"], channel_id)
     blocked = _public_post(api, writable["share_id"], _token(writable["share_url"]), "/resolve", {"repair_description": "不应该成功"})
     assert blocked.status_code == 409
-    reopened = api.put(f"/bugs/{bug['id']}", username=admin, json={"status": "处理中"})
-    assert reopened.status_code == 200
+    reopened = api.post(f"/bugs/{bug['id']}/actions", username=admin, json={"action": "reopen", "note": "重新核实后重开"})
+    assert reopened.status_code == 200, reopened.text
     scripted = _public_post(api, writable["share_id"], _token(writable["share_url"]), "/resolve", {
         "repair_description": "<script>alert(1)</script>已修复'; DROP TABLE bug; --",
     })

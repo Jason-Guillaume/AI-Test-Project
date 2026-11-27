@@ -27,6 +27,7 @@ import { testManagementApi } from '@/features/test-management/api/testManagement
 import { projectsApi } from '@/features/projects/api/projects';
 import { getErrorMessage } from '@/shared/api/client';
 import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { PageHeader } from '@/shared/ui/PageHeader';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
 import { fmtTimeSec } from '@/shared/lib/format';
@@ -116,7 +117,7 @@ export function ConsoleExecutionCenterPage() {
     eid == null ? '使用计划环境' : environments.find((e) => e.id === eid)?.display_name ?? `环境#${eid}`;
 
   const columns: TableColumnsType<TestPlan> = [
-    { title: 'ID', dataIndex: 'id', width: 64 },
+    sequenceColumn<TestPlan>(),
     { title: '名称', dataIndex: 'name', className: 'table-record-name' },
     {
       title: '状态',

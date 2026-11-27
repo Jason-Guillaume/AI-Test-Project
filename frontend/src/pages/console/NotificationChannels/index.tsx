@@ -42,6 +42,7 @@ import type { TableColumnsType } from 'antd';
 import { notificationChannelsApi } from '@/features/notifications/api/notificationChannels';
 import { getErrorMessage } from '@/shared/api/client';
 import { ErrorState, EmptyState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { sequenceColumn } from '@/shared/lib/sequence';
 import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { fmtTime } from '@/shared/lib/format';
 import { NOTIFY_CONDITION_OPTIONS, NOTIFY_STATUS_COLOR, NOTIFY_STATUS_OPTIONS } from '@/features/notifications/constants';
@@ -171,7 +172,7 @@ function RecordsDrawer({
   const records = recordsQuery.data?.items ?? [];
 
   const columns: TableColumnsType<NotificationRecord> = [
-    { title: '记录ID', dataIndex: 'id', width: 80 },
+    sequenceColumn<NotificationRecord>(),
     {
       title: '状态',
       dataIndex: 'status',
@@ -304,7 +305,7 @@ export function ConsoleNotificationChannelsPage() {
   };
 
   const columns: TableColumnsType<NotificationChannel> = [
-    { title: 'ID', dataIndex: 'id', width: 60 },
+    sequenceColumn<NotificationChannel>(),
     { title: '名称', dataIndex: 'name', width: 180 },
     {
       title: '类型',

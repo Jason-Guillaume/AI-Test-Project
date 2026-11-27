@@ -56,20 +56,18 @@ export function normalizeSeverityToken(raw) {
   return SEVERITY_ALIASES[raw.trim()];
 }
 
-/** 构造一条带默认值的新草稿行。 */
+/** 构造一条带默认值的新草稿行；新单统一进入待确认队列，不再选择处理人。 */
 export function createDraftRow(defaults, key) {
   return {
     key,
     title: '',
     category: defaults?.category,
     severity: defaults?.severity ?? 2,
-    status: defaults?.status ?? '待确认',
     description: '',
     steps_to_reproduce: '',
     environment: defaults?.environment ?? '',
     expected_result: '',
     actual_result: '',
-    assignee_id: defaults?.assignee_id ?? null,
   };
 }
 
@@ -133,8 +131,8 @@ export function parseBatchDefectLines(rawText, defaults, createKey) {
 
 /**
  * 将顶部默认配置批量应用到当前表格行。
- * - overwrite: 覆盖全部行的归属/严重度/状态/环境/处理人；
- * - fillEmpty: 仅补齐尚未填写归属、环境或处理人的行。
+ * - overwrite: 覆盖全部行的归属/严重度/环境；
+ * - fillEmpty: 仅补齐尚未填写归属或环境的行。
  */
 export function applyDefaultsToRows(rows, defaults, mode = 'overwrite') {
   return (rows ?? []).map((row) => {
@@ -143,16 +141,13 @@ export function applyDefaultsToRows(rows, defaults, mode = 'overwrite') {
         ...row,
         category: row.category ?? defaults?.category,
         environment: (row.environment ?? '').trim() ? row.environment : (defaults?.environment ?? ''),
-        assignee_id: row.assignee_id ?? defaults?.assignee_id ?? null,
       };
     }
     return {
       ...row,
       category: defaults?.category ?? row.category,
       severity: defaults?.severity ?? row.severity ?? 2,
-      status: defaults?.status ?? row.status ?? '待确认',
       environment: defaults?.environment ?? '',
-      assignee_id: defaults?.assignee_id ?? null,
     };
   });
 }
@@ -192,8 +187,8 @@ export function validateBatchDefectRows(rows) {
       errors.push({ row: rowNo, field: 'title', message: '缺陷标题不能超过 200 字' });
     }
 
-    if (!VALID_CATEGORIES.has(row?.category)) {
-      errors.push({ row: rowNo, field: 'category', message: '请选择前后端划分（前端、前后端或接口）' });
+    if (row?.category != null && !VALID_CATEGORIES.has(row.category)) {
+      errors.push({ row: rowNo, field: 'category', message: '前后端划分必须是前端、前后端或接口' });
     }
 
     if (description.length > 1000) {
@@ -213,15 +208,13 @@ export function validateBatchDefectRows(rows) {
 
     items.push({
       title,
-      category: row?.category,
+      category: row?.category ?? undefined,
       description: description || undefined,
       severity: row?.severity ?? 2,
-      status: row?.status ?? '待确认',
       steps_to_reproduce: steps || undefined,
       environment: environment || undefined,
       expected_result: expected || undefined,
       actual_result: actual || undefined,
-      assignee_id: row?.assignee_id ?? null,
     });
   });
 
