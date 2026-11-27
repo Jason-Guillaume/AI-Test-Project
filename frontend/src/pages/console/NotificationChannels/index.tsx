@@ -306,7 +306,7 @@ export function ConsoleNotificationChannelsPage() {
 
   const columns: TableColumnsType<NotificationChannel> = [
     sequenceColumn<NotificationChannel>(),
-    { title: '名称', dataIndex: 'name', width: 180 },
+    { title: '名称', dataIndex: 'name', width: '14%', className: 'table-record-name' },
     {
       title: '类型',
       dataIndex: 'channel_type',
@@ -321,10 +321,15 @@ export function ConsoleNotificationChannelsPage() {
     },
     {
       title: 'Webhook（脱敏）',
-      width: 240,
+      ellipsis: { showTitle: false },
       render: (_, row) =>
         row.webhook_configured ? (
-          <Typography.Text copyable={{ text: row.webhook_masked }} style={{ fontSize: 12 }}>
+          <Typography.Text
+            className="table-code-path"
+            copyable={{ text: row.webhook_masked }}
+            ellipsis={{ tooltip: row.webhook_masked }}
+            style={{ fontSize: 12 }}
+          >
             {row.webhook_masked}
           </Typography.Text>
         ) : (
@@ -434,7 +439,7 @@ export function ConsoleNotificationChannelsPage() {
           size="middle"
           columns={columns}
           dataSource={channels}
-          scroll={{ x: 1380 }}
+          scroll={{ x: 1540 }}
           pagination={false}
         />
       )}

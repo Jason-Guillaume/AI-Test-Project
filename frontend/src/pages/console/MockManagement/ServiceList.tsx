@@ -176,19 +176,24 @@ export function ConsoleMockManagementPage() {
     {
       title: '服务键',
       dataIndex: 'service_key',
-      width: 200,
+      width: '15%',
+      ellipsis: { showTitle: false },
       render: (v: string, row) => (
         <Tooltip title={`${v} · 已配置接口 ${row.endpoint_count} 个 / 场景 ${row.scenario_count} 个`}>
-          <Tag color="geekblue">{v}</Tag>
+          <Tag color="geekblue" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', verticalAlign: 'middle' }}>{v}</Tag>
         </Tooltip>
       ),
     },
-    { title: '名称', dataIndex: 'name', width: 180 },
+    { title: '名称', dataIndex: 'name', width: '15%', className: 'table-record-name' },
     {
       title: '基础路径',
       dataIndex: 'base_path',
-      width: 160,
-      render: (v: string | null) => v || '-',
+      ellipsis: { showTitle: false },
+      render: (v: string | null) => v ? (
+        <Typography.Text className="table-code-path" code ellipsis={{ tooltip: v }}>
+          {v}
+        </Typography.Text>
+      ) : '-',
     },
     {
       title: '接口 / 场景',
@@ -328,7 +333,7 @@ export function ConsoleMockManagementPage() {
             selectedRowKeys: selectedServiceIds,
             onChange: (keys) => setSelectedServiceIds(keys.map(Number)),
           }}
-          scroll={{ x: 1380 }}
+          scroll={{ x: 1560 }}
           pagination={false}
         />
       )}

@@ -4,7 +4,7 @@
 .app-layout--workspace .app-sidebar { height: 100dvh; }
 .app-layout--workspace .app-topbar, .app-layout--workspace .app-breadcrumb-wrap { flex-shrink: 0; }
 .app-layout--workspace .app-content { display: flex; flex-direction: column; min-height: 0; }
-.agent-workspace-shell { container: agent / inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: 16px; gap: 12px; }
+.agent-workspace-shell { container: agent / inline-size; display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; padding: 16px var(--page-gutter); gap: 12px; }
 .agent-workspace { display: grid; flex: 1; min-width: 0; min-height: 0; grid-template-columns: 220px minmax(0, 1fr) 320px; gap: 12px; }
 .agent-workspace-toolbar { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
 .agent-workspace[data-sessions-collapsed="true"] { grid-template-columns: minmax(0, 1fr) 320px; }

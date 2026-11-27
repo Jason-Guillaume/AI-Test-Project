@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  --page-gutter: 32px;
   --app-primary: #4f70e7;
   --app-primary-soft: #e9efff;
   --app-canvas: #f5f7fb;
@@ -135,19 +136,24 @@ body {
 .app-layout-dark .app-user-trigger:hover { background: #303640 !important; }
 .app-content.ant-layout-content { min-width: 0; background: var(--app-canvas); }
 .app-layout-dark .app-content.ant-layout-content { background: #191d24; }
-.app-breadcrumb-wrap { padding: 18px 32px 0; }
+.app-breadcrumb-wrap { width: 100%; padding: 18px var(--page-gutter) 0; }
 .app-breadcrumb .ant-breadcrumb-link { color: #7c899c; }
 .app-layout-dark .app-breadcrumb .ant-breadcrumb-link { color: #9aa5b3; }
 .app-admin-context { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #35435a; font-size: 13px; font-weight: 650; white-space: nowrap; }
 .app-admin-context span { margin-left: 10px; color: #8995a7; font-weight: 400; }
 .app-layout-dark .app-admin-context { color: #d9e0ea; }
 
-.page-container { container: page / inline-size; width: 100%; max-width: 1680px; margin: 0 auto; padding: 26px 32px 40px; }
+/* 业务容器填满侧栏外工作区，与面包屑共用 --page-gutter，避免宽屏居中错位。 */
+.page-container { container: page / inline-size; width: 100%; margin: 0; padding: 26px var(--page-gutter) 40px; }
 .page-container .ant-card { border-color: #e9edf3; box-shadow: 0 3px 14px rgb(31 48 79 / 3%); }
 .app-layout-dark .page-container .ant-card { border-color: #343a44; box-shadow: none; }
 .page-container .ant-card, .page-container .ant-table-wrapper { border-radius: 12px; }
 .page-container .ant-table-wrapper { overflow: auto; padding: 8px 14px 12px; border: 1px solid #e9edf3; background: #fff; box-shadow: 0 3px 14px rgb(31 48 79 / 3%); }
 .table-record-name { overflow-wrap: anywhere; }
+/* 表格内的长路径/地址块占满单元格宽度，随侧栏与视口宽度重新测量省略，并保留复制入口。 */
+.table-code-path.ant-typography { display: block; width: 100%; max-width: 100%; }
+/* 页面级单列表单保留局部阅读与输入宽度，避免超宽屏输入框过度拉伸。 */
+.form-reading-width { width: 100%; max-width: 720px; }
 .project-detail-meta .ant-tag { max-width: 100%; margin-inline-end: 0; white-space: normal; overflow-wrap: anywhere; }
 .wrapping-card-heading > .ant-card-head .ant-card-head-wrapper { flex-wrap: wrap; gap: 4px 12px; padding-block: 8px; }
 .wrapping-card-heading > .ant-card-head .ant-card-head-title { flex: 1 0 auto; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }

@@ -303,16 +303,25 @@ export function ConsoleMockServiceDetailPage() {
     {
       title: '方法',
       dataIndex: 'method',
-      width: 100,
+      width: 92,
       render: (v: string) => <Tag color="blue">{v}</Tag>,
     },
     {
       title: '路径',
       dataIndex: 'path',
-      width: 260,
-      render: (v: string) => <Typography.Text code>{v}</Typography.Text>,
+      ellipsis: { showTitle: false },
+      render: (v: string) => (
+        <Typography.Text
+          className="table-code-path"
+          code
+          copyable={{ text: v, tooltips: ['复制路径', '已复制'] }}
+          ellipsis={{ tooltip: v }}
+        >
+          {v}
+        </Typography.Text>
+      ),
     },
-    { title: '名称', dataIndex: 'name', width: 200 },
+    { title: '名称', dataIndex: 'name', width: '18%', className: 'table-record-name' },
     {
       title: '关联接口',
       dataIndex: 'api_id',
@@ -467,7 +476,7 @@ export function ConsoleMockServiceDetailPage() {
             selectedRowKeys: selectedEndpointIds,
             onChange: (keys) => setSelectedEndpointIds(keys.map(Number)),
           }}
-          scroll={{ x: 1280 }}
+          scroll={{ x: 1380 }}
           pagination={false}
         />
       )}

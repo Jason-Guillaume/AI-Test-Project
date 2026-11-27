@@ -71,8 +71,9 @@ export function ProfilesBlock({ projectId }: { projectId: number }) {
     {
       title: '策略',
       dataIndex: 'name',
+      ellipsis: { showTitle: false },
       render: (_, r) => (
-        <Space direction="vertical" size={0} style={{ maxWidth: 260 }}>
+        <Space direction="vertical" size={0} style={{ width: '100%' }}>
           <Space size={6} wrap>
             <Typography.Text strong>{r.name}</Typography.Text>
             {r.is_builtin ? (
@@ -82,7 +83,7 @@ export function ProfilesBlock({ projectId }: { projectId: number }) {
             )}
           </Space>
           {r.description ? (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis={{ tooltip: r.description }}>
               {r.description}
             </Typography.Text>
           ) : null}
@@ -181,7 +182,7 @@ export function ProfilesBlock({ projectId }: { projectId: number }) {
         </Space>
       </Card>
 
-      <Table<ScanProfile> scroll={{ x: 'max-content' }}
+      <Table<ScanProfile> scroll={{ x: 1080 }}
         rowKey="id"
         size="small"
         columns={columns}

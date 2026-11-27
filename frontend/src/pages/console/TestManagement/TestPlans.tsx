@@ -180,7 +180,7 @@ export function ConsoleTestPlansPage() {
 
   const columns: TableColumnsType<TestPlan> = [
     sequenceColumn<TestPlan>(),
-    { title: '名称', dataIndex: 'name', width: 200, className: 'table-record-name' },
+    { title: '名称', dataIndex: 'name', width: '20%', className: 'table-record-name' },
     {
       title: '状态',
       dataIndex: 'status',
@@ -251,7 +251,7 @@ export function ConsoleTestPlansPage() {
       ) : plans.length === 0 ? (
         <EmptyState description="暂无测试计划" />
       ) : (
-        <Table rowKey="id" columns={columns} dataSource={plans} scroll={{ x: 1100 }} pagination={false} size="middle"
+        <Table rowKey="id" columns={columns} dataSource={plans} scroll={{ x: 1180 }} pagination={false} size="middle"
           rowSelection={{ selectedRowKeys: selectedPlanIds, onChange: (keys) => setSelectedPlanIds(keys.map(Number)) }} />
       )}
 

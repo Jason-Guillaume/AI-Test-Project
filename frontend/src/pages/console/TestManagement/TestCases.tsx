@@ -437,12 +437,12 @@ export function ConsoleTestCasesPage() {
                   locale={{ emptyText: casesQuery.isPending ? '正在加载用例…' : <Space direction="vertical"><span>{keyword || priority || caseStatus || dimension !== 'ALL' ? '当前筛选无结果' : '此范围暂无用例'}</span>{keyword || priority || caseStatus || dimension !== 'ALL' ? <Button onClick={clearFilters}>清除筛选</Button> : <Space><Button onClick={() => changeParams({scope: undefined})}>查看当前方向全部用例</Button><Button onClick={() => launch('create')}>新建用例</Button></Space>}</Space> }}
                   columns={[
                     sequenceColumn<{ id: number }>({ page, pageSize }),
-                    { title: '用例名称', dataIndex: 'name', width: 260, ellipsis: true, render: (name: string, row: {id: number}) => <Button type="link" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', textAlign: 'left' }} title={name} onClick={() => changeParams({caseId: row.id, projectId: currentProjectId}, false)}>{name}</Button> },
+                    { title: '用例名称', dataIndex: 'name', ellipsis: true, render: (name: string, row: {id: number}) => <Button type="link" style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block', textAlign: 'left', paddingInline: 0 }} title={name} onClick={() => changeParams({caseId: row.id, projectId: currentProjectId}, false)}>{name}</Button> },
                     { title: '优先级', dataIndex: 'priority', width: 80 },
                     { title: '维度', dataIndex: 'case_type', width: 100, render: (value: string) => DIMENSIONS.find((item) => item.value === value)?.label ?? value },
                     { title: '状态', dataIndex: 'status', width: 110 },
                     { title: '来源', dataIndex: 'source_type', width: 80, render: (value: string) => value === 'AI' ? 'AI' : '人工' },
-                    { title: '测试点', dataIndex: 'test_point_name', width: 140, render: (value: string | null) => value || '-' },
+                    { title: '测试点', dataIndex: 'test_point_name', width: '16%', ellipsis: true, render: (value: string | null) => value || '-' },
                     { title: '更新时间', dataIndex: 'updated_at', width: 170, render: (value: string) => value?.replace('T', ' ').slice(0, 16) },
                   ]}
                 />}
