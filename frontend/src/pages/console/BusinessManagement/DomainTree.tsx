@@ -81,30 +81,46 @@ export function DomainTree(props: DomainTreeProps) {
   });
 
   const batchDeleteMutation = useMutation({
-    mutationFn: ({ type, ids }: { type: 'business_domain' | 'business_flow'; ids: number[] }) =>
+    mutationFn: ({ type, ids }: { type: 'business_domain' | 'business_flow'; ids: number[]; nameById: Map<number, string> }) =>
       type === 'business_domain'
         ? businessApi.removeDomains(projectId, ids)
         : businessApi.removeFlows(projectId, ids),
     onSuccess: (receipt: BatchLifecycleReceipt, variables) => {
       queryClient.invalidateQueries({ queryKey: ['business'] });
+      queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
+      const succeededIds = new Set(receipt.items.filter((item) => item.succeeded).map((item) => item.id));
+      const failedIds = receipt.items.filter((item) => !item.succeeded).map((item) => item.id);
       if (variables.type === 'business_domain') {
-        setSelectedDomainIds([]);
-        onSelectDomain(null);
+        // 仅移除成功项，失败项保留勾选便于定位依赖；仅当当前浏览域被删时才清空视图。
+        setSelectedDomainIds(failedIds);
+        if (selectedDomainId != null && succeededIds.has(selectedDomainId)) {
+          onSelectDomain(null);
+          onSelectFlow(null);
+        }
       } else {
-        setSelectedFlowIds([]);
-        onSelectFlow(null);
+        setSelectedFlowIds(failedIds);
+        if (selectedFlowId != null && succeededIds.has(selectedFlowId)) {
+          onSelectFlow(null);
+        }
       }
       if (receipt.failed === 0) {
         message.success(`已删除 ${receipt.succeeded} 条，记录已移入回收站`);
       } else {
+        const label = variables.type === 'business_domain' ? '业务域' : '业务流程';
         message.warning(`已删除 ${receipt.succeeded} 条，${receipt.failed} 条未删除`);
         modal.info({
-          title: '批量删除结果',
+          title: `批量删除${label}结果：成功 ${receipt.succeeded} 条，失败 ${receipt.failed} 条`,
           width: 620,
           content: (
             <Space direction="vertical" style={{ width: '100%' }}>
               {receipt.items.filter((item) => !item.succeeded).map((item) => (
-                <Alert key={item.id} type="error" showIcon message={`资源 #${item.id}`} description={item.error ?? '删除失败'} />
+                <Alert
+                  key={item.id}
+                  type="error"
+                  showIcon
+                  message={variables.nameById.get(item.id) ?? `${label} #${item.id}`}
+                  description={item.error ?? '删除失败'}
+                />
               ))}
             </Space>
           ),
@@ -115,14 +131,20 @@ export function DomainTree(props: DomainTreeProps) {
   });
 
   function confirmBatchDelete(type: 'business_domain' | 'business_flow', ids: number[]) {
+    if (!ids.length || batchDeleteMutation.isPending) return;
     const label = type === 'business_domain' ? '业务域' : '业务流程';
+    const nameById = new Map(
+      type === 'business_domain'
+        ? domains.map((item) => [item.id, item.name])
+        : flows.map((item) => [item.id, item.name]),
+    );
     modal.confirm({
       title: `删除选中的 ${ids.length} 个${label}？`,
-      content: '每条资源会独立检查依赖并返回结果；成功删除的记录可在回收站恢复。',
+      content: '每条资源会独立检查依赖并返回结果；失败项会保留勾选，成功删除的记录可在回收站恢复。',
       okText: '删除并移入回收站',
       cancelText: '取消',
       okButtonProps: { danger: true },
-      onOk: () => batchDeleteMutation.mutateAsync({ type, ids }),
+      onOk: () => batchDeleteMutation.mutateAsync({ type, ids, nameById }),
     });
   }
 
@@ -151,6 +173,14 @@ export function DomainTree(props: DomainTreeProps) {
         >
           全选当前搜索结果（{domains.length}）
         </Checkbox>
+        <Button
+          size="small"
+          type="link"
+          disabled={selectedDomainIds.length === 0 || batchDeleteMutation.isPending}
+          onClick={() => setSelectedDomainIds([])}
+        >
+          清空
+        </Button>
         <Button
           size="small"
           danger
@@ -194,6 +224,14 @@ export function DomainTree(props: DomainTreeProps) {
           >
             全选当前流程列表（{flows.length}）
           </Checkbox>
+          <Button
+            size="small"
+            type="link"
+            disabled={selectedFlowIds.length === 0 || batchDeleteMutation.isPending}
+            onClick={() => setSelectedFlowIds([])}
+          >
+            清空
+          </Button>
           <Button
             size="small"
             danger

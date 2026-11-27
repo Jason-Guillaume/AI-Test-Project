@@ -136,14 +136,23 @@ export function AdminKnowledgePage() {
       okButtonProps: { danger: true },
       onOk: () => execute(async () => {
         const receipt = await dataLifecycleApi.deleteMany(resourceType, project, ids);
+        const failedIds = receipt.items.filter((item) => !item.succeeded).map((item) => item.id);
+        const nameById = new Map(
+          resourceType === 'knowledge_base'
+            ? (bases.data?.items ?? []).map((item) => [item.id, item.name])
+            : (docs.data?.items ?? []).map((item) => [item.id, item.name]),
+        );
         if (receipt.failed) {
-          const failures = receipt.items.filter((item) => !item.succeeded).map((item) => `#${item.id}：${item.error}`).join('；');
+          const failures = receipt.items
+            .filter((item) => !item.succeeded)
+            .map((item) => `${nameById.get(item.id) ?? `#${item.id}`}：${item.error}`)
+            .join('；');
           message.warning(`已删除 ${receipt.succeeded} 项，失败 ${receipt.failed} 项。${failures}`);
         } else {
           message.success(`已将 ${receipt.succeeded} 项移入回收站`);
         }
         if (resourceType === 'knowledge_base') {
-          setSelectedBaseIds([]);
+          setSelectedBaseIds(failedIds);
           if (receipt.items.some((item) => item.succeeded && item.id === base)) {
             setBase(undefined);
             setDocument(undefined);
@@ -151,7 +160,7 @@ export function AdminKnowledgePage() {
           await bases.refetch();
           await docs.refetch();
         } else {
-          setSelectedDocumentIds([]);
+          setSelectedDocumentIds(failedIds);
           if (receipt.items.some((item) => item.succeeded && item.id === document?.id)) setDocument(undefined);
           await docs.refetch();
           await versions.refetch();

@@ -1367,6 +1367,49 @@ def delete_resource(
     return item, False
 
 
+def _test_scope_depths(db: Session, project_id: int) -> dict[int, int]:
+    """一次查询同项目全部测试范围父子边，计算各节点深度（根节点为 0）。"""
+    # 仅限定在当前项目内查询，避免跨项目 ID 通过排序顺序泄露层级结构；
+    # 一次查询两列，使批删与批恢复的 SQL 次数不随勾选数量增长。
+    rows = (
+        db.query(TestScopeNode.id, TestScopeNode.parent_id)
+        .execution_options(include_deleted=True)
+        .filter(TestScopeNode.project_id == project_id)
+        .all()
+    )
+    parent_by_id = {int(node_id): parent_id for node_id, parent_id in rows}
+    depths: dict[int, int] = {}
+
+    def depth_of(node_id: int) -> int:
+        if node_id in depths:
+            return depths[node_id]
+        depth = 0
+        seen = {node_id}
+        parent_id = parent_by_id.get(node_id)
+        while parent_id is not None and parent_id not in seen:
+            seen.add(parent_id)
+            depth += 1
+            parent_id = parent_by_id.get(parent_id)
+        depths[node_id] = depth
+        return depth
+
+    for node_id in parent_by_id:
+        depth_of(node_id)
+    return depths
+
+
+def _order_batch_delete_ids(
+    db: Session, resource_type: str, project_id: int | None, ids: list[int],
+) -> list[int]:
+    """为树形测试范围批删提供稳定的子先父后顺序；其余资源保持原顺序。"""
+    if resource_type != "test_scope" or project_id is None or len(ids) <= 1:
+        return ids
+    depths = _test_scope_depths(db, project_id)
+    # 深度降序保证先删子目录再删父目录；同深度按原下标稳定排序。
+    indexed = sorted(enumerate(ids), key=lambda pair: (-depths.get(pair[1], 0), pair[0]))
+    return [resource_id for _, resource_id in indexed]
+
+
 def batch_delete(
     db: Session, resource_type: str, project_id: int | None, ids: list[int], *,
     actor: User, reason: str | None,
@@ -1380,7 +1423,8 @@ def batch_delete(
         _scope_access(db, project_id, actor, write=True)
     batch_id = str(uuid4())
     receipts: list[dict[str, Any]] = []
-    for resource_id in ids:
+    ordered_ids = _order_batch_delete_ids(db, resource_type, project_id, ids)
+    for resource_id in ordered_ids:
         try:
             if project_id is None:
                 model = _model(resource_type)
@@ -1726,21 +1770,32 @@ def batch_restore(db: Session, item_ids: list[int], actor: User) -> dict[str, An
     items = db.query(RecycleBinItem).filter(RecycleBinItem.id.in_(item_ids)).all() if item_ids else []
     by_item_id = {item.id: item for item in items}
 
+    scope_depths_by_project: dict[int, dict[int, int]] = {}
+
     def restore_rank(item: RecycleBinItem) -> tuple[int, int]:
         ranks = {"organization": 0, "organization_member": 1, "security_strategy": 10,
-                 "security_rule": 11, "api_module": 20, "api_interface": 30, "api_relation": 40}
+                 "security_rule": 11, "test_scope": 20, "api_module": 20, "api_interface": 30, "api_relation": 40}
         depth = 0
         if item.resource_type == "api_module":
             row = db.query(ApiModule).execution_options(include_deleted=True).filter_by(
                 id=int(item.resource_id),
             ).first()
             parent_id = row.parent_id if row else None
-            while parent_id is not None:
+            seen_ids = {row.id} if row else set()
+            while parent_id is not None and parent_id not in seen_ids:
+                seen_ids.add(parent_id)
                 depth += 1
                 parent = db.query(ApiModule).execution_options(include_deleted=True).filter_by(
                     id=parent_id,
                 ).first()
                 parent_id = parent.parent_id if parent else None
+        elif item.resource_type == "test_scope" and item.project_id is not None:
+            # 测试范围按父先子后恢复，避免同时勾选父子目录恢复时因子先于父触发依赖冲突。
+            depths = scope_depths_by_project.get(item.project_id)
+            if depths is None:
+                depths = _test_scope_depths(db, item.project_id)
+                scope_depths_by_project[item.project_id] = depths
+            depth = depths.get(int(item.resource_id), 0)
         return ranks.get(item.resource_type, 15), depth
 
     ordered_ids = sorted(item_ids, key=lambda value: (

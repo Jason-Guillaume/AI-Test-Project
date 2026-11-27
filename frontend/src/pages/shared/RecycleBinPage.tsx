@@ -140,10 +140,13 @@ function RecycleBinContent({ adminMode, projectId }: { adminMode: boolean; proje
     queryClient.invalidateQueries({ queryKey: ['test-cases'] });
     queryClient.invalidateQueries({ queryKey: ['test-scope-cases'] });
     queryClient.invalidateQueries({ queryKey: ['test-scopes'] });
+    queryClient.invalidateQueries({ queryKey: ['test-scope-stats'] });
     queryClient.invalidateQueries({ queryKey: ['test-points'] });
     queryClient.invalidateQueries({ queryKey: ['test-strategies'] });
     queryClient.invalidateQueries({ queryKey: ['api'] });
+    queryClient.invalidateQueries({ queryKey: ['api-catalog'] });
     queryClient.invalidateQueries({ queryKey: ['business'] });
+    queryClient.invalidateQueries({ queryKey: ['test-data'] });
     queryClient.invalidateQueries({ queryKey: ['test-suites'] });
     queryClient.invalidateQueries({ queryKey: ['test-plans'] });
     queryClient.invalidateQueries({ queryKey: ['test-reports'] });

@@ -166,8 +166,20 @@ body {
 .console-toolbar .ant-input-search { width: min(280px, 100%); }
 .console-toolbar .ant-select { max-width: 100%; }
 .scope-tree.ant-tree .ant-tree-treenode { align-items: center; width: 100%; }
+.scope-tree.ant-tree .ant-tree-checkbox { margin: 0 6px 0 0; }
 .scope-tree.ant-tree .ant-tree-node-content-wrapper { display: flex; min-width: 0; flex: 1; align-items: center; overflow: hidden; }
 .scope-tree.ant-tree .ant-tree-title { min-width: 0; flex: 1; overflow: hidden; }
+.scope-tree-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 4px;
+  margin-bottom: 6px;
+  border-top: 1px solid var(--border-subtle, #f0f0f0);
+  border-bottom: 1px solid var(--border-subtle, #f0f0f0);
+}
 .scope-tree-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .scope-tree-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scope-tree-count { flex: none; color: #8792a3; font-size: 12px; white-space: nowrap; }

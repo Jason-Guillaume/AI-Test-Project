@@ -1,7 +1,7 @@
 // 左侧接口目录树：模块（最多两级）为文件夹节点，接口与子模块共同作为子节点。
 // 选择列固定在树最左侧：点击复选框只勾选，点击箭头只展开，点击名称打开该模块列表。
 // 模块 CRUD：顶部「新建模块」+ 行尾更多菜单（重命名/删除）；未分类不可改名/删除。
-// 未分类始终可见，复选框选择当前筛选下的本页未分类接口，而不是系统目录本身。
+// 「未分类」为系统保留节点，树中禁选；选择本页未分类接口明确放在右侧接口列表。
 import { useMemo, useState } from 'react';
 import { App, Button, Checkbox, Dropdown, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd';
 import {
@@ -26,20 +26,12 @@ type TreeDataNode =
   | { kind: 'module'; module: ApiModule; level: number; children?: TreeDataNode[] }
   | { kind: 'api'; api: ApiInterface; level: number };
 
-/** 未分类复选框的受控状态；加载中或空页时由页面禁用。 */
-export interface UnclassifiedSelectionState {
-  checked: boolean;
-  indeterminate: boolean;
-  disabled: boolean;
-  onToggle: () => void;
-}
-
 /**
  * 模块树面板。
  *
  * 查询：模块列表 + 全部分页接口（按工具条过滤）。
  * 构建树：模块按 parent_id 嵌套，接口按 module_id 归入对应模块。
- * 选择：普通模块选择整棵子树删除；未分类选择当前页接口，二者由页面统一协调互斥。
+ * 选择：普通模块支持累加勾选、全选普通模块（排除未分类）与整棵子树预览删除；未分类禁选。
  */
 export function ModuleTree({
   projectId,
@@ -50,7 +42,6 @@ export function ModuleTree({
   selectedModuleId,
   selectedModuleIds,
   onModuleSelectionChange,
-  unclassified,
   onSelectApi,
   onSelectModule,
   onDeletedModules,
@@ -63,7 +54,6 @@ export function ModuleTree({
   selectedModuleId: number | null;
   selectedModuleIds: number[];
   onModuleSelectionChange: (ids: number[]) => void;
-  unclassified: UnclassifiedSelectionState;
   onSelectApi: (id: number | null) => void;
   onSelectModule: (id: number | null) => void;
   onDeletedModules: (result: ApiModuleDeleteResult) => void;
@@ -171,6 +161,14 @@ export function ModuleTree({
     return sortModules(modulesByParent.get(null) ?? []).map((module) => makeModuleNode(module, 0));
   }, [modulesQuery.data, apisQuery.data]);
 
+  const normalModuleIds = useMemo(
+    () => (modulesQuery.data ?? []).filter((module) => !module.is_default).map((module) => module.id),
+    [modulesQuery.data],
+  );
+  const selectedNormalCount = normalModuleIds.filter((id) => selectedModuleIds.includes(id)).length;
+  const allNormalSelected = normalModuleIds.length > 0 && selectedNormalCount === normalModuleIds.length;
+  const indeterminateNormal = selectedNormalCount > 0 && selectedNormalCount < normalModuleIds.length;
+
   if (modulesQuery.isPending || apisQuery.isPending) return <LoadingState tip="加载接口树..." />;
   if (modulesQuery.isError)
     return <ErrorState error={modulesQuery.error} onRetry={modulesQuery.refetch} />;
@@ -263,11 +261,10 @@ export function ModuleTree({
     const moduleChecked = selectedModuleIds.includes(module.id);
     const selectControl = module.is_default ? (
       <Checkbox
-        aria-label="选择本页未分类接口"
-        checked={unclassified.checked}
-        indeterminate={unclassified.indeterminate}
-        disabled={unclassified.disabled}
-        onChange={() => unclassified.onToggle()}
+        aria-label="未分类模块不可删除"
+        checked={false}
+        disabled
+        title="未分类为系统模块，不可删除；请点击进入右侧接口列表选择本页接口"
       />
     ) : (
       <Checkbox
@@ -356,13 +353,29 @@ export function ModuleTree({
         <Button size="small" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>
           新建模块
         </Button>
+        <Checkbox
+          checked={allNormalSelected}
+          indeterminate={indeterminateNormal}
+          disabled={normalModuleIds.length === 0 || deleteMutation.isPending || previewing}
+          onChange={(event) => onModuleSelectionChange(event.target.checked ? normalModuleIds : [])}
+        >
+          全选普通模块（{normalModuleIds.length}）
+        </Checkbox>
         {selectedModuleIds.length > 0 ? (
           <Space size={4} wrap>
             <Typography.Text type="secondary">已选 {selectedModuleIds.length} 个模块</Typography.Text>
-            <Button size="small" type="link" onClick={() => onModuleSelectionChange([])}>清除选择</Button>
+            <Button
+              size="small"
+              type="link"
+              disabled={deleteMutation.isPending || previewing}
+              onClick={() => onModuleSelectionChange([])}
+            >
+              清空
+            </Button>
             <Button
               size="small"
               danger
+              disabled={deleteMutation.isPending || previewing}
               loading={deleteMutation.isPending || previewing}
               onClick={() => { void requestDelete(selectedModuleIds); }}
             >
@@ -370,7 +383,7 @@ export function ModuleTree({
             </Button>
           </Space>
         ) : (
-          <Typography.Text type="secondary">勾选模块可批量删除</Typography.Text>
+          <Typography.Text type="secondary">已选 0 个模块</Typography.Text>
         )}
       </div>
       <div className="api-module-tree-scroll">

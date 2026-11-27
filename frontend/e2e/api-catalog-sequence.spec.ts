@@ -183,11 +183,12 @@ test('接口目录选择、批量删除与序号跨页验收', async ({ page }) 
   await gotoPage(page, 2);
   expect(await readSequences(page)).toEqual(Array.from({ length: 10 }, (_, index) => String(index + 11)));
 
-  // ---- 未分类只选当前筛选下的本页接口；部分失败保留失败项勾选 ----
+  // ---- 未分类在左树禁选，选择本页未分类接口明确放在右侧列表；部分失败保留失败项勾选 ----
+  await expect(page.getByRole('checkbox', { name: '未分类模块不可删除' })).toBeDisabled();
   await page.locator('button.api-module-open[title="未分类"]').click();
   await expect(page.locator('.api-module-interfaces h4')).toContainText('未分类');
   await expect(page.locator('.api-module-interfaces .ant-table-tbody tr.ant-table-row')).toHaveCount(2);
-  await page.getByRole('checkbox', { name: '选择本页未分类接口' }).check();
+  await page.locator('.api-module-interfaces').getByRole('checkbox', { name: '选择本页未分类接口' }).check();
   await expect(page.getByText('已选 2 个接口')).toBeVisible();
   await page.getByRole('button', { name: '删除选中' }).click();
   await page.getByRole('button', { name: '删除 2 个' }).click();
