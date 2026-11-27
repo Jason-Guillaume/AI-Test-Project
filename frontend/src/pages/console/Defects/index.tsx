@@ -2,8 +2,8 @@
 // 路由 /console/defects 挂载 ConsoleDefectsPage。
 //
 // 功能：
-//   - 队列工作台：默认当前项目「未关闭」，快捷队列计数与列表 total 同口径；
-//   - 过滤：项目 / 前后端划分 / 严重度 / 优先级 / 关键字（处理人筛选已停用）；
+//   - 队列工作台：顶部当前项目「未关闭」，快捷队列计数与列表 total 同口径；
+//   - 过滤：前后端划分 / 严重度 / 优先级 / 关键字（项目由顶栏统一选择，处理人筛选已停用）；
 //   - 新建 / 编辑：禅道式弹窗（DefectFormModal），批量创建（BatchCreateBugsModal）；
 //   - 批量治理：调优先级 / 归档 / 撤销归档 / 删除 / 飞书推送，逐项回执；
 //   - 详情：DefectDetailModal 聚合证据、验证、外部反馈与活动时间线；
@@ -16,9 +16,10 @@ import {
 } from 'antd';
 import { ExclamationCircleOutlined, SettingOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/app/providers/AuthProvider';
+import { useConsoleScope } from '@/app/providers/ConsoleScopeProvider';
 import { bugsApi } from '@/features/defects/api/defects';
 import { DefectShareModal } from '@/features/defects/components/DefectShareModal';
 import type {
@@ -26,7 +27,7 @@ import type {
   BugListQuery, BugPriority, BugSeverity, BugStatus,
 } from '@/features/defects/contracts';
 import { projectsApi } from '@/features/projects/api/projects';
-import { ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
+import { EmptyState, ErrorState, LoadingState, PageContainer } from '@/shared/ui/PageState';
 import { ResourceTable, type PaginationState } from '@/shared/ui/ResourceTable';
 import { sequenceColumn } from '@/shared/lib/sequence';
 import { getErrorMessage } from '@/shared/api/client';
@@ -77,13 +78,14 @@ const QUEUE_COUNT_KEY: Partial<Record<QueueKey, keyof import('@/features/defects
 export function ConsoleDefectsPage() {
   const { message, modal } = App.useApp();
   const { isPlatformAdmin } = useAuth();
+  const { currentProjectId } = useConsoleScope();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedBugId = Number(searchParams.get('bugId'));
   const detailOpen = Number.isSafeInteger(requestedBugId) && requestedBugId > 0;
 
   const [pagination, setPagination] = useState<PaginationState>({ page: 1, page_size: 10 });
-  const [projectId, setProjectId] = useState<number | undefined>(undefined);
+  const projectId = currentProjectId ?? undefined;
   const [queue, setQueue] = useState<QueueKey>('unclosed');
   const [categoryFilter, setCategoryFilter] = useState<BugCategoryFilter | undefined>(undefined);
   const [status, setStatus] = useState<BugStatus | undefined>(undefined);
@@ -105,11 +107,6 @@ export function ConsoleDefectsPage() {
     queryFn: () => collectPages((page) => projectsApi.list({ page, page_size: 100 })),
   });
   const projectOptions = (projectsQuery.data?.items ?? []).map((p) => ({ label: p.name, value: p.id }));
-  // 工作台默认进入第一个可见项目的未关闭队列。
-  useEffect(() => {
-    if (projectId == null && projectOptions.length > 0) setProjectId(projectOptions[0].value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectsQuery.data]);
 
   const settingQuery = useQuery({
     queryKey: ['defect-project-setting', projectId],
@@ -144,6 +141,7 @@ export function ConsoleDefectsPage() {
   const listQuery = useQuery<Paginated<Bug>>({
     queryKey: ['bugs', query],
     queryFn: () => bugsApi.list(query),
+    enabled: projectId != null,
   });
 
   const projectRole = (id: number) => (projectsQuery.data?.items ?? []).find((item) => item.id === id)?.my_role;
@@ -230,6 +228,10 @@ export function ConsoleDefectsPage() {
     });
   };
 
+  if (currentProjectId == null) {
+    return <PageContainer><EmptyState description="请先在顶部选择一个项目" /></PageContainer>;
+  }
+
   if (listQuery.isPending) return <LoadingState />;
   if (listQuery.isError) {
     return <PageContainer><ErrorState error={listQuery.error} onRetry={listQuery.refetch} /></PageContainer>;
@@ -276,16 +278,6 @@ export function ConsoleDefectsPage() {
           enterButton
           style={{ maxWidth: 240 }}
           onSearch={(v) => { setKeyword(v); resetPage(); }}
-        />
-        <Select
-          placeholder="全部项目"
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          options={projectOptions}
-          value={projectId}
-          onChange={(v) => { setProjectId(v); setSelectedBugIds([]); setQueue('unclosed'); setStatus(undefined); resetPage(); }}
-          style={{ minWidth: 180 }}
         />
         <Select
           placeholder="全部划分"
@@ -379,7 +371,6 @@ export function ConsoleDefectsPage() {
         >
           批量推送到飞书（{selectedBugIds.length}）
         </Button>
-        {projectId == null && <Typography.Text type="secondary">请先选择项目，再进行批量操作。</Typography.Text>}
       </div>
 
       <ResourceTable
