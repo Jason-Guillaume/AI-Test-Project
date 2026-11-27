@@ -1,7 +1,7 @@
 // 左侧接口目录树：模块（最多两级）为文件夹节点，接口与子模块共同作为子节点。
 // 选择列固定在树最左侧：点击复选框只勾选，点击箭头只展开，点击名称打开该模块列表。
-// 模块 CRUD：顶部「新建模块」+ 行尾更多菜单（重命名/删除）；未分类不可改名/删除。
-// 「未分类」为系统保留节点，树中禁选；选择本页未分类接口明确放在右侧接口列表。
+// 模块 CRUD：顶部「新建模块」+ 行尾更多菜单（普通模块重命名/删除；未分类仅清空接口，不可改名）。
+// 「未分类」在无接口数据时不展示；有接口数据时支持勾选删除（清空其下全部接口并移入回收站）。
 import { useMemo, useState } from 'react';
 import { App, Button, Checkbox, Dropdown, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd';
 import {
@@ -30,8 +30,8 @@ type TreeDataNode =
  * 模块树面板。
  *
  * 查询：模块列表 + 全部分页接口（按工具条过滤）。
- * 构建树：模块按 parent_id 嵌套，接口按 module_id 归入对应模块。
- * 选择：普通模块支持累加勾选、全选普通模块（排除未分类）与整棵子树预览删除；未分类禁选。
+ * 构建树：模块按 parent_id 嵌套，接口按 module_id 归入对应模块；无数据的未分类不显示。
+ * 选择：普通模块删除整棵子树，有数据的未分类清空其下全部接口并移入回收站。
  */
 export function ModuleTree({
   projectId,
@@ -56,7 +56,7 @@ export function ModuleTree({
   onModuleSelectionChange: (ids: number[]) => void;
   onSelectApi: (id: number | null) => void;
   onSelectModule: (id: number | null) => void;
-  onDeletedModules: (result: ApiModuleDeleteResult) => void;
+  onDeletedModules: (result: ApiModuleDeleteResult, submittedIds: number[]) => void;
 }) {
   const { message, modal } = App.useApp();
   const queryClient = useQueryClient();
@@ -110,9 +110,13 @@ export function ModuleTree({
 
   const deleteMutation = useMutation({
     mutationFn: (ids: number[]) => apiCatalogApi.deleteModules(projectId, ids),
-    onSuccess: (result) => {
-      message.success(`已将 ${result.module_count} 个模块和 ${result.interface_count} 个接口移入回收站`);
-      onDeletedModules(result);
+    onSuccess: (result, submittedIds) => {
+      if (result.module_count === 0) {
+        message.success(`已将 ${result.interface_count} 个未分类接口移入回收站`);
+      } else {
+        message.success(`已将 ${result.module_count} 个模块和 ${result.interface_count} 个接口移入回收站`);
+      }
+      onDeletedModules(result, submittedIds);
       queryClient.invalidateQueries({ queryKey: ['api-catalog', projectId] });
       queryClient.invalidateQueries({ queryKey: ['recycle-bin'] });
     },
@@ -132,6 +136,10 @@ export function ModuleTree({
     }
     const modulesByParent = new Map<number | null, ApiModule[]>();
     for (const module of modules) {
+      // 未分类在无接口数据时隐藏，不占用目录树空间；有接口或恢复接口后自动重新出现。
+      if (module.is_default && module.interface_count === 0 && (byModule.get(module.id)?.length ?? 0) === 0) {
+        continue;
+      }
       const parentId = module.parent_id != null && modules.some((candidate) => candidate.id === module.parent_id)
         ? module.parent_id
         : null;
@@ -157,17 +165,18 @@ export function ModuleTree({
       };
     };
 
-    // 不再按接口数过滤未分类：目录入口必须常显，空页由复选框禁用而不是隐藏。
     return sortModules(modulesByParent.get(null) ?? []).map((module) => makeModuleNode(module, 0));
   }, [modulesQuery.data, apisQuery.data]);
 
-  const normalModuleIds = useMemo(
-    () => (modulesQuery.data ?? []).filter((module) => !module.is_default).map((module) => module.id),
+  const selectableModuleIds = useMemo(
+    () => (modulesQuery.data ?? [])
+      .filter((module) => !module.is_default || module.interface_count > 0)
+      .map((module) => module.id),
     [modulesQuery.data],
   );
-  const selectedNormalCount = normalModuleIds.filter((id) => selectedModuleIds.includes(id)).length;
-  const allNormalSelected = normalModuleIds.length > 0 && selectedNormalCount === normalModuleIds.length;
-  const indeterminateNormal = selectedNormalCount > 0 && selectedNormalCount < normalModuleIds.length;
+  const selectedVisibleCount = selectableModuleIds.filter((id) => selectedModuleIds.includes(id)).length;
+  const allModulesSelected = selectableModuleIds.length > 0 && selectedVisibleCount === selectableModuleIds.length;
+  const indeterminateModules = selectedVisibleCount > 0 && selectedVisibleCount < selectableModuleIds.length;
 
   if (modulesQuery.isPending || apisQuery.isPending) return <LoadingState tip="加载接口树..." />;
   if (modulesQuery.isError)
@@ -197,13 +206,29 @@ export function ModuleTree({
     setPreviewing(true);
     try {
       const impact = await apiCatalogApi.previewModuleDelete(projectId, ids);
+      const onlyUnclassified = impact.module_count === 0;
+      const includesUnclassified = impact.root_names.includes('未分类');
       modal.confirm({
         title: `移入回收站：${impact.root_names.join('、')}`,
         content: <div>
-          <p>将删除整棵所选模块子树，并自动去重父子模块的重复选择。</p>
-          <p>影响范围包含折叠中、当前筛选外以及分页外的子模块与接口：</p>
-          <p><strong>{impact.module_count} 个模块，{impact.interface_count} 个接口</strong></p>
-          <p>接口、模块层级及接口归属可从回收站恢复。</p>
+          {onlyUnclassified ? (
+            <>
+              <p>将清空「未分类」下的全部接口并移入回收站；清空后「未分类」文件夹将自动隐藏。</p>
+              <p>影响范围包含当前筛选外及分页外的全部未分类接口：</p>
+              <p><strong>{impact.interface_count} 个接口</strong></p>
+            </>
+          ) : (
+            <>
+              <p>
+                {includesUnclassified
+                  ? '将删除所选普通模块整棵子树（自动去重父子重复选择），并清空「未分类」下全部接口。'
+                  : '将删除整棵所选模块子树，并自动去重父子模块的重复选择。'}
+              </p>
+              <p>影响范围包含折叠中、当前筛选外以及分页外的子模块与接口：</p>
+              <p><strong>{impact.module_count} 个模块，{impact.interface_count} 个接口</strong></p>
+            </>
+          )}
+          <p>若存在被测试用例引用的接口，服务端会阻止删除并说明引用信息；成功移入回收站的记录均可恢复。</p>
         </div>,
         okText: '移入回收站',
         okType: 'danger',
@@ -259,14 +284,7 @@ export function ModuleTree({
     const hasChildren = Boolean(node.children?.length);
     const selected = selectedModuleId === module.id;
     const moduleChecked = selectedModuleIds.includes(module.id);
-    const selectControl = module.is_default ? (
-      <Checkbox
-        aria-label="未分类模块不可删除"
-        checked={false}
-        disabled
-        title="未分类为系统模块，不可删除；请点击进入右侧接口列表选择本页接口"
-      />
-    ) : (
+    const selectControl = (
       <Checkbox
         aria-label={`选择模块 ${module.name}`}
         checked={moduleChecked}
@@ -308,34 +326,34 @@ export function ModuleTree({
               <span className={`api-module-name${module.is_default ? ' is-default' : ''}`}>{module.name}</span>
               <span className="api-module-count">{module.interface_count}</span>
             </button>
-            {!module.is_default && (
-              <span className="api-module-actions">
-                <Dropdown
-                  trigger={['click']}
-                  menu={{
-                    items: [
+            <span className="api-module-actions">
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: module.is_default
+                    ? [{ key: 'delete', icon: <DeleteOutlined />, danger: true, label: '清空未分类接口' }]
+                    : [
                       { key: 'rename', icon: <EditOutlined />, label: '重命名' },
                       { key: 'delete', icon: <DeleteOutlined />, danger: true, label: '删除模块' },
                     ],
-                    onClick: ({ key: actionKey }) => {
-                      if (actionKey === 'rename') {
-                        setRenameTarget(module);
-                        renameForm.setFieldsValue({ name: module.name });
-                      } else if (actionKey === 'delete') {
-                        void requestDelete([module.id]);
-                      }
-                    },
-                  }}
-                >
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<MoreOutlined />}
-                    aria-label={`更多操作 ${module.name}`}
-                  />
-                </Dropdown>
-              </span>
-            )}
+                  onClick: ({ key: actionKey }) => {
+                    if (actionKey === 'rename') {
+                      setRenameTarget(module);
+                      renameForm.setFieldsValue({ name: module.name });
+                    } else if (actionKey === 'delete') {
+                      void requestDelete([module.id]);
+                    }
+                  },
+                }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<MoreOutlined />}
+                  aria-label={`更多操作 ${module.name}`}
+                />
+              </Dropdown>
+            </span>
           </div>
         </div>
         {expanded && node.children?.length ? (
@@ -354,12 +372,12 @@ export function ModuleTree({
           新建模块
         </Button>
         <Checkbox
-          checked={allNormalSelected}
-          indeterminate={indeterminateNormal}
-          disabled={normalModuleIds.length === 0 || deleteMutation.isPending || previewing}
-          onChange={(event) => onModuleSelectionChange(event.target.checked ? normalModuleIds : [])}
+          checked={allModulesSelected}
+          indeterminate={indeterminateModules}
+          disabled={selectableModuleIds.length === 0 || deleteMutation.isPending || previewing}
+          onChange={(event) => onModuleSelectionChange(event.target.checked ? selectableModuleIds : [])}
         >
-          全选普通模块（{normalModuleIds.length}）
+          全选模块（{selectableModuleIds.length}）
         </Checkbox>
         {selectedModuleIds.length > 0 ? (
           <Space size={4} wrap>

@@ -277,20 +277,20 @@ test('管理页面模块多选删除全链路验收（隔离项目）', async ({
     await openProjectPage(page, projectAId, '/console/api-catalog');
     await expect(page.locator('.api-catalog-page')).toBeVisible();
 
-    // 「未分类」在左侧树禁选
-    await expect(page.getByRole('checkbox', { name: '未分类模块不可删除' })).toBeDisabled();
+    // 有数据的「未分类」文件夹可见且可勾选，并纳入「全选模块」
+    await expect(page.getByRole('checkbox', { name: '选择模块 未分类' })).toBeEnabled();
 
-    // 连续勾选两个普通模块：计数从 1 增至 2，全选普通模块为半选状态
+    // 连续勾选两个普通模块：计数从 1 增至 2，全选模块为半选状态
     await page.getByRole('checkbox', { name: `选择模块 接口父模块-${RUN_ID}` }).check();
     await expect(page.getByText('已选 1 个模块')).toBeVisible();
     await page.getByRole('checkbox', { name: `选择模块 接口平级模块-${RUN_ID}` }).check();
     await expect(page.getByText('已选 2 个模块')).toBeVisible();
 
-    // 全选普通模块（3）排除「未分类」
+    // 全选模块（4）：包含有数据的「未分类」及全部 3 个普通模块
     const selectAllModules = page.locator('.api-module-toolbar').getByRole('checkbox');
     await selectAllModules.check();
-    await expect(page.getByText('已选 3 个模块')).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: '未分类模块不可删除' })).not.toBeChecked();
+    await expect(page.getByText('已选 4 个模块')).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: '选择模块 未分类' })).toBeChecked();
 
     // 清空后验证父子同选预览影响数不重复（2 个模块，1 个接口），取消保留勾选，确认移入回收站
     await page.locator('.api-module-toolbar').getByRole('button', { name: '清空' }).click();
@@ -309,19 +309,30 @@ test('管理页面模块多选删除全链路验收（隔离项目）', async ({
     await page.locator('.ant-modal-confirm').getByRole('button', { name: '移入回收站' }).click();
     await expect(page.getByText('已将 2 个模块和 1 个接口移入回收站')).toBeVisible();
 
-    // 右侧表头与「选择本页未分类接口」均可选择未分类接口
+    // 右侧点击单行复选框不会误跳转接口详情，表头与「选择本页未分类接口」均可正常切换
     await page.locator('button.api-module-open[title="未分类"]').click();
     await expect(page.locator('.api-module-interfaces h4')).toContainText('未分类');
-    await page.locator('.api-module-interfaces .ant-table-thead .ant-checkbox-input').check();
+    await page.locator('.api-module-interfaces .ant-table-tbody tr.ant-table-row').first().getByRole('checkbox').check();
+    await expect(page.locator('.api-module-interfaces h4')).toContainText('未分类');
     await expect(page.getByText('已选 1 个接口')).toBeVisible();
     await page.locator('.api-module-interfaces').getByRole('checkbox', { name: '选择本页未分类接口' }).uncheck();
     await expect(page.getByText('已选 1 个接口')).toHaveCount(0);
 
-    // 切换项目清空接口模块勾选
+    // 左侧直接勾选「未分类」删除：清空未分类下全部接口后，「未分类」文件夹自动隐藏
+    await page.getByRole('checkbox', { name: '选择模块 未分类' }).check();
+    await expect(page.getByText('已选 1 个模块')).toBeVisible();
+    await page.getByRole('button', { name: '删除模块' }).click();
+    await expect(page.locator('.ant-modal-confirm-content')).toContainText('1 个接口');
+    await page.locator('.ant-modal-confirm').getByRole('button', { name: '移入回收站' }).click();
+    await expect(page.getByText('已将 1 个未分类接口移入回收站')).toBeVisible();
+    await expect(page.locator('button.api-module-open[title="未分类"]')).toHaveCount(0);
+
+    // 切换项目清空接口模块勾选，且无未分类数据的项目 B 不显示「未分类」文件夹
     await page.getByRole('checkbox', { name: `选择模块 接口平级模块-${RUN_ID}` }).check();
     await expect(page.getByText('已选 1 个模块')).toBeVisible();
     await switchProjectViaTopbar(page, projectBName);
     await expect(page.getByRole('checkbox', { name: `选择模块 项目B模块-${RUN_ID}` })).toBeVisible();
+    await expect(page.locator('button.api-module-open[title="未分类"]')).toHaveCount(0);
     await expect(page.getByText('已选 0 个模块')).toBeVisible();
 
     // =========================================================================
@@ -406,16 +417,19 @@ test('管理页面模块多选删除全链路验收（隔离项目）', async ({
     await page.getByRole('row').filter({ hasText: `空业务域-${RUN_ID}` }).getByRole('checkbox').check();
     await page.getByRole('row').filter({ hasText: `接口父模块-${RUN_ID}` }).getByRole('checkbox').check();
     await page.getByRole('row').filter({ hasText: `接口子模块-${RUN_ID}` }).getByRole('checkbox').check();
+    await page.getByRole('row').filter({ hasText: `未分类接口-${RUN_ID}` }).getByRole('checkbox').check();
     await page.getByRole('button', { name: /批量恢复/ }).click();
     await page.locator('.ant-modal-confirm .ant-btn-primary').click();
     await expect(page.getByRole('row').filter({ hasText: `用户夹具1-${RUN_ID}` })).toHaveCount(0);
     await expect(page.getByRole('row').filter({ hasText: `空业务域-${RUN_ID}` })).toHaveCount(0);
     await expect(page.getByRole('row').filter({ hasText: `接口父模块-${RUN_ID}` })).toHaveCount(0);
     await expect(page.getByRole('row').filter({ hasText: `接口子模块-${RUN_ID}` })).toHaveCount(0);
+    await expect(page.getByRole('row').filter({ hasText: `未分类接口-${RUN_ID}` })).toHaveCount(0);
 
-    // 切回接口管理验证已恢复的模块重新出现
+    // 切回接口管理验证已恢复的模块及未分类文件夹重新出现
     await page.goto('/console/api-catalog');
     await expect(page.getByRole('checkbox', { name: `选择模块 接口父模块-${RUN_ID}` })).toBeVisible();
+    await expect(page.locator('button.api-module-open[title="未分类"]')).toBeVisible();
 
     // =========================================================================
     // 5. 项目知识库（/admin/knowledge）：持久化知识库目录多选删除与部分失败保留勾选

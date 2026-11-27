@@ -86,10 +86,6 @@ export function FixtureTab({
 
   const deleteFixtures = (ids: number[]) => {
     if (!ids.length || deleting) return;
-    if (ids.length > 100) {
-      void message.warning('每批最多删除 100 个 Fixture，请分批操作');
-      return;
-    }
     const nameById = new Map(briefs.map((item) => [item.id, `${item.name}（${item.fixture_key}）`]));
     modal.confirm({
       title: `将选中的 ${ids.length} 个 Fixture 移入回收站？`,

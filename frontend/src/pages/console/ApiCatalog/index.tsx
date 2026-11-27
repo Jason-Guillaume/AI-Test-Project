@@ -80,11 +80,10 @@ function ApiCatalogWorkspace() {
   const selectedModule = modules.find((module) => module.id === selectedModuleId) ?? null;
 
   useEffect(() => {
-    if (
-      selectedModuleId != null &&
-      modulesQuery.data &&
-      !modulesQuery.data.some((module) => module.id === selectedModuleId)
-    ) {
+    if (selectedModuleId == null || !modulesQuery.data) return;
+    const current = modulesQuery.data.find((module) => module.id === selectedModuleId);
+    // 模块已被删，或「未分类」被清空后自动隐藏时，退出右侧已失效的模块列表。
+    if (!current || (current.is_default && current.interface_count === 0)) {
       setSelectedModuleId(null);
     }
   }, [modulesQuery.data, selectedModuleId]);
@@ -140,10 +139,11 @@ function ApiCatalogWorkspace() {
     });
   }, [modal, selectedApiIds.length, selectedModuleIds.length]);
 
-  const handleDeletedModules = useCallback((result: ApiModuleDeleteResult) => {
-    setSelectedModuleIds((ids) => ids.filter((id) => !result.deleted_module_ids.includes(id)));
+  const handleDeletedModules = useCallback((result: ApiModuleDeleteResult, submittedIds: number[]) => {
+    const clearedIds = new Set([...result.deleted_module_ids, ...submittedIds]);
+    setSelectedModuleIds((ids) => ids.filter((id) => !clearedIds.has(id)));
     setSelectedApiIds((ids) => ids.filter((id) => !result.deleted_interface_ids.includes(id)));
-    setSelectedModuleId((current) => current != null && result.deleted_module_ids.includes(current) ? null : current);
+    setSelectedModuleId((current) => current != null && clearedIds.has(current) ? null : current);
     setSelectedApiId((current) => current != null && result.deleted_interface_ids.includes(current) ? null : current);
   }, []);
 

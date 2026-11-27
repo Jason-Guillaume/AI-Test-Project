@@ -371,41 +371,49 @@ export function ConsoleTestCasesPage() {
         changeParams({ scope: fallbackScopeId }, false);
       }
       if (receipt.failed > 0) {
-        modal.info({
-          title: `批量删除目录完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
-          width: 620,
-          content: (
-            <Space direction="vertical" style={{ width: '100%' }}>
-              {receipt.items.filter((item) => !item.succeeded).map((item) => (
-                <Alert
-                  key={item.id}
-                  type="error"
-                  showIcon
-                  message={nameById.get(item.id) ?? `目录 #${item.id}`}
-                  description={item.error ?? '删除失败'}
-                />
-              ))}
-            </Space>
-          ),
-          okText: '关闭',
-        });
+        const firstReason = receipt.items.find((item) => !item.succeeded)?.error ?? '存在依赖保护';
+        message.warning(
+          receipt.succeeded === 0
+            ? `未能删除所选的 ${receipt.failed} 个目录：${firstReason}`
+            : `已删除 ${receipt.succeeded} 个目录，${receipt.failed} 个因依赖被保留`,
+        );
+        window.setTimeout(() => {
+          modal.info({
+            title: `批量删除目录完成：成功 ${receipt.succeeded} 个，失败 ${receipt.failed} 个`,
+            width: 620,
+            content: (
+              <div style={{ maxHeight: 360, overflowY: 'auto', paddingRight: 4 }}>
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {receipt.items.filter((item) => !item.succeeded).map((item) => (
+                    <Alert
+                      key={item.id}
+                      type="error"
+                      showIcon
+                      message={nameById.get(item.id) ?? `目录 #${item.id}`}
+                      description={item.error ?? '删除失败'}
+                    />
+                  ))}
+                </Space>
+              </div>
+            ),
+            okText: '关闭',
+          });
+        }, 0);
       } else {
-        modal.success({
-          title: `已将 ${receipt.succeeded} 个目录移入回收站`,
-          content: '成功删除的目录可在回收站按原层级恢复。',
-          okText: '查看回收站',
-          onOk: () => navigate('/console/recycle-bin'),
-        });
+        window.setTimeout(() => {
+          modal.success({
+            title: `已将 ${receipt.succeeded} 个目录移入回收站`,
+            content: '成功删除的目录可在回收站按原层级恢复。',
+            okText: '查看回收站',
+            onOk: () => navigate('/console/recycle-bin'),
+          });
+        }, 0);
       }
     },
     onError: (error) => message.error(getErrorMessage(error, '批量删除目录失败')),
   });
   const requestBatchDeleteScopes = () => {
     if (!currentProjectId || selectedScopeIds.length === 0 || deleteScopes.isPending) return;
-    if (selectedScopeIds.length > 100) {
-      message.warning('每批最多删除 100 个目录，请分批操作');
-      return;
-    }
     const ids = [...selectedScopeIds];
     const nodesSnapshot = [...nodes];
     const nameById = new Map(nodesSnapshot.map((node) => [node.id, node.name]));

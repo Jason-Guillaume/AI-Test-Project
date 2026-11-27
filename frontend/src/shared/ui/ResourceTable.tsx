@@ -59,7 +59,18 @@ export function ResourceTable<T>({
       expandable={expandedRowRender ? { expandedRowRender } : undefined}
       onRow={(record) => ({
         ...(rowStyle ? { style: rowStyle } : {}),
-        ...(onRowClick ? { onClick: () => onRowClick(record) } : {}),
+        ...(onRowClick
+          ? {
+            onClick: (event) => {
+              // 点击复选框列、按钮、链接或复制图标时，不触发整行打开详情，避免打断多选操作。
+              const target = event.target as HTMLElement | null;
+              if (target?.closest('.ant-table-selection-column, .ant-checkbox-wrapper, input, button, a, .ant-typography-copy')) {
+                return;
+              }
+              onRowClick(record);
+            },
+          }
+          : {}),
       })}
       pagination={{
         current: pagination.page,

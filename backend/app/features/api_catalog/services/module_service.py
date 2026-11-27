@@ -137,6 +137,7 @@ def move_module(db: Session, module_id: int, body: ApiModuleMove, *, actor: User
 def _module_delete_plan(
     db: Session, project_id: int, module_ids: list[int], *, actor: User,
 ) -> tuple[list[ApiModule], list[ApiModule], list[int]]:
+    """计算批量删除模块/未分类的影响范围：普通模块删子树，未分类仅清空其下全部接口。"""
     if not module_ids:
         raise bad_request("请至少选择一个模块")
     project = get_project_or_404(db, project_id, actor)
@@ -146,26 +147,58 @@ def _module_delete_plan(
     selected = list(dict.fromkeys(module_ids))
     if any(module_id not in by_id for module_id in selected):
         raise not_found("模块不存在或不属于当前项目")
-    if any(by_id[module_id].is_default for module_id in selected):
-        raise bad_request("未分类模块不可删除")
-    selected_set = set(selected)
-    roots = [by_id[module_id] for module_id in selected if not _has_selected_ancestor(by_id[module_id], selected_set, by_id)]
+
+    default_module = next((module for module in modules if module.is_default), None)
+    include_unclassified = any(by_id[module_id].is_default for module_id in selected)
+    normal_selected = [module_id for module_id in selected if not by_id[module_id].is_default]
+    normal_selected_set = set(normal_selected)
+
+    roots: list[ApiModule] = []
+    if include_unclassified and default_module is not None:
+        roots.append(default_module)
+    roots.extend(
+        by_id[module_id]
+        for module_id in normal_selected
+        if not _has_selected_ancestor(by_id[module_id], normal_selected_set, by_id)
+    )
+
     children: dict[int | None, list[ApiModule]] = {}
     for module in modules:
-        children.setdefault(module.parent_id, []).append(module)
-    target_ids: set[int] = set()
-    stack = [module.id for module in roots]
+        if not module.is_default:
+            children.setdefault(module.parent_id, []).append(module)
+
+    target_normal_ids: set[int] = set()
+    stack = [module.id for module in roots if not module.is_default]
     while stack:
         current = stack.pop()
-        if current in target_ids:
+        if current in target_normal_ids:
             continue
-        target_ids.add(current)
+        target_normal_ids.add(current)
         stack.extend(child.id for child in children.get(current, []))
-    targets = [by_id[module_id] for module_id in target_ids]
-    interface_ids = [int(row[0]) for row in db.query(ApiInterface.id).filter(
-        ApiInterface.project_id == project_id, ApiInterface.module_id.in_(target_ids),
-    ).all()]
+
+    targets = [by_id[module_id] for module_id in target_normal_ids]
     targets.sort(key=lambda module: (-_module_depth(module, by_id), module.id))
+
+    # 未分类接口在库中可能以 module_id=default.id 或 module_id IS NULL 存在，两种都要纳入。
+    filters = []
+    if target_normal_ids:
+        filters.append(ApiInterface.module_id.in_(target_normal_ids))
+    if include_unclassified:
+        if default_module is not None:
+            filters.append(ApiInterface.module_id == default_module.id)
+        filters.append(ApiInterface.module_id.is_(None))
+    interface_ids = (
+        [
+            int(row[0])
+            for row in db.query(ApiInterface.id)
+            .filter(ApiInterface.project_id == project_id, or_(*filters))
+            .all()
+        ]
+        if filters
+        else []
+    )
+    if include_unclassified and not targets and not interface_ids:
+        raise bad_request("未分类下暂无可删除的接口")
     return roots, targets, interface_ids
 
 
@@ -202,7 +235,8 @@ def preview_module_delete(
 def delete_modules(
     db: Session, project_id: int, module_ids: list[int], *, actor: User,
 ) -> ApiModuleDeleteResponse:
-    """移除整棵选中模块子树；关联、接口与模块在同一回收站事务内提交。"""
+    """移除选中模块子树及未分类下接口；关联、接口与普通模块在同一回收站事务内提交。"""
+    from app.features.test_management.models.test_case import TestCase
     from app.lifecycle.service import soft_delete_object
 
     try:
@@ -210,20 +244,40 @@ def delete_modules(
         interfaces = db.query(ApiInterface).filter(
             ApiInterface.project_id == project_id, ApiInterface.id.in_(interface_ids),
         ).with_for_update().all() if interface_ids else []
+        if interfaces:
+            # 提前聚合被活跃测试用例引用的接口数量，给出明确冲突原因，避免只报单条模糊错误。
+            referenced_rows = (
+                db.query(TestCase.api_id)
+                .filter(TestCase.project_id == project_id, TestCase.api_id.in_(interface_ids))
+                .all()
+            )
+            if referenced_rows:
+                referenced_api_ids = {int(row[0]) for row in referenced_rows if row[0] is not None}
+                sample_names = [row.name for row in interfaces if row.id in referenced_api_ids][:3]
+                sample_text = "、".join(sample_names)
+                raise conflict(
+                    f"所选范围中有 {len(referenced_api_ids)} 个接口正被 {len(referenced_rows)} 条测试用例引用"
+                    f"（如：{sample_text}），请先在「测试用例」中删除或解除接口关联后再删除"
+                )
         relations = db.query(ApiRelation).filter(or_(
             ApiRelation.source_api_id.in_(interface_ids), ApiRelation.target_api_id.in_(interface_ids),
         ), ApiRelation.project_id == project_id).with_for_update().all() if interface_ids else []
         batch_id = str(uuid4())
         receipt_ids: list[int] = []
+        reason = "清空未分类接口" if not modules else "删除接口模块子树"
         for row in relations:
             receipt_ids.append(soft_delete_object(
-                db, "api_relation", row, actor=actor, reason="删除接口模块子树", batch_id=batch_id,
+                db, "api_relation", row, actor=actor, reason=reason, batch_id=batch_id,
             ).id)
         for row in interfaces:
             receipt_ids.append(soft_delete_object(
-                db, "api_interface", row, actor=actor, reason="删除接口模块子树", batch_id=batch_id,
+                db, "api_interface", row, actor=actor, reason=reason, batch_id=batch_id,
             ).id)
-        module_rows = db.query(ApiModule).filter(ApiModule.id.in_([module.id for module in modules])).with_for_update().all()
+        module_rows = (
+            db.query(ApiModule).filter(ApiModule.id.in_([module.id for module in modules])).with_for_update().all()
+            if modules
+            else []
+        )
         module_rows.sort(key=lambda row: (-_module_depth(row, {m.id: m for m in modules}), row.id))
         for row in module_rows:
             receipt_ids.append(soft_delete_object(
